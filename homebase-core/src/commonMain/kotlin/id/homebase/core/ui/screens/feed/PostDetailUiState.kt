@@ -28,6 +28,12 @@ data class PostDetailUiState(
      */
     val selfOdinId: OdinId? = null,
     /**
+     * Reactive `odinId → resolved display name` for the post author and every comment author,
+     * sourced from [id.homebase.chat.services.convo.contact.ContactService]. Known identities
+     * only; the screen falls back to the raw domain for anyone absent (web `AuthorName` parity).
+     */
+    val displayNames: Map<OdinId, String> = emptyMap(),
+    /**
      * Reactor roster for the "who reacted" sheet, or null when the sheet is closed.
      * Non-null (even empty) means the sheet is showing; [isReactorsLoading] covers the
      * in-flight fetch before the list arrives.

@@ -101,12 +101,14 @@ import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.ChannelPostQueryService
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
+import id.homebase.core.ui.screens.feed.ComposerArgs
 import id.homebase.core.ui.screens.feed.PostComposeViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
@@ -223,6 +225,7 @@ val appModule = module {
     // registered in ApiModule. CoroutineScope/EventBus/DatabaseManager etc. auto-resolve
     // as for Moments.
     singleOf(::FeedTimelineService)
+    singleOf(::ChannelDefinitionService)
     singleOf(::ChannelPostQueryService)
     singleOf(::FeedPostSenderService)
     singleOf(::PostCommentsService)
@@ -803,7 +806,10 @@ val appModule = module {
 
     // Native Feed ViewModels. PostDetailViewModel is parameterized on the post id.
     viewModelOf(::FeedTimelineViewModel)
-    viewModelOf(::PostComposeViewModel)
+    viewModel { params ->
+        val args = params.getOrNull<ComposerArgs>() ?: ComposerArgs()
+        PostComposeViewModel(get(), get(), get(), get(), get(), args.repostOfJson, args.editOfJson)
+    }
     viewModelOf(::FollowingViewModel)
     viewModel { params ->
         PostDetailViewModel(
@@ -813,6 +819,9 @@ val appModule = module {
             reactionService = get(),
             senderService = get(),
             credentialsManager = get(),
+            contactService = get(),
+            stickerStream = get(),
+            publicProfileProvider = get(),
         )
     }
     viewModel { params ->

@@ -3,6 +3,7 @@ package id.homebase.core.feed.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.CommentPreview
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
@@ -23,6 +24,8 @@ import kotlin.uuid.Uuid
 data class FeedPostItem(
     val id: Uuid,
     val fileId: Uuid,
+    /** The post's global transit id, used to address it as a repost source across identities. */
+    val globalTransitId: Uuid?,
     val driveId: Uuid,
     val keyHeader: KeyHeader,
     val payloads: List<PayloadDescriptor>,
@@ -100,11 +103,12 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
             .getOrNull()
     }
     val ownReactions = fileMetadata.localAppData?.localReactions
-        ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
+        ?.mapNotNull { raw -> decodeReactionEmoji(raw) }
         .orEmpty()
     return FeedPostItem(
         id = uniqueId,
         fileId = fileId,
+        globalTransitId = fileMetadata.globalTransitId,
         driveId = driveId,
         keyHeader = keyHeader,
         payloads = fileMetadata.payloads.orEmpty(),
@@ -144,7 +148,7 @@ fun HomebaseFile.toCommentItem(topLevelPostId: Uuid): PostCommentItem? {
     }
     val isReply = groupId != topLevelPostId
     val ownReactions = fileMetadata.localAppData?.localReactions
-        ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
+        ?.mapNotNull { raw -> decodeReactionEmoji(raw) }
         .orEmpty()
     return PostCommentItem(
         id = uniqueId,
@@ -167,7 +171,15 @@ fun HomebaseFile.toCommentItem(topLevelPostId: Uuid): PostCommentItem? {
     )
 }
 
-/** Decode a stored `localReactions` JSON entry to its bare emoji glyph, or null on failure. */
-internal fun decodeOwnReactionEmoji(reactionContent: String): String? = runCatching {
+/** Decode a reaction's stored `reactionContent` JSON to its bare emoji glyph, or null on failure. */
+internal fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
     OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
 }.getOrNull()
+
+/** [CommentPreview.content] is raw [PostCommentContent] JSON, not text — parse out the body. */
+fun CommentPreview.previewBody(): String {
+    if (isEncrypted || content.isBlank()) return ""
+    return runCatching {
+        OdinSystemSerializer.deserialize<PostCommentContent>(content).body
+    }.getOrDefault("")
+}

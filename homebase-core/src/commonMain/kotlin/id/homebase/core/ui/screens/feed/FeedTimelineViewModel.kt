@@ -3,7 +3,14 @@ package id.homebase.core.ui.screens.feed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.feed.services.ChannelDefinitionService
+import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
+import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.resources.MR
@@ -11,9 +18,13 @@ import id.homebase.resources.feed_reaction_failed
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
@@ -37,10 +48,44 @@ import kotlin.uuid.Uuid
 class FeedTimelineViewModel(
     private val timelineService: FeedTimelineService,
     private val reactionService: PostReactionService,
+    private val channelService: ChannelDefinitionService,
+    private val contactService: ContactService,
+    private val credentialsManager: CredentialsManager,
+    private val publicProfileProvider: PublicProfileProviderCached,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FeedTimelineUiState(isLoading = true))
     val uiState: StateFlow<FeedTimelineUiState> = _uiState.asStateFlow()
+
+    /** `channelId → [ChannelDefinition]` so the screen can label a post's (non-public) channel. */
+    val channels: StateFlow<Map<String, ChannelDefinition>> = channelService.channels
+
+    /**
+     * Reactive `odinId → resolved display name`, sourced from [ContactService] (saved contacts
+     * merged with connections). Only known identities appear here; the screen falls back to the
+     * raw domain for anyone absent — mirroring the web feed's `AuthorName` (`fullName ?? odinId`).
+     */
+    /** Owner's own resolved name (public profile), overlaid so your own posts show your name not
+     *  your raw domain — you aren't in your own ContactService contacts. */
+    private val _selfName = MutableStateFlow<Pair<OdinId, String>?>(null)
+
+    val displayNames: StateFlow<Map<OdinId, String>> =
+        combine(contactService.contacts, _selfName) { contacts, self ->
+            val names = contacts.associate { it.odinId to it.name }.toMutableMap()
+            if (self != null) names[self.first] = self.second
+            names.toMap()
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /**
+     * Channel name to show on a post, or null for a public/unknown channel (which shows no label).
+     * Public posts (blank id or the public alias) are never labelled.
+     */
+    fun channelNameFor(channelId: String): String? =
+        if (channelId.isBlank() || channelId == FeedProtocol.PublicChannelDriveAlias.toString()) {
+            null
+        } else {
+            channelService.nameFor(channelId)
+        }
 
     private val _events = MutableSharedFlow<FeedTimelineEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<FeedTimelineEvent> = _events.asSharedFlow()
@@ -58,6 +103,14 @@ class FeedTimelineViewModel(
         // timeline load regardless — a fresh login that already started the service just
         // no-ops this call.
         timelineService.start()
+        // Idempotent — ensures the contact/connection streams are hydrating so author names
+        // resolve even on a session-restore launch where chat hasn't been opened yet.
+        contactService.start()
+        viewModelScope.launch {
+            val self = credentialsManager.getActiveCredentials()?.domain ?: return@launch
+            val name = runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
+            if (!name.isNullOrBlank()) _selfName.value = self to name
+        }
         viewModelScope.launch {
             timelineService.timeline.collect { posts ->
                 _uiState.update {

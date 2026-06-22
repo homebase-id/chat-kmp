@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -40,12 +41,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.core.feed.services.ChannelDefinitionService
+import id.homebase.core.feed.services.FeedPostItem
+import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.ui.screens.feed.widget.CommentComposer
 import id.homebase.core.ui.screens.feed.widget.CommentThread
 import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.resources.MR
+import id.homebase.resources.edit
 import id.homebase.resources.feed_post_detail_comments_disabled
 import id.homebase.resources.feed_post_detail_delete
 import id.homebase.resources.feed_post_detail_more_actions
@@ -54,6 +59,7 @@ import id.homebase.resources.feed_post_detail_title
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -71,8 +77,11 @@ fun PostDetailScreen(
     viewModel: PostDetailViewModel = koinViewModel(),
     onBack: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
+    onEdit: (FeedPostItem) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val channelService = koinInject<ChannelDefinitionService>()
+    val channels by channelService.channels.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -93,6 +102,13 @@ fun PostDetailScreen(
     val canComment = post != null &&
         (post.reactAccess == ReactAccess.All || post.reactAccess == ReactAccess.CommentOnly)
 
+    // Resolve an author's display name from the contact/connection map the VM streams,
+    // falling back to the raw domain for identities we don't know (web `AuthorName` parity).
+    val displayNameFor: (OdinId?) -> String = { odinId ->
+        odinId?.let { id -> uiState.displayNames[id]?.takeIf { it.isNotBlank() } }
+            ?: odinId?.domainName.orEmpty()
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -108,10 +124,7 @@ fun PostDetailScreen(
                     }
                 },
                 actions = {
-                    // Delete is the only overflow action, and it's owner-only — so the
-                    // whole menu only shows on the user's own post. Ownership mirrors the
-                    // comment idiom below: prefer originalAuthor (survives the server
-                    // stripping senderOdinId on the author's own copy), then senderOdinId.
+                    // Owner-only menu. originalAuthor survives the server stripping senderOdinId.
                     val isMyPost = post != null && uiState.selfOdinId != null &&
                         (post.originalAuthor ?: post.senderOdinId) == uiState.selfOdinId
                     if (isMyPost) {
@@ -127,6 +140,19 @@ fun PostDetailScreen(
                             expanded = menuOpen,
                             onDismissRequest = { menuOpen = false },
                         ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.string.edit)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Edit,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    onEdit(post)
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text(stringResource(MR.string.feed_post_detail_delete)) },
                                 leadingIcon = {
@@ -178,28 +204,35 @@ fun PostDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             val authorOdinId = post.originalAuthor ?: post.senderOdinId
+                            // Null for a public/unknown channel; a name (once `channels` loads)
+                            // for a restricted one.
+                            val channelName = post.channelId
+                                .takeUnless {
+                                    it.isBlank() ||
+                                        it == FeedProtocol.PublicChannelDriveAlias.toString()
+                                }
+                                ?.let { channels[it]?.name }
                             PostCard(
                                 post = post,
-                                // The detail screen has no contact-lookup dependency, so
-                                // fall back to the author's domain as the display name —
-                                // PostAuthorHeader derives its avatar/initials from this.
-                                displayName = authorOdinId?.domainName.orEmpty(),
-                                channelName = null,
+                                // Resolved via ContactService; PostAuthorHeader derives its
+                                // avatar/initials from this, falling back to the raw domain.
+                                displayName = displayNameFor(authorOdinId),
+                                channelName = channelName,
                                 onPostClick = {},
                                 onAuthorClick = viewModel::navigateToAuthor,
                                 onMediaClick = {},
                                 onToggleReaction = viewModel::togglePostReaction,
                                 onOpenComments = {},
                                 onShowReactors = viewModel::showReactors,
+                                embeddedAuthorName = post.embeddedPost?.author
+                                    ?.let { displayNameFor(OdinId(it)) },
                             )
 
                             if (canComment) {
                                 HorizontalDivider()
                                 CommentThread(
                                     comments = uiState.comments,
-                                    // The detail screen has no contact-lookup dependency, so
-                                    // fall back to the author's domain as the display name.
-                                    displayNameFor = { odinId -> odinId?.domainName.orEmpty() },
+                                    displayNameFor = displayNameFor,
                                     isMine = { comment ->
                                         val self = uiState.selfOdinId
                                         self != null &&
@@ -243,8 +276,7 @@ fun PostDetailScreen(
                             viewModel.postComment(text, attachment)
                         },
                         replyingToName = uiState.replyingTo
-                            ?.let { it.originalAuthor ?: it.senderOdinId }
-                            ?.domainName,
+                            ?.let { displayNameFor(it.originalAuthor ?: it.senderOdinId) },
                         onCancelReply = viewModel::cancelReply,
                     )
                 }

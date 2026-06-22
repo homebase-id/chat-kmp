@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,8 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -22,11 +26,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,6 +42,8 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -43,18 +52,27 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.widget.LinkPreviewCard
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.core.util.initials
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.feed_compose_audience_anyone
@@ -65,7 +83,11 @@ import id.homebase.resources.feed_compose_add_media
 import id.homebase.resources.feed_compose_attachment_image
 import id.homebase.resources.feed_compose_camera
 import id.homebase.resources.feed_compose_caption_placeholder
+import id.homebase.resources.feed_compose_caption_placeholder_repost
+import id.homebase.resources.feed_compose_channel
+import id.homebase.resources.feed_compose_edit_title
 import id.homebase.resources.feed_compose_post
+import id.homebase.resources.save
 import id.homebase.resources.feed_compose_react_all
 import id.homebase.resources.feed_compose_react_comment_only
 import id.homebase.resources.feed_compose_react_emoji_only
@@ -81,7 +103,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PostComposeScreen(
     viewModel: PostComposeViewModel = koinViewModel(),
@@ -118,7 +140,17 @@ fun PostComposeScreen(
         modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.feed_compose_title)) },
+                title = {
+                    Text(
+                        stringResource(
+                            if (uiState.isEditing) {
+                                MR.string.feed_compose_edit_title
+                            } else {
+                                MR.string.feed_compose_title
+                            },
+                        ),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Icon(
@@ -127,13 +159,33 @@ fun PostComposeScreen(
                         )
                     }
                 },
-            )
-        },
-        bottomBar = {
-            PostComposeBottomBar(
-                enabled = uiState.canPost,
-                isPosting = uiState.isPosting,
-                onPost = viewModel::submit,
+                actions = {
+                    // Post lives in the header (web / X-style composer) and stays visible above the
+                    // keyboard, instead of a separate bottom bar the IME would cover.
+                    Button(
+                        onClick = viewModel::submit,
+                        enabled = uiState.canPost && !uiState.isPosting,
+                        modifier = Modifier.padding(end = 12.dp),
+                    ) {
+                        if (uiState.isPosting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Text(
+                                stringResource(
+                                    if (uiState.isEditing) {
+                                        MR.string.save
+                                    } else {
+                                        MR.string.feed_compose_post
+                                    },
+                                ),
+                            )
+                        }
+                    }
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -148,13 +200,63 @@ fun PostComposeScreen(
         ) {
             Spacer(modifier = Modifier.height(4.dp))
 
-            OutlinedTextField(
+            // "Posting as you": author avatar + name (web shows this atop the editor).
+            uiState.selfOdinId?.let { self ->
+                val authorName = uiState.selfName?.takeIf { it.isNotBlank() } ?: self.domainName
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PublicAvatar(
+                        odinId = self,
+                        initials = authorName.initials(),
+                        options = AvatarOptions(size = 40.dp),
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = authorName,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
+            TextField(
                 value = uiState.caption,
                 onValueChange = viewModel::onCaptionChange,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(MR.string.feed_compose_caption_placeholder)) },
+                placeholder = {
+                    // Web shows "Add a comment?" when quoting/reposting, else "What's up?".
+                    Text(
+                        text = stringResource(
+                            if (uiState.embeddedPost != null) {
+                                MR.string.feed_compose_caption_placeholder_repost
+                            } else {
+                                MR.string.feed_compose_caption_placeholder
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                textStyle = MaterialTheme.typography.bodyLarge,
                 minLines = 3,
+                // Lock the caption while the post is uploading (web disables the composer too).
+                enabled = !uiState.isPosting,
+                // Borderless, transparent field — a clean "What's up?" surface like the web composer,
+                // not the generic outlined box. (Color.Transparent = "no fill/indicator", not a theme role.)
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                ),
             )
+
+            uiState.embeddedPost?.let { embedded ->
+                QuotedPostPreview(embedded = embedded, modifier = Modifier.fillMaxWidth())
+            }
 
             if (uiState.attachments.isNotEmpty()) {
                 AttachmentThumbnailRow(
@@ -175,33 +277,40 @@ fun PostComposeScreen(
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
 
-            // Toolbar: add media, camera, audience selector, react-access toggle.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { galleryLauncher.launch() }) {
-                    Icon(
-                        imageVector = Icons.Outlined.AddPhotoAlternate,
-                        contentDescription = stringResource(MR.string.feed_compose_add_media),
+            // Hidden when editing — an edit is caption-only, so these controls would mislead.
+            if (!uiState.isEditing) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { galleryLauncher.launch() }) {
+                        Icon(
+                            imageVector = Icons.Outlined.AddPhotoAlternate,
+                            contentDescription = stringResource(MR.string.feed_compose_add_media),
+                        )
+                    }
+                    IconButton(onClick = { cameraLauncher.launch() }) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = stringResource(MR.string.feed_compose_camera),
+                        )
+                    }
+                    ChannelChip(
+                        channels = uiState.channels,
+                        selectedChannelId = uiState.selectedChannelId,
+                        onSelect = viewModel::selectChannel,
+                    )
+                    AudienceChip(
+                        audience = uiState.audience,
+                        onCycle = { viewModel.pickAudience(uiState.audience.next()) },
+                    )
+                    ReactAccessChip(
+                        reactAccess = uiState.reactAccess,
+                        onCycle = viewModel::toggleReactAccess,
                     )
                 }
-                IconButton(onClick = { cameraLauncher.launch() }) {
-                    Icon(
-                        imageVector = Icons.Default.PhotoCamera,
-                        contentDescription = stringResource(MR.string.feed_compose_camera),
-                    )
-                }
-                Spacer(modifier = Modifier.size(4.dp))
-                AudienceChip(
-                    audience = uiState.audience,
-                    onCycle = { viewModel.pickAudience(uiState.audience.next()) },
-                )
-                ReactAccessChip(
-                    reactAccess = uiState.reactAccess,
-                    onCycle = viewModel::toggleReactAccess,
-                )
             }
         }
     }
@@ -246,6 +355,89 @@ private fun AttachmentThumbnailRow(
                         modifier = Modifier.size(16.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The source post being quoted, rendered as a bordered card above the composer toolbar. Matches
+ * the inline `QuotedPost` block on [id.homebase.core.ui.screens.feed.widget.PostCard] so the
+ * compose-time preview reads identically to how the published repost will render.
+ */
+@Composable
+private fun QuotedPostPreview(
+    embedded: EmbeddedPost,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            embedded.author?.takeIf { it.isNotBlank() }?.let { author ->
+                Text(
+                    text = author,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            embedded.caption?.takeIf { it.isNotBlank() }?.let { caption ->
+                Text(
+                    text = caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Channel picker: an [AssistChip] showing the selected channel's name; tapping opens a
+ * [DropdownMenu] of the available channels. The public channel is always the first option.
+ */
+@Composable
+private fun ChannelChip(
+    channels: List<ChannelOption>,
+    selectedChannelId: Uuid,
+    onSelect: (Uuid) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    // The selected option's name drives the label; fall back to the first option (public) until
+    // the list resolves. A bare chip label with no name has nothing to show, so skip rendering.
+    val selected = channels.firstOrNull { it.id == selectedChannelId } ?: channels.firstOrNull()
+    if (selected == null) return
+
+    Box {
+        AssistChip(
+            onClick = { expanded = true },
+            label = { Text(selected.name) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Tag,
+                    contentDescription = stringResource(MR.string.feed_compose_channel),
+                    modifier = Modifier.size(AssistChipDefaults.IconSize),
+                )
+            },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            channels.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.name) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option.id)
+                    },
+                )
             }
         }
     }

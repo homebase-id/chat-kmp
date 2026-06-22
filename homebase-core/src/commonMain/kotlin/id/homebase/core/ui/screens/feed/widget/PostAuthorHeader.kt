@@ -5,10 +5,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,6 +26,7 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
+import id.homebase.resources.feed_channel_locked
 import id.homebase.resources.feed_post_to_channel
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
@@ -71,23 +78,41 @@ fun PostAuthorHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            // Web `PostMeta` (Meta.tsx) renders the date first, then a separated channel link
+            // carrying the lock glyph — so timestamp leads, channel follows.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!channelName.isNullOrBlank()) {
-                    Text(
-                        text = stringResource(MR.string.feed_post_to_channel, channelName),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(end = 6.dp),
-                    )
-                }
                 Text(
                     text = formatTimestamp(Instant.fromEpochMilliseconds(createdMs)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
+                if (!channelName.isNullOrBlank()) {
+                    // A thin 12dp hairline separates timestamp from channel (not a middot),
+                    // matching the M3 redesign spec.
+                    VerticalDivider(
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .height(12.dp),
+                        thickness = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                    Icon(
+                        imageVector = Icons.Outlined.Lock,
+                        contentDescription = stringResource(MR.string.feed_channel_locked),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(end = 3.dp)
+                            .size(12.dp),
+                    )
+                    Text(
+                        text = stringResource(MR.string.feed_post_to_channel, channelName),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

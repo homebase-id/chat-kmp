@@ -570,15 +570,21 @@ class PostCommentsService(
     }
 
     /**
-     * Recipients for a comment given the owning POST header: the post's author (`senderOdinId`)
-     * minus self. A feed [PostContent] carries no explicit recipient list (unlike a moment), so the
-     * audience is the post author for an inbound post, or empty for the user's own post (server
-     * distributes via the follower system). Empty when the post isn't known locally.
+     * Recipients for a comment given the owning POST header: the post's author minus self. A feed
+     * [PostContent] carries no explicit recipient list (unlike a moment), so the audience is the
+     * post author for an inbound (followed) post, or empty for the user's own post (the server
+     * distributes own posts via the follower system).
+     *
+     * Use `originalAuthor` first: on a follower's copy of an inbound post the server STRIPS
+     * `senderOdinId`, so resolving the author from `senderOdinId` alone returns null → empty
+     * recipients → the comment is written local-only and never reaches the author (the bug where
+     * comments on a followed post silently failed to post). `originalAuthor` survives transit and
+     * names the real author; fall back to `senderOdinId` for the user's own posts.
      */
     private suspend fun recipientsFromPost(post: HomebaseFile?): List<OdinId> {
         if (post == null) return emptyList()
         val self = credentialsManager.getActiveCredentials()?.domain
-        val author = post.fileMetadata.senderOdinId
+        val author = post.fileMetadata.originalAuthor ?: post.fileMetadata.senderOdinId
         return listOfNotNull(author).filterNot { it == self }
     }
 

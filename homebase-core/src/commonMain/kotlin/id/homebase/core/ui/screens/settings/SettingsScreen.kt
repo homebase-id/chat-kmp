@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
@@ -45,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -81,6 +83,7 @@ import id.homebase.resources.settings_delete_account_dialog_title
 import id.homebase.resources.settings_help
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_in_progress
+import id.homebase.resources.settings_native_feed
 import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_active
@@ -376,6 +379,19 @@ fun SettingsUi(
                 imageVector = Icons.Outlined.Storage,
                 text = stringResource(MR.string.settings_storage),
                 onClick = onNavigateToStorage
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                modifier = Modifier.testTag("nativeFeedToggle"),
+                imageVector = Icons.Outlined.DynamicFeed,
+                text = stringResource(MR.string.settings_native_feed),
+                onClick = { onAction(SettingsUiAction.SetUseNativeFeed(!uiState.useNativeFeed)) },
+                trailingContent = {
+                    Switch(
+                        checked = uiState.useNativeFeed,
+                        onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
+                    )
+                },
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(

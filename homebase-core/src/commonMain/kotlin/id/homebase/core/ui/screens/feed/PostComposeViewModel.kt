@@ -3,14 +3,22 @@ package id.homebase.core.ui.screens.feed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.AccessControlList
-import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.link.LinkPreviewProvider
+import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.feed.services.ChannelDefinitionService
+import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.FeedPostSenderService
+import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.resources.MR
+import id.homebase.resources.feed_compose_channel_public
 import id.homebase.core.ui.screens.moments.toAttachmentInput
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,6 +30,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 
 private const val TAG = "PostComposeViewModel"
@@ -46,10 +55,81 @@ private val URL_REGEX = Regex(
 class PostComposeViewModel(
     private val postSender: FeedPostSenderService,
     private val linkPreviewProvider: LinkPreviewProvider,
+    private val channelService: ChannelDefinitionService,
+    private val credentialsManager: CredentialsManager,
+    private val publicProfileProvider: PublicProfileProviderCached,
+    repostOfJson: String? = null,
+    editOfJson: String? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PostComposeUiState())
     val uiState: StateFlow<PostComposeUiState> = _uiState.asStateFlow()
+
+    /** The post being edited (caption-only update), or null for a fresh/repost compose. */
+    private var editTarget: PostEditSeed? = null
+
+    init {
+        // Seed a repost: deserialize the source quote so the composer renders it and submit()
+        // rides it on the new post. A parse failure just yields a plain (non-repost) compose.
+        if (repostOfJson != null) {
+            runCatching { OdinSystemSerializer.deserialize<EmbeddedPost>(repostOfJson) }
+                .onFailure { Logger.w(throwable = it, tag = TAG) { "repost payload parse failed" } }
+                .getOrNull()
+                ?.let { embedded -> _uiState.update { it.copy(embeddedPost = embedded) } }
+        }
+        // Edit mode: prefill caption; submit() then calls updatePost instead of createPost.
+        if (editOfJson != null) {
+            runCatching { OdinSystemSerializer.deserialize<PostEditSeed>(editOfJson) }
+                .onFailure { Logger.w(throwable = it, tag = TAG) { "edit payload parse failed" } }
+                .getOrNull()
+                ?.let { seed ->
+                    editTarget = seed
+                    val channelId = runCatching { Uuid.parse(seed.channelId) }.getOrNull()
+                    _uiState.update {
+                        it.copy(
+                            caption = seed.caption,
+                            isEditing = true,
+                            selectedChannelId = channelId ?: it.selectedChannelId,
+                        )
+                    }
+                }
+        }
+        loadChannels()
+        resolveAuthor()
+    }
+
+    // You aren't in your own contacts, so the author name comes from the public profile.
+    private fun resolveAuthor() {
+        viewModelScope.launch {
+            val self = credentialsManager.getActiveCredentials()?.domain ?: return@launch
+            _uiState.update { it.copy(selfOdinId = self) }
+            val name = runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
+            if (!name.isNullOrBlank()) _uiState.update { it.copy(selfName = name) }
+        }
+    }
+
+    /**
+     * Build the channel picker options: the public channel first (always present), then any
+     * resolved channel definitions sorted by name. Public is the default selection.
+     */
+    private fun loadChannels() {
+        viewModelScope.launch {
+            val publicName = TranslationUtil.getString(MR.string.feed_compose_channel_public)
+            val publicOption = ChannelOption(FeedProtocol.PublicChannelDriveAlias, publicName)
+            val others = channelService.channels.value
+                .mapNotNull { (id, def) ->
+                    val uuid = runCatching { Uuid.parse(id) }.getOrNull() ?: return@mapNotNull null
+                    if (uuid == FeedProtocol.PublicChannelDriveAlias) null
+                    else ChannelOption(uuid, def.name)
+                }
+                .sortedBy { it.name }
+            _uiState.update { it.copy(channels = listOf(publicOption) + others) }
+        }
+    }
+
+    fun selectChannel(id: Uuid) {
+        _uiState.update { it.copy(selectedChannelId = id) }
+    }
 
     private val _events = MutableSharedFlow<PostComposeEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<PostComposeEvent> = _events.asSharedFlow()
@@ -120,17 +200,30 @@ class PostComposeViewModel(
 
         viewModelScope.launch {
             try {
-                val type = if (state.attachments.isNotEmpty()) PostType.Media else PostType.Tweet
-                postSender.createPost(
-                    channelId = SystemDriveConstants.publicPostChannelDrive.alias,
-                    type = type,
-                    caption = state.caption.trim(),
-                    attachments = state.attachments.map { it.toAttachmentInput() },
-                    // Only ride a link preview when there's no media (sender drops it otherwise).
-                    linkPreview = state.effectiveLinkPreview,
-                    acl = AccessControlList(requiredSecurityGroup = state.audience.value),
-                    reactAccess = state.reactAccess,
-                )
+                val edit = editTarget
+                if (edit != null) {
+                    // Caption-only: updatePost preserves channel/ACL/reactAccess.
+                    postSender.updatePost(
+                        channelId = Uuid.parse(edit.channelId),
+                        postUniqueId = Uuid.parse(edit.postId),
+                        versionTag = Uuid.parse(edit.versionTag),
+                        caption = state.caption.trim(),
+                    )
+                } else {
+                    // A repost is always a Tweet (it quotes a source); otherwise media → Media.
+                    val type = if (state.attachments.isNotEmpty()) PostType.Media else PostType.Tweet
+                    postSender.createPost(
+                        channelId = state.selectedChannelId,
+                        type = type,
+                        caption = state.caption.trim(),
+                        attachments = state.attachments.map { it.toAttachmentInput() },
+                        // Only ride a link preview when there's no media (sender drops it otherwise).
+                        linkPreview = state.effectiveLinkPreview,
+                        acl = AccessControlList(requiredSecurityGroup = state.audience.value),
+                        reactAccess = state.reactAccess,
+                        embeddedPost = state.embeddedPost,
+                    )
+                }
                 _events.tryEmit(PostComposeEvent.Dismiss)
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) { "createPost failed: ${t.message}" }
@@ -178,6 +271,21 @@ class PostComposeViewModel(
 
     private fun firstUrl(text: String): String? = URL_REGEX.find(text)?.value
 }
+
+/** Edit-mode composer seed (UUIDs as strings). channelId = the post's DRIVE alias. */
+@Serializable
+data class PostEditSeed(
+    val postId: String,
+    val channelId: String,
+    val versionTag: String,
+    val caption: String,
+)
+
+// One typed koin param so repost vs edit (two nullable Strings) stay unambiguous by type.
+data class ComposerArgs(
+    val repostOfJson: String? = null,
+    val editOfJson: String? = null,
+)
 
 /** One-time effects the [PostComposeScreen] collects in a [androidx.compose.runtime.LaunchedEffect]. */
 sealed interface PostComposeEvent {

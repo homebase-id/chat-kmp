@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.builder.AttachmentInput
+import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedTimelineService
@@ -50,9 +53,13 @@ class PostDetailViewModel(
     private val reactionService: PostReactionService,
     private val senderService: FeedPostSenderService,
     private val credentialsManager: CredentialsManager,
+    private val contactService: ContactService,
+    private val stickerStream: StickerStream,
+    private val publicProfileProvider: PublicProfileProviderCached,
 ) : ViewModel() {
 
     private val _selfOdinId = MutableStateFlow<OdinId?>(null)
+    private val _selfName = MutableStateFlow<String?>(null)
     private val _replyingTo = MutableStateFlow<PostCommentItem?>(null)
 
     /**
@@ -74,15 +81,41 @@ class PostDetailViewModel(
 
     init {
         timelineService.start()
+        // Idempotent — hydrate contact/connection streams so author names resolve here too.
+        contactService.start()
+        // INTERIM consumer-side start, mirroring timeline/contacts above: the comment composer's
+        // sticker tray reads StickerStream, which is cold-loaded by onPostAuthenticated. That hook
+        // is silently DROPPED on a session-restore launch (a race in AuthConnectionCoordinator:
+        // promoteToForeground() flips out of headless mid-bootstrap, before lastAuthenticatedDrives
+        // is set, so neither it nor the Authenticated branch runs the preload), leaving the tray
+        // spinning forever. start() is idempotent, so calling it here keeps the tray working.
+        // FOLLOW-UP: fix the race at the source in AuthConnectionCoordinator (run onPostAuthenticated
+        // exactly once even when promoted mid-bootstrap) and drop these consumer-side start() calls.
+        stickerStream.start()
         viewModelScope.launch {
-            _selfOdinId.value = credentialsManager.getActiveCredentials()?.domain
+            val self = credentialsManager.getActiveCredentials()?.domain
+            _selfOdinId.value = self
+            // Resolve the owner's OWN display name from their public profile — you aren't in your
+            // own ContactService contacts, so without this your posts/comments show your raw domain.
+            if (self != null) {
+                _selfName.value =
+                    runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
+            }
         }
     }
 
-    // Fold self-identity and the reactor-sheet state into one upstream so the main
-    // combine stays at the typed 5-arg overload.
-    private val _selfAndReactors = combine(_selfOdinId, _reactors) { self, reactors ->
-        self to reactors
+    // Fold self-identity, the reactor-sheet state, and the resolved-name map into one upstream
+    // so the main combine stays at the typed 5-arg overload.
+    private val _selfReactorsNames = combine(
+        _selfOdinId,
+        _reactors,
+        contactService.contacts,
+        _selfName,
+    ) { self, reactors, contacts, selfName ->
+        val names = contacts.associate { it.odinId to it.name }.toMutableMap()
+        // Overlay the owner's own resolved name so your posts/comments show your name, not domain.
+        if (self != null && !selfName.isNullOrBlank()) names[self] = selfName
+        Triple(self, reactors, names.toMap())
     }
 
     val uiState: StateFlow<PostDetailUiState> = combine(
@@ -91,9 +124,9 @@ class PostDetailViewModel(
             .map { feed -> feed.firstOrNull { it.id == postId } },
         commentsService.commentsFor(postId),
         _replyingTo,
-        _selfAndReactors,
+        _selfReactorsNames,
         _timelineEmitted,
-    ) { post, comments, replyingTo, (self, reactors), timelineEmitted ->
+    ) { post, comments, replyingTo, (self, reactors, displayNames), timelineEmitted ->
         PostDetailUiState(
             post = post,
             comments = comments,
@@ -104,6 +137,7 @@ class PostDetailViewModel(
             isLoading = !timelineEmitted && post == null,
             replyingTo = replyingTo,
             selfOdinId = self,
+            displayNames = displayNames,
             reactorsSheet = reactors.list,
             isReactorsLoading = reactors.loading,
             errorMessage = null,
@@ -211,9 +245,9 @@ class PostDetailViewModel(
     /**
      * Open the "who reacted" sheet for the post and fetch its reactor roster. Opens with
      * an empty list + loading flag so the sheet appears immediately, then fills in once
-     * [PostReactionService.listReactors] returns. The detail screen has no contact lookup,
-     * so the reactor's domain is both the id and the display name (the sheet's avatar is
-     * derived from the id).
+     * [PostReactionService.listReactors] returns. Reactor names resolve through
+     * [ContactService] (falling back to the raw domain), and the sheet's avatar is derived
+     * from the odinId.
      */
     fun showReactors() {
         val post = uiState.value.post ?: return
@@ -223,7 +257,8 @@ class PostDetailViewModel(
                 val reactors = reactionService.listReactors(post, null).map {
                     ReactionDisplayItem(
                         odinId = it.odinId.domainName,
-                        displayName = it.odinId.domainName,
+                        displayName = contactService.resolveByOdinId(it.odinId)?.name
+                            ?: it.odinId.domainName,
                         emoji = it.emoji,
                     )
                 }

@@ -115,7 +115,7 @@ class PostReactionService(
         val response = reactionProvider.getReactionSummary(driveId, fileId)
         // Provider keys the count map by the raw reaction JSON; decode each key to its emoji glyph.
         val byEmoji = response.reactions.entries.mapNotNull { (raw, count) ->
-            decodeOwnReactionEmoji(raw)?.let { it to count }
+            decodeReactionEmoji(raw)?.let { it to count }
         }.toMap()
         return PostReactionSummary(byEmoji = byEmoji, total = response.total)
     }
@@ -136,7 +136,7 @@ class PostReactionService(
     ): List<EmojiReaction> {
         val response = reactionProvider.listReactions(driveId, fileId)
         return response.reactions.mapNotNull {
-            val glyph = decodeOwnReactionEmoji(it.reactionContent) ?: return@mapNotNull null
+            val glyph = decodeReactionEmoji(it.reactionContent) ?: return@mapNotNull null
             if (emoji != null && glyph != emoji) return@mapNotNull null
             EmojiReaction(
                 messageId = targetUniqueId,

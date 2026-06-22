@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,11 +12,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Reply
-import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +47,7 @@ import id.homebase.resources.delete
 import id.homebase.resources.edit
 import id.homebase.resources.feed_comment_like
 import id.homebase.resources.feed_comment_reply
+import id.homebase.resources.feed_post_detail_more_actions
 import id.homebase.resources.save
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
@@ -155,115 +161,142 @@ private fun CommentRow(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = displayName,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = formatTimestamp(Instant.fromEpochMilliseconds(comment.createdMs)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
-
-            if (isEditing) {
-                // Inline edit — replaces the rendered body + action row until Save/Cancel.
-                // Prefilled with the current body; preserved across recomposition by
-                // keying the draft state on the comment id. No truncation — the body is
-                // user text.
-                var draft by remember(comment.id) { mutableStateOf(comment.body) }
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
+            // Web `Comment`: a rounded bubble holds the author name + body/media (the avatar sits
+            // outside, to the left). The like/reply/meta row lives BELOW the bubble (web
+            // `CommentMeta`). M3 styling: a faint surfaceContainerLow bubble, 12dp corners.
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                 ) {
-                    TextButton(onClick = onCancelEdit) {
+                    Text(
+                        text = displayName,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+
+                    if (isEditing) {
+                        // Inline edit — replaces the rendered body until Save/Cancel. Prefilled
+                        // with the current body, kept across recomposition by keying on the id.
+                        var draft by remember(comment.id) { mutableStateOf(comment.body) }
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            TextButton(onClick = onCancelEdit) {
+                                Text(
+                                    text = stringResource(MR.string.cancel),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(
+                                onClick = { onSaveEdit(draft) },
+                                enabled = draft.isNotBlank(),
+                            ) {
+                                Text(
+                                    text = stringResource(MR.string.save),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    } else {
+                        if (comment.body.isNotBlank()) {
+                            ChatMarkdown(
+                                content = comment.body,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 2.dp),
+                            )
+                        }
+                        CommentMedia(comment = comment)
+                    }
+                }
+            }
+
+            // Web `CommentMeta`: a tight row of text affordances + timestamp, BELOW the bubble,
+            // aligned with the bubble's content. Like/Reply are text links (web uses text, not
+            // icons); edit/delete collapse into a MoreVert overflow menu (web ActionGroup).
+            if (!isEditing) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, top = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Text(
+                        text = stringResource(MR.string.feed_comment_like),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable { onToggleReaction(COMMENT_LIKE_EMOJI) },
+                    )
+                    if (canReply) {
                         Text(
-                            text = stringResource(MR.string.cancel),
+                            text = stringResource(MR.string.feed_comment_reply),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable(onClick = onReply),
                         )
-                    }
-                    TextButton(
-                        onClick = { onSaveEdit(draft) },
-                        enabled = draft.isNotBlank(),
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.save),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            } else {
-                if (comment.body.isNotBlank()) {
-                    ChatMarkdown(
-                        content = comment.body,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-
-                CommentMedia(comment = comment)
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    TextButton(onClick = { onToggleReaction(COMMENT_LIKE_EMOJI) }) {
-                        Icon(
-                            imageVector = Icons.Outlined.FavoriteBorder,
-                            contentDescription = stringResource(MR.string.feed_comment_like),
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (canReply) {
-                        TextButton(onClick = onReply) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.Reply,
-                                contentDescription = stringResource(MR.string.feed_comment_reply),
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = stringResource(MR.string.feed_comment_reply),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
                     }
                     if (isMine) {
-                        TextButton(onClick = onStartEdit) {
-                            Text(
-                                text = stringResource(MR.string.edit),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        TextButton(onClick = onDelete) {
-                            Text(
-                                text = stringResource(MR.string.delete),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.error,
-                            )
+                        var menuOpen by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(
+                                onClick = { menuOpen = !menuOpen },
+                                modifier = Modifier.size(20.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.MoreVert,
+                                    contentDescription = stringResource(
+                                        MR.string.feed_post_detail_more_actions,
+                                    ),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuOpen,
+                                onDismissRequest = { menuOpen = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(MR.string.edit)) },
+                                    onClick = {
+                                        menuOpen = false
+                                        onStartEdit()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(MR.string.delete)) },
+                                    onClick = {
+                                        menuOpen = false
+                                        onDelete()
+                                    },
+                                )
+                            }
                         }
                     }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = formatTimestamp(Instant.fromEpochMilliseconds(comment.createdMs)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
                 }
             }
         }

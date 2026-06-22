@@ -7,6 +7,7 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.SubscriptionVerificationStatus
+import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareCacheStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,9 +20,12 @@ class SettingsViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val notificationService: NotificationService,
     private val shareCacheStorage: ShareCacheStorage,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(useNativeFeed = userPreferences.useNativeFeed),
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -80,6 +84,11 @@ class SettingsViewModel(
 
             SettingsUiAction.DeleteAccount -> {
                 _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
+            }
+
+            is SettingsUiAction.SetUseNativeFeed -> {
+                userPreferences.useNativeFeed = action.enabled
+                _uiState.update { it.copy(useNativeFeed = action.enabled) }
             }
         }
     }

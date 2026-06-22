@@ -220,6 +220,7 @@
     <string name="settings_security_setup">Security Setup</string>
     <string name="settings_help">Help</string>
     <string name="settings_storage">Storage</string>
+    <string name="settings_native_feed">Native feed (experimental)</string>
     <string name="settings_logout">Log out</string>
     <string name="settings_logout_in_progress">Clearing this device's encrypted cache</string>
     <string name="settings_delete_account">Delete my account</string>
@@ -1433,13 +1434,19 @@
 
     <!-- Native feed -->
     <string name="feed_post_to_channel">to %1$s</string>
-    <string name="feed_post_read_more">More</string>
+    <string name="feed_post_read_more">More…</string>
     <string name="feed_post_read_less">Less</string>
     <string name="feed_post_comment">Comment</string>
     <string name="feed_post_comment_count">%1$d</string>
+    <string name="feed_post_repost">Repost</string>
+    <string name="feed_post_react">React</string>
+    <string name="feed_channel_locked">Restricted channel</string>
+    <string name="feed_compose_channel">Channel</string>
+    <string name="feed_compose_channel_public">Public</string>
     <string name="feed_comment_hint">Write a comment…</string>
     <string name="feed_comment_emoji">Emoji</string>
     <string name="feed_comment_attach_image">Attach image</string>
+    <string name="feed_comment_sticker">Sticker</string>
     <string name="feed_comment_send">Send comment</string>
     <string name="feed_comment_replying_to">Replying to %1$s</string>
     <string name="feed_comment_remove_attachment">Remove attachment</string>
@@ -1458,10 +1465,14 @@
     <string name="feed_timeline_error_title">Couldn't load your feed</string>
     <string name="feed_timeline_error_retry">Retry</string>
     <string name="feed_reaction_failed">Couldn't add your reaction. Please try again.</string>
+    <!-- Native feed: M3 redesign additions -->
+    <string name="feed_timeline_error_body">Check your connection and try again.</string>
 
     <!-- Native feed: composer -->
     <string name="feed_compose_title">New post</string>
+    <string name="feed_compose_edit_title">Edit post</string>
     <string name="feed_compose_caption_placeholder">What's up?</string>
+    <string name="feed_compose_caption_placeholder_repost">Add a comment?</string>
     <string name="feed_compose_post">Post</string>
     <string name="feed_compose_add_media">Add photo or video</string>
     <string name="feed_compose_camera">Take photo</string>
@@ -1482,6 +1493,10 @@
     <string name="feed_post_detail_delete">Delete post</string>
     <string name="feed_post_detail_not_found">This post is no longer available.</string>
     <string name="feed_post_detail_comments_disabled">Comments are turned off for this post.</string>
+    <string name="feed_comments_title">Comments</string>
+    <string name="feed_post_empty_comments">No comments yet — be the first to comment.</string>
+    <string name="feed_view_all_comments">View all comments</string>
+    <string name="feed_comment_encrypted">Encrypted comment</string>
 
     <!-- Native feed: following -->
     <string name="feed_following_title">Following</string>
