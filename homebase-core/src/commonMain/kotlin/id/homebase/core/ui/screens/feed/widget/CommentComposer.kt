@@ -276,10 +276,11 @@ fun CommentComposer(
                     showStickerSheet = false
                     sendSticker(sticker)
                 },
-                // ponytail: long-press (remove) and import are chat-library affordances
-                // not relevant when picking a sticker for a feed comment.
+                // ponytail: long-press (remove) is a chat-library affordance not relevant when
+                // picking a sticker for a comment; the import tile is hidden outright.
                 onStickerLongPress = {},
                 onImportClick = {},
+                showImportTile = false,
             )
         }
     }
