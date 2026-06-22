@@ -31,4 +31,10 @@ sealed interface ConversationListUiEvent {
      * should navigate to the draw editor.
      */
     data class NavigateToDrawer(val requestId: kotlin.uuid.Uuid) : ConversationListUiEvent
+
+    /** Open the Live Location map (from tapping a live location bubble's map). */
+    data object NavigateToLiveLocationMap : ConversationListUiEvent
+
+    /** Open the location setup screen (from the "set up location" prompt before a live share). */
+    data object NavigateToLocationSetup : ConversationListUiEvent
 }

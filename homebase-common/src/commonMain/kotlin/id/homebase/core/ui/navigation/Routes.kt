@@ -192,6 +192,10 @@ sealed class Route {
     data object LocationHistory : Route()
 
     @Serializable
+    @SerialName("location-live")
+    data object LocationLive : Route()
+
+    @Serializable
     @SerialName("location-find-device")
     data class LocationFindDevice(val deviceId: String? = null) : Route()
 

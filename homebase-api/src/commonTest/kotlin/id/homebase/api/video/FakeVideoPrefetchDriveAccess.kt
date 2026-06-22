@@ -14,6 +14,7 @@ import kotlin.uuid.Uuid
 class FakeVideoPrefetchDriveAccess(
     private val getPayloadResponses: Map<String, String> = emptyMap(),
     private val prefetchDelayMs: Long = 0L,
+    private val prefetchError: Throwable? = null,
 ) : VideoPrefetchDriveAccess {
 
     sealed interface Call {
@@ -46,6 +47,7 @@ class FakeVideoPrefetchDriveAccess(
     ) {
         if (prefetchDelayMs > 0) delay(prefetchDelayMs)
         _calls.add(Call.PrefetchPayload(driveId, fileId, key))
+        prefetchError?.let { onDownloadProgress?.invoke(0.8f); throw it }
     }
 
     override suspend fun prefetchPayloadChunk(

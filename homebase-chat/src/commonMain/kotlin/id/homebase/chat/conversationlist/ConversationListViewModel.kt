@@ -30,6 +30,8 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
@@ -82,6 +84,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 import kotlin.time.TimeSource
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -143,6 +146,8 @@ class ConversationListViewModel(
     private val stickerStream: id.homebase.chat.services.sticker.StickerStream,
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
+    private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
+    private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
 ) : ViewModel() {
 
     companion object {
@@ -784,6 +789,24 @@ class ConversationListViewModel(
         loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
     }
 
+    /**
+     * Set/clear the live-share window on a location message by editing its header descriptor
+     * ([LocationPreviewDescriptor.liveShareUntilMs]). Only applies to new-format (typed) location
+     * messages; a no-op otherwise.
+     */
+    private suspend fun updateLocationLiveShare(messageId: Uuid, untilMs: Long) {
+        val msg = chatMessageStream.getMessage(messageId) ?: return
+        val descriptor = (msg.messageContent as? MessageContent.Location)?.descriptor ?: return
+        val updated = descriptor.copy(liveShareUntilMs = untilMs)
+        runCatching {
+            chatMessageSenderService.updateMessage(
+                messageId = messageId,
+                versionTag = msg.versionTag,
+                content = MessageContentParser.serialize(MessageContent.Location(updated)),
+            )
+        }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
+    }
+
     fun eventConsumed() {
         _uiState.update { it.copy(uiEvent = null) }
     }
@@ -813,6 +836,44 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SearchClicked -> {
                 _uiState.update { it.copy(isSearchActive = true) }
+            }
+
+            is ConversationListUiAction.OpenLiveLocationMap -> {
+                sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
+            }
+
+            is ConversationListUiAction.OpenLocationSetup -> {
+                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
+            }
+
+            // Live share has two linked halves: the synced *declaration* (the message's
+            // liveShareUntilMs header descriptor — Location is a raw-header typed kind, so
+            // updateMessage(content = descriptorJson) sets it and syncs to both sides) AND the local
+            // *relay* roster that actually streams GPS. Both use the SAME absolute end-time so stop can
+            // later remove exactly this share's {recipient, end-time} roster entries.
+            is ConversationListUiAction.StartLiveLocationShare -> viewModelScope.launch {
+                // Guard: a live share is pointless if location can't actually capture GPS (add-on not
+                // set up / permission not granted) — prompt the user to set it up instead of silently
+                // broadcasting nothing.
+                if (!liveShareReadiness.isReady()) {
+                    _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
+                    return@launch
+                }
+                val untilMs = Clock.System.now().toEpochMilliseconds() + action.durationMs
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                updateLocationLiveShare(action.messageId, untilMs) // synced declaration → bubbles flip LIVE
+                liveLocationShareService.start(recipients, untilMs) // local relay → GPS arms + streams
+            }
+
+            is ConversationListUiAction.StopLiveLocationShare -> viewModelScope.launch {
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                // The share's end-time off the descriptor BEFORE we overwrite it — the key that targets
+                // just this share's roster entries, leaving any other live share running.
+                val untilMs = (msg.messageContent as? MessageContent.Location)?.descriptor?.liveShareUntilMs
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                if (untilMs != null) liveLocationShareService.stop(recipients, untilMs)
+                updateLocationLiveShare(action.messageId, Clock.System.now().toEpochMilliseconds())
             }
 
             is ConversationListUiAction.SearchBackClicked -> {

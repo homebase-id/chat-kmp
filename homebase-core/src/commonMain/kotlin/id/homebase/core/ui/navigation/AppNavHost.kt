@@ -113,6 +113,7 @@ import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
 import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
@@ -881,6 +882,13 @@ fun AppNavHost(
                                     onNavigateToNewConversation = {
                                         navController.navigate(Route.CreateConversation)
                                     },
+                                    onNavigateToLiveLocationMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
+                                    // Reuse the same entry the Location nav icon uses: onboarding when
+                                    // the add-on isn't activated, else the dashboard (which requests
+                                    // permission) — covers both "not set up" gate-fail cases.
+                                    onNavigateToLocationSetup = openLocation,
                                     onNavigateToContactInfo = {
                                         // 1:1 contact info is the full contact-detail screen
                                         // (keyed by the contact uniqueId = md5(odinId)).
@@ -1282,6 +1290,9 @@ fun AppNavHost(
                                             Route.LocationFindDevice(deviceId?.toString())
                                         )
                                     },
+                                    onNavigateToLiveMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
                                 )
                             }
                         }
@@ -1289,6 +1300,23 @@ fun AppNavHost(
                         composable<Route.LocationHistory> {
                             if (isAuthenticated) {
                                 LocationHistoryScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    // Empty-day "turn on location tracking" link → the dashboard, where
+                                    // the tracking toggle lives (reuse the existing instance).
+                                    onNavigateToDashboard = {
+                                        navController.navigate(Route.Location) {
+                                            launchSingleTop = true
+                                            popUpTo(Route.Location) { inclusive = false }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationLive> {
+                            if (isAuthenticated) {
+                                LiveLocationScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                 )

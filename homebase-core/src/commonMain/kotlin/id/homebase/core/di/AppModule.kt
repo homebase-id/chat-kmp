@@ -33,6 +33,11 @@ import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.chat.services.livelocation.LiveShareReadiness
+import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.permissions.isLocationPermissionGranted
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -154,6 +159,7 @@ import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
@@ -223,8 +229,33 @@ val appModule = module {
             // uploader). Lazy get() avoids the construction-time cycle; resolved
             // at flush time. This is the iOS background-flush fix — the Apple
             // tracker funnels through submit() and now triggers a flush too.
-            onPointsBuffered = { get<LocationTrackUploaderService>().flushIfDue() },
+            onPointsBuffered = {
+                // Live Relay: relay the latest point if a share is active. Rides this same
+                // background-capable seam (NOT a UI Flow) so it fires on cold-woken background points.
+                get<LiveLocationShareService>().onGpsBuffered()
+                get<LocationTrackUploaderService>().flushIfDue()
+            },
         )
+    }
+    single {
+        LiveLocationShareService(
+            liveRelayProvider = get(),
+            locationPointStore = get(),
+            databaseManager = get(),
+            // The coordinator is the single owner of the GPS tracker; the share service only declares
+            // that it needs GPS and pokes the coordinator to re-evaluate.
+            onLiveShareChanged = { get<LocationTrackingCoordinator>().refreshGpsHold() },
+        )
+    }
+    single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    // Readiness gate for "Share live location": activated add-on + location permission, so the chat
+    // layer can prompt to set up location instead of starting a share that captures nothing.
+    single<LiveShareReadiness> {
+        val activation = get<OptionalDriveActivation>()
+        LiveShareReadiness {
+            activation.isActivated(locationLabeledDrive) &&
+                isLocationPermissionGranted()
+        }
     }
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
     single {
@@ -251,6 +282,9 @@ val appModule = module {
             // The uploader lives in homebase-core; the coordinator (homebase-common)
             // reaches it through this seam only.
             onFlushDue = { get<LocationTrackUploaderService>().flushIfDue() }
+            // Lets the coordinator keep GPS armed for an active live-location share (incl. across a
+            // cold start / iOS relaunch) without referencing homebase-chat.
+            liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
         }
     }
     // endregion
@@ -440,7 +474,13 @@ val appModule = module {
                 get<LocationPreferences>().reset()
                 get<LocationPointStore>().reset()
                 get<LocationTrackUploaderService>().apply { reset(); start() }
+                // Live Relay debug-flow: re-seed the live-share roster from this identity's DB FIRST
+                // (it must survive app open/kill until expiry), so the coordinator's reset() below sees
+                // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
+                get<LiveLocationShareService>().reset()
                 get<LocationTrackingCoordinator>().reset()
+                // In-memory receive store rehydrates from the server's flush-on-connect.
+                get<LiveLocationReceiveStore>().apply { reset(); start() }
             }
         )
     }
@@ -653,6 +693,8 @@ val appModule = module {
             stickerStream = get(),
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
+            liveLocationShareService = get(),
+            liveShareReadiness = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -699,9 +741,22 @@ val appModule = module {
             contactService = get(),
             credentialsManager = get(),
             tracker = get(),
+            receiveStore = get(),
+            liveShareService = get(),
         )
     }
     viewModelOf(::LocationHistoryViewModel)
+    // Manual block (not viewModelOf): the constructor has a `nowMs: () -> Long` param with a default;
+    // viewModelOf would try to autowire that Function0 from Koin and fail at creation time.
+    viewModel {
+        LiveLocationViewModel(
+            receiveStore = get(),
+            contactService = get(),
+            locationPreferences = get(),
+            pointStore = get(),
+            credentialsManager = get(),
+        )
+    }
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
     viewModelOf(::ContactBookSettingsViewModel)

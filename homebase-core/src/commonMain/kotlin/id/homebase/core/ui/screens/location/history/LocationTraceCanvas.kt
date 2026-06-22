@@ -1,37 +1,20 @@
 package id.homebase.core.ui.screens.location.history
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.location.WebMercator
-import kotlinx.coroutines.launch
-import org.jetbrains.compose.resources.decodeToImageBitmap
-import kotlin.math.ceil
-import kotlin.math.floor
-import kotlin.math.ln
+import id.homebase.core.ui.screens.location.map.TiledMapView
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * Trace colors for drawing on the map. Deliberately NOT theme colors: the OSM
@@ -47,13 +30,11 @@ val mapTraceColors = listOf(
 )
 
 /**
- * Viewport over Web-Mercator unit space (0..1 world): a center point plus the
- * unit-width of one screen pixel. Pure data so gestures and tile math share it.
+ * History/Find-Device map: GPS traces (and optional playback + dwell dots) drawn over an OSM basemap.
+ * A thin wrapper over the shared [TiledMapView] — this composable owns only the History-specific
+ * overlay (trace polylines, playhead, dwell dots); all viewport/zoom/tile behaviour lives in
+ * [TiledMapView]/[id.homebase.core.ui.screens.location.map].
  */
-private data class Viewport(val centerX: Double, val centerY: Double, val unitsPerPx: Double)
-
-private data class TileKey(val zoom: Int, val x: Int, val y: Int)
-
 @Composable
 fun LocationTraceCanvas(
     traces: List<DeviceTrace>,
@@ -74,10 +55,6 @@ fun LocationTraceCanvas(
     /** Places the user lingered; drawn as dots sized by dwell length (see [dwellRadiusDp]). */
     dwellStops: List<DwellStop> = emptyList(),
 ) {
-    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    // User pan/zoom override; null = fit the day's bbox. Reset when the day's data changes.
-    var userViewport by remember(traces) { mutableStateOf<Viewport?>(null) }
-
     // Project once per data change: trace -> segments -> unit-space points.
     val unitTraces = remember(traces) {
         traces.map { trace ->
@@ -103,75 +80,46 @@ fun LocationTraceCanvas(
         if (minX > maxX) null else doubleArrayOf(minX, minY, maxX, maxY)
     }
 
-    val viewport = userViewport ?: fitViewport(bbox, canvasSize)
-
-    // ── Tile layer state ──
-    val tileBitmaps = remember { mutableStateMapOf<TileKey, ImageBitmap>() }
-    val visibleTiles = if (showMapTiles && viewport != null && canvasSize != IntSize.Zero) {
-        visibleTileKeys(viewport, canvasSize)
-    } else emptyList()
-    LaunchedEffect(visibleTiles, showMapTiles) {
-        if (!showMapTiles) return@LaunchedEffect
-        // Concurrent fetches: the provider single-flights and runs downloads on
-        // its own scope, so restarts of this effect (pan/zoom) neither cancel
-        // nor duplicate them. Failures are simply retried on the next restart.
-        for (key in visibleTiles) {
-            if (tileBitmaps.containsKey(key)) continue
-            launch {
-                val bytes = fetchTile(key.zoom, key.x, key.y)
-                val bitmap = bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-                if (bitmap != null) tileBitmaps[key] = bitmap
-            }
-        }
-    }
-
-    val gestureModifier = if (!interactive) Modifier else {
-        Modifier.pointerInput(traces) {
-            detectTransformGestures { centroid, pan, zoom, _ ->
-                val current = userViewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
-                val newUnitsPerPx = (current.unitsPerPx / zoom)
-                    .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
-                // Keep the gesture centroid anchored while zooming, then pan.
-                val cx = centroid.x - size.width / 2f
-                val cy = centroid.y - size.height / 2f
-                val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
-                val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
-                userViewport = Viewport(
-                    centerX = anchoredX - pan.x * newUnitsPerPx,
-                    centerY = anchoredY - pan.y * newUnitsPerPx,
-                    unitsPerPx = newUnitsPerPx,
-                )
-            }
-        }
-    }
-
-    Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .onSizeChanged { canvasSize = it }
-            .then(gestureModifier),
-    ) {
-        val vp = viewport ?: return@Canvas
-        fun toPx(unit: Pair<Double, Double>): Offset = Offset(
-            x = ((unit.first - vp.centerX) / vp.unitsPerPx + size.width / 2.0).toFloat(),
-            y = ((unit.second - vp.centerY) / vp.unitsPerPx + size.height / 2.0).toFloat(),
-        )
-
-        // ── Basemap tiles (under the traces) ──
-        for (key in visibleTiles) {
-            val bitmap = tileBitmaps[key] ?: continue
-            val b = WebMercator.tileToUnitBounds(key.x, key.y, key.zoom)
-            val topLeft = toPx(b[0] to b[1])
-            val bottomRight = toPx(b[2] to b[3])
-            drawImage(
-                image = bitmap,
-                dstOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt()),
-                dstSize = IntSize(
-                    width = (bottomRight.x - topLeft.x).roundToInt().coerceAtLeast(1),
-                    height = (bottomRight.y - topLeft.y).roundToInt().coerceAtLeast(1),
-                ),
+    TiledMapView(
+        bbox = bbox,
+        showMapTiles = showMapTiles,
+        fetchTile = fetchTile,
+        modifier = modifier,
+        interactive = interactive,
+        resetViewportOn = traces,
+        onDrawOverlay = { project ->
+            drawTraceOverlay(
+                project = project,
+                traces = traces,
+                unitTraces = unitTraces,
+                unitStops = unitStops,
+                dwellStops = dwellStops,
+                traceColors = traceColors,
+                showMapTiles = showMapTiles,
+                highlightLast = highlightLast,
+                playbackClockMs = playbackClockMs,
             )
-        }
+        },
+    )
+}
+
+/**
+ * The History-specific overlay: trace polylines (with optional playback clipping + playhead), start/
+ * end markers, and dwell dots. Pulled out of [LocationTraceCanvas] as a [DrawScope] extension so the
+ * `onDrawOverlay` slot stays a thin call.
+ */
+private fun DrawScope.drawTraceOverlay(
+    project: (Double, Double) -> Offset,
+    traces: List<DeviceTrace>,
+    unitTraces: List<List<List<Pair<Double, Double>>>>,
+    unitStops: List<Pair<Double, Double>>,
+    dwellStops: List<DwellStop>,
+    traceColors: List<Color>,
+    showMapTiles: Boolean,
+    highlightLast: Boolean,
+    playbackClockMs: Long?,
+) {
+    fun toPx(unit: Pair<Double, Double>): Offset = project(unit.first, unit.second)
 
         // ── Traces ──
         val strokeWidth = 3.dp.toPx()
@@ -278,62 +226,4 @@ fun LocationTraceCanvas(
             drawCircle(Color.White, dotRadius * 1.5f, center)
             drawCircle(color, dotRadius * 1.1f, center)
         }
-    }
 }
-
-private fun fitViewport(bbox: DoubleArray?, canvasSize: IntSize): Viewport? {
-    if (bbox == null || canvasSize.width == 0 || canvasSize.height == 0) return null
-    val minX = bbox[0]; val minY = bbox[1]; val maxX = bbox[2]; val maxY = bbox[3]
-    val spanX = max(maxX - minX, MIN_FIT_SPAN_UNITS)
-    val spanY = max(maxY - minY, MIN_FIT_SPAN_UNITS)
-    val unitsPerPx = max(
-        spanX * FIT_PADDING / canvasSize.width,
-        spanY * FIT_PADDING / canvasSize.height,
-    ).coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
-    return Viewport(
-        centerX = (minX + maxX) / 2,
-        centerY = (minY + maxY) / 2,
-        unitsPerPx = unitsPerPx,
-    )
-}
-
-private fun visibleTileKeys(vp: Viewport, canvasSize: IntSize): List<TileKey> {
-    // Start at the zoom where one tile (256px-native) renders ~1:1, then step
-    // DOWN until the full visible grid fits the tile budget — a portrait phone
-    // at 1:1 needs ~30-40 tiles, so coverage beats crispness: coarser tiles are
-    // upscaled but the whole view gets a basemap (truncating the grid instead
-    // left the bottom of the screen bare).
-    val idealZoom = (-ln(vp.unitsPerPx * WebMercator.TILE_SIZE_PX) / ln(2.0))
-        .roundToInt().coerceIn(MIN_TILE_ZOOM, MAX_TILE_ZOOM)
-    val halfW = canvasSize.width / 2.0 * vp.unitsPerPx
-    val halfH = canvasSize.height / 2.0 * vp.unitsPerPx
-    for (zoom in idealZoom downTo MIN_TILE_ZOOM) {
-        val n = 1 shl zoom
-        val x0 = floor((vp.centerX - halfW) * n).toInt().coerceIn(0, n - 1)
-        val x1 = ceil((vp.centerX + halfW) * n).toInt().coerceIn(0, n - 1)
-        val y0 = floor((vp.centerY - halfH) * n).toInt().coerceIn(0, n - 1)
-        val y1 = ceil((vp.centerY + halfH) * n).toInt().coerceIn(0, n - 1)
-        val count = (x1 - x0 + 1) * (y1 - y0 + 1)
-        if (count > MAX_TILES_PER_VIEW && zoom > MIN_TILE_ZOOM) continue
-        return buildList {
-            for (y in y0..y1) {
-                for (x in x0..x1) {
-                    add(TileKey(zoom, x, y))
-                    if (size >= MAX_TILES_PER_VIEW) return@buildList
-                }
-            }
-        }
-    }
-    return emptyList()
-}
-
-private const val FIT_PADDING = 1.2
-private const val MIN_FIT_SPAN_UNITS = 1e-5 // ~ city block; avoids infinite zoom on 1 point
-private const val MIN_UNITS_PER_PX = 1e-9
-private const val MAX_UNITS_PER_PX = 1.0 / 256.0
-private const val MIN_TILE_ZOOM = 3
-private const val MAX_TILE_ZOOM = 19
-
-// Budget per view. 24 fits a portrait phone one zoom step below 1:1 (×2
-// upscale worst case) while keeping per-view OSM traffic modest.
-private const val MAX_TILES_PER_VIEW = 24

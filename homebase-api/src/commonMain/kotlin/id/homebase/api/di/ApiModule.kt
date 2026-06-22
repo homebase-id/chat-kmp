@@ -11,6 +11,7 @@ import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.contacts.ContactHeaderReader
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
@@ -98,6 +99,7 @@ val apiModule = module {
     factoryOf(::TemporalDriveReadProvider)
     factoryOf(::PeerDriveUploadProvider)
     factoryOf(::PeerNotificationProvider)
+    factoryOf(::LiveRelayProvider)
     // Single: one set of peer (owner-hosted) websocket connections per app session; reset on logout
     // via AuthConnectionCoordinator.disconnect(). Uses its own internal scope (default ctor arg).
     single {
