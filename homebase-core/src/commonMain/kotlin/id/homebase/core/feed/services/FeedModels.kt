@@ -1,5 +1,6 @@
 package id.homebase.core.feed.services
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -94,7 +95,9 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     // stably identify the post for dedup; they never collide (own posts aren't feed references).
     val uniqueId = appData.uniqueId ?: fileMetadata.globalTransitId ?: return null
     val content = appData.content?.let { raw ->
-        runCatching { OdinSystemSerializer.deserialize<PostContent>(raw) }.getOrNull()
+        runCatching { OdinSystemSerializer.deserialize<PostContent>(raw) }
+            .onFailure { Logger.w(tag = "FeedModels") { "PostContent parse failed: ${it.message}" } }
+            .getOrNull()
     }
     val ownReactions = fileMetadata.localAppData?.localReactions
         ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
