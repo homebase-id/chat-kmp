@@ -30,6 +30,10 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import id.homebase.core.feed.services.EmbeddedPost
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.SpanStyle
@@ -97,6 +101,13 @@ fun PostCard(
                 caption = post.caption,
                 onExpandFetchFullText = onExpandFetchFullText,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+
+        post.embeddedPost?.let { embedded ->
+            QuotedPost(
+                embedded = embedded,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
 
@@ -168,6 +179,44 @@ private fun PostCommentPreview(
                     .clickable(onClick = onViewAll)
                     .padding(top = 2.dp),
             )
+        }
+    }
+}
+
+/**
+ * A quoted / reposted source post rendered inline as a bordered card: the original author and
+ * their caption. Mirrors the web feed's embedded-post block; shown whenever a post carries an
+ * [EmbeddedPost] (i.e. it's a repost). The full source is opened separately by its id.
+ */
+@Composable
+private fun QuotedPost(
+    embedded: EmbeddedPost,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            embedded.author?.takeIf { it.isNotBlank() }?.let { author ->
+                Text(
+                    text = author,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            embedded.caption?.takeIf { it.isNotBlank() }?.let { caption ->
+                Text(
+                    text = caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
