@@ -144,7 +144,7 @@ sealed class Route {
 
     @Serializable
     @SerialName("post_compose")
-    data object PostCompose : Route()
+    data class PostCompose(val repostOfJson: String? = null) : Route()
 
     @Serializable
     @SerialName("feed_following")

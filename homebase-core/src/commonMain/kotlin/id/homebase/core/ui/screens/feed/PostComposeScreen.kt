@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -48,12 +49,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.widget.LinkPreviewCard
+import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
@@ -156,6 +160,10 @@ fun PostComposeScreen(
                 minLines = 3,
             )
 
+            uiState.embeddedPost?.let { embedded ->
+                QuotedPostPreview(embedded = embedded, modifier = Modifier.fillMaxWidth())
+            }
+
             if (uiState.attachments.isNotEmpty()) {
                 AttachmentThumbnailRow(
                     attachments = uiState.attachments,
@@ -246,6 +254,44 @@ private fun AttachmentThumbnailRow(
                         modifier = Modifier.size(16.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The source post being quoted, rendered as a bordered card above the composer toolbar. Matches
+ * the inline `QuotedPost` block on [id.homebase.core.ui.screens.feed.widget.PostCard] so the
+ * compose-time preview reads identically to how the published repost will render.
+ */
+@Composable
+private fun QuotedPostPreview(
+    embedded: EmbeddedPost,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            embedded.author?.takeIf { it.isNotBlank() }?.let { author ->
+                Text(
+                    text = author,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            embedded.caption?.takeIf { it.isNotBlank() }?.let { caption ->
+                Text(
+                    text = caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

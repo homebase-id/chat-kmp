@@ -74,6 +74,7 @@ class FeedPostSenderService(
         linkPreview: LinkPreview?,
         acl: AccessControlList,
         reactAccess: ReactAccess = ReactAccess.All,
+        embeddedPost: EmbeddedPost? = null,
         slug: String = defaultSlug(caption),
     ): CreatePostResult {
         val postUniqueId = Md5.toGuidId(slug)
@@ -112,6 +113,7 @@ class FeedPostSenderService(
             slug = slug,
             reactAccess = reactAccess,
             primaryMediaKey = primaryMediaKey,
+            embeddedPost = embeddedPost,
         )
 
         val overflowPayload = overflowText?.let {
@@ -371,6 +373,7 @@ class FeedPostSenderService(
         slug: String,
         reactAccess: ReactAccess,
         primaryMediaKey: String?,
+        embeddedPost: EmbeddedPost?,
     ): Pair<String, String?> {
         fun serialize(cap: String) = OdinSystemSerializer.serialize(
             PostContent(
@@ -381,6 +384,7 @@ class FeedPostSenderService(
                 caption = cap,
                 slug = slug,
                 reactAccess = reactAccess,
+                embeddedPost = embeddedPost,
                 primaryMediaKey = primaryMediaKey,
             )
         )

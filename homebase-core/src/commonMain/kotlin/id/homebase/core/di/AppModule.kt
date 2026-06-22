@@ -805,7 +805,7 @@ val appModule = module {
 
     // Native Feed ViewModels. PostDetailViewModel is parameterized on the post id.
     viewModelOf(::FeedTimelineViewModel)
-    viewModelOf(::PostComposeViewModel)
+    viewModel { params -> PostComposeViewModel(get(), get(), params.getOrNull<String>()) }
     viewModelOf(::FollowingViewModel)
     viewModel { params ->
         PostDetailViewModel(

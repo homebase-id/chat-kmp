@@ -93,6 +93,9 @@ import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.feed.services.EmbeddedPost
+import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostComposeScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
@@ -776,7 +779,12 @@ fun AppNavHost(
                                         navController.navigate(Route.PostDetail(it.toString()))
                                     },
                                     onNavigateToComposer = {
-                                        navController.navigate(Route.PostCompose)
+                                        navController.navigate(Route.PostCompose())
+                                    },
+                                    onRepost = { post ->
+                                        navController.navigate(
+                                            Route.PostCompose(repostOfJson = buildRepostJson(post)),
+                                        )
                                     },
                                     onNavigateToFollowing = {
                                         navController.navigate(Route.Following)
@@ -799,10 +807,13 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.PostCompose> {
+                        composable<Route.PostCompose> { entry ->
                             if (isAuthenticated) {
+                                val r = entry.toRoute<Route.PostCompose>()
                                 PostComposeScreen(
-                                    viewModel = koinViewModel(),
+                                    viewModel = koinViewModel(
+                                        key = "post-compose-" + (r.repostOfJson?.hashCode() ?: 0),
+                                    ) { parametersOf(r.repostOfJson) },
                                     onClose = { navController.popBackStack() },
                                 )
                             }
@@ -1591,6 +1602,22 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
     return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
 }
+
+/**
+ * Serialize the [EmbeddedPost] quote payload for a repost compose route arg. The navigation
+ * library URL-encodes the result for us, so the JSON is passed through as-is.
+ */
+private fun buildRepostJson(post: FeedPostItem): String = OdinSystemSerializer.serialize(
+    EmbeddedPost(
+        author = (post.originalAuthor ?: post.senderOdinId)?.domainName,
+        caption = post.caption,
+        type = post.type,
+        fileId = post.fileId.toString(),
+        globalTransitId = post.globalTransitId?.toString(),
+        userDate = post.userDateMs,
+        previewThumbnail = null,
+    ),
+)
 
 private fun NavDestination?.isVerticalSlideRoute(): Boolean {
     return this?.hasRoute(Route.VaultNoteEditor::class) == true

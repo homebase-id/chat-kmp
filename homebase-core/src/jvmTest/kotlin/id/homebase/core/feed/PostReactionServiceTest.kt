@@ -100,6 +100,7 @@ class PostReactionServiceTest {
         return FeedPostItem(
             id = postId,
             fileId = fileId,
+            globalTransitId = null,
             driveId = channelDrive,
             keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
             payloads = emptyList(),

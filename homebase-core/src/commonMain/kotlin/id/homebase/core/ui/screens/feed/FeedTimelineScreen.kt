@@ -82,6 +82,7 @@ fun FeedTimelineScreen(
     viewModel: FeedTimelineViewModel = koinViewModel(),
     onNavigateToDetail: (Uuid) -> Unit,
     onNavigateToComposer: () -> Unit,
+    onRepost: (FeedPostItem) -> Unit,
     onNavigateToFollowing: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
 ) {
@@ -159,6 +160,7 @@ fun FeedTimelineScreen(
                 onPostClick = viewModel::onPostClick,
                 onOpenComments = { commentsPostId = it },
                 onToggleReaction = viewModel::onToggleReaction,
+                onRepost = onRepost,
                 onAuthorClick = onAuthorClick,
                 modifier = contentModifier,
             )
@@ -186,6 +188,7 @@ private fun FeedTimelineList(
     onPostClick: (Uuid) -> Unit,
     onOpenComments: (Uuid) -> Unit,
     onToggleReaction: (post: FeedPostItem, emoji: String) -> Unit,
+    onRepost: (FeedPostItem) -> Unit,
     onAuthorClick: (OdinId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -224,6 +227,7 @@ private fun FeedTimelineList(
                     displayName = (post.originalAuthor ?: post.senderOdinId)?.domainName.orEmpty(),
                     channelName = null,
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
+                    onRepost = { onRepost(post) },
                     onOpenComments = { onOpenComments(post.id) },
                     onShowReactors = { onPostClick(post.id) },
                     onPostClick = { onOpenComments(post.id) },

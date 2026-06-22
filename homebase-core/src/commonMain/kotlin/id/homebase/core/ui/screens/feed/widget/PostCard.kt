@@ -76,6 +76,7 @@ fun PostCard(
     onOpenComments: () -> Unit,
     onShowReactors: () -> Unit,
     modifier: Modifier = Modifier,
+    onRepost: (() -> Unit)? = null,
     onExpandFetchFullText: (suspend () -> String?)? = null,
 ) {
     Column(
@@ -127,6 +128,7 @@ fun PostCard(
             onToggleReaction = onToggleReaction,
             onOpenComments = onOpenComments,
             onShowReactors = onShowReactors,
+            onRepost = onRepost,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
         )
 

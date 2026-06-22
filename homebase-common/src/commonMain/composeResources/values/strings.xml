@@ -1435,6 +1435,7 @@
     <string name="feed_post_read_less">Less</string>
     <string name="feed_post_comment">Comment</string>
     <string name="feed_post_comment_count">%1$d</string>
+    <string name="feed_post_repost">Repost</string>
     <string name="feed_comment_hint">Write a comment…</string>
     <string name="feed_comment_emoji">Emoji</string>
     <string name="feed_comment_attach_image">Attach image</string>

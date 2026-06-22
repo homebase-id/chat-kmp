@@ -13,8 +13,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Comment
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +40,7 @@ import id.homebase.core.widget.ReactionMenu
 import id.homebase.resources.MR
 import id.homebase.resources.feed_post_comment
 import id.homebase.resources.feed_post_comment_count
+import id.homebase.resources.feed_post_repost
 import kotlinx.collections.immutable.toImmutableList
 import org.jetbrains.compose.resources.stringResource
 
@@ -67,9 +70,13 @@ fun PostInteracts(
     onOpenComments: () -> Unit,
     onShowReactors: () -> Unit,
     modifier: Modifier = Modifier,
+    onRepost: (() -> Unit)? = null,
 ) {
     val canReact = reactAccess == ReactAccess.All || reactAccess == ReactAccess.EmojiOnly
     val canComment = reactAccess == ReactAccess.All || reactAccess == ReactAccess.CommentOnly
+    // Repost is offered whenever the post is interactable at all — only a fully locked-down
+    // (ReactAccess.None) post hides it.
+    val canRepost = reactAccess != ReactAccess.None
 
     var showQuickMenu by remember { mutableStateOf(false) }
     var showFullPicker by remember { mutableStateOf(false) }
@@ -112,6 +119,16 @@ fun PostInteracts(
         }
 
         Spacer(modifier = Modifier.weight(1f))
+
+        if (onRepost != null && canRepost) {
+            IconButton(onClick = onRepost) {
+                Icon(
+                    imageVector = Icons.Default.Repeat,
+                    contentDescription = stringResource(MR.string.feed_post_repost),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         if (canComment) {
             TextButton(onClick = onOpenComments) {

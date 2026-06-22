@@ -23,6 +23,8 @@ import kotlin.uuid.Uuid
 data class FeedPostItem(
     val id: Uuid,
     val fileId: Uuid,
+    /** The post's global transit id, used to address it as a repost source across identities. */
+    val globalTransitId: Uuid?,
     val driveId: Uuid,
     val keyHeader: KeyHeader,
     val payloads: List<PayloadDescriptor>,
@@ -105,6 +107,7 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     return FeedPostItem(
         id = uniqueId,
         fileId = fileId,
+        globalTransitId = fileMetadata.globalTransitId,
         driveId = driveId,
         keyHeader = keyHeader,
         payloads = fileMetadata.payloads.orEmpty(),

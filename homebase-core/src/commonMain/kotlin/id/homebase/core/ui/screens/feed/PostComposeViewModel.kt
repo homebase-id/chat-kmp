@@ -7,7 +7,9 @@ import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.link.LinkPreviewProvider
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
@@ -46,10 +48,22 @@ private val URL_REGEX = Regex(
 class PostComposeViewModel(
     private val postSender: FeedPostSenderService,
     private val linkPreviewProvider: LinkPreviewProvider,
+    repostOfJson: String? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PostComposeUiState())
     val uiState: StateFlow<PostComposeUiState> = _uiState.asStateFlow()
+
+    init {
+        // Seed a repost: deserialize the source quote so the composer renders it and submit()
+        // rides it on the new post. A parse failure just yields a plain (non-repost) compose.
+        if (repostOfJson != null) {
+            runCatching { OdinSystemSerializer.deserialize<EmbeddedPost>(repostOfJson) }
+                .onFailure { Logger.w(throwable = it, tag = TAG) { "repost payload parse failed" } }
+                .getOrNull()
+                ?.let { embedded -> _uiState.update { it.copy(embeddedPost = embedded) } }
+        }
+    }
 
     private val _events = MutableSharedFlow<PostComposeEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<PostComposeEvent> = _events.asSharedFlow()
@@ -120,6 +134,7 @@ class PostComposeViewModel(
 
         viewModelScope.launch {
             try {
+                // A repost is always a Tweet (it quotes a source); otherwise media → Media.
                 val type = if (state.attachments.isNotEmpty()) PostType.Media else PostType.Tweet
                 postSender.createPost(
                     channelId = SystemDriveConstants.publicPostChannelDrive.alias,
@@ -130,6 +145,7 @@ class PostComposeViewModel(
                     linkPreview = state.effectiveLinkPreview,
                     acl = AccessControlList(requiredSecurityGroup = state.audience.value),
                     reactAccess = state.reactAccess,
+                    embeddedPost = state.embeddedPost,
                 )
                 _events.tryEmit(PostComposeEvent.Dismiss)
             } catch (t: Throwable) {

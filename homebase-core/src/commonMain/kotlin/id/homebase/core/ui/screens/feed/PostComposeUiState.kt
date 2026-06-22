@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.feed
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.link.LinkPreview
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.ReactAccess
 
 /**
@@ -26,6 +27,8 @@ data class PostComposeUiState(
     /** The audience security group the post is published to. Defaults to a fully-public post. */
     val audience: SecurityGroupType = SecurityGroupType.Anonymous,
     val reactAccess: ReactAccess = ReactAccess.All,
+    /** The source post being quoted, when this compose is a repost; null for a fresh post. */
+    val embeddedPost: EmbeddedPost? = null,
     val isPosting: Boolean = false,
     val errorMessage: String? = null,
 ) {
@@ -33,7 +36,10 @@ data class PostComposeUiState(
     val effectiveLinkPreview: LinkPreview?
         get() = if (attachments.isEmpty()) linkPreview else null
 
-    /** A post needs either some text or at least one attachment. */
+    /**
+     * A post needs some text, at least one attachment, or a quoted post (a bare quote is valid).
+     */
     val canPost: Boolean
-        get() = (caption.isNotBlank() || attachments.isNotEmpty()) && !isPosting
+        get() = (caption.isNotBlank() || attachments.isNotEmpty() || embeddedPost != null) &&
+            !isPosting
 }
