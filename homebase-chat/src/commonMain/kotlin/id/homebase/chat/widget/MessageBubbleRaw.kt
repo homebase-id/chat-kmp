@@ -248,6 +248,10 @@ fun MessageBubbleRaw(
                     timestamp = formatMessageTimestamp(message.userDate),
                     captionBackgroundColor = captionBg,
                     captionContentColor = captionContent,
+                    showDeliveryStatus = sentByYou && !message.isDeleted,
+                    isPendingSend = message.isPendingSend,
+                    deliveryStatus = message.messageAppData.deliveryStatus,
+                    pendingSince = message.userDate,
                 )
             }
             return

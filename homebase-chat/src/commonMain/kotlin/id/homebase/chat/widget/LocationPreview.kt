@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlin.time.Clock
+import kotlin.time.Instant
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
@@ -265,6 +267,15 @@ fun LocationPreviewCard(
      */
     captionBackgroundColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     captionContentColor: Color = MaterialTheme.colorScheme.onSurface,
+    /**
+     * Delivery-status (sending / sent / delivered / read / failed) shown next to the timestamp, like a
+     * regular sent message. Only relevant for the sender's own message; pass `showDeliveryStatus=false`
+     * for received messages (and non-bubble callers).
+     */
+    showDeliveryStatus: Boolean = false,
+    isPendingSend: Boolean = false,
+    deliveryStatus: Int = 0,
+    pendingSince: Instant? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
@@ -372,15 +383,18 @@ fun LocationPreviewCard(
                             canStart = canStartShare,
                         )
                     }
-                    // No caption ⇒ the timestamp sits muted at the bottom of the card.
+                    // No caption ⇒ the timestamp (+ delivery status) sits muted at the bottom of the card.
                     if (showCardTimestamp) {
                         if (descriptor.address.isNotEmpty() || liveControls != null) {
                             Spacer(modifier = Modifier.height(6.dp))
                         }
-                        Text(
-                            text = timestamp!!,
-                            style = MaterialTheme.typography.labelSmall,
+                        LocationTimestampRow(
+                            timestamp = timestamp!!,
                             color = contentColor.copy(alpha = 0.7f),
+                            showDeliveryStatus = showDeliveryStatus,
+                            isPendingSend = isPendingSend,
+                            deliveryStatus = deliveryStatus,
+                            pendingSince = pendingSince,
                             modifier = Modifier.align(Alignment.End),
                         )
                     }
@@ -403,14 +417,49 @@ fun LocationPreviewCard(
                 )
                 if (timestamp != null) {
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = timestamp,
-                        style = MaterialTheme.typography.labelSmall,
+                    LocationTimestampRow(
+                        timestamp = timestamp,
                         color = captionContentColor.copy(alpha = 0.7f),
+                        showDeliveryStatus = showDeliveryStatus,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = deliveryStatus,
+                        pendingSince = pendingSince,
                         modifier = Modifier.align(Alignment.End),
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Timestamp + (for the sender) delivery-status icon, mirroring a regular message's footer. Rendered at
+ * the bottom-end of either the card (caption-less) or the caption section.
+ */
+@Composable
+private fun LocationTimestampRow(
+    timestamp: String,
+    color: Color,
+    showDeliveryStatus: Boolean,
+    isPendingSend: Boolean,
+    deliveryStatus: Int,
+    pendingSince: Instant?,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.Bottom) {
+        Text(
+            text = timestamp,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+        )
+        if (showDeliveryStatus) {
+            Spacer(modifier = Modifier.width(4.dp))
+            DeliveryStatus(
+                isPendingSend = isPendingSend,
+                deliveryStatus = deliveryStatus,
+                contentColor = color,
+                pendingSince = pendingSince,
+            )
         }
     }
 }
