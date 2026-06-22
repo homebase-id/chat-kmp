@@ -12,6 +12,7 @@ import id.homebase.api.common.SecureByteArray
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,17 +24,17 @@ import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 /**
- * Covers the by-globalTransitId over-peer payload/thumb fetch: route shape, the plaintext
- * passthrough (public feed posts come back `payloadencrypted=false` and are returned untouched),
- * 404 → null, and the input guards. The encrypted-decrypt branch is [DriveFileProvider.decryptBytes]'
- * own responsibility (tested there); this provider only delegates to it.
+ * Covers the by-globalTransitId over-peer payload/thumb fetch: the transit/query route shape
+ * + query params, the plaintext passthrough (public feed posts come back `payloadencrypted=false`
+ * and are returned untouched), 404 → null, and the input guards. The encrypted-decrypt branch is
+ * [DriveFileProvider.decryptBytes]' own responsibility (tested there); this provider only delegates.
  */
 class PeerFileByGlobalTransitProviderTest {
 
-    // 16-byte zero shared secret — same harness as FollowProviderTest.
     private val sharedSecret = ByteArray(16)
     private val peer = OdinId("frodo.baggins.demo.rocks")
-    private val driveId = Uuid.parse("e8475dc4-6cb4-b665-1c2d-0dbd0f3aad5f")
+    private val driveAlias = Uuid.parse("e8475dc4-6cb4-b665-1c2d-0dbd0f3aad5f")
+    private val driveType = Uuid.parse("a3227ffb-a876-08be-eb24-fee9b70d92a6")
     private val gtid = Uuid.parse("2c8cdd19-009d-a000-007d-eb88b8f218bd")
 
     private suspend fun creds(): CredentialsManager {
@@ -56,13 +57,15 @@ class PeerFileByGlobalTransitProviderTest {
         return PeerFileByGlobalTransitProvider(client, cm, driveFileProvider)
     }
 
+    private fun HttpRequestData.param(name: String): String? = url.parameters[name]
+
     @Test
-    fun getPayload_hitsByGtidPayloadRoute_andReturnsPlaintextBytes() = runTest {
-        var path: String? = null
+    fun getPayload_hitsTransitPayloadRoute_withParams_andReturnsPlaintextBytes() = runTest {
+        var request: HttpRequestData? = null
         val payload = byteArrayOf(1, 2, 3, 4)
         val cm = creds()
-        val engine = MockEngine { request ->
-            path = request.url.encodedPath
+        val engine = MockEngine { req ->
+            request = req
             respond(
                 content = payload,
                 status = HttpStatusCode.OK,
@@ -74,33 +77,37 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         val result = provider(engine, cm)
-            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, "pst_mdi0")
+            .getPayloadOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "pst_mdi0")
 
-        assertEquals(
-            "/api/v2/peer/$peer/drives/$driveId/files/by-gtid/$gtid/payload/pst_mdi0",
-            path,
-        )
+        val req = requireNotNull(request)
+        assertEquals("/api/v2/transit/query/payload_byglobaltransitid", req.url.encodedPath)
+        assertEquals(peer.toString(), req.param("odinId"))
+        assertEquals(driveAlias.toString(), req.param("alias"))
+        assertEquals(driveType.toString(), req.param("type"))
+        assertEquals(gtid.toString(), req.param("globalTransitId"))
+        assertEquals("pst_mdi0", req.param("key"))
         assertEquals(payload.toList(), result!!.bytes.toList())
         assertEquals("image/webp", result.contentType)
     }
 
     @Test
-    fun getThumb_hitsByGtidThumbRoute_withDimensions() = runTest {
-        var path: String? = null
+    fun getThumb_hitsTransitThumbRoute_withDimensions() = runTest {
+        var request: HttpRequestData? = null
         val thumb = byteArrayOf(9, 8, 7)
         val cm = creds()
-        val engine = MockEngine { request ->
-            path = request.url.encodedPath
+        val engine = MockEngine { req ->
+            request = req
             respond(thumb, HttpStatusCode.OK, headersOf("payloadencrypted" to listOf("false")))
         }
 
         val result = provider(engine, cm)
-            .getThumbOverPeerByGlobalTransitId(peer, driveId, gtid, "pst_mdi0", 320, 480)
+            .getThumbOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "pst_mdi0", 320, 480)
 
-        assertEquals(
-            "/api/v2/peer/$peer/drives/$driveId/files/by-gtid/$gtid/payload/pst_mdi0/thumb/320/480",
-            path,
-        )
+        val req = requireNotNull(request)
+        assertEquals("/api/v2/transit/query/thumb_byglobaltransitid", req.url.encodedPath)
+        assertEquals("pst_mdi0", req.param("payloadKey"))
+        assertEquals("320", req.param("width"))
+        assertEquals("480", req.param("height"))
         assertEquals(thumb.toList(), result!!.bytes.toList())
     }
 
@@ -109,7 +116,8 @@ class PeerFileByGlobalTransitProviderTest {
         val cm = creds()
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
         assertNull(
-            provider(engine, cm).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, "pst_mdi0"),
+            provider(engine, cm)
+                .getPayloadOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "pst_mdi0"),
         )
     }
 
@@ -119,7 +127,7 @@ class PeerFileByGlobalTransitProviderTest {
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
         assertNull(
             provider(engine, cm)
-                .getThumbOverPeerByGlobalTransitId(peer, driveId, gtid, "pst_mdi0", 320, 480),
+                .getThumbOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "pst_mdi0", 320, 480),
         )
     }
 
@@ -128,7 +136,8 @@ class PeerFileByGlobalTransitProviderTest {
         val cm = creds()
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.OK) }
         assertFailsWith<IllegalArgumentException> {
-            provider(engine, cm).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, "")
+            provider(engine, cm)
+                .getPayloadOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "")
         }
     }
 
@@ -138,7 +147,7 @@ class PeerFileByGlobalTransitProviderTest {
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.OK) }
         assertFailsWith<IllegalArgumentException> {
             provider(engine, cm)
-                .getThumbOverPeerByGlobalTransitId(peer, driveId, gtid, "pst_mdi0", 0, 480)
+                .getThumbOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "pst_mdi0", 0, 480)
         }
     }
 }

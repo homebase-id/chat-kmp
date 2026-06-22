@@ -102,6 +102,7 @@ fun MomentMediaCarousel(
     // When set, media lives on a followed identity's drive — fetched over peer (by gtid).
     remoteOdinId: OdinId? = null,
     globalTransitId: Uuid? = null,
+    remoteDriveType: Uuid? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -236,6 +237,7 @@ fun MomentMediaCarousel(
                     isUploading = isUploading,
                     remoteOdinId = remoteOdinId,
                     globalTransitId = globalTransitId,
+                    remoteDriveType = remoteDriveType,
                 )
             }
         }

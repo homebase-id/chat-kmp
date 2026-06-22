@@ -131,15 +131,17 @@ class HomebaseImageLoader(
         val nativeSize = selectThumbSize(targetSize, data.availableThumbSizes)
 
         // Fetch from server with retry
-        return withRetry(retryConfig, TAG) {
+        val thumb = withRetry(retryConfig, TAG) {
             val response = try {
                 val remoteOdinId = data.remoteOdinId
                 val gtid = data.globalTransitId
-                if (remoteOdinId != null && gtid != null) {
+                val driveType = data.remoteDriveType
+                if (remoteOdinId != null && gtid != null && driveType != null) {
                     // Followed-identity post: bytes live on the author's drive — fetch over peer.
                     peerFileProvider.getThumbOverPeerByGlobalTransitId(
                         peer = remoteOdinId,
-                        driveId = data.driveId,
+                        driveAlias = data.driveId,
+                        driveType = driveType,
                         globalTransitId = gtid,
                         payloadKey = data.payloadKey,
                         width = nativeSize.pixelWidth,
@@ -177,6 +179,13 @@ class HomebaseImageLoader(
                 bytes = response.bytes, contentType = response.contentType, size = nativeSize
             )
         }
+        // A followed identity's post often has no server thumbnail at the requested size (its
+        // feed-drive reference carries no thumbnail descriptor, so we ask for an odd size → 404).
+        // Fall back to the full payload over peer, like dotyoucore-js getDecryptedMediaUrlOverPeer*.
+        if (thumb == null && data.remoteOdinId != null && data.globalTransitId != null) {
+            return loadFullPayload(data, retryConfig)
+        }
+        return thumb
     }
 
     /**
@@ -228,10 +237,12 @@ class HomebaseImageLoader(
             val response = try {
                 val remoteOdinId = data.remoteOdinId
                 val gtid = data.globalTransitId
-                if (remoteOdinId != null && gtid != null) {
+                val driveType = data.remoteDriveType
+                if (remoteOdinId != null && gtid != null && driveType != null) {
                     peerFileProvider.getPayloadOverPeerByGlobalTransitId(
                         peer = remoteOdinId,
-                        driveId = data.driveId,
+                        driveAlias = data.driveId,
+                        driveType = driveType,
                         globalTransitId = gtid,
                         payloadKey = data.payloadKey,
                     )

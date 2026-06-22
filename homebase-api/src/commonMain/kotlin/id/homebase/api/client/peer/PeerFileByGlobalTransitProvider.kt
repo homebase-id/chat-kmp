@@ -12,20 +12,16 @@ import io.ktor.client.request.get
 import kotlin.uuid.Uuid
 
 /**
- * Reads a payload (or its thumbnail) of a file that lives on a **followed identity's** drive,
- * addressed by [globalTransitId]. The user's own host ([requireCreds]`.domain`) brokers the read
- * to the peer server-side and re-encrypts the response under the caller's shared secret, so the
- * decode/decrypt path is identical to a local read (it reuses [DriveFileProvider.decryptBytes],
- * which returns plaintext bytes untouched when the server marks the payload `payloadencrypted=false`
- * — the public-feed case).
+ * Reads a payload (or its thumbnail) of a file on a **followed identity's** drive, addressed by
+ * [globalTransitId]. The user's own host ([requireCreds]`.domain`) brokers the transit query to the
+ * peer server-side and re-encrypts the response under the caller's shared secret, so the
+ * decode/decrypt path is identical to a local read (reuses [DriveFileProvider.decryptBytes], which
+ * returns plaintext bytes untouched when the server marks `payloadencrypted=false` — the public-feed
+ * case).
  *
- * Why a new provider rather than [TemporalDriveReadProvider]: that one is the *time-boxed
- * emergency* API (needs a `ConditionalTemporalRead` circle grant, clamps to a recent window,
- * notifies the author's owner, and keys by **fileId**). Feed posts need none of that and the
- * Feed-drive reference only carries a **globalTransitId**, never the author's fileId — hence the
- * by-gtid route here, extending the `/peer/.../files/by-gtid/{gtid}/exists` route
- * [PeerDriveQueryProvider] already uses. Mirrors dotyoucore-js
- * `get{Payload,Thumb}BytesOverPeerByGlobalTransitId`.
+ * Routes mirror dotyoucore-js `get{Payload,Thumb}BytesOverPeerByGlobalTransitId`:
+ * `/transit/query/{payload,thumb}_byglobaltransitid` with the peer + drive (alias+type) + gtid as
+ * query params (NOT the `/peer/.../files/...` path form, which only exposes `exists` by gtid).
  */
 class PeerFileByGlobalTransitProvider(
     httpClient: HttpClient,
@@ -33,21 +29,21 @@ class PeerFileByGlobalTransitProvider(
     private val driveFileProvider: DriveFileProvider,
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
 
-    /** Full payload bytes of [globalTransitId]'s [payloadKey] on [peer]'s [driveId]. Null on 404. */
+    /** Full payload bytes of [globalTransitId]'s [payloadKey] on [peer]'s drive. Null on 404. */
     suspend fun getPayloadOverPeerByGlobalTransitId(
         peer: OdinId,
-        driveId: Uuid,
+        driveAlias: Uuid,
+        driveType: Uuid,
         globalTransitId: Uuid,
         payloadKey: String,
     ): BytesResponse? {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         val creds = requireCreds()
-        val url = apiUrl(
-            creds.domain,
-            "/peer/$peer/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey",
-        )
+        val query = "odinId=$peer&alias=$driveAlias&type=$driveType" +
+            "&globalTransitId=$globalTransitId&key=$payloadKey"
+        val url = apiUrl(creds.domain, "/transit/query/payload_byglobaltransitid?$query")
         Logger.i(tag = TAG) {
-            "getPayload: GET peer=${peer.domainName} drive=$driveId gtid=$globalTransitId key=$payloadKey"
+            "getPayload: GET peer=${peer.domainName} alias=$driveAlias gtid=$globalTransitId key=$payloadKey"
         }
         return fetchAndDecrypt(url)
     }
@@ -55,7 +51,8 @@ class PeerFileByGlobalTransitProvider(
     /** A server thumbnail ([width]x[height]) of [globalTransitId]'s [payloadKey]. Null on 404. */
     suspend fun getThumbOverPeerByGlobalTransitId(
         peer: OdinId,
-        driveId: Uuid,
+        driveAlias: Uuid,
+        driveType: Uuid,
         globalTransitId: Uuid,
         payloadKey: String,
         width: Int,
@@ -64,12 +61,11 @@ class PeerFileByGlobalTransitProvider(
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         require(width > 0 && height > 0) { "width/height must be positive" }
         val creds = requireCreds()
-        val url = apiUrl(
-            creds.domain,
-            "/peer/$peer/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey/thumb/$width/$height",
-        )
+        val query = "odinId=$peer&alias=$driveAlias&type=$driveType" +
+            "&globalTransitId=$globalTransitId&payloadKey=$payloadKey&width=$width&height=$height"
+        val url = apiUrl(creds.domain, "/transit/query/thumb_byglobaltransitid?$query")
         Logger.i(tag = TAG) {
-            "getThumb: GET peer=${peer.domainName} drive=$driveId gtid=$globalTransitId " +
+            "getThumb: GET peer=${peer.domainName} alias=$driveAlias gtid=$globalTransitId " +
                 "key=$payloadKey ${width}x$height"
         }
         return fetchAndDecrypt(url)

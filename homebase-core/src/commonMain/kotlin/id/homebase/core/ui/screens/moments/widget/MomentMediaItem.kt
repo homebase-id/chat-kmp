@@ -116,6 +116,7 @@ fun MomentMediaItem(
     // (by [globalTransitId]). Null for ordinary local media (chat, moments, own posts).
     remoteOdinId: OdinId? = null,
     globalTransitId: Uuid? = null,
+    remoteDriveType: Uuid? = null,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio || fitBounds) ContentScale.Fit else ContentScale.Crop
@@ -277,6 +278,7 @@ fun MomentMediaItem(
                                 ?: KeyHeader.empty(),
                             remoteOdinId = remoteOdinId,
                             globalTransitId = globalTransitId,
+                            remoteDriveType = remoteDriveType,
                         )
                     }
 
@@ -336,6 +338,7 @@ fun MomentMediaItem(
                         keyHeader = perPayloadKeyHeader,
                         remoteOdinId = remoteOdinId,
                         globalTransitId = globalTransitId,
+                        remoteDriveType = remoteDriveType,
                     )
                 }
                 val videoLocalContext = localContext as? LocalAttachmentContext.Video

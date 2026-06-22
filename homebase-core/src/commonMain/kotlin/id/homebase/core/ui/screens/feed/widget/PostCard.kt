@@ -143,5 +143,8 @@ private fun PostMedia(
         downloadingFiles = emptySet(),
         remoteOdinId = post.remoteOdinId,
         globalTransitId = post.globalTransitId,
+        // Drive type pairs with mediaDriveId (alias) for the over-peer transit query; inert unless
+        // remoteOdinId is set (own posts read locally).
+        remoteDriveType = SystemDriveConstants.publicPostChannelDrive.type,
     )
 }

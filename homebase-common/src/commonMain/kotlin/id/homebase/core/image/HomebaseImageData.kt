@@ -61,6 +61,8 @@ data class HomebaseImageData(
     val remoteOdinId: OdinId? = null,
     /** Global transit id of a remote post, required alongside [remoteOdinId] for the over-peer fetch. */
     val globalTransitId: Uuid? = null,
+    /** Type of the author's drive ([driveId] is the alias) — both go in the over-peer transit query. */
+    val remoteDriveType: Uuid? = null,
 ) {
     companion object {
         /** Create data for a pending (not yet uploaded) image */

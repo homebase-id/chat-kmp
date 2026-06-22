@@ -75,6 +75,7 @@ fun MomentMediaGallery(
     // (by [globalTransitId]). Null for local media (moments, chat, own posts).
     remoteOdinId: OdinId? = null,
     globalTransitId: Uuid? = null,
+    remoteDriveType: Uuid? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -97,6 +98,7 @@ fun MomentMediaGallery(
                 fitToContent = fitToContent,
                 remoteOdinId = remoteOdinId,
                 globalTransitId = globalTransitId,
+                remoteDriveType = remoteDriveType,
             )
         } else {
             MomentMediaCarousel(
@@ -120,6 +122,7 @@ fun MomentMediaGallery(
                 fitToContent = fitToContent,
                 remoteOdinId = remoteOdinId,
                 globalTransitId = globalTransitId,
+                remoteDriveType = remoteDriveType,
             )
         }
     }
@@ -145,6 +148,7 @@ private fun SingleImageLayout(
     fitToContent: Boolean = false,
     remoteOdinId: OdinId? = null,
     globalTransitId: Uuid? = null,
+    remoteDriveType: Uuid? = null,
 ) {
     // Compute aspect from the payload's thumbnail metadata so the cell sizes
     // before the (possibly remote, encrypted) full image is decoded. Falls
@@ -189,6 +193,7 @@ private fun SingleImageLayout(
         isUploading = isUploading,
         remoteOdinId = remoteOdinId,
         globalTransitId = globalTransitId,
+        remoteDriveType = remoteDriveType,
     )
 }
 
