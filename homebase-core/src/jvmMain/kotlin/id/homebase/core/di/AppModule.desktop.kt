@@ -28,6 +28,7 @@ import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.notifications.DesktopChatNotificationBridge
 import id.homebase.core.notifications.KMPNotifierBackend
 import id.homebase.core.notifications.NotificationBackend
+import id.homebase.core.permissions.LocationPermissionQuery
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.JvmUpdateAppManager
@@ -38,6 +39,10 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 
 actual fun platformModule(): Module = module {
+    // Desktop has no runtime location permission model — JvmPermissionsManager
+    // grants everything; mirror that here so live-share readiness gates on
+    // add-on activation alone.
+    single<LocationPermissionQuery> { LocationPermissionQuery { true } }
     single<FileOperationsProvider> { JvmFileOperationsProvider() }
     single { ShareCacheStorage() }
     single { createSettings() }

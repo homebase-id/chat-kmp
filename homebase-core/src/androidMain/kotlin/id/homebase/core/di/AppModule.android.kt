@@ -30,6 +30,8 @@ import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.image.PublicImageFetcher
 import id.homebase.core.notifications.KMPNotifierBackend
 import id.homebase.core.notifications.NotificationBackend
+import id.homebase.core.permissions.LocationPermissionQuery
+import id.homebase.core.permissions.androidLocationPermissionQuery
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.AndroidUpdateAppManager
@@ -41,6 +43,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 
 actual fun platformModule(): Module = module {
+    single<LocationPermissionQuery> { androidLocationPermissionQuery(androidContext()) }
     single<FileOperationsProvider> { AndroidFileOperationsProvider(androidContext()) }
     single { ShareCacheStorage(androidContext()) }
     single { createSettings(androidContext()) }

@@ -18,6 +18,7 @@ import id.homebase.core.image.HomebaseImageFetcher
 import id.homebase.core.image.HomebaseImageKeyer
 import id.homebase.core.notifications.NoopNotificationBackend
 import id.homebase.core.notifications.NotificationBackend
+import id.homebase.core.permissions.LocationPermissionQuery
 import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.UpdateAppManager
@@ -27,6 +28,9 @@ import org.koin.dsl.module
 
 actual fun platformModule(): Module = module {
     single { createSettings() }
+    // Web's PermissionsManager grants everything (see WebPlatformStubs); mirror
+    // that so live-share readiness gates on add-on activation alone.
+    single<LocationPermissionQuery> { LocationPermissionQuery { true } }
     single<FileOperationsProvider> { WebFileOperationsProvider() }
     single { ShareCacheStorage() }
     single<NotificationBackend> { NoopNotificationBackend() }
