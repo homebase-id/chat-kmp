@@ -10,14 +10,17 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -38,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
@@ -251,19 +255,28 @@ private fun FeedTimelineEmpty(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Icon(
+            imageVector = Icons.Outlined.DynamicFeed,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(56.dp),
+        )
+        Spacer(Modifier.height(16.dp))
         Text(
             text = stringResource(MR.string.feed_timeline_empty_title),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = stringResource(MR.string.feed_timeline_empty_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onCompose) {
+        Spacer(Modifier.height(20.dp))
+        FilledTonalButton(onClick = onCompose) {
             Text(stringResource(MR.string.feed_timeline_empty_action))
         }
     }
@@ -280,19 +293,28 @@ private fun FeedTimelineError(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Icon(
+            imageVector = Icons.Outlined.CloudOff,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(56.dp),
+        )
+        Spacer(Modifier.height(16.dp))
         Text(
             text = stringResource(MR.string.feed_timeline_error_title),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onRetry) {
+        Spacer(Modifier.height(20.dp))
+        FilledTonalButton(onClick = onRetry) {
             Text(stringResource(MR.string.feed_timeline_error_retry))
         }
     }
