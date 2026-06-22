@@ -112,6 +112,8 @@ fun MediaItem(
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
+    liveControls: LiveLocationBubbleControls? = null,
+    locationHeaderDescriptor: LocationPreviewDescriptor? = null,
     shape: Shape =
         RoundedCornerShape(
             topStart = Dimens.Message.cornerRadius,
@@ -199,23 +201,26 @@ fun MediaItem(
         }
 
         payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> {
-            val locationDescriptors = remember(payload.descriptorContent) {
+            // NEW messages carry the descriptor in the header (locationHeaderDescriptor); OLD ones
+            // parse it from the payload's descriptorContent. Header wins when present.
+            val payloadDescriptor = remember(payload.descriptorContent) {
                 payload.descriptorContent?.let { content ->
                     try {
                         OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
                             content
-                        )
+                        ).firstOrNull()
                     } catch (_: Exception) {
                         null
                     }
                 }
             }
+            val descriptor = locationHeaderDescriptor ?: payloadDescriptor
 
             val payloadIv = payload.iv?.let { Base64.decode(it) }
 
-            if (payloadIv != null && locationDescriptors != null) {
+            if (payloadIv != null && descriptor != null) {
                 LocationPreviewCard(
-                    descriptor = locationDescriptors[0],
+                    descriptor = descriptor,
                     fileId = fileId,
                     driveId = driveId,
                     payloadKey = payload.key,
@@ -223,6 +228,10 @@ fun MediaItem(
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
                     modifier = baseModifier,
+                    onLongPress = onLongPress?.let { lp -> { lp(Offset.Zero) } },
+                    // Live-share only on new-format (header-descriptor) messages; an old payload-only
+                    // location can't be edited via updateMessage, so don't offer the toggle there.
+                    liveControls = liveControls.takeIf { locationHeaderDescriptor != null },
                 )
             } else {
                 MediaPlaceholder(

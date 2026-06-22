@@ -7,6 +7,7 @@ import id.homebase.api.image.ImageUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 private const val TAG = "StickerImageProcessor"
 
@@ -129,6 +130,69 @@ object StickerImageProcessor {
                 throw e
             } catch (e: Exception) {
                 Logger.e(e, TAG) { "addWhiteOutline FAILED — returning un-outlined cut-out (in=${cutOutPng.size}B)" }
+                cutOutPng
+            }
+        }
+
+    /**
+     * Tightly crop a transparent cut-out to its alpha bounding box (plus a small margin) so the
+     * subject fills the sticker frame instead of being a tiny island in a full-frame transparent
+     * canvas. The segmenters emit a full-frame masked image, so without this the subject gets
+     * downscaled to 512 along with its transparent margins and renders small.
+     *
+     * Runs BEFORE [addWhiteOutline] so the outline radius and the final 512 cap are sized to the
+     * subject. Preserves natural aspect (no forced square). Pure PNG-in/PNG-out on
+     * Dispatchers.Default; returns the input unchanged on decode failure / fully-transparent input
+     * / any error so it can never block sticker creation.
+     */
+    suspend fun cropToSubject(cutOutPng: ByteArray, marginFraction: Float = 0.04f): ByteArray =
+        withContext(Dispatchers.Default) {
+            try {
+                val img = ImageUtils.decodeToArgb(cutOutPng) ?: return@withContext cutOutPng
+                val w = img.width; val h = img.height
+                if (w == 0 || h == 0) return@withContext cutOutPng
+
+                var minX = w; var minY = h; var maxX = -1; var maxY = -1
+                val px = img.pixels
+                for (y in 0 until h) {
+                    val row = y * w
+                    for (x in 0 until w) {
+                        if ((px[row + x] ushr 24 and 0xFF) > OUTLINE_ALPHA_THRESHOLD) {
+                            if (x < minX) minX = x
+                            if (x > maxX) maxX = x
+                            if (y < minY) minY = y
+                            if (y > maxY) maxY = y
+                        }
+                    }
+                }
+                if (maxX < minX || maxY < minY) {
+                    // Fully transparent (no subject) — nothing to crop to.
+                    return@withContext cutOutPng
+                }
+
+                val bw = maxX - minX + 1; val bh = maxY - minY + 1
+                // Small margin keeps the later white-outline halo from being clipped at the edge.
+                val pad = (maxOf(bw, bh) * marginFraction).roundToInt()
+                val x0 = (minX - pad).coerceAtLeast(0)
+                val y0 = (minY - pad).coerceAtLeast(0)
+                val x1 = (maxX + pad).coerceAtMost(w - 1)
+                val y1 = (maxY + pad).coerceAtMost(h - 1)
+                val cw = x1 - x0 + 1; val ch = y1 - y0 + 1
+                if (cw == w && ch == h) return@withContext cutOutPng // already tight
+
+                val cropped = IntArray(cw * ch)
+                for (y in 0 until ch) {
+                    val srcRow = (y0 + y) * w + x0
+                    val dstRow = y * cw
+                    px.copyInto(cropped, dstRow, srcRow, srcRow + cw)
+                }
+                val out = ImageUtils.encodeArgbToPng(ArgbImage(cropped, cw, ch))
+                Logger.d(tag = TAG) { "cropToSubject: ${w}x$h -> ${cw}x$ch (bbox ${bw}x$bh, pad=$pad)" }
+                out
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "cropToSubject FAILED — returning un-cropped cut-out (in=${cutOutPng.size}B)" }
                 cutOutPng
             }
         }

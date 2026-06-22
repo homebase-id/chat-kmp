@@ -156,6 +156,7 @@ private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation
 @Composable
 fun SentMessageBubble(
     message: MessageUiModel,
+    liveControls: LiveLocationBubbleControls? = null,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String = "",
@@ -341,6 +342,7 @@ fun SentMessageBubble(
                             .onSizeChanged { bubbleWidthPx = it.width },
                         message = message,
                         decryptedFiles = decryptedFiles,
+                        liveControls = liveControls,
                         sentByYou = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
@@ -452,6 +454,7 @@ fun SentMessageBubbleDisplayOnly(
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
+    liveControls: LiveLocationBubbleControls? = null,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String = "",
@@ -581,6 +584,7 @@ fun ReceivedMessageBubble(
                                 .onSizeChanged { bubbleWidthPx = it.width },
                             message = message,
                             decryptedFiles = decryptedFiles,
+                        liveControls = liveControls,
                             sentByYou = false,
                             currentOdinId = currentOdinId,
                             clusterPosition = clusterPosition,

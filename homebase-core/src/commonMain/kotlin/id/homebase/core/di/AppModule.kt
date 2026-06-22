@@ -167,6 +167,7 @@ import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
@@ -707,6 +708,7 @@ val appModule = module {
             stickerStream = get(),
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
+            liveLocationShareService = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -754,9 +756,22 @@ val appModule = module {
             contactService = get(),
             credentialsManager = get(),
             tracker = get(),
+            receiveStore = get(),
+            liveShareService = get(),
         )
     }
     viewModelOf(::LocationHistoryViewModel)
+    // Manual block (not viewModelOf): the constructor has a `nowMs: () -> Long` param with a default;
+    // viewModelOf would try to autowire that Function0 from Koin and fail at creation time.
+    viewModel {
+        LiveLocationViewModel(
+            receiveStore = get(),
+            contactService = get(),
+            locationPreferences = get(),
+            pointStore = get(),
+            credentialsManager = get(),
+        )
+    }
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
     viewModelOf(::ContactBookSettingsViewModel)

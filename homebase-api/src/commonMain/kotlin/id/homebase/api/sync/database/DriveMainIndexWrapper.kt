@@ -293,35 +293,4 @@ class DriveMainIndexWrapper(
             ).value > 0
         }
     }
-
-    // Returns -1 if unable to read the version
-    suspend fun getSchemaVersion(): Long {
-        val sqlQuery =
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'DriveMainIndex'"
-        val createStmt = databaseManager.executeReadQuery(
-            null,
-            sqlQuery,
-            mapper = { cursor: SqlCursor ->
-                if (cursor.next().value) {
-                    QueryResult.Value(cursor.getString(0))
-                } else {
-                    QueryResult.Value(null)
-                }
-            },
-            parameters = 0,
-            binders = null
-        ).value
-
-        if (createStmt == null) return -1
-
-        val commentRegex = Regex("-- Version: (\\d+)")
-        val match = commentRegex.find(createStmt)
-
-        val result = match?.groups?.get(1)?.value?.toLong()
-
-        if (result == null)
-            return -1
-        else
-            return result
-    }
 }
