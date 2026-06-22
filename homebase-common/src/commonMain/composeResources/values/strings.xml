@@ -690,6 +690,7 @@
     <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>
     <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
+    <string name="chat_preview_sender_label">%1$s:</string>
 
     <string name="chat_location_share">Location</string>
     <string name="chat_location_attachment">Location map</string>

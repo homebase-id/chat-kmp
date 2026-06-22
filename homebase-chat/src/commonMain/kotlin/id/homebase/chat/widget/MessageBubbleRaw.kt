@@ -733,12 +733,10 @@ fun MessageBubbleRaw(
                                 } else {
                                     // Mirror the conversation-list preview's deleted marker
                                     // (MessageContentLabel: Block icon + the same string).
-                                    // ponytail: safe only because it sits beside the short fixed
-                                    // "deleted" string. The timestamp-tuck Layout below measures
-                                    // lastLineRight from the text's own origin and assumes it starts
-                                    // at textRowPadding; this icon shifts that origin right by ~20dp.
-                                    // If this icon is ever shown next to variable/long body text,
-                                    // add its width to lastLineEnd or the tucked time can overlap.
+                                    // This icon (16dp) + the row's 4dp gap shift the text's
+                                    // visual origin right; the timestamp-tuck Layout below adds
+                                    // that same offset (leadingIconOffset) to lastLineEnd so the
+                                    // tucked time clears the text instead of overlapping it.
                                     if (message.isDeleted) {
                                         Icon(
                                             imageVector = Icons.Default.Block,
@@ -822,6 +820,13 @@ fun MessageBubbleRaw(
                             }
                         }
                     ) { measurables, constraints ->
+                        // The deleted-message Block icon sits left of the body inside the text
+                        // row (icon 16dp + the row's 4dp gap), shifting the text's visual origin
+                        // right. lastLineRight is measured from the text's own origin, so add this
+                        // offset to lastLineEnd below or the tucked timestamp overlaps the text.
+                        val leadingIconOffset =
+                            if (message.isDeleted) (16.dp + 4.dp).roundToPx() else 0
+
                         // Find MediaMessage index (after author and reply preview)
                         var mediaIndex = 0
                         if (authorName != null) mediaIndex++
@@ -888,7 +893,7 @@ fun MessageBubbleRaw(
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
@@ -947,7 +952,7 @@ fun MessageBubbleRaw(
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
