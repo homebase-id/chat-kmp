@@ -224,13 +224,12 @@ fun MessageBubbleRaw(
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
                 val pIv = mapPayload?.iv?.let { Base64.decode(it) }
-                // ONE bubble, image-with-caption style: the map fills the top, the address + optional
-                // caption + timestamp sit below on the message-bubble background (blue when sent, grey
-                // when received). The caption text is the bubble's full content color (white on blue);
-                // the LiveShareActionArea link is contentColor too, so nothing is blue-on-blue.
-                val locContainerColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+                // One fused bubble: the map "card" stays neutral grey; only the user's caption section
+                // takes the message-bubble background (blue when sent). The outer modifier supplies the
+                // single rounded clip — the card sets the grey, the caption section sets the blue.
+                val captionBg = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
                 else MaterialTheme.colorScheme.surfaceContainerHigh
-                val locContentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+                val captionContent = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
                 else MaterialTheme.colorScheme.onSurface
                 LocationPreviewCard(
                     descriptor = d,
@@ -241,13 +240,14 @@ fun MessageBubbleRaw(
                     previewThumbnail = mapPayload?.previewThumbnail?.toEmbeddedThumb(),
                     modifier = modifier
                         .widthIn(min = 240.dp, max = 320.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(locContainerColor),
+                        .clip(RoundedCornerShape(16.dp)),
                     onLongPress = onLongClick,
                     liveControls = liveControls,
-                    contentColor = locContentColor,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     createdAtMs = message.userDate.toEpochMilliseconds(),
                     timestamp = formatMessageTimestamp(message.userDate),
+                    captionBackgroundColor = captionBg,
+                    captionContentColor = captionContent,
                 )
             }
             return

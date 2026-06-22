@@ -245,7 +245,7 @@ fun LocationPreviewCard(
     onLongPress: (() -> Unit)? = null,
     /** Live-share side + actions; null only for the pre-send staging preview. */
     liveControls: LiveLocationBubbleControls? = null,
-    /** Bubble foreground color so text/links stay legible on both grey (received) and tinted (sent) bubbles. */
+    /** Foreground color for the neutral location card (map area): address, pin, live-share affordance. */
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
     /**
      * Message creation time (epoch-ms, from `userDate`). The "Share live location" offer is hidden once
@@ -254,10 +254,17 @@ fun LocationPreviewCard(
      */
     createdAtMs: Long? = null,
     /**
-     * Formatted send time, shown muted at the bottom of the bubble (after the caption, if any) — like
-     * the timestamp on a regular text/image message. Null ⇒ no timestamp (e.g. the pre-send preview).
+     * Formatted send time, shown muted at the bottom of the bubble (in the caption section if there is
+     * one, else on the card). Null ⇒ no timestamp (e.g. the pre-send preview).
      */
     timestamp: String? = null,
+    /**
+     * Background + foreground for the **caption section** only — the user's typed text renders as a
+     * fused message-bubble section below the neutral map card (blue when sent). Defaults to the neutral
+     * card colors so non-bubble callers stay all-grey.
+     */
+    captionBackgroundColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    captionContentColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
@@ -290,6 +297,12 @@ fun LocationPreviewCard(
         if (isLive && liveControls != null) liveControls.onOpenMap() else uriHandler.openUri(geoUri)
     }
 
+    val hasCaption = !descriptor.caption.isNullOrBlank()
+
+    // One bubble, two fused sections under a single outer clip (set by the caller's modifier):
+    //   • the neutral map "card" (map + address + live-share), always grey;
+    //   • the user's caption, on the message-bubble background (blue when sent).
+    // With no caption the timestamp lives on the card; with a caption it lives in the caption section.
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -300,76 +313,103 @@ fun LocationPreviewCard(
                 )
             },
     ) {
-        if (descriptor.hasImage) {
-            val imageData = remember(driveId, fileId, payloadKey) {
-                HomebaseImageData(
-                    driveId = driveId,
-                    fileId = fileId,
-                    payloadKey = payloadKey,
-                    previewThumbnail = previewThumbnail,
-                    requestedSize = ImageSize.THUMB_MEDIUM,
-                    isEncrypted = true,
-                    keyHeader = keyHeader,
-                    loadFullPayload = true,
+        // ── Section 1: neutral location card ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        ) {
+            if (descriptor.hasImage) {
+                val imageData = remember(driveId, fileId, payloadKey) {
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payloadKey,
+                        previewThumbnail = previewThumbnail,
+                        requestedSize = ImageSize.THUMB_MEDIUM,
+                        isEncrypted = true,
+                        keyHeader = keyHeader,
+                        loadFullPayload = true,
+                    )
+                }
+                // Fill the bubble width (no letterbox borders); the outer container rounds the corners.
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = Modifier.fillMaxWidth().height(160.dp),
+                    contentScale = ContentScale.Crop,
+                    contentDescription = descriptor.address,
                 )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = stringResource(MR.string.cd_location_pin),
+                        tint = contentColor,
+                        modifier = Modifier.size(40.dp),
+                    )
+                }
             }
-            // Fill the bubble width (no letterbox borders); the outer container rounds the corners.
-            HomebaseImage(
-                imageData = imageData,
-                modifier = Modifier.fillMaxWidth().height(160.dp),
-                contentScale = ContentScale.Crop,
-                contentDescription = descriptor.address,
-            )
-        } else {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(100.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = stringResource(MR.string.cd_location_pin),
-                    tint = contentColor,
-                    modifier = Modifier.size(40.dp),
-                )
+
+            val showCardTimestamp = !hasCaption && timestamp != null
+            if (descriptor.address.isNotEmpty() || liveControls != null || showCardTimestamp) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // ── Fixed location metadata (muted): address, then the share-live affordance ──
+                    LocationPreviewTextContent(
+                        address = descriptor.address,
+                        color = contentColor.copy(alpha = 0.7f),
+                    )
+                    if (liveControls != null) {
+                        if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(6.dp))
+                        LiveShareActionArea(
+                            controls = liveControls,
+                            isLive = isLive,
+                            isEnded = isEnded,
+                            remainingMs = remainingMs,
+                            contentColor = contentColor,
+                            canStart = canStartShare,
+                        )
+                    }
+                    // No caption ⇒ the timestamp sits muted at the bottom of the card.
+                    if (showCardTimestamp) {
+                        if (descriptor.address.isNotEmpty() || liveControls != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                        Text(
+                            text = timestamp!!,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f),
+                            modifier = Modifier.align(Alignment.End),
+                        )
+                    }
+                }
             }
         }
 
-        Column(modifier = Modifier.padding(12.dp)) {
-            // ── Fixed location metadata (muted): address, then the share-live affordance ──
-            LocationPreviewTextContent(
-                address = descriptor.address,
-                color = contentColor.copy(alpha = 0.7f),
-            )
-            if (liveControls != null) {
-                if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(6.dp))
-                LiveShareActionArea(
-                    controls = liveControls,
-                    isLive = isLive,
-                    isEnded = isEnded,
-                    remainingMs = remainingMs,
-                    contentColor = contentColor,
-                    canStart = canStartShare,
-                )
-            }
-            // The user's caption is part of THIS bubble (image-with-caption style): the muted address
-            // above, then the caption in the bubble's full content color + regular bodyLarge text.
-            if (!descriptor.caption.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
+        // ── Section 2: the user's caption, fused below the card on the message-bubble background ──
+        if (hasCaption) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(captionBackgroundColor)
+                    .padding(12.dp),
+            ) {
                 Text(
-                    text = descriptor.caption,
+                    text = descriptor.caption!!,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = contentColor,
+                    color = captionContentColor,
                 )
-            }
-            // Send time, muted at the bottom-end — like a regular message's timestamp.
-            if (timestamp != null) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = timestamp,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.7f),
-                    modifier = Modifier.align(Alignment.End),
-                )
+                if (timestamp != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = timestamp,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = captionContentColor.copy(alpha = 0.7f),
+                        modifier = Modifier.align(Alignment.End),
+                    )
+                }
             }
         }
     }
