@@ -243,6 +243,7 @@ fun MessageBubbleRaw(
                     onLongPress = onLongClick,
                     liveControls = liveControls,
                     contentColor = locContentColor,
+                    createdAtMs = message.userDate.toEpochMilliseconds(),
                 )
             }
             return

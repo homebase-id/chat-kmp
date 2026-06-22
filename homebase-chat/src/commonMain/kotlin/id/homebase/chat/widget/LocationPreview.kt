@@ -247,6 +247,12 @@ fun LocationPreviewCard(
     liveControls: LiveLocationBubbleControls? = null,
     /** Bubble foreground color so text/links stay legible on both grey (received) and tinted (sent) bubbles. */
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    /**
+     * Message creation time (epoch-ms, from `userDate`). The "Share live location" offer is hidden once
+     * the pin is older than [SHARE_OFFER_WINDOW_MS] — a live share broadcasts the device's *current*
+     * position, so offering it from a stale pin is misleading. Null ⇒ not age-gated (non-bubble callers).
+     */
+    createdAtMs: Long? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
@@ -255,10 +261,13 @@ fun LocationPreviewCard(
 
     // Derive STATIC / LIVE / ENDED from the descriptor's window vs now. While live, a coarse ticker
     // (<=30s) refreshes the "time left" caption; the loop lands exactly on `until` to flip to ENDED.
+    // When static, the same ticker lands on the share-offer deadline so the link self-hides at 15 min.
     val until = descriptor.liveShareUntilMs
-    var nowMs by remember(until) { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
-    LaunchedEffect(until) {
-        val u = until ?: return@LaunchedEffect
+    val shareOfferDeadline = if (until == null) createdAtMs?.let { it + SHARE_OFFER_WINDOW_MS } else null
+    val tickerDeadline = until ?: shareOfferDeadline
+    var nowMs by remember(tickerDeadline) { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
+    LaunchedEffect(tickerDeadline) {
+        val u = tickerDeadline ?: return@LaunchedEffect
         while (true) {
             val now = Clock.System.now().toEpochMilliseconds()
             nowMs = now
@@ -269,6 +278,8 @@ fun LocationPreviewCard(
     val isLive = until != null && nowMs < until
     val isEnded = until != null && nowMs >= until
     val remainingMs = if (until != null) (until - nowMs).coerceAtLeast(0L) else 0L
+    // The share-live offer is available only while the pin is fresh (or un-gated when createdAtMs null).
+    val canStartShare = shareOfferDeadline == null || nowMs < shareOfferDeadline
 
     val onCardTap = {
         if (isLive && liveControls != null) liveControls.onOpenMap() else uriHandler.openUri(geoUri)
@@ -332,6 +343,7 @@ fun LocationPreviewCard(
                     isEnded = isEnded,
                     remainingMs = remainingMs,
                     contentColor = contentColor,
+                    canStart = canStartShare,
                 )
             }
             // ── The user's own typed caption, below the fixed parts. Brand blue (primary) so the
@@ -361,6 +373,8 @@ private fun LiveShareActionArea(
     isEnded: Boolean,
     remainingMs: Long,
     contentColor: Color,
+    /** Whether the static "Share live location" offer is still available (pin fresh enough). */
+    canStart: Boolean,
 ) {
     val mutedColor = contentColor.copy(alpha = 0.7f)
     Box {
@@ -404,9 +418,11 @@ private fun LiveShareActionArea(
                 )
             }
 
-            controls.sentByYou -> {
-                // STATIC, my own message: offer to share live. Uses the bubble's content color so the
-                // link is visible on both the grey (received) and tinted (sent) bubble.
+            controls.sentByYou && canStart -> {
+                // STATIC, my own, still-fresh message: offer to share live. Uses the bubble's content
+                // color so the link is visible on both the grey (received) and tinted (sent) bubble.
+                // Hidden once the pin is stale (canStart=false) — a live share streams the CURRENT
+                // position, which has nothing to do with an old pin.
                 var menuExpanded by remember { mutableStateOf(false) }
                 Column {
                     Row(
@@ -443,6 +459,9 @@ private fun LiveShareActionArea(
         }
     }
 }
+
+/** How long after a location pin is sent the "Share live location" offer stays available. */
+private const val SHARE_OFFER_WINDOW_MS = 15 * 60_000L
 
 private val DURATION_OPTIONS = listOf(
     MR.string.live_share_15m to 15 * 60_000L,
