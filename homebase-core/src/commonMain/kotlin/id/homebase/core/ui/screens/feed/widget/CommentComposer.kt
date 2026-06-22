@@ -13,18 +13,23 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Mood
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +39,11 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.materializeForUpload
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.toImageAttachmentInput
+import id.homebase.chat.services.sticker.SavedSticker
+import id.homebase.chat.services.sticker.StickerService
+import id.homebase.chat.services.sticker.StickerStream
+import id.homebase.chat.widget.StickerTray
+import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_attach_image
@@ -43,6 +53,7 @@ import id.homebase.resources.feed_comment_hint
 import id.homebase.resources.feed_comment_remove_attachment
 import id.homebase.resources.feed_comment_replying_to
 import id.homebase.resources.feed_comment_send
+import id.homebase.resources.feed_comment_sticker
 import id.homebase.resources.feed_reply_cancel
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -65,6 +76,7 @@ import org.koin.compose.koinInject
  * @param replyingToName name of the comment being replied to, if any.
  * @param onCancelReply clears the active reply target.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommentComposer(
     onSend: (text: String, attachment: AttachmentInput?) -> Unit,
@@ -73,14 +85,37 @@ fun CommentComposer(
     onCancelReply: () -> Unit = {},
 ) {
     val fileOps: FileOperationsProvider = koinInject()
+    val stickerStream: StickerStream = koinInject()
+    val stickerService: StickerService = koinInject()
     val scope = rememberCoroutineScope()
 
     var text by remember { mutableStateOf("") }
     var pickedImage by remember { mutableStateOf<PlatformFile?>(null) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var showStickerSheet by remember { mutableStateOf(false) }
+
+    val stickers by stickerStream.stickers.collectAsStateWithLifecycle()
+    val stickersLoaded by stickerStream.isLoaded.collectAsStateWithLifecycle()
 
     val imagePicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         if (file != null) pickedImage = file
+    }
+
+    // Resolve a saved sticker to the SAME AttachmentInput the image picker produces:
+    // StickerService.resolveForSend downloads + decrypts the sticker to a temp file, then
+    // we feed that path through materializeForUpload + toImageAttachmentInput — the exact
+    // path chat's StickerHandler.handleSendSavedSticker uses (re-stage as an image upload).
+    // A sticker-only comment (empty text) is valid.
+    val sendSticker: (SavedSticker) -> Unit = { sticker ->
+        val body = text.trim()
+        scope.launch {
+            val path = stickerService.resolveForSend(sticker) ?: return@launch
+            val attachment = platformFileFromPath(path)
+                .materializeForUpload(fileOps)
+                .toImageAttachmentInput(fileOps)
+            onSend(body, attachment)
+            text = ""
+        }
     }
 
     val canSend = text.isNotBlank() || pickedImage != null
@@ -157,6 +192,13 @@ fun CommentComposer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            IconButton(onClick = { showStickerSheet = true }) {
+                Icon(
+                    imageVector = Icons.Outlined.Mood,
+                    contentDescription = stringResource(MR.string.feed_comment_sticker),
+                )
+            }
+
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
@@ -219,5 +261,26 @@ fun CommentComposer(
                 text += emoji
             },
         )
+    }
+
+    if (showStickerSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showStickerSheet = false },
+            sheetState = sheetState,
+        ) {
+            StickerTray(
+                stickers = stickers,
+                isLoaded = stickersLoaded,
+                onStickerSelected = { sticker ->
+                    showStickerSheet = false
+                    sendSticker(sticker)
+                },
+                // ponytail: long-press (remove) and import are chat-library affordances
+                // not relevant when picking a sticker for a feed comment.
+                onStickerLongPress = {},
+                onImportClick = {},
+            )
+        }
     }
 }
