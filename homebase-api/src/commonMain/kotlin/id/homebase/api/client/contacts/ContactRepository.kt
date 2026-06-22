@@ -5,7 +5,6 @@ package id.homebase.api.client.contacts
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
@@ -13,6 +12,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
+import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +42,7 @@ private const val TAG = "ContactRepository"
  */
 class ContactRepository(
     private val contactsProvider: ContactsProvider,
+    private val contactPayloadReader: ContactPayloadReader,
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
@@ -183,6 +184,41 @@ class ContactRepository(
             val idx = current.indexOfFirst { it.uniqueId == contact.uniqueId }
             if (idx >= 0) current.toMutableList().apply { this[idx] = contact }
             else current + contact
+        }
+    }
+
+    /**
+     * Fetches and parses a contact's on-demand `ext_data` payload (bios / rich text) — call only
+     * when actually showing the bios; it is not part of the list/detail read.
+     *
+     * Returns null when there is nothing to show: the contact has no `ext_data` payload
+     * ([Contact.hasExtData] is false, or the fetch 404s), the row is optimistic (no [Contact.fileId]
+     * yet), or the fetch/parse fails. Callers treat null as "empty extended data".
+     */
+    suspend fun loadExtData(contact: Contact): ContactExtData? {
+        if (!contact.hasExtData) return null
+        val fileId = contact.fileId ?: return null
+        val keyHeader = contact.keyHeader ?: return null
+
+        val bytes = try {
+            contactPayloadReader.getPayloadBytes(
+                driveId = driveId,
+                fileId = fileId,
+                key = ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY,
+                keyHeader = keyHeader,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e, TAG) { "loadExtData fetch failed for ${contact.uniqueId}" }
+            return null
+        } ?: return null
+
+        return runCatching {
+            OdinSystemSerializer.deserialize<ContactExtData>(bytes.decodeToString())
+        }.getOrElse {
+            Logger.w(it, TAG) { "loadExtData parse failed for ${contact.uniqueId}" }
+            null
         }
     }
 

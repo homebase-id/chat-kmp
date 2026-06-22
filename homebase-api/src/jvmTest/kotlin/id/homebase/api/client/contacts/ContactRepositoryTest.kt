@@ -121,8 +121,10 @@ class ContactRepositoryTest {
     ): ContactRepository {
         // No image tests here, so the header reader is never invoked.
         val provider = ContactsProvider(HttpClient(engine), cm, { _, _ -> null })
+        // No ext_data tests here, so the payload reader is never invoked.
+        val payloadReader = ContactPayloadReader { _, _, _, _ -> null }
         val scope = backgroundScope + UnconfinedTestDispatcher(testScheduler)
-        return ContactRepository(provider, dbm, cm, eventBus, scope)
+        return ContactRepository(provider, payloadReader, dbm, cm, eventBus, scope)
     }
 
     // ------------------------------------------------------------

@@ -28,6 +28,20 @@ data class ContactContent(
     val phone: ContactPhone? = null,
     val email: ContactEmail? = null,
     val birthday: ContactBirthday? = null,
+    /** Short header tagline (~<=160 chars). Distinct from the ext_data bios (see [ContactExtData]). */
+    val shortBio: String? = null,
+    val nickname: String? = null,
+    /** Free-text status/tagline — NOT connection state (derive that live from connection/circle APIs). */
+    val status: String? = null,
+    /** Bare URL value; render the link yourself. */
+    val link: String? = null,
+    // social/isEmergencyContact stay nullable (not `emptyMap()`/`false`) for the same reason as the
+    // fields above: the serializer encodes defaults, so a non-null default would emit on every write
+    // and the server's merge would treat it as "set this", clobbering a stored value. Null omits.
+    /** Social handles keyed by attribute-type-id GUID (hyphenated). Values are bare handles, not URLs. */
+    val social: Map<String, String>? = null,
+    /** Owner-only flag. */
+    val isEmergencyContact: Boolean? = null,
 )
 
 @Serializable

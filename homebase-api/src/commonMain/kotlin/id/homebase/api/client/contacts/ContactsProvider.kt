@@ -54,6 +54,9 @@ class ContactsProvider(
 
         /** Server payload key the contact image (and its thumbnails) are stored under. */
         const val CONTACT_IMAGE_PAYLOAD_KEY: String = "prfl_pic"
+
+        /** On-demand payload key the contact's large rich-text fields ([ContactExtData]) ride on. */
+        const val CONTACT_EXT_DATA_PAYLOAD_KEY: String = "ext_data"
     }
 
     // Caches the contact file's AES key by uniqueId. The key is stable across content/image updates,
