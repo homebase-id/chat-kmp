@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.net.toUri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
@@ -41,6 +43,15 @@ import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.widget.FullScreenAttachmentEditor
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.clipboard.platformFileFromPath
+import id.homebase.imageeditor.ui.CropEditorUiEvent
+import id.homebase.imageeditor.ui.CropEditorViewModel
+import id.homebase.imageeditor.ui.CropResultBus
+import id.homebase.imageeditor.ui.CropScreen
+import id.homebase.imageeditor.ui.DrawEditorUiEvent
+import id.homebase.imageeditor.ui.DrawEditorViewModel
+import id.homebase.imageeditor.ui.DrawResultBus
+import id.homebase.imageeditor.ui.DrawScreen
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.moments.services.MomentCreateFlowState
@@ -88,11 +99,14 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
     private val momentCreateFlowState: MomentCreateFlowState by inject()
     private val optionalDriveActivation: OptionalDriveActivation by inject()
+    private val cropResultBus: CropResultBus by inject()
+    private val drawResultBus: DrawResultBus by inject()
 
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
     private var screenState by mutableStateOf<ShareScreenState>(ShareScreenState.Picking)
     private var editorAttachments by mutableStateOf<List<AttachmentPendingFile>>(emptyList())
+    private var activeImageEdit by mutableStateOf<ActiveImageEdit?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -288,10 +302,62 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                     editorAttachments = emptyList()
                                     screenState = ShareScreenState.Picking
                                 },
+                                onCropImage = { _, attachmentId ->
+                                    startImageEdit(attachmentId, draw = false)
+                                },
+                                onDrawImage = { _, attachmentId ->
+                                    startImageEdit(attachmentId, draw = true)
+                                },
                             )
                         }
                     }
 
+                }
+
+                // Crop/draw editor, mounted over the preview. These screens normally
+                // live behind AppNavHost routes; this activity has no NavHost, so we
+                // drive their ViewModels directly with a seeded SavedStateHandle and the
+                // same result bus the in-app flow uses.
+                activeImageEdit?.let { edit ->
+                    BackHandler { dismissImageEdit(edit) }
+                    when (edit) {
+                        is ActiveImageEdit.Crop -> {
+                            val vm = remember(edit.requestId) {
+                                CropEditorViewModel(
+                                    SavedStateHandle(mapOf("requestId" to edit.requestId.toString())),
+                                    cropResultBus,
+                                )
+                            }
+                            CropScreen(
+                                viewModel = vm,
+                                onEvent = { event ->
+                                    when (event) {
+                                        is CropEditorUiEvent.CropConfirmed ->
+                                            applyImageEdit(edit, event.result.bytes)
+                                        CropEditorUiEvent.Cancelled -> dismissImageEdit(edit)
+                                    }
+                                },
+                            )
+                        }
+                        is ActiveImageEdit.Draw -> {
+                            val vm = remember(edit.requestId) {
+                                DrawEditorViewModel(
+                                    SavedStateHandle(mapOf("requestId" to edit.requestId.toString())),
+                                    drawResultBus,
+                                )
+                            }
+                            DrawScreen(
+                                viewModel = vm,
+                                onEvent = { event ->
+                                    when (event) {
+                                        is DrawEditorUiEvent.DrawConfirmed ->
+                                            applyImageEdit(edit, event.result.bytes)
+                                        DrawEditorUiEvent.Cancelled -> dismissImageEdit(edit)
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
 
                 // Semi-transparent overlay while processing (file conversion or sending)
@@ -561,6 +627,61 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         }
     }
 
+    /**
+     * Opens the crop (draw = false) or draw editor over the share preview for the
+     * given image attachment: reads the current bytes, seeds the result bus, and
+     * flips [activeImageEdit] so the editor screen mounts. Non-image attachments are
+     * ignored — the edit tools only apply to images.
+     */
+    private fun startImageEdit(attachmentId: Uuid, draw: Boolean) {
+        val attachment = editorAttachments.firstOrNull { it.attachmentId == attachmentId }
+                as? AttachmentPendingFile.FileImage ?: return
+        lifecycleScope.launch {
+            try {
+                val bytes = fileOperationsProvider.readFileBytes(attachment.file.toString())
+                val requestId = Uuid.random()
+                if (draw) {
+                    drawResultBus.postSource(requestId, bytes)
+                    activeImageEdit = ActiveImageEdit.Draw(requestId, attachmentId)
+                } else {
+                    cropResultBus.postSource(requestId, bytes)
+                    activeImageEdit = ActiveImageEdit.Crop(requestId, attachmentId)
+                }
+            } catch (e: Exception) {
+                Logger.e(tag = "ShareReceiver") { "Failed to open image editor: ${e.message}" }
+            }
+        }
+    }
+
+    /** Persists the edited bytes back onto the attachment and closes the editor. */
+    private fun applyImageEdit(edit: ActiveImageEdit, bytes: ByteArray) {
+        lifecycleScope.launch {
+            try {
+                val tempPath =
+                    fileOperationsProvider.writeBytesToTempFile(bytes, "shared_edited_image", ".jpg")
+                val newFile = AttachmentPendingFile.FileImage(
+                    id = edit.attachmentId,
+                    file = platformFileFromPath(tempPath),
+                )
+                editorAttachments = editorAttachments.map {
+                    if (it.attachmentId == edit.attachmentId) newFile else it
+                }
+            } catch (e: Exception) {
+                Logger.e(tag = "ShareReceiver") { "Failed to apply image edit: ${e.message}" }
+            } finally {
+                dismissImageEdit(edit)
+            }
+        }
+    }
+
+    private fun dismissImageEdit(edit: ActiveImageEdit) {
+        when (edit) {
+            is ActiveImageEdit.Crop -> cropResultBus.cancel(edit.requestId)
+            is ActiveImageEdit.Draw -> drawResultBus.cancel(edit.requestId)
+        }
+        activeImageEdit = null
+    }
+
     private fun resolveConversationTitle(conversationIds: Set<Uuid>): String {
         val conversations = conversationStream.conversations.value.items
         val names = conversationIds.take(2).mapNotNull { id ->
@@ -669,6 +790,14 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 ).show()
             }
         }
+    }
+
+    private sealed class ActiveImageEdit {
+        abstract val requestId: Uuid
+        abstract val attachmentId: Uuid
+
+        data class Crop(override val requestId: Uuid, override val attachmentId: Uuid) : ActiveImageEdit()
+        data class Draw(override val requestId: Uuid, override val attachmentId: Uuid) : ActiveImageEdit()
     }
 
     private sealed class ShareScreenState {
