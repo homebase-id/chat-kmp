@@ -59,14 +59,16 @@ class VideoPreloader(
             try {
                 val metadata = try {
                     resolveVideoMetadata(data, driveFileProvider)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Logger.d(tag = "VideoIO") { "preload skipped — no metadata for ${data.fileId}/${data.payloadKey}: ${e.message}" }
-                    return@withLock
+                    null
                 }
 
-                if (metadata.isSegmented) {
+                if (metadata?.isSegmented == true) {
                     preloadFirstHlsSegment(data, metadata, emit)
-                } else {
+                } else if (metadata != null) {
                     driveFileProvider.prefetchPayload(
                         driveId = data.driveId,
                         fileId = data.fileId,
@@ -75,12 +77,14 @@ class VideoPreloader(
                     )
                     Logger.d(tag = "VideoIO") { "preload complete (mp4, encrypted cache): ${data.fileId}/${data.payloadKey}" }
                 }
-                emit(1f)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.w(tag = "VideoIO") { "preload failed for ${data.fileId}/${data.payloadKey}: ${e.message}" }
             }
+            // Settle progress to done on every non-cancellation exit (metadata-miss,
+            // mp4 stall, hls throw) so the bubble overlay can't freeze (#788).
+            emit(1f)
         }
     }
 

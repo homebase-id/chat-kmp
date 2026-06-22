@@ -162,4 +162,40 @@ class VideoPreloaderTest {
         val prefetchChunkCalls = fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.PrefetchPayloadChunk>()
         assertEquals(2, prefetchChunkCalls.size, "concurrent preloads serialize — both run (calls=${fake.calls})")
     }
+
+    // -- #788: the MP4 download throws partway (reports 0.8 then fails). Progress must still
+    //    settle to 1f so the bubble overlay clears instead of freezing at ~80%.
+    @Test
+    fun mp4PrefetchThrows_progressStillSettlesTo1f() = runTest {
+        val stub = VideoMetadata(
+            mimeType = "video/mp4",
+            isDescriptorContentComplete = true,
+            isSegmented = false,
+            key = metadataKey,
+        )
+        val fake = FakeVideoPrefetchDriveAccess(prefetchError = RuntimeException("network died"))
+        val preloader = newPreloader(fake)
+
+        preloader.preload(playerData(stub))
+
+        assertEquals(1f, preloader.progressFlow(fileId, payloadKey).value)
+    }
+
+    // -- #788: metadata resolution fails (incomplete stub, no metadata payload). Progress must
+    //    settle to 1f so the bubble overlay clears instead of freezing at 0%.
+    @Test
+    fun metadataMiss_progressStillSettlesTo1f() = runTest {
+        val stub = VideoMetadata(
+            mimeType = "video/mp4",
+            isDescriptorContentComplete = false,
+            isSegmented = true,
+            key = metadataKey,
+        )
+        val fake = FakeVideoPrefetchDriveAccess()
+        val preloader = newPreloader(fake)
+
+        preloader.preload(playerData(stub))
+
+        assertEquals(1f, preloader.progressFlow(fileId, payloadKey).value)
+    }
 }
