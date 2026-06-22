@@ -228,11 +228,17 @@ fun MessageBubbleRaw(
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
                 val pIv = mapPayload?.iv?.let { Base64.decode(it) }
-                // Match the Event bubble: a neutral card (NOT a blue "sent" bubble) with grey fixed
-                // text + normal-color caption, the same for sender and receiver. Tinting the card blue
-                // for sentByYou put blue text on a blue background in dark theme.
-                val locContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                val locContentColor = MaterialTheme.colorScheme.onSurface
+                // One fused bubble: the map "card" stays neutral grey; only the user's caption section
+                // takes the message-bubble background (blue when sent). The outer modifier supplies the
+                // single rounded clip — the card sets the grey, the caption section sets the blue.
+                val captionBg = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+                else MaterialTheme.colorScheme.surfaceContainerHigh
+                val captionContent = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+                else MaterialTheme.colorScheme.onSurface
+                // Same edited-aware footer text as a regular bubble (see messageInfoText below).
+                val locInfoText = formatMessageTimestamp(message.userDate).let {
+                    if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $it" else it
+                }
                 LocationPreviewCard(
                     descriptor = d,
                     fileId = message.fileId,
@@ -242,12 +248,18 @@ fun MessageBubbleRaw(
                     previewThumbnail = mapPayload?.previewThumbnail?.toEmbeddedThumb(),
                     modifier = modifier
                         .widthIn(min = 240.dp, max = 320.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(locContainerColor),
+                        .clip(RoundedCornerShape(16.dp)),
                     onLongPress = onLongClick,
                     liveControls = liveControls,
-                    contentColor = locContentColor,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     createdAtMs = message.userDate.toEpochMilliseconds(),
+                    timestamp = locInfoText,
+                    captionBackgroundColor = captionBg,
+                    captionContentColor = captionContent,
+                    showDeliveryStatus = sentByYou && !message.isDeleted,
+                    isPendingSend = message.isPendingSend,
+                    deliveryStatus = message.messageAppData.deliveryStatus,
+                    pendingSince = message.userDate,
                 )
             }
             return
@@ -636,28 +648,17 @@ fun MessageBubbleRaw(
                             )
                         }
                     }
-                    Row(
+                    MessageTimestampFooter(
+                        infoText = messageInfoText,
+                        contentColor = contentColor,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 8.dp, end = 12.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        Text(
-                            text = messageInfoText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
-                        )
-                        if (sentByYou && !message.isDeleted) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            DeliveryStatus(
-                                isPendingSend = isPendingSend,
-                                deliveryStatus = message.messageAppData.deliveryStatus,
-                                contentColor = contentColor.copy(alpha = 0.7f),
-                                pendingSince = message.userDate,
-                            )
-                        }
-                    }
+                    )
                 }
             } else {
                 // Note: If adding composables to Layout here, remember to update layout code to take new widget into account
