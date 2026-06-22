@@ -35,6 +35,10 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.chat.services.livelocation.LiveShareReadiness
+import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.permissions.PermissionsManager
+import id.homebase.core.permissions.PermissionType
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -247,6 +251,16 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    // Readiness gate for "Share live location": activated add-on + location permission, so the chat
+    // layer can prompt to set up location instead of starting a share that captures nothing.
+    single<LiveShareReadiness> {
+        val activation = get<OptionalDriveActivation>()
+        val permissions = get<PermissionsManager>()
+        LiveShareReadiness {
+            activation.isActivated(locationLabeledDrive) &&
+                permissions.isPermissionGranted(PermissionType.LOCATION)
+        }
+    }
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
     single {
         LocationTrackUploaderService(
@@ -684,6 +698,7 @@ val appModule = module {
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
             liveLocationShareService = get(),
+            liveShareReadiness = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
