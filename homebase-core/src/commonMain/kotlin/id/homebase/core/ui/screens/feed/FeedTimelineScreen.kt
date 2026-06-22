@@ -37,7 +37,9 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.ui.screens.feed.widget.CommentsModalSheet
 import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.resources.MR
 import id.homebase.resources.feed_timeline_compose_action
@@ -84,6 +87,9 @@ fun FeedTimelineScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    // Tapping a post or its comment button opens comments as a bottom-sheet modal over the feed
+    // (vs navigating away); null == closed. Reactors / media still route to the detail screen.
+    var commentsPostId by remember { mutableStateOf<Uuid?>(null) }
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -151,11 +157,20 @@ fun FeedTimelineScreen(
                 onRefresh = viewModel::refresh,
                 onLoadMore = viewModel::loadMore,
                 onPostClick = viewModel::onPostClick,
+                onOpenComments = { commentsPostId = it },
                 onToggleReaction = viewModel::onToggleReaction,
                 onAuthorClick = onAuthorClick,
                 modifier = contentModifier,
             )
         }
+    }
+
+    commentsPostId?.let { pid ->
+        CommentsModalSheet(
+            postId = pid,
+            onDismiss = { commentsPostId = null },
+            onAuthorClick = onAuthorClick,
+        )
     }
 }
 
@@ -169,6 +184,7 @@ private fun FeedTimelineList(
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onPostClick: (Uuid) -> Unit,
+    onOpenComments: (Uuid) -> Unit,
     onToggleReaction: (post: FeedPostItem, emoji: String) -> Unit,
     onAuthorClick: (OdinId) -> Unit,
     modifier: Modifier = Modifier,
@@ -208,9 +224,9 @@ private fun FeedTimelineList(
                     displayName = (post.originalAuthor ?: post.senderOdinId)?.domainName.orEmpty(),
                     channelName = null,
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
-                    onOpenComments = { onPostClick(post.id) },
+                    onOpenComments = { onOpenComments(post.id) },
                     onShowReactors = { onPostClick(post.id) },
-                    onPostClick = { onPostClick(post.id) },
+                    onPostClick = { onOpenComments(post.id) },
                     onMediaClick = { onPostClick(post.id) },
                     onAuthorClick = {
                         val author = post.originalAuthor ?: post.senderOdinId
