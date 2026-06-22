@@ -4,15 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.AccessControlList
-import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.FeedPostSenderService
+import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.core.localization.TranslationUtil
+import id.homebase.resources.MR
+import id.homebase.resources.feed_compose_channel_public
 import id.homebase.core.ui.screens.moments.toAttachmentInput
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -48,6 +52,7 @@ private val URL_REGEX = Regex(
 class PostComposeViewModel(
     private val postSender: FeedPostSenderService,
     private val linkPreviewProvider: LinkPreviewProvider,
+    private val channelService: ChannelDefinitionService,
     repostOfJson: String? = null,
 ) : ViewModel() {
 
@@ -63,6 +68,30 @@ class PostComposeViewModel(
                 .getOrNull()
                 ?.let { embedded -> _uiState.update { it.copy(embeddedPost = embedded) } }
         }
+        loadChannels()
+    }
+
+    /**
+     * Build the channel picker options: the public channel first (always present), then any
+     * resolved channel definitions sorted by name. Public is the default selection.
+     */
+    private fun loadChannels() {
+        viewModelScope.launch {
+            val publicName = TranslationUtil.getString(MR.string.feed_compose_channel_public)
+            val publicOption = ChannelOption(FeedProtocol.PublicChannelDriveAlias, publicName)
+            val others = channelService.channels.value
+                .mapNotNull { (id, def) ->
+                    val uuid = runCatching { Uuid.parse(id) }.getOrNull() ?: return@mapNotNull null
+                    if (uuid == FeedProtocol.PublicChannelDriveAlias) null
+                    else ChannelOption(uuid, def.name)
+                }
+                .sortedBy { it.name }
+            _uiState.update { it.copy(channels = listOf(publicOption) + others) }
+        }
+    }
+
+    fun selectChannel(id: Uuid) {
+        _uiState.update { it.copy(selectedChannelId = id) }
     }
 
     private val _events = MutableSharedFlow<PostComposeEvent>(extraBufferCapacity = 4)
@@ -137,7 +166,7 @@ class PostComposeViewModel(
                 // A repost is always a Tweet (it quotes a source); otherwise media → Media.
                 val type = if (state.attachments.isNotEmpty()) PostType.Media else PostType.Tweet
                 postSender.createPost(
-                    channelId = SystemDriveConstants.publicPostChannelDrive.alias,
+                    channelId = state.selectedChannelId,
                     type = type,
                     caption = state.caption.trim(),
                     attachments = state.attachments.map { it.toAttachmentInput() },

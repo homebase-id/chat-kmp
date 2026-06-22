@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.screens.feed.widget.CommentsModalSheet
@@ -87,6 +88,8 @@ fun FeedTimelineScreen(
     onAuthorClick: (OdinId) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Collected so the list recomposes (and channel labels appear) once definitions load.
+    val channels by viewModel.channels.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     // Tapping a post or its comment button opens comments as a bottom-sheet modal over the feed
     // (vs navigating away); null == closed. Reactors / media still route to the detail screen.
@@ -162,6 +165,8 @@ fun FeedTimelineScreen(
                 onToggleReaction = viewModel::onToggleReaction,
                 onRepost = onRepost,
                 onAuthorClick = onAuthorClick,
+                channels = channels,
+                channelNameFor = viewModel::channelNameFor,
                 modifier = contentModifier,
             )
         }
@@ -190,6 +195,8 @@ private fun FeedTimelineList(
     onToggleReaction: (post: FeedPostItem, emoji: String) -> Unit,
     onRepost: (FeedPostItem) -> Unit,
     onAuthorClick: (OdinId) -> Unit,
+    channels: Map<String, ChannelDefinition>,
+    channelNameFor: (String) -> String?,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -222,10 +229,13 @@ private fun FeedTimelineList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->
+                // Read `channels` so the row recomposes when definitions arrive; the lambda
+                // returns null for public/unknown channels.
+                channels
                 PostCard(
                     post = post,
                     displayName = (post.originalAuthor ?: post.senderOdinId)?.domainName.orEmpty(),
-                    channelName = null,
+                    channelName = channelNameFor(post.channelId),
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
                     onRepost = { onRepost(post) },
                     onOpenComments = { onOpenComments(post.id) },

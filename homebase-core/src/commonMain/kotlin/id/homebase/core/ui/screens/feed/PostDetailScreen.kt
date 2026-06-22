@@ -40,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.core.feed.services.ChannelDefinitionService
+import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.ui.screens.feed.widget.CommentComposer
 import id.homebase.core.ui.screens.feed.widget.CommentThread
@@ -54,6 +56,7 @@ import id.homebase.resources.feed_post_detail_title
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
 /**
@@ -73,6 +76,8 @@ fun PostDetailScreen(
     onAuthorClick: (OdinId) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val channelService = koinInject<ChannelDefinitionService>()
+    val channels by channelService.channels.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -178,13 +183,21 @@ fun PostDetailScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             val authorOdinId = post.originalAuthor ?: post.senderOdinId
+                            // Null for a public/unknown channel; a name (once `channels` loads)
+                            // for a restricted one.
+                            val channelName = post.channelId
+                                .takeUnless {
+                                    it.isBlank() ||
+                                        it == FeedProtocol.PublicChannelDriveAlias.toString()
+                                }
+                                ?.let { channels[it]?.name }
                             PostCard(
                                 post = post,
                                 // The detail screen has no contact-lookup dependency, so
                                 // fall back to the author's domain as the display name —
                                 // PostAuthorHeader derives its avatar/initials from this.
                                 displayName = authorOdinId?.domainName.orEmpty(),
-                                channelName = null,
+                                channelName = channelName,
                                 onPostClick = {},
                                 onAuthorClick = viewModel::navigateToAuthor,
                                 onMediaClick = {},

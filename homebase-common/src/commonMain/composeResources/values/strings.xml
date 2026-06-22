@@ -1436,6 +1436,9 @@
     <string name="feed_post_comment">Comment</string>
     <string name="feed_post_comment_count">%1$d</string>
     <string name="feed_post_repost">Repost</string>
+    <string name="feed_channel_locked">Restricted channel</string>
+    <string name="feed_compose_channel">Channel</string>
+    <string name="feed_compose_channel_public">Public</string>
     <string name="feed_comment_hint">Write a comment…</string>
     <string name="feed_comment_emoji">Emoji</string>
     <string name="feed_comment_attach_image">Attach image</string>

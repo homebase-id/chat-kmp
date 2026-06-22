@@ -6,7 +6,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +24,7 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
+import id.homebase.resources.feed_channel_locked
 import id.homebase.resources.feed_post_to_channel
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
@@ -73,6 +78,14 @@ fun PostAuthorHeader(
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (!channelName.isNullOrBlank()) {
+                    Icon(
+                        imageVector = Icons.Outlined.Lock,
+                        contentDescription = stringResource(MR.string.feed_channel_locked),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(end = 3.dp)
+                            .size(12.dp),
+                    )
                     Text(
                         text = stringResource(MR.string.feed_post_to_channel, channelName),
                         style = MaterialTheme.typography.bodySmall,

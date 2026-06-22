@@ -23,11 +23,14 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,7 +47,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +74,7 @@ import id.homebase.resources.feed_compose_add_media
 import id.homebase.resources.feed_compose_attachment_image
 import id.homebase.resources.feed_compose_camera
 import id.homebase.resources.feed_compose_caption_placeholder
+import id.homebase.resources.feed_compose_channel
 import id.homebase.resources.feed_compose_post
 import id.homebase.resources.feed_compose_react_all
 import id.homebase.resources.feed_compose_react_comment_only
@@ -202,6 +208,11 @@ fun PostComposeScreen(
                     )
                 }
                 Spacer(modifier = Modifier.size(4.dp))
+                ChannelChip(
+                    channels = uiState.channels,
+                    selectedChannelId = uiState.selectedChannelId,
+                    onSelect = viewModel::selectChannel,
+                )
                 AudienceChip(
                     audience = uiState.audience,
                     onCycle = { viewModel.pickAudience(uiState.audience.next()) },
@@ -291,6 +302,51 @@ private fun QuotedPostPreview(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Channel picker: an [AssistChip] showing the selected channel's name; tapping opens a
+ * [DropdownMenu] of the available channels. The public channel is always the first option.
+ */
+@Composable
+private fun ChannelChip(
+    channels: List<ChannelOption>,
+    selectedChannelId: Uuid,
+    onSelect: (Uuid) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    // The selected option's name drives the label; fall back to the first option (public) until
+    // the list resolves. A bare chip label with no name has nothing to show, so skip rendering.
+    val selected = channels.firstOrNull { it.id == selectedChannelId } ?: channels.firstOrNull()
+    if (selected == null) return
+
+    Box {
+        AssistChip(
+            onClick = { expanded = true },
+            label = { Text(selected.name) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Tag,
+                    contentDescription = stringResource(MR.string.feed_compose_channel),
+                    modifier = Modifier.size(AssistChipDefaults.IconSize),
+                )
+            },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            channels.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.name) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option.id)
+                    },
                 )
             }
         }

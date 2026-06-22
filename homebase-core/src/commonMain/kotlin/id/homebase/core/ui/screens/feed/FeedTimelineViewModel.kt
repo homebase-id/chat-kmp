@@ -3,7 +3,10 @@ package id.homebase.core.ui.screens.feed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.core.feed.services.ChannelDefinitionService
+import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
+import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.resources.MR
@@ -37,10 +40,25 @@ import kotlin.uuid.Uuid
 class FeedTimelineViewModel(
     private val timelineService: FeedTimelineService,
     private val reactionService: PostReactionService,
+    private val channelService: ChannelDefinitionService,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FeedTimelineUiState(isLoading = true))
     val uiState: StateFlow<FeedTimelineUiState> = _uiState.asStateFlow()
+
+    /** `channelId → [ChannelDefinition]` so the screen can label a post's (non-public) channel. */
+    val channels: StateFlow<Map<String, ChannelDefinition>> = channelService.channels
+
+    /**
+     * Channel name to show on a post, or null for a public/unknown channel (which shows no label).
+     * Public posts (blank id or the public alias) are never labelled.
+     */
+    fun channelNameFor(channelId: String): String? =
+        if (channelId.isBlank() || channelId == FeedProtocol.PublicChannelDriveAlias.toString()) {
+            null
+        } else {
+            channelService.nameFor(channelId)
+        }
 
     private val _events = MutableSharedFlow<FeedTimelineEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<FeedTimelineEvent> = _events.asSharedFlow()

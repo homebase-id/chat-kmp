@@ -102,6 +102,7 @@ import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.ChannelPostQueryService
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedTimelineService
@@ -224,6 +225,7 @@ val appModule = module {
     // registered in ApiModule. CoroutineScope/EventBus/DatabaseManager etc. auto-resolve
     // as for Moments.
     singleOf(::FeedTimelineService)
+    singleOf(::ChannelDefinitionService)
     singleOf(::ChannelPostQueryService)
     singleOf(::FeedPostSenderService)
     singleOf(::PostCommentsService)
@@ -805,7 +807,7 @@ val appModule = module {
 
     // Native Feed ViewModels. PostDetailViewModel is parameterized on the post id.
     viewModelOf(::FeedTimelineViewModel)
-    viewModel { params -> PostComposeViewModel(get(), get(), params.getOrNull<String>()) }
+    viewModel { params -> PostComposeViewModel(get(), get(), get(), params.getOrNull<String>()) }
     viewModelOf(::FollowingViewModel)
     viewModel { params ->
         PostDetailViewModel(
