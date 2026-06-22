@@ -334,13 +334,14 @@ fun LocationPreviewCard(
                     contentColor = contentColor,
                 )
             }
-            // ── The user's own typed caption, in the full bubble text color, below the fixed parts ──
+            // ── The user's own typed caption, below the fixed parts. Brand blue (primary) so the
+            //    user's words stand apart from the grey auto-generated address on the neutral card. ──
             if (!descriptor.caption.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = descriptor.caption,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
