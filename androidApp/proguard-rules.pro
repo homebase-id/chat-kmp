@@ -12,13 +12,16 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep line numbers in release stack traces. Obfuscation stays ON — this only
+# preserves the line-number table so Crashlytics / Play Console (which have the
+# uploaded mapping.txt) and `retrace` resolve crashes to the exact original
+# file + line instead of showing "Unknown Source".
+-keepattributes SourceFile,LineNumberTable
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Replace the original .kt file name with a constant ("SourceFile") in the
+# bytecode — keeps the line numbers above while still hiding source file names.
+# The mapping file maps everything back during retrace/Crashlytics.
+-renamesourcefileattribute SourceFile
 
 # Filekit
 -keep class com.sun.jna.** { *; }
