@@ -6,6 +6,8 @@ data class LocationHistoryUiState(
     val traces: List<DeviceTrace> = emptyList(),
     val isLoading: Boolean = true,
     val showMapTiles: Boolean = false,
+    /** Whether personal location tracking is on — drives the empty-state "turn on tracking" hint. */
+    val trackingEnabled: Boolean = false,
 )
 
 sealed interface LocationHistoryUiAction {

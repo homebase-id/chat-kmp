@@ -1319,7 +1319,11 @@
     <string name="live_share_1h">1 hour</string>
     <string name="live_share_2h">2 hours</string>
     <string name="live_share_4h">4 hours</string>
+    <string name="live_share_enable_location_title">Turn on location to share</string>
+    <string name="live_share_enable_location_body">To share your live location, set up location on this device first so it can send your position.</string>
+    <string name="live_share_enable_location_cta">Set up location</string>
     <string name="location_history_empty">No locations recorded on this day</string>
+    <string name="location_history_enable_tracking">Turn on location tracking</string>
     <string name="location_history_map_disclosure">Map tiles are fetched from OpenStreetMap — the viewed area becomes visible to their servers.</string>
     <string name="location_history_previous_day">Previous day</string>
     <string name="location_history_next_day">Next day</string>

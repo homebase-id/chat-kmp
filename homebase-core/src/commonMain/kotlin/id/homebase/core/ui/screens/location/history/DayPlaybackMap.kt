@@ -1,11 +1,14 @@
 package id.homebase.core.ui.screens.location.history
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -24,6 +27,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.sync.database.BufferedLocationPoint
@@ -32,6 +36,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.location_history_devices
 import id.homebase.resources.location_history_distance
 import id.homebase.resources.location_history_empty
+import id.homebase.resources.location_history_enable_tracking
 import id.homebase.resources.location_history_points
 import id.homebase.resources.location_history_span
 import org.jetbrains.compose.resources.stringResource
@@ -66,6 +71,11 @@ fun DayPlaybackMap(
     modifier: Modifier = Modifier,
     subjectName: String? = null,
     isLoading: Boolean = false,
+    /** Whether personal location tracking is on. Drives the empty-state "turn on tracking" hint. */
+    trackingEnabled: Boolean = true,
+    /** Tap target for the empty-state "turn on location tracking" link. Null ⇒ no link (the link is
+     *  only meaningful for one's own history, so non-history callers leave it null). */
+    onEnableTracking: (() -> Unit)? = null,
 ) {
     val previewProvider = koinInject<LocationPreviewProvider>()
     // Playback model + stats derive from the day's points (cheap, O(points)).
@@ -130,12 +140,30 @@ fun DayPlaybackMap(
                 if (isLoading) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 } else if (isEmpty) {
-                    Text(
-                        text = stringResource(MR.string.location_history_empty),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Column(
                         modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = stringResource(MR.string.location_history_empty),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        // Only when this is the user's own history (onEnableTracking provided) and the
+                        // day is empty *because* tracking is off — nudge them to turn it on.
+                        if (onEnableTracking != null && !trackingEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(MR.string.location_history_enable_tracking),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                textDecoration = TextDecoration.Underline,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.clickable { onEnableTracking() },
+                            )
+                        }
+                    }
                 }
             }
         }
