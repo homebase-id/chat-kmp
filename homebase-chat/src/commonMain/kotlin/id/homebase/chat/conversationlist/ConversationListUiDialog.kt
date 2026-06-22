@@ -11,6 +11,10 @@ sealed interface ConversationListUiDialog {
 
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiDialog
 
+    /** Shown when the user tries to start a live-location share but location isn't set up to capture
+     *  GPS (add-on not activated or permission not granted). Offers to open the location setup screen. */
+    data object EnableLocationForShare : ConversationListUiDialog
+
     /** Surfaced when a preflight check before [IntroductionSender.sendIntroductions]
      *  reports any recipient as non-Ready. The user picks one of three outcomes:
      *  send anyway with the original list, send only to the Ready subset, or cancel.

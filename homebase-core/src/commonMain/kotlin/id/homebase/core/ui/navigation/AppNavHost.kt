@@ -885,6 +885,10 @@ fun AppNavHost(
                                     onNavigateToLiveLocationMap = {
                                         navController.navigate(Route.LocationLive)
                                     },
+                                    // Reuse the same entry the Location nav icon uses: onboarding when
+                                    // the add-on isn't activated, else the dashboard (which requests
+                                    // permission) — covers both "not set up" gate-fail cases.
+                                    onNavigateToLocationSetup = openLocation,
                                     onNavigateToContactInfo = {
                                         navController.navigate(Route.ContactInfo(it))
                                     },
