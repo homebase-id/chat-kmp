@@ -268,6 +268,54 @@ class ContactRepository(
     }
 
     /**
+     * Minimal-delta write of the owner-only [ContactContent.isEmergencyContact] flag: sends ONLY
+     * `{"isEmergencyContact": true}` so the server's field-level merge flips just this flag and
+     * leaves every other stored field untouched — no need to resend the whole contact. On success it
+     * optimistically copies the flag onto the live contact's existing content (so the rest of the UI
+     * model is preserved — unlike [save], which replaces the content wholesale) and adopts the
+     * returned versionTag; the authoritative row lands later via drive sync.
+     *
+     * Returns the new id/versionTag, or null on a generic failure. Rethrows [ForbiddenException]
+     * (403).
+     *
+     * Sets the flag only — it cannot be CLEARED this way: `isEmergencyContact` is
+     * `@EncodeDefault(NEVER)`, so a `false` is omitted from the JSON and the merge reads an omitted
+     * field as "leave alone" (clearing needs dedicated server support).
+     */
+    suspend fun setEmergencyContact(
+        uniqueId: Uuid,
+        versionTag: Uuid,
+    ): ContactWriteResponse? {
+        val response = try {
+            contactsProvider.saveContact(
+                content = ContactContent(isEmergencyContact = true),
+                knownUniqueId = uniqueId,
+                knownVersionTag = versionTag,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ForbiddenException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e, TAG) { "setEmergencyContact failed for $uniqueId" }
+            return null
+        }
+
+        _contacts.update { current ->
+            val idx = current.indexOfFirst { it.uniqueId == uniqueId }
+            if (idx < 0) return@update current
+            val existing = current[idx]
+            current.toMutableList().apply {
+                this[idx] = existing.copy(
+                    content = existing.content.copy(isEmergencyContact = true),
+                    versionTag = response.versionTag,
+                )
+            }
+        }
+        return response
+    }
+
+    /**
      * Soft-delete. Optimistically removes the contact; on a generic failure it reloads to restore
      * truth. Returns true on success (or already-gone). Rethrows [ForbiddenException] (403).
      */

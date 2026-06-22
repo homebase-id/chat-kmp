@@ -44,6 +44,9 @@ import id.homebase.resources.system_group_heal_local_cleanup_both
 import id.homebase.resources.system_group_heal_local_cleanup_main
 import id.homebase.resources.system_group_heal_requested
 import id.homebase.resources.system_group_heal_requested_you
+import id.homebase.resources.system_emergency_contact_designated
+import id.homebase.resources.system_emergency_contact_designated_you
+import id.homebase.resources.system_emergency_contact_designated_you_unknown
 import id.homebase.resources.chat_poll_ended_other
 import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
@@ -524,5 +527,15 @@ internal suspend fun renderStatusMessage(
             if (authorIsYou) TranslationUtil.getString(MR.string.chat_poll_ended_self, q)
             else TranslationUtil.getString(MR.string.chat_poll_ended_other, name, q)
         }
+
+        StatusMessage.EmergencyContactDesignated ->
+            when {
+                authorIsYou && subject != null ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated_you, subject)
+                authorIsYou ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated_you_unknown)
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated, name)
+            }
     }
 }

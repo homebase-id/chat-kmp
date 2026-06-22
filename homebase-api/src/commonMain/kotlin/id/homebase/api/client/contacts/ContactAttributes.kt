@@ -50,21 +50,21 @@ object ContactAttributeId {
  * so callers can skip them. Order here is the order networks should render in.
  */
 enum class ContactSocialNetwork(val attributeId: String, val label: String) {
-    HomebaseIdentity(ContactAttributeId.HOMEBASE_IDENTITY, "Homebase"),
-    Twitter(ContactAttributeId.TWITTER, "Twitter"),
-    Facebook(ContactAttributeId.FACEBOOK, "Facebook"),
-    Instagram(ContactAttributeId.INSTAGRAM, "Instagram"),
-    Tiktok(ContactAttributeId.TIKTOK, "TikTok"),
-    LinkedIn(ContactAttributeId.LINKEDIN, "LinkedIn"),
-    Youtube(ContactAttributeId.YOUTUBE, "YouTube"),
-    Discord(ContactAttributeId.DISCORD, "Discord"),
-    Snapchat(ContactAttributeId.SNAPCHAT, "Snapchat"),
-    Github(ContactAttributeId.GITHUB, "GitHub"),
-    StackOverflow(ContactAttributeId.STACK_OVERFLOW, "Stack Overflow"),
-    Epic(ContactAttributeId.EPIC, "Epic Games"),
-    Riot(ContactAttributeId.RIOT, "Riot"),
-    Steam(ContactAttributeId.STEAM, "Steam"),
-    Minecraft(ContactAttributeId.MINECRAFT, "Minecraft"),
+    HomebaseIdentity(normalizeId(ContactAttributeId.HOMEBASE_IDENTITY), "Homebase"),
+    Twitter(normalizeId(ContactAttributeId.TWITTER), "Twitter"),
+    Facebook(normalizeId(ContactAttributeId.FACEBOOK), "Facebook"),
+    Instagram(normalizeId(ContactAttributeId.INSTAGRAM), "Instagram"),
+    Tiktok(normalizeId(ContactAttributeId.TIKTOK), "TikTok"),
+    LinkedIn(normalizeId(ContactAttributeId.LINKEDIN), "LinkedIn"),
+    Youtube(normalizeId(ContactAttributeId.YOUTUBE), "YouTube"),
+    Discord(normalizeId(ContactAttributeId.DISCORD), "Discord"),
+    Snapchat(normalizeId(ContactAttributeId.SNAPCHAT), "Snapchat"),
+    Github(normalizeId(ContactAttributeId.GITHUB), "GitHub"),
+    StackOverflow(normalizeId(ContactAttributeId.STACK_OVERFLOW), "Stack Overflow"),
+    Epic(normalizeId(ContactAttributeId.EPIC), "Epic Games"),
+    Riot(normalizeId(ContactAttributeId.RIOT), "Riot"),
+    Steam(normalizeId(ContactAttributeId.STEAM), "Steam"),
+    Minecraft(normalizeId(ContactAttributeId.MINECRAFT), "Minecraft"),
     ;
 
     companion object {

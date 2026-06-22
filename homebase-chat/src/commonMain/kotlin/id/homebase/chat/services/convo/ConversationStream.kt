@@ -128,6 +128,14 @@ class ConversationStream(
      * self-destruct it (soft-delete + hard-delete) once cleanup runs.
      */
     var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
+
+    /**
+     * Hook invoked when the live receive stream observes an incoming
+     * [StatusMessage.EmergencyContactDesignated] status — i.e. the [sender] designated us as one of
+     * their emergency contacts. Wired in AppModule to mark the [sender] as an emergency contact on
+     * our own contact drive. Side effect only — does not affect message-list dispatch.
+     */
+    var onEmergencyContactDesignated: (suspend (sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion
 
 // region Orphan-recovery: read-path dedup of recover attempts
@@ -401,6 +409,26 @@ class ConversationStream(
         }
     }
 
+    private suspend fun dispatchEmergencyDesignations(messageFiles: List<HomebaseFile>) {
+        val handler = onEmergencyContactDesignated ?: return
+        for (file in messageFiles) {
+            val appData = file.fileMetadata.appData
+            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
+            // originalAuthor is null on our own synced copy, so this only fires on the receiver side.
+            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
+            val content = appData.content ?: continue
+            val status = runCatching {
+                OdinSystemSerializer.deserialize<StatusMessageData>(content)
+            }.getOrNull() ?: continue
+            if (status.statusMessage != StatusMessage.EmergencyContactDesignated) continue
+            try {
+                handler(sender, file)
+            } catch (e: Exception) {
+                Logger.e(e) { "ConversationStream: emergency-designation handler threw for sender=${sender.domainName}: ${e.message}" }
+            }
+        }
+    }
+
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
@@ -408,6 +436,8 @@ class ConversationStream(
         // handler. Done here (live BatchReceived only — never on cold reads or
         // searches) so the side effects fire exactly once per arrival.
         dispatchGroupHealRequests(messageFiles)
+        // Same live-only contract: mark the sender as an emergency contact when they designate us.
+        dispatchEmergencyDesignations(messageFiles)
 
         // For each file in the batch, map to model (fetch last message from DB if needed).
         // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can

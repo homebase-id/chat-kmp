@@ -482,6 +482,9 @@
     <string name="system_group_conversation_member_declined_rejoin_you">You declined to rejoin the conversation</string>
     <string name="system_group_heal_requested">%1$s requested a group heal</string>
     <string name="system_group_heal_requested_you">You requested a group heal</string>
+    <string name="system_emergency_contact_designated">%1$s added you as an emergency contact</string>
+    <string name="system_emergency_contact_designated_you">You added %1$s as an emergency contact</string>
+    <string name="system_emergency_contact_designated_you_unknown">You added an emergency contact</string>
     <string name="system_group_heal_local_cleanup_both">Removed broken local copies (group + admins) as part of heal</string>
     <string name="system_group_heal_local_cleanup_main">Removed broken local copy (group) as part of heal</string>
     <string name="system_group_heal_local_cleanup_admin">Removed broken local copy (admins) as part of heal</string>

@@ -36,4 +36,11 @@ enum class StatusMessage() {
      *  Carries [StatusMessageData.pollQuestion] and [StatusMessageData.pollMessageId] so
      *  the system line can reference the question. */
     PollEnded,
+
+    /** Sent by a user (the message's `originalAuthor`) when they designate the recipient as one of
+     *  their emergency contacts. Renders a system line ("X added you as an emergency contact") AND
+     *  drives a receive-side side-effect (wired in AppModule) that marks the SENDER as an emergency
+     *  contact on the recipient's own contact drive — see
+     *  [id.homebase.api.client.contacts.ContactRepository.setEmergencyContact]. */
+    EmergencyContactDesignated,
 }

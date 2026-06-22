@@ -71,7 +71,9 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.api.crypto.Md5
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -448,6 +450,36 @@ val appModule = module {
                 val groupHealService = get<GroupHealService>()
                 conversationStream.onIncomingHealRequest = { status, sender, messageFile ->
                     groupHealService.handleIncomingHealRequest(status, sender, messageFile)
+                }
+                // endregion
+
+                // region Emergency contact: incoming EmergencyContactDesignated status
+                // The sender designated us as their emergency contact; mark THEM as an emergency
+                // contact on our own contact drive. Best-effort and idempotent.
+                val contactRepository = get<ContactRepository>()
+                conversationStream.onEmergencyContactDesignated = { sender, _ ->
+                    try {
+                        contactRepository.ensureLoaded()
+                        val uniqueId = Md5.toGuidId(sender.domainName)
+                        val contact = contactRepository.contacts.value
+                            .firstOrNull { it.uniqueId == uniqueId }
+                        val versionTag = contact?.versionTag
+                        when {
+                            // Not a contact on our drive yet — create/enrich it from the sender's
+                            // profile. The flag isn't applied on this delivery; a later designation
+                            // (or a manual mark) sets it once the row exists.
+                            contact == null -> contactRepository.sync(sender)
+                            // Already flagged — idempotent no-op (status messages can re-deliver).
+                            contact.content.isEmergencyContact -> Unit
+                            versionTag != null ->
+                                contactRepository.setEmergencyContact(uniqueId, versionTag)
+                            else -> Unit
+                        }
+                    } catch (e: ForbiddenException) {
+                        Logger.w(e) { "emergency designation: missing ManageContacts permission" }
+                    } catch (e: Exception) {
+                        Logger.w(e) { "emergency designation handling failed for ${sender.domainName}" }
+                    }
                 }
                 // endregion
 
