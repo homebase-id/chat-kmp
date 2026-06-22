@@ -7,6 +7,7 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
@@ -16,6 +17,9 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.localDayStart
 import id.homebase.core.ui.screens.location.history.shiftDay
+import id.homebase.core.ui.screens.location.livelocation.LIVE_STALE_MS
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -23,7 +27,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -47,6 +53,8 @@ class LocationViewModel(
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val contactService: ContactService,
     private val credentialsManager: CredentialsManager,
+    private val receiveStore: LiveLocationReceiveStore,
+    private val liveShareService: LiveLocationShareService,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -163,6 +171,25 @@ class LocationViewModel(
             uploaderService.pendingCount.collect { n ->
                 _uiState.update { it.copy(pendingUploadCount = n.toInt()) }
             }
+        }
+        // "Live location sharing" dashboard section is visible when I'm sharing OR someone's recent
+        // position is in the receive store. isActive() is a plain getter (no flow), so the 30 s ticker
+        // re-evaluates it; the receive store flow covers inbound updates.
+        viewModelScope.launch {
+            combine(receiveStore.positions, liveTicker()) { positions, _ ->
+                val now = Clock.System.now().toEpochMilliseconds()
+                liveShareService.isActive() ||
+                    positions.values.any { now - it.receivedAtMs <= LIVE_STALE_MS }
+            }.collect { visible ->
+                _uiState.update { it.copy(liveSharingVisible = visible) }
+            }
+        }
+    }
+
+    private fun liveTicker() = flow {
+        while (true) {
+            emit(Unit)
+            delay(30_000L)
         }
     }
 

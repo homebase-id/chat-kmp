@@ -28,6 +28,8 @@ import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
+import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
@@ -1020,14 +1022,34 @@ internal class MessageActionsHandler(
                 registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
-                chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = content,
-                    previousMessageUniqueId = null,
-                    payloadBundle = payloadBundle,
-                    dataType = payloadRenderers.toMessageDataType(),
-                )
+                // Location is a typed kind (= Event): the coordinate descriptor rides in the header
+                // (appData), the map PNG stays a chat_loc payload. Sending it through the typed path
+                // is what lets a live-share toggle edit the descriptor via updateMessage().
+                val locationPreview =
+                    payloadRenderers.filterIsInstance<LocationPreviewRenderer>().firstOrNull()?.preview
+                if (locationPreview != null && payloadRenderers.size == 1) {
+                    // Carry the user's typed caption in the descriptor (a typed message has no separate
+                    // text body); cap it so the header descriptor stays well under the 7 KB budget.
+                    val caption = content.trim().ifBlank { null }?.truncateToCodePoints(2000)
+                    chatMessageSenderService.sendNewTypedMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = conversationId,
+                        content = MessageContent.Location(
+                            LocationPreviewPayloadBuilder.descriptorFor(locationPreview).copy(caption = caption)
+                        ),
+                        previousMessageUniqueId = null,
+                        payloadBundle = payloadBundle,
+                    )
+                } else {
+                    chatMessageSenderService.sendNewMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = conversationId,
+                        messageText = content,
+                        previousMessageUniqueId = null,
+                        payloadBundle = payloadBundle,
+                        dataType = payloadRenderers.toMessageDataType(),
+                    )
+                }
                 messageInputTextState.clear()
                 jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }

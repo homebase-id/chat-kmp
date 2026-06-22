@@ -156,6 +156,7 @@ private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation
 @Composable
 fun SentMessageBubble(
     message: MessageUiModel,
+    liveControls: LiveLocationBubbleControls? = null,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String = "",
@@ -341,6 +342,7 @@ fun SentMessageBubble(
                             .onSizeChanged { bubbleWidthPx = it.width },
                         message = message,
                         decryptedFiles = decryptedFiles,
+                        liveControls = liveControls,
                         sentByYou = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
@@ -452,6 +454,7 @@ fun SentMessageBubbleDisplayOnly(
 @Composable
 fun ReceivedMessageBubble(
     message: MessageUiModel,
+    liveControls: LiveLocationBubbleControls? = null,
     userDefaultReactions: ImmutableList<String>,
     decryptedFiles: ImmutableMap<DecryptedFileKey, String>,
     currentOdinId: String = "",
@@ -581,6 +584,7 @@ fun ReceivedMessageBubble(
                                 .onSizeChanged { bubbleWidthPx = it.width },
                             message = message,
                             decryptedFiles = decryptedFiles,
+                        liveControls = liveControls,
                             sentByYou = false,
                             currentOdinId = currentOdinId,
                             clusterPosition = clusterPosition,
@@ -819,6 +823,44 @@ fun ReceivedMessageBubbleDisplayOnly(
 }
 
 val DELIVERY_ICON_SIZE = 12.dp
+
+/**
+ * The shared message footer: the (edited-aware) send time, then — for the sender's own, non-deleted
+ * message — the [DeliveryStatus] icon. The single source of truth so text, media, and location bubbles
+ * render the time + delivery status identically. [contentColor] is the bubble's full content color; it
+ * is muted (alpha 0.7) internally for both the text and the icon, matching the regular bubble.
+ */
+@Composable
+fun MessageTimestampFooter(
+    infoText: String,
+    contentColor: Color,
+    showDeliveryStatus: Boolean,
+    isPendingSend: Boolean,
+    deliveryStatus: Int,
+    pendingSince: Instant?,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.End,
+    ) {
+        Text(
+            text = infoText,
+            style = MaterialTheme.typography.labelSmall,
+            color = contentColor.copy(alpha = 0.7f),
+        )
+        if (showDeliveryStatus) {
+            Spacer(modifier = Modifier.width(4.dp))
+            DeliveryStatus(
+                isPendingSend = isPendingSend,
+                deliveryStatus = deliveryStatus,
+                contentColor = contentColor.copy(alpha = 0.7f),
+                pendingSince = pendingSince,
+            )
+        }
+    }
+}
 
 @Composable
 fun DeliveryStatus(

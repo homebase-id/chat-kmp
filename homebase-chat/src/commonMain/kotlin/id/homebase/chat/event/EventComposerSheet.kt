@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Videocam
@@ -30,8 +32,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,6 +47,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -82,6 +84,7 @@ import id.homebase.resources.cancel
 import id.homebase.resources.close
 import id.homebase.resources.ok
 import id.homebase.resources.chat_event_add_end_time
+import id.homebase.resources.chat_event_error_end_before_start
 import id.homebase.resources.chat_event_description_hint
 import id.homebase.resources.chat_event_location_hint
 import id.homebase.resources.chat_event_meeting_url_hint
@@ -97,6 +100,7 @@ import id.homebase.resources.vault_image_take_photo
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -113,6 +117,9 @@ import org.koin.compose.koinInject
 
 private const val MAX_TITLE_CODEPOINTS = 200
 private const val MAX_DESCRIPTION_CODEPOINTS = 4000
+
+/** Which cover-photo source the deferred [LaunchedEffect] should present. */
+private enum class PhotoSource { Gallery, Camera }
 
 /**
  * Bottom-sheet composer for an Event message, modeled on the Google Calendar
@@ -172,6 +179,20 @@ private fun EventComposerContent(
             coverInput = file.materializeForUpload(fileOperationsProvider)
                 .toImageAttachmentInput(fileOperationsProvider)
         }
+    }
+    // Deferred picker launch — presenting the picker synchronously from the
+    // DropdownMenu's onClick wedges the menu open on iOS (it can't dismiss while a
+    // UIViewController is presenting over it). Closing the menu sets this pending
+    // action; the LaunchedEffect then launches once the menu has dismissed (mirrors
+    // VaultScreen's deferred picker, PR #760).
+    var pendingPhotoAction by remember { mutableStateOf<PhotoSource?>(null) }
+    LaunchedEffect(pendingPhotoAction) {
+        when (pendingPhotoAction) {
+            PhotoSource.Gallery -> coverGalleryPicker.launch()
+            PhotoSource.Camera -> coverCameraLauncher.launch()
+            null -> {}
+        }
+        pendingPhotoAction = null
     }
 
     var title by remember { mutableStateOf("") }
@@ -234,8 +255,18 @@ private fun EventComposerContent(
     var showEndTime by remember { mutableStateOf(false) }
     var tzExpanded by remember { mutableStateOf(false) }
 
+    // End must stay strictly after start. Picker callbacks clamp to keep this true,
+    // so this is a defensive guard — if an invalid state is somehow reached, Send is
+    // disabled and the inline error below the end row is shown.
+    val timesValid by remember {
+        derivedStateOf {
+            // LocalDateTime is Comparable; wall-clock ordering is what matters and is
+            // zone-independent, so compare directly instead of round-tripping via a zone.
+            !hasEndTime || startDateTime < endDateTime
+        }
+    }
     val isValid by remember {
-        derivedStateOf { title.isNotBlank() && !sending }
+        derivedStateOf { title.isNotBlank() && !sending && timesValid }
     }
 
     val dismiss: () -> Unit = {
@@ -354,36 +385,27 @@ private fun EventComposerContent(
                 }
                 Spacer(Modifier.height(12.dp))
             } else {
-                Box(modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedButton(onClick = { showPhotoMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = null,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(MR.string.chat_event_add_photo))
-                    }
-                    DropdownMenu(
-                        expanded = showPhotoMenu,
-                        onDismissRequest = { showPhotoMenu = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.string.vault_image_choose_gallery)) },
-                            onClick = {
-                                showPhotoMenu = false
-                                coverGalleryPicker.launch()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.string.vault_image_take_photo)) },
-                            onClick = {
-                                showPhotoMenu = false
-                                coverCameraLauncher.launch()
-                            },
-                        )
-                    }
+                OutlinedButton(
+                    onClick = { showPhotoMenu = true },
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(MR.string.chat_event_add_photo))
                 }
                 Spacer(Modifier.height(12.dp))
+            }
+            if (showPhotoMenu) {
+                PhotoSourceDialog(
+                    onPick = {
+                        showPhotoMenu = false
+                        pendingPhotoAction = it
+                    },
+                    onDismiss = { showPhotoMenu = false },
+                )
             }
 
             // Title — borderless headline with a brand-blue underline indicator.
@@ -410,9 +432,24 @@ private fun EventComposerContent(
                             onPickDate = { showEndDate = true },
                             onPickTime = { showEndTime = true },
                         )
+                        if (!timesValid) {
+                            Text(
+                                text = stringResource(MR.string.chat_event_error_end_before_start),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                     TextButton(
-                        onClick = { hasEndTime = !hasEndTime },
+                        // Re-clamp on enable: the start may have moved past the stale
+                        // end while end-time was off, so guarantee end > start the moment
+                        // the row appears (else the user lands straight on the error).
+                        onClick = {
+                            hasEndTime = !hasEndTime
+                            if (hasEndTime) {
+                                endDateTime = clampEndAfterStart(startDateTime, endDateTime, systemTz)
+                            }
+                        },
                         // Negative offset cancels the wider horizontal content
                         // padding, so the label stays left-aligned with the date
                         // above it while the hover/ripple splash reads wider.
@@ -529,7 +566,9 @@ private fun EventComposerContent(
         DatePickerSheet(
             initial = startDateTime,
             onConfirm = { date ->
-                startDateTime = LocalDateTime(date.year, date.month, date.day, startDateTime.hour, startDateTime.minute)
+                val newStart = LocalDateTime(date.year, date.month, date.day, startDateTime.hour, startDateTime.minute)
+                if (hasEndTime) endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
+                startDateTime = newStart
                 showStartDate = false
             },
             onDismiss = { showStartDate = false },
@@ -539,7 +578,9 @@ private fun EventComposerContent(
         TimePickerSheet(
             initial = LocalTime(startDateTime.hour, startDateTime.minute),
             onConfirm = { time ->
-                startDateTime = LocalDateTime(startDateTime.year, startDateTime.month, startDateTime.day, time.hour, time.minute)
+                val newStart = LocalDateTime(startDateTime.year, startDateTime.month, startDateTime.day, time.hour, time.minute)
+                if (hasEndTime) endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
+                startDateTime = newStart
                 showStartTime = false
             },
             onDismiss = { showStartTime = false },
@@ -549,7 +590,8 @@ private fun EventComposerContent(
         DatePickerSheet(
             initial = endDateTime,
             onConfirm = { date ->
-                endDateTime = LocalDateTime(date.year, date.month, date.day, endDateTime.hour, endDateTime.minute)
+                val newEnd = LocalDateTime(date.year, date.month, date.day, endDateTime.hour, endDateTime.minute)
+                endDateTime = clampEndAfterStart(startDateTime, newEnd, systemTz)
                 showEndDate = false
             },
             onDismiss = { showEndDate = false },
@@ -559,12 +601,42 @@ private fun EventComposerContent(
         TimePickerSheet(
             initial = LocalTime(endDateTime.hour, endDateTime.minute),
             onConfirm = { time ->
-                endDateTime = LocalDateTime(endDateTime.year, endDateTime.month, endDateTime.day, time.hour, time.minute)
+                val newEnd = LocalDateTime(endDateTime.year, endDateTime.month, endDateTime.day, time.hour, time.minute)
+                endDateTime = clampEndAfterStart(startDateTime, newEnd, systemTz)
                 showEndTime = false
             },
             onDismiss = { showEndTime = false },
         )
     }
+}
+
+/**
+ * New start chosen — shift [end] by the same delta so the duration is preserved
+ * (Google Calendar behavior). Always keeps end strictly after start.
+ */
+private fun shiftEndPreservingDuration(
+    oldStart: LocalDateTime,
+    newStart: LocalDateTime,
+    end: LocalDateTime,
+    tz: TimeZone,
+): LocalDateTime {
+    val delta = newStart.toInstant(tz) - oldStart.toInstant(tz)
+    return end.toInstant(tz).plus(delta).toLocalDateTime(tz)
+}
+
+/**
+ * End chosen — clamp so it stays strictly after [start]. If the picked end is at or
+ * before start, snap it to start + 1h (a sensible minimum), matching the default
+ * one-hour event length.
+ */
+private fun clampEndAfterStart(
+    start: LocalDateTime,
+    end: LocalDateTime,
+    tz: TimeZone,
+): LocalDateTime {
+    val startInstant = start.toInstant(tz)
+    return if (end.toInstant(tz) > startInstant) end
+    else startInstant.plus(1.hours).toLocalDateTime(tz)
 }
 
 /** One "date · time" line where the date and the time are independently tappable. */
@@ -600,6 +672,64 @@ private fun formatFriendlyDate(d: LocalDateTime): String {
 /** 24h "HH:mm". */
 private fun formatTime(d: LocalDateTime): String =
     d.hour.toString().padStart(2, '0') + ":" + d.minute.toString().padStart(2, '0')
+
+/**
+ * Cover-photo source chooser. A centered, scrimmed [AlertDialog] (the in-sheet
+ * picker idiom this composer already uses for date/time) — visible against the
+ * dark sheet and away from the button it was launched from, unlike the old
+ * dark-on-dark dropdown that opened under the finger (#785).
+ */
+@Composable
+private fun PhotoSourceDialog(
+    onPick: (PhotoSource) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.chat_event_add_photo)) },
+        text = {
+            Column {
+                PhotoSourceRow(
+                    icon = Icons.Default.PhotoLibrary,
+                    label = stringResource(MR.string.vault_image_choose_gallery),
+                    onClick = { onPick(PhotoSource.Gallery) },
+                )
+                PhotoSourceRow(
+                    icon = Icons.Default.PhotoCamera,
+                    label = stringResource(MR.string.vault_image_take_photo),
+                    onClick = { onPick(PhotoSource.Camera) },
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun PhotoSourceRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
