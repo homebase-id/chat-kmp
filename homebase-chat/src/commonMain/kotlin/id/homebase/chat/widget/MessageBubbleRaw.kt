@@ -20,9 +20,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
@@ -82,6 +88,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -140,6 +147,7 @@ fun MessageBubbleRaw(
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
+    liveControls: LiveLocationBubbleControls? = null,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     downloadingFiles: Set<String>,
@@ -223,8 +231,45 @@ fun MessageBubbleRaw(
             )
             return
         }
+        // Location renders as a self-contained typed bubble (like Event) so the generic text line —
+        // which would duplicate the address (MessageMapper sets it to displayLabel) — is skipped, and
+        // the bubble is Event-sized. Old payload-format messages (messageContent == null) fall through
+        // to the media path instead.
+        is MessageContent.Location -> {
+            content.descriptor?.let { d ->
+                val mapPayload = message.payloads?.firstOrNull {
+                    it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
+                }
+                val pIv = mapPayload?.iv?.let { Base64.decode(it) }
+                // Match the Event bubble: a neutral card (NOT a blue "sent" bubble) with grey fixed
+                // text + normal-color caption, the same for sender and receiver. Tinting the card blue
+                // for sentByYou put blue text on a blue background in dark theme.
+                val locContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                val locContentColor = MaterialTheme.colorScheme.onSurface
+                LocationPreviewCard(
+                    descriptor = d,
+                    fileId = message.fileId,
+                    driveId = chatTargetDrive.alias,
+                    payloadKey = ChatProtocol.PAYLOAD_KEY_LOCATION,
+                    keyHeader = KeyHeader(pIv ?: ByteArray(16), message.keyHeader.aesKey),
+                    previewThumbnail = mapPayload?.previewThumbnail?.toEmbeddedThumb(),
+                    modifier = modifier
+                        .widthIn(min = 240.dp, max = 320.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(locContainerColor),
+                    onLongPress = onLongClick,
+                    liveControls = liveControls,
+                    contentColor = locContentColor,
+                    createdAtMs = message.userDate.toEpochMilliseconds(),
+                )
+            }
+            return
+        }
         null -> Unit // fall through to text + media rendering
     }
+
+    // Old payload-format location messages (no header descriptor) still render via the media path.
+    val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
 
     val filteredPayloads = message.payloads?.filter {
         it.key != ChatProtocol.DefaultPayloadKey &&
@@ -445,6 +490,8 @@ fun MessageBubbleRaw(
                         previewThumbnail = message.previewThumbnail,
                         onMediaClick = onMediaClick,
                         onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                         onRequestDecryptedFile = onRequestDecryptedFile,
                         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
                         sharedTransitionScope = sharedTransitionScope,
@@ -483,6 +530,8 @@ fun MessageBubbleRaw(
                                 previewThumbnail = message.previewThumbnail,
                                 onMediaClick = onMediaClick,
                                 onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
                                 shape = RoundedCornerShape(0.dp),
                                 sharedTransitionScope = sharedTransitionScope,
@@ -566,6 +615,8 @@ fun MessageBubbleRaw(
                                 topEnd = Dimens.Message.cornerRadius
                             ) else RoundedCornerShape(0.dp),
                             onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                             onRequestDecryptedFile = onRequestDecryptedFile,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
@@ -672,6 +723,8 @@ fun MessageBubbleRaw(
                                         topEnd = Dimens.Message.cornerRadius
                                     ) else RoundedCornerShape(0.dp),
                                     onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                                     onRequestDecryptedFile = onRequestDecryptedFile,
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope,
@@ -684,6 +737,8 @@ fun MessageBubbleRaw(
                                 modifier = Modifier.padding(
                                     horizontal = 12.dp, vertical = 12.dp
                                 ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 if (emojiOnly) {
                                     // Render emoji-only messages prominently
@@ -696,6 +751,22 @@ fun MessageBubbleRaw(
                                         color = contentColor
                                     )
                                 } else {
+                                    // Mirror the conversation-list preview's deleted marker
+                                    // (MessageContentLabel: Block icon + the same string).
+                                    // ponytail: safe only because it sits beside the short fixed
+                                    // "deleted" string. The timestamp-tuck Layout below measures
+                                    // lastLineRight from the text's own origin and assumes it starts
+                                    // at textRowPadding; this icon shifts that origin right by ~20dp.
+                                    // If this icon is ever shown next to variable/long body text,
+                                    // add its width to lastLineEnd or the tucked time can overlap.
+                                    if (message.isDeleted) {
+                                        Icon(
+                                            imageVector = Icons.Default.Block,
+                                            contentDescription = deletedText,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = contentColor,
+                                        )
+                                    }
                                     ChatMarkdown(
                                         content = bodyText,
                                         color = contentColor,

@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,23 +16,34 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlin.time.Clock
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
@@ -44,6 +56,15 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_location_pin
 import id.homebase.resources.chat_location_attachment
+import id.homebase.resources.live_share_15m
+import id.homebase.resources.live_share_1h
+import id.homebase.resources.live_share_2h
+import id.homebase.resources.live_share_30m
+import id.homebase.resources.live_share_4h
+import id.homebase.resources.live_share_active
+import id.homebase.resources.live_share_ended
+import id.homebase.resources.share_live_location
+import id.homebase.resources.stop_sharing
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
@@ -56,28 +77,20 @@ import kotlin.uuid.Uuid
 @Composable
 private fun LocationPreviewTextContent(
     address: String,
-    coordinatesLabel: String,
     maxAddressLines: Int = 2,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
+    // Address only — raw lat/lon coordinates aren't human-readable, so we don't show them. Muted
+    // (Event-style) because the address is fixed/auto-generated location metadata, not user content.
     if (address.isNotEmpty()) {
         Text(
             text = address,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium,
             maxLines = maxAddressLines,
             overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = color,
         )
-        Spacer(modifier = Modifier.height(4.dp))
     }
-
-    Text(
-        text = coordinatesLabel,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.primary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
 }
 
 // ─── Sender-side card (base64 image from LocationPreview) ────────────────────
@@ -97,9 +110,6 @@ fun LocationPreviewCard(
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(locationPreview.lat, locationPreview.lon, locationPreview.address) {
         buildGeoUri(locationPreview.lat, locationPreview.lon, locationPreview.address)
-    }
-    val coordinatesLabel = remember(locationPreview.lat, locationPreview.lon) {
-        formatLatLon(locationPreview.lat, locationPreview.lon)
     }
 
     val imageBitmap = remember(locationPreview.imageUrl) {
@@ -122,7 +132,6 @@ fun LocationPreviewCard(
             Column(modifier = Modifier.weight(1f).padding(12.dp)) {
                 LocationPreviewTextContent(
                     address = locationPreview.address,
-                    coordinatesLabel = coordinatesLabel,
                     maxAddressLines = 1,
                 )
             }
@@ -210,7 +219,6 @@ fun LocationPreviewCard(
             Column(modifier = Modifier.padding(12.dp)) {
                 LocationPreviewTextContent(
                     address = locationPreview.address,
-                    coordinatesLabel = coordinatesLabel,
                 )
             }
         }
@@ -233,16 +241,60 @@ fun LocationPreviewCard(
     keyHeader: KeyHeader,
     previewThumbnail: EmbeddedThumb? = null,
     modifier: Modifier = Modifier,
+    /** Forwarded to the message actions menu — fixes long-press being swallowed by the old `.clickable`. */
+    onLongPress: (() -> Unit)? = null,
+    /** Live-share side + actions; null only for the pre-send staging preview. */
+    liveControls: LiveLocationBubbleControls? = null,
+    /** Bubble foreground color so text/links stay legible on both grey (received) and tinted (sent) bubbles. */
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    /**
+     * Message creation time (epoch-ms, from `userDate`). The "Share live location" offer is hidden once
+     * the pin is older than [SHARE_OFFER_WINDOW_MS] — a live share broadcasts the device's *current*
+     * position, so offering it from a stale pin is misleading. Null ⇒ not age-gated (non-bubble callers).
+     */
+    createdAtMs: Long? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
         buildGeoUri(descriptor.lat, descriptor.lon, descriptor.address)
     }
-    val coordinatesLabel = remember(descriptor.lat, descriptor.lon) {
-        formatLatLon(descriptor.lat, descriptor.lon)
+
+    // Derive STATIC / LIVE / ENDED from the descriptor's window vs now. While live, a coarse ticker
+    // (<=30s) refreshes the "time left" caption; the loop lands exactly on `until` to flip to ENDED.
+    // When static, the same ticker lands on the share-offer deadline so the link self-hides at 15 min.
+    val until = descriptor.liveShareUntilMs
+    val shareOfferDeadline = if (until == null) createdAtMs?.let { it + SHARE_OFFER_WINDOW_MS } else null
+    val tickerDeadline = until ?: shareOfferDeadline
+    var nowMs by remember(tickerDeadline) { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
+    LaunchedEffect(tickerDeadline) {
+        val u = tickerDeadline ?: return@LaunchedEffect
+        while (true) {
+            val now = Clock.System.now().toEpochMilliseconds()
+            nowMs = now
+            if (now >= u) break
+            delay(minOf(u - now, 30_000L) + 50)
+        }
+    }
+    val isLive = until != null && nowMs < until
+    val isEnded = until != null && nowMs >= until
+    val remainingMs = if (until != null) (until - nowMs).coerceAtLeast(0L) else 0L
+    // The share-live offer is available only while the pin is fresh (or un-gated when createdAtMs null).
+    val canStartShare = shareOfferDeadline == null || nowMs < shareOfferDeadline
+
+    val onCardTap = {
+        if (isLive && liveControls != null) liveControls.onOpenMap() else uriHandler.openUri(geoUri)
     }
 
-    Column(modifier = modifier.fillMaxWidth().clickable { uriHandler.openUri(geoUri) }) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(isLive, onLongPress) {
+                detectTapGestures(
+                    onTap = { onCardTap() },
+                    onLongPress = { onLongPress?.invoke() },
+                )
+            },
+    ) {
         if (descriptor.hasImage) {
             val imageData = remember(driveId, fileId, payloadKey) {
                 HomebaseImageData(
@@ -256,39 +308,176 @@ fun LocationPreviewCard(
                     loadFullPayload = true,
                 )
             }
+            // Fill the bubble width (no letterbox borders); the outer container rounds the corners.
             HomebaseImage(
                 imageData = imageData,
-                modifier = Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(
-                    RoundedCornerShape(
-                        topStart = Dimens.Message.cornerRadius,
-                        topEnd = Dimens.Message.cornerRadius,
-                    )
-                ),
-                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxWidth().height(160.dp),
+                contentScale = ContentScale.Crop,
                 contentDescription = descriptor.address,
             )
         } else {
             Box(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                modifier = Modifier.fillMaxWidth().height(100.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Default.LocationOn,
                     contentDescription = stringResource(MR.string.cd_location_pin),
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = contentColor,
                     modifier = Modifier.size(40.dp),
                 )
             }
         }
 
         Column(modifier = Modifier.padding(12.dp)) {
+            // ── Fixed location metadata (muted): address, then the share-live affordance ──
             LocationPreviewTextContent(
                 address = descriptor.address,
-                coordinatesLabel = coordinatesLabel,
+                color = contentColor.copy(alpha = 0.7f),
             )
+            if (liveControls != null) {
+                if (descriptor.address.isNotEmpty()) Spacer(modifier = Modifier.height(6.dp))
+                LiveShareActionArea(
+                    controls = liveControls,
+                    isLive = isLive,
+                    isEnded = isEnded,
+                    remainingMs = remainingMs,
+                    contentColor = contentColor,
+                    canStart = canStartShare,
+                )
+            }
+            // ── The user's own typed caption, below the fixed parts. Brand blue (primary) so the
+            //    user's words stand apart from the grey auto-generated address on the neutral card. ──
+            if (!descriptor.caption.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = descriptor.caption,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
+}
+
+/**
+ * The live-share action area shown directly below the map image. Sender (own message) sees a
+ * "Share live location" link with a duration menu, or "Stop sharing" while live. Receiver sees a
+ * read-only "sharing live / ended" caption. State (LIVE/ENDED) comes from the descriptor; this only
+ * renders affordances.
+ */
+@Composable
+private fun LiveShareActionArea(
+    controls: LiveLocationBubbleControls,
+    isLive: Boolean,
+    isEnded: Boolean,
+    remainingMs: Long,
+    contentColor: Color,
+    /** Whether the static "Share live location" offer is still available (pin fresh enough). */
+    canStart: Boolean,
+) {
+    val mutedColor = contentColor.copy(alpha = 0.7f)
+    Box {
+        when {
+            isLive -> {
+                // Both sides show the live caption + time left; only the sender gets the Stop link.
+                Column {
+                    if (controls.sentByYou) {
+                        Row(
+                            modifier = Modifier.clickable { controls.onStop() },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text(
+                                text = stringResource(MR.string.stop_sharing),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(MR.string.live_share_active, formatRemaining(remainingMs)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = mutedColor,
+                    )
+                }
+            }
+
+            isEnded -> {
+                // Finished — no re-share option.
+                Text(
+                    text = stringResource(MR.string.live_share_ended),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedColor,
+                )
+            }
+
+            controls.sentByYou && canStart -> {
+                // STATIC, my own, still-fresh message: offer to share live. Uses the bubble's content
+                // color so the link is visible on both the grey (received) and tinted (sent) bubble.
+                // Hidden once the pin is stale (canStart=false) — a live share streams the CURRENT
+                // position, which has nothing to do with an old pin.
+                var menuExpanded by remember { mutableStateOf(false) }
+                Column {
+                    Row(
+                        modifier = Modifier.clickable { menuExpanded = true },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = null,
+                            tint = contentColor,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text(
+                            text = stringResource(MR.string.share_live_location),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = contentColor,
+                        )
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
+                            DropdownMenuItem(
+                                text = { Text(stringResource(labelRes)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    controls.onStart(durationMs)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            // Receiver + STATIC: no action area.
+        }
+    }
+}
+
+/** How long after a location pin is sent the "Share live location" offer stays available. */
+private const val SHARE_OFFER_WINDOW_MS = 15 * 60_000L
+
+private val DURATION_OPTIONS = listOf(
+    MR.string.live_share_15m to 15 * 60_000L,
+    MR.string.live_share_30m to 30 * 60_000L,
+    MR.string.live_share_1h to 60 * 60_000L,
+    MR.string.live_share_2h to 2 * 60 * 60_000L,
+    MR.string.live_share_4h to 4 * 60 * 60_000L,
+)
+
+/** Compact "time left" label: "42m", "1h", "1h 20m". */
+private fun formatRemaining(remainingMs: Long): String {
+    val totalMin = (remainingMs / 60_000L).coerceAtLeast(0L)
+    if (totalMin < 60) return "${totalMin}m"
+    val h = totalMin / 60
+    val m = totalMin % 60
+    return if (m == 0L) "${h}h" else "${h}h ${m}m"
 }
 
 // ─── Compact list row (the "See all" locations tab) ──────────────────────────

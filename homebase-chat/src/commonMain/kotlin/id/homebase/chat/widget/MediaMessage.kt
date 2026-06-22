@@ -32,6 +32,7 @@ import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
@@ -76,6 +77,8 @@ fun MediaMessage(
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
+    liveControls: LiveLocationBubbleControls? = null,
+    locationHeaderDescriptor: LocationPreviewDescriptor? = null,
     shape: Shape = RoundedCornerShape(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
@@ -144,6 +147,8 @@ fun MediaMessage(
                     isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
                     messageId = messageId,
                     isUploading = uploadStatus != null,
+                    liveControls = liveControls,
+                    locationHeaderDescriptor = locationHeaderDescriptor,
                 )
             }
 

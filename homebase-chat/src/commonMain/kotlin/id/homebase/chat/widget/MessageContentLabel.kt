@@ -54,6 +54,7 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.Event -> ContentLabel(messageContent.displayLabel, Icons.Default.Event)
     is MessageContent.DiceRoll -> ContentLabel(messageContent.displayLabel, Icons.Default.Casino)
     is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
+    is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null
 }

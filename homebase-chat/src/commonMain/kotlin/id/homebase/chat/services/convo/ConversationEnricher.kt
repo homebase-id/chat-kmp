@@ -3,6 +3,7 @@ package id.homebase.chat.services.convo
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.initials
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
@@ -119,10 +120,13 @@ class ConversationEnricher {
 internal fun ConversationUiModel.withOwnerProfileAvatar(
     ownerSession: OwnerSession,
 ): ConversationUiModel {
-    val previewContent = ownerSession.profileImagePreviewThumbnail?.takeIf { it.isNotBlank() }
-        ?: return this
-
     if (avatarModel.type != ConversationAvatarModel.Type.Owner) return this
+
+    // Owner's /pub/image is empty: without initials a missing/late photo shows blank.
+    val withInitials = copy(avatarModel = avatarModel.copy(initials = ownerSession.initials()))
+
+    val previewContent = ownerSession.profileImagePreviewThumbnail?.takeIf { it.isNotBlank() }
+        ?: return withInitials
 
     val ownerImageData = HomebaseImageData(
         driveId = Uuid.NIL,
@@ -139,5 +143,7 @@ internal fun ConversationUiModel.withOwnerProfileAvatar(
         keyHeader = KeyHeader.newRandom16(),
     )
 
-    return copy(avatarModel = avatarModel.copy(imageData = ownerImageData))
+    return withInitials.copy(
+        avatarModel = withInitials.avatarModel.copy(imageData = ownerImageData)
+    )
 }

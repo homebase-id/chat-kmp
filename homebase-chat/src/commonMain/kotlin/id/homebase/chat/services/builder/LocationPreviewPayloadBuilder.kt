@@ -79,6 +79,25 @@ object LocationPreviewPayloadBuilder {
         )
     }
 
+    /**
+     * The [LocationPreviewDescriptor] for a preview — used as the message HEADER content for location
+     * messages (the coordinate data lives in appData, like Event; the PNG stays a payload). `hasImage`
+     * is computed the same way [build] does (a decodable base64 image).
+     */
+    fun descriptorFor(locationPreview: LocationPreview): LocationPreviewDescriptor {
+        val imageUrl = locationPreview.imageUrl
+        val hasImage = imageUrl != null && imageUrl.contains("base64,") &&
+            runCatching { Base64.decode(imageUrl.substringAfter("base64,")).isNotEmpty() }.getOrDefault(false)
+        return LocationPreviewDescriptor(
+            lat = locationPreview.lat,
+            lon = locationPreview.lon,
+            address = locationPreview.address.truncateToCodePoints(200),
+            hasImage = hasImage,
+            imageWidth = if (hasImage) locationPreview.imageWidth else null,
+            imageHeight = if (hasImage) locationPreview.imageHeight else null,
+        )
+    }
+
     private fun buildDescriptorJson(
         locationPreview: LocationPreview,
         hasImage: Boolean,
