@@ -18,8 +18,11 @@ import id.homebase.api.sync.database.QueryBatch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -53,6 +56,14 @@ class ContactRepository(
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     /** Live contacts, freshest-row-per-uniqueId, in drive order (NewestFirst). Consumers sort. */
     val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
+
+    /**
+     * Live subset of [contacts] flagged as emergency contacts. Derived from [contacts], so it tracks
+     * the same optimistic writes and sync reconciliation; consumers sort.
+     */
+    val emergencyContacts: StateFlow<List<Contact>> = _contacts
+        .map { list -> list.filter { it.content.isEmergencyContact } }
+        .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private val _isLoaded = MutableStateFlow(false)
     val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()

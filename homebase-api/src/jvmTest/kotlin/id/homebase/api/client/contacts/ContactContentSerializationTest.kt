@@ -64,6 +64,22 @@ class ContactContentSerializationTest {
     }
 
     @Test
+    fun isEmergencyContact_omittedWhenFalse_emittedWhenTrue() {
+        // @EncodeDefault(NEVER): the false default is omitted so an UPDATE doesn't clobber a stored
+        // flag, while an explicit true is written. Reading an absent flag decodes back to false.
+        assertFalse(
+            OdinSystemSerializer.serialize(ContactContent(odinId = "x")).contains("isEmergencyContact"),
+        )
+        assertEquals(
+            """{"isEmergencyContact":true}""",
+            OdinSystemSerializer.serialize(ContactContent(isEmergencyContact = true)),
+        )
+        assertFalse(
+            OdinSystemSerializer.deserialize<ContactContent>("""{"odinId":"x"}""").isEmergencyContact,
+        )
+    }
+
+    @Test
     fun createRequestWrapsContentUnderContentKey() {
         val json = OdinSystemSerializer.serialize(
             CreateContactRequest(ContactContent(odinId = "sam.dotyou.cloud")),

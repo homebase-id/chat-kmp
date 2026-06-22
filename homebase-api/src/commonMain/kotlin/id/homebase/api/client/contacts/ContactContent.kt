@@ -1,5 +1,9 @@
+@file:OptIn(ExperimentalSerializationApi::class)
+
 package id.homebase.api.client.contacts
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -35,13 +39,20 @@ data class ContactContent(
     val status: String? = null,
     /** Bare URL value; render the link yourself. */
     val link: String? = null,
-    // social/isEmergencyContact stay nullable (not `emptyMap()`/`false`) for the same reason as the
-    // fields above: the serializer encodes defaults, so a non-null default would emit on every write
-    // and the server's merge would treat it as "set this", clobbering a stored value. Null omits.
+    // social stays nullable (not `emptyMap()`): the serializer encodes defaults, so a non-null empty
+    // default would emit on every write and the server's merge would treat it as "set this",
+    // clobbering stored handles. Null omits.
     /** Social handles keyed by attribute-type-id GUID (hyphenated). Values are bare handles, not URLs. */
     val social: Map<String, String>? = null,
-    /** Owner-only flag. */
-    val isEmergencyContact: Boolean? = null,
+    /**
+     * Owner-only flag — a contact either is an emergency contact or isn't, so this is a plain
+     * non-null [Boolean]. [EncodeDefault.Mode.NEVER] keeps the merge contract intact: the `false`
+     * default is omitted (so a write doesn't clobber the stored value), while `true` is emitted.
+     * Note this can set the flag but not clear it through the merge — a `false` reads as "leave
+     * alone"; clearing needs a dedicated write.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val isEmergencyContact: Boolean = false,
 )
 
 @Serializable
