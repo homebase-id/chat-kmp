@@ -57,7 +57,7 @@ actual fun createPermissionsManager(onPermissionResult: (PermissionType, Permiss
  * must stay alive until the user answers the system prompt, while
  * [createPermissionsManager] returns a fresh manager on every composition.
  */
-private object LocationPermissionRequester {
+internal object LocationPermissionRequester {
     private var pending: ((CLAuthorizationStatus) -> Unit)? = null
 
     private val delegate = object : NSObject(), CLLocationManagerDelegateProtocol {

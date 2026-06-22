@@ -1335,6 +1335,14 @@ fun AppNavHost(
                                 LocationHistoryScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
+                                    // Empty-day "turn on location tracking" link → the dashboard, where
+                                    // the tracking toggle lives (reuse the existing instance).
+                                    onNavigateToDashboard = {
+                                        navController.navigate(Route.Location) {
+                                            launchSingleTop = true
+                                            popUpTo(Route.Location) { inclusive = false }
+                                        }
+                                    },
                                 )
                             }
                         }

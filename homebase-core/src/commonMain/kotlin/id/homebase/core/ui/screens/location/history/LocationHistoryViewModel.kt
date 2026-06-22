@@ -24,6 +24,7 @@ class LocationHistoryViewModel(
         LocationHistoryUiState(
             dayStartMs = localDayStart(Clock.System.now().toEpochMilliseconds()),
             showMapTiles = locationPreferences.mapProvider.value == LocationMapProvider.OpenStreetMap,
+            trackingEnabled = locationPreferences.trackingEnabled.value,
         )
     )
     val uiState: StateFlow<LocationHistoryUiState> = _uiState.asStateFlow()
@@ -34,6 +35,11 @@ class LocationHistoryViewModel(
                 _uiState.update {
                     it.copy(showMapTiles = provider == LocationMapProvider.OpenStreetMap)
                 }
+            }
+        }
+        viewModelScope.launch {
+            locationPreferences.trackingEnabled.collect { enabled ->
+                _uiState.update { it.copy(trackingEnabled = enabled) }
             }
         }
         loadDay(_uiState.value.dayStartMs)
