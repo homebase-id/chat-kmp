@@ -30,6 +30,18 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.resources.MR
+import id.homebase.resources.feed_comment_encrypted
+import id.homebase.resources.feed_view_all_comments
+import org.jetbrains.compose.resources.stringResource
 
 /** Emoji applied by the double-tap-to-like media gesture. */
 private const val DOUBLE_TAP_EMOJI = "❤️"
@@ -106,6 +118,57 @@ fun PostCard(
             onShowReactors = onShowReactors,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
         )
+
+        PostCommentPreview(
+            summary = post.reactionPreview,
+            onViewAll = onOpenComments,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+        )
+    }
+}
+
+/**
+ * FB-style inline preview of the latest 1–2 comments + a "View all" affordance, read straight from
+ * the post's [ReactionSummary.comments] (server-supplied with the header — no per-post fetch).
+ * Each row and the link open the comments modal. Renders nothing when there are no comments.
+ */
+@Composable
+private fun PostCommentPreview(
+    summary: ReactionSummary?,
+    onViewAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shown = summary?.comments.orEmpty().takeLast(2)
+    if (shown.isEmpty()) return
+    val encryptedLabel = stringResource(MR.string.feed_comment_encrypted)
+    Column(modifier = modifier.fillMaxWidth()) {
+        shown.forEach { comment ->
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(comment.odinId) }
+                    append("  ")
+                    append(if (comment.isEncrypted) encryptedLabel else comment.content)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onViewAll)
+                    .padding(vertical = 2.dp),
+            )
+        }
+        if (summary != null && summary.totalCommentCount > shown.size) {
+            Text(
+                text = stringResource(MR.string.feed_view_all_comments),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clickable(onClick = onViewAll)
+                    .padding(top = 2.dp),
+            )
+        }
     }
 }
 

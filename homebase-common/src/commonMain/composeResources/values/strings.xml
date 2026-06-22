@@ -1482,6 +1482,8 @@
     <string name="feed_post_detail_comments_disabled">Comments are turned off for this post.</string>
     <string name="feed_comments_title">Comments</string>
     <string name="feed_post_empty_comments">No comments yet — be the first to comment.</string>
+    <string name="feed_view_all_comments">View all comments</string>
+    <string name="feed_comment_encrypted">Encrypted comment</string>
 
     <!-- Native feed: following -->
     <string name="feed_following_title">Following</string>
