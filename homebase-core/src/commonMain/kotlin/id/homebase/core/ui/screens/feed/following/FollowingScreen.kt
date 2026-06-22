@@ -18,11 +18,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -58,6 +58,7 @@ fun FollowingScreen(
     onIdentityClick: (String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val displayNames by viewModel.displayNames.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -86,7 +87,7 @@ fun FollowingScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            TabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
+            PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
                 Tab(
                     selected = uiState.selectedTab == FollowTab.Following,
                     onClick = { viewModel.selectTab(FollowTab.Following) },
@@ -112,8 +113,12 @@ fun FollowingScreen(
                         val isFollowed = remember(odinId, uiState.following) {
                             uiState.following.any { it.equals(odinId, ignoreCase = true) }
                         }
+                        // Resolve to a saved contact/connection name, else the raw domain.
+                        val odin = remember(odinId) { OdinId(odinId) }
+                        val displayName = displayNames[odin]?.takeIf { it.isNotBlank() } ?: odinId
                         IdentityRow(
                             odinId = odinId,
+                            displayName = displayName,
                             isFollowed = isFollowed,
                             onRowClick = { viewModel.onIdentityClick(odinId) },
                             onFollow = { viewModel.follow(odinId) },
@@ -154,6 +159,7 @@ private fun EmptyState(tab: FollowTab) {
 @Composable
 private fun IdentityRow(
     odinId: String,
+    displayName: String,
     isFollowed: Boolean,
     onRowClick: () -> Unit,
     onFollow: () -> Unit,
@@ -162,7 +168,7 @@ private fun IdentityRow(
     // OdinId(...) recomputes a SHA-256 hash on construction, so keep it behind
     // remember keyed on the domain string rather than rebuilding every recompose.
     val odin = remember(odinId) { OdinId(odinId) }
-    val rowInitials = remember(odinId) { odinId.initials() }
+    val rowInitials = remember(displayName) { displayName.initials() }
 
     Row(
         modifier = Modifier
@@ -176,13 +182,26 @@ private fun IdentityRow(
             initials = rowInitials,
             options = AvatarOptions(size = 44.dp, onClick = onRowClick),
         )
-        Text(
-            text = odinId,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = displayName,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // Show the domain as a secondary line only when it differs from the resolved name,
+            // so a known contact reads "Alice / alice.dotyou.cloud" and an unknown shows just
+            // the domain once.
+            if (displayName != odinId) {
+                Text(
+                    text = odinId,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         if (isFollowed) {
             OutlinedButton(onClick = onUnfollow) {
                 Text(stringResource(MR.string.feed_following_unfollow))

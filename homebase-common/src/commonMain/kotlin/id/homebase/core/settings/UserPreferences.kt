@@ -32,6 +32,14 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getBoolean("show_developer_menu", false)
         set(value) = settings.putBoolean("show_developer_menu", value)
 
+    /**
+     * Feed tab mode: the native KMP feed (default) vs the legacy WebView feed. Lets users opt back
+     * to the WebView while the native feed is being polished. Read by AppNavHost's Feed route.
+     */
+    var useNativeFeed: Boolean
+        get() = settings.getBoolean("use_native_feed", true)
+        set(value) = settings.putBoolean("use_native_feed", value)
+
     /** Master switch for in-app haptic feedback (default on). Read by GatedHaptics. */
     var hapticsEnabled: Boolean
         get() = settings.getBoolean("haptics_enabled", true)

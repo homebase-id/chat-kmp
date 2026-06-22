@@ -60,6 +60,13 @@ fun CommentsModalSheet(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
+    // Resolve comment-author names via the contact/connection map the VM streams; fall back
+    // to the raw domain for unknown identities (web `AuthorName` parity).
+    val displayNameFor: (OdinId?) -> String = { odinId ->
+        odinId?.let { id -> uiState.displayNames[id]?.takeIf { it.isNotBlank() } }
+            ?: odinId?.domainName.orEmpty()
+    }
+
     val post = uiState.post
     val canComment = post == null ||
         post.reactAccess == ReactAccess.All ||
@@ -93,7 +100,7 @@ fun CommentsModalSheet(
                     ) {
                         CommentThread(
                             comments = uiState.comments,
-                            displayNameFor = { odinId -> odinId?.domainName.orEmpty() },
+                            displayNameFor = displayNameFor,
                             isMine = { comment ->
                                 val self = uiState.selfOdinId
                                 self != null &&
@@ -119,8 +126,7 @@ fun CommentsModalSheet(
                     CommentComposer(
                         onSend = { text, attachment -> viewModel.postComment(text, attachment) },
                         replyingToName = uiState.replyingTo
-                            ?.let { it.originalAuthor ?: it.senderOdinId }
-                            ?.domainName,
+                            ?.let { displayNameFor(it.originalAuthor ?: it.senderOdinId) },
                         onCancelReply = viewModel::cancelReply,
                     )
                 }

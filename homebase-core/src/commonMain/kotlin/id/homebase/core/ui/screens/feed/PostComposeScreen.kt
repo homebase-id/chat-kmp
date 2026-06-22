@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +41,8 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -53,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,8 +79,11 @@ import id.homebase.resources.feed_compose_add_media
 import id.homebase.resources.feed_compose_attachment_image
 import id.homebase.resources.feed_compose_camera
 import id.homebase.resources.feed_compose_caption_placeholder
+import id.homebase.resources.feed_compose_caption_placeholder_repost
 import id.homebase.resources.feed_compose_channel
+import id.homebase.resources.feed_compose_edit_title
 import id.homebase.resources.feed_compose_post
+import id.homebase.resources.save
 import id.homebase.resources.feed_compose_react_all
 import id.homebase.resources.feed_compose_react_comment_only
 import id.homebase.resources.feed_compose_react_emoji_only
@@ -91,7 +99,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun PostComposeScreen(
     viewModel: PostComposeViewModel = koinViewModel(),
@@ -128,7 +136,17 @@ fun PostComposeScreen(
         modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.feed_compose_title)) },
+                title = {
+                    Text(
+                        stringResource(
+                            if (uiState.isEditing) {
+                                MR.string.feed_compose_edit_title
+                            } else {
+                                MR.string.feed_compose_title
+                            },
+                        ),
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Icon(
@@ -137,13 +155,33 @@ fun PostComposeScreen(
                         )
                     }
                 },
-            )
-        },
-        bottomBar = {
-            PostComposeBottomBar(
-                enabled = uiState.canPost,
-                isPosting = uiState.isPosting,
-                onPost = viewModel::submit,
+                actions = {
+                    // Post lives in the header (web / X-style composer) and stays visible above the
+                    // keyboard, instead of a separate bottom bar the IME would cover.
+                    Button(
+                        onClick = viewModel::submit,
+                        enabled = uiState.canPost && !uiState.isPosting,
+                        modifier = Modifier.padding(end = 12.dp),
+                    ) {
+                        if (uiState.isPosting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Text(
+                                stringResource(
+                                    if (uiState.isEditing) {
+                                        MR.string.save
+                                    } else {
+                                        MR.string.feed_compose_post
+                                    },
+                                ),
+                            )
+                        }
+                    }
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -158,12 +196,38 @@ fun PostComposeScreen(
         ) {
             Spacer(modifier = Modifier.height(4.dp))
 
-            OutlinedTextField(
+            TextField(
                 value = uiState.caption,
                 onValueChange = viewModel::onCaptionChange,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(MR.string.feed_compose_caption_placeholder)) },
+                placeholder = {
+                    // Web shows "Add a comment?" when quoting/reposting, else "What's up?".
+                    Text(
+                        text = stringResource(
+                            if (uiState.embeddedPost != null) {
+                                MR.string.feed_compose_caption_placeholder_repost
+                            } else {
+                                MR.string.feed_compose_caption_placeholder
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                textStyle = MaterialTheme.typography.bodyLarge,
                 minLines = 3,
+                // Lock the caption while the post is uploading (web disables the composer too).
+                enabled = !uiState.isPosting,
+                // Borderless, transparent field — a clean "What's up?" surface like the web composer,
+                // not the generic outlined box. (Color.Transparent = "no fill/indicator", not a theme role.)
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                ),
             )
 
             uiState.embeddedPost?.let { embedded ->
@@ -189,38 +253,43 @@ fun PostComposeScreen(
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
 
-            // Toolbar: add media, camera, audience selector, react-access toggle.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { galleryLauncher.launch() }) {
-                    Icon(
-                        imageVector = Icons.Outlined.AddPhotoAlternate,
-                        contentDescription = stringResource(MR.string.feed_compose_add_media),
+            // Toolbar: add media, camera, channel, audience, react-access. A FlowRow so the
+            // labelled chips wrap to a second line on narrow phones instead of being clipped
+            // off the edge of a fixed Row. Hidden when editing — an edit is caption-only
+            // (updatePost preserves media/channel/audience/react-access), so these would mislead.
+            if (!uiState.isEditing) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = { galleryLauncher.launch() }) {
+                        Icon(
+                            imageVector = Icons.Outlined.AddPhotoAlternate,
+                            contentDescription = stringResource(MR.string.feed_compose_add_media),
+                        )
+                    }
+                    IconButton(onClick = { cameraLauncher.launch() }) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = stringResource(MR.string.feed_compose_camera),
+                        )
+                    }
+                    ChannelChip(
+                        channels = uiState.channels,
+                        selectedChannelId = uiState.selectedChannelId,
+                        onSelect = viewModel::selectChannel,
+                    )
+                    AudienceChip(
+                        audience = uiState.audience,
+                        onCycle = { viewModel.pickAudience(uiState.audience.next()) },
+                    )
+                    ReactAccessChip(
+                        reactAccess = uiState.reactAccess,
+                        onCycle = viewModel::toggleReactAccess,
                     )
                 }
-                IconButton(onClick = { cameraLauncher.launch() }) {
-                    Icon(
-                        imageVector = Icons.Default.PhotoCamera,
-                        contentDescription = stringResource(MR.string.feed_compose_camera),
-                    )
-                }
-                Spacer(modifier = Modifier.size(4.dp))
-                ChannelChip(
-                    channels = uiState.channels,
-                    selectedChannelId = uiState.selectedChannelId,
-                    onSelect = viewModel::selectChannel,
-                )
-                AudienceChip(
-                    audience = uiState.audience,
-                    onCycle = { viewModel.pickAudience(uiState.audience.next()) },
-                )
-                ReactAccessChip(
-                    reactAccess = uiState.reactAccess,
-                    onCycle = viewModel::toggleReactAccess,
-                )
             }
         }
     }

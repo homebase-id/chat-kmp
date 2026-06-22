@@ -1,10 +1,12 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,16 +15,15 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Mood
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +34,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.file.FileOperationsProvider
@@ -44,7 +48,10 @@ import id.homebase.chat.services.sticker.StickerService
 import id.homebase.chat.services.sticker.StickerStream
 import id.homebase.chat.widget.StickerTray
 import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.widget.EmojiSelectorDialog
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.StickerFilled
+import id.homebase.core.ui.assets.StickerOutlined
+import id.homebase.core.widget.EmojiSelection
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_attach_image
 import id.homebase.resources.feed_comment_attachment_label
@@ -91,8 +98,13 @@ fun CommentComposer(
 
     var text by remember { mutableStateOf("") }
     var pickedImage by remember { mutableStateOf<PlatformFile?>(null) }
-    var showEmojiPicker by remember { mutableStateOf(false) }
-    var showStickerSheet by remember { mutableStateOf(false) }
+    // One combined expression panel (emoji + stickers), like the chat composer — instead of two
+    // separate emoji/sticker buttons that read as duplicates. It renders inline in the keyboard
+    // area (not a covering modal), so the input row stays visible while picking emojis.
+    var showExpressionSheet by remember { mutableStateOf(false) }
+    var expressionTab by remember { mutableStateOf(ExpressionTab.Emoji) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     val stickers by stickerStream.stickers.collectAsStateWithLifecycle()
     val stickersLoaded by stickerStream.isLoaded.collectAsStateWithLifecycle()
@@ -192,24 +204,31 @@ fun CommentComposer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            IconButton(onClick = { showStickerSheet = true }) {
-                Icon(
-                    imageVector = Icons.Outlined.Mood,
-                    contentDescription = stringResource(MR.string.feed_comment_sticker),
-                )
-            }
-
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
                 placeholder = { Text(stringResource(MR.string.feed_comment_hint)) },
-                modifier = Modifier.weight(1f),
+                // Tapping into the field closes the expression panel; the keyboard reclaims the space.
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { if (it.isFocused) showExpressionSheet = false },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
                 leadingIcon = {
-                    IconButton(onClick = { showEmojiPicker = true }) {
+                    // One button toggles the combined emoji + sticker panel. Opening it drops the
+                    // field focus and hides the keyboard so the panel takes the keyboard's place,
+                    // with the input row still visible above it.
+                    IconButton(onClick = {
+                        if (showExpressionSheet) {
+                            showExpressionSheet = false
+                        } else {
+                            keyboard?.hide()
+                            focusManager.clearFocus()
+                            showExpressionSheet = true
+                        }
+                    }) {
                         Icon(
-                            imageVector = Icons.Default.EmojiEmotions,
+                            imageVector = Icons.Outlined.Mood,
                             contentDescription = stringResource(MR.string.feed_comment_emoji),
                         )
                     }
@@ -251,36 +270,72 @@ fun CommentComposer(
                 }
             }
         }
-    }
 
-    if (showEmojiPicker) {
-        EmojiSelectorDialog(
-            onDismiss = { showEmojiPicker = false },
-            onEmojiSelected = { emoji ->
-                showEmojiPicker = false
-                text += emoji
-            },
-        )
+        // Inline keyboard-area expression panel: the input row above stays visible while you pick
+        // emojis (each inserts into the field); tapping the field closes the panel and brings the
+        // keyboard back. A sticker pick sends immediately and closes the panel.
+        AnimatedVisibility(visible = showExpressionSheet) {
+            Column(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                ExpressionTabRow(selected = expressionTab, onSelect = { expressionTab = it })
+                when (expressionTab) {
+                    ExpressionTab.Emoji -> EmojiSelection(
+                        modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp),
+                        messageInputMode = true,
+                        onBackSpace = { text = text.dropLast(1) },
+                        onEmojiSelected = { emoji -> text += emoji },
+                    )
+                    // ponytail: long-press (remove) + import are chat-library affordances not
+                    // relevant when picking a sticker for a comment; both are hidden.
+                    ExpressionTab.Stickers -> StickerTray(
+                        stickers = stickers,
+                        isLoaded = stickersLoaded,
+                        onStickerSelected = { sticker ->
+                            showExpressionSheet = false
+                            sendSticker(sticker)
+                        },
+                        onStickerLongPress = {},
+                        onImportClick = {},
+                        showImportTile = false,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                }
+            }
+        }
     }
+}
 
-    if (showStickerSheet) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { showStickerSheet = false },
-            sheetState = sheetState,
-        ) {
-            StickerTray(
-                stickers = stickers,
-                isLoaded = stickersLoaded,
-                onStickerSelected = { sticker ->
-                    showStickerSheet = false
-                    sendSticker(sticker)
-                },
-                // ponytail: long-press (remove) is a chat-library affordance not relevant when
-                // picking a sticker for a comment; the import tile is hidden outright.
-                onStickerLongPress = {},
-                onImportClick = {},
-                showImportTile = false,
+/** The two panels in the comment composer's combined expression sheet. */
+private enum class ExpressionTab { Emoji, Stickers }
+
+/**
+ * Centered icon tab row over the combined emoji/sticker panel (mirrors the chat composer's
+ * ExpressionSheet): the active tab is tinted primary and uses the filled icon variant.
+ */
+@Composable
+private fun ExpressionTabRow(
+    selected: ExpressionTab,
+    onSelect: (ExpressionTab) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        IconButton(onClick = { onSelect(ExpressionTab.Emoji) }) {
+            Icon(
+                imageVector = if (selected == ExpressionTab.Emoji) Icons.Filled.EmojiEmotions
+                else Icons.Outlined.EmojiEmotions,
+                contentDescription = stringResource(MR.string.feed_comment_emoji),
+                tint = if (selected == ExpressionTab.Emoji) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = { onSelect(ExpressionTab.Stickers) }) {
+            Icon(
+                imageVector = if (selected == ExpressionTab.Stickers) HomebaseIcons.StickerFilled
+                else HomebaseIcons.StickerOutlined,
+                contentDescription = stringResource(MR.string.feed_comment_sticker),
+                tint = if (selected == ExpressionTab.Stickers) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

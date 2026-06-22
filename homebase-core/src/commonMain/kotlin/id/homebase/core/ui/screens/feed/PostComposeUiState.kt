@@ -38,6 +38,8 @@ data class PostComposeUiState(
     val selectedChannelId: Uuid = FeedProtocol.PublicChannelDriveAlias,
     /** The source post being quoted, when this compose is a repost; null for a fresh post. */
     val embeddedPost: EmbeddedPost? = null,
+    /** True when editing an existing post (caption-only): hides media/channel controls, retitles. */
+    val isEditing: Boolean = false,
     val isPosting: Boolean = false,
     val errorMessage: String? = null,
 ) {

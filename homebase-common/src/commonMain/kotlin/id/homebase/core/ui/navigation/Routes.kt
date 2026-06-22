@@ -144,7 +144,11 @@ sealed class Route {
 
     @Serializable
     @SerialName("post_compose")
-    data class PostCompose(val repostOfJson: String? = null) : Route()
+    data class PostCompose(
+        val repostOfJson: String? = null,
+        /** When non-null, the composer opens in edit mode seeded from this PostEditSeed JSON. */
+        val editOfJson: String? = null,
+    ) : Route()
 
     @Serializable
     @SerialName("feed_following")

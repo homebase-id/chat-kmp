@@ -1,7 +1,17 @@
 package id.homebase.core.feed.services
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonEncoder
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /**
  * Kind of feed post — mirrors dotyoucore-js `PostType`. Maps to a [FeedProtocol] dataType
@@ -25,12 +35,47 @@ fun PostType.toDataType(): Int = when (this) {
  * Who may react to / comment on a post — mirrors dotyoucore-js `ReactAccess`.
  * Defaults to [All] so legacy posts that pre-date this field stay fully interactive.
  */
-@Serializable
+@Serializable(with = ReactAccessSerializer::class)
 enum class ReactAccess {
     All,
     EmojiOnly,
     CommentOnly,
     None,
+}
+
+/**
+ * dotyoucore-js serializes `reactAccess` as `true | false | 'comment' | 'emoji'` (a boolean/string
+ * union) — NOT the Kotlin enum names. Posts with a boolean `reactAccess` were therefore failing to
+ * parse and silently dropping out of the feed (incl. most followed identities' posts). This maps
+ * the web wire form ↔ [ReactAccess] (tolerating the native enum names too) and writes the web form
+ * back so our posts/reposts round-trip to the web. Semantics mirror web PostInteracts:
+ * `true`→All, `false`→None, `'comment'`→CommentOnly (emoji off), `'emoji'`→EmojiOnly (comment off).
+ */
+object ReactAccessSerializer : KSerializer<ReactAccess> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("ReactAccess", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): ReactAccess {
+        val json = decoder as? JsonDecoder ?: return ReactAccess.All
+        val prim = json.decodeJsonElement() as? JsonPrimitive ?: return ReactAccess.All
+        prim.booleanOrNull?.let { return if (it) ReactAccess.All else ReactAccess.None }
+        return when (prim.content) {
+            "comment", "CommentOnly" -> ReactAccess.CommentOnly
+            "emoji", "EmojiOnly" -> ReactAccess.EmojiOnly
+            "None" -> ReactAccess.None
+            else -> ReactAccess.All
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: ReactAccess) {
+        val element: JsonElement = when (value) {
+            ReactAccess.All -> JsonPrimitive(true)
+            ReactAccess.None -> JsonPrimitive(false)
+            ReactAccess.CommentOnly -> JsonPrimitive("comment")
+            ReactAccess.EmojiOnly -> JsonPrimitive("emoji")
+        }
+        (encoder as? JsonEncoder)?.encodeJsonElement(element) ?: encoder.encodeString(value.name)
+    }
 }
 
 /**
@@ -95,8 +140,12 @@ data class EmbeddedPost(
     val globalTransitId: String? = null,
     /** Author's userDate (epoch ms) of the embedded post. */
     val userDate: Long? = null,
-    /** Inline preview thumbnail (e.g. data URI / payload reference) for the embed. */
-    val previewThumbnail: String? = null,
+    /**
+     * Inline preview thumbnail for the embed. On the wire this is a thumbnail OBJECT
+     * (`{ pixelWidth, pixelHeight, contentType, ... }`), NOT a string — type it [JsonElement] for
+     * parse-tolerance, since a `{...}` value was failing the whole repost parse and dropping it.
+     */
+    val previewThumbnail: JsonElement? = null,
 )
 
 /**

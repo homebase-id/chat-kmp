@@ -3,6 +3,7 @@ package id.homebase.core.feed.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.CommentPreview
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
@@ -174,3 +175,16 @@ fun HomebaseFile.toCommentItem(topLevelPostId: Uuid): PostCommentItem? {
 internal fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
     OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
 }.getOrNull()
+
+/**
+ * Body text for a server-supplied comment preview. [CommentPreview.content] is the raw serialized
+ * [PostCommentContent] JSON (`{"body":...}`), NOT plain text — rendering it verbatim leaks the JSON.
+ * Mirrors dotyoucore-js `parseReactionPreview`: encrypted or empty → blank; otherwise JSON-parse and
+ * take `body`; parse failure → blank (the caller shows the encrypted/unavailable label instead).
+ */
+fun CommentPreview.previewBody(): String {
+    if (isEncrypted || content.isBlank()) return ""
+    return runCatching {
+        OdinSystemSerializer.deserialize<PostCommentContent>(content).body
+    }.getOrDefault("")
+}

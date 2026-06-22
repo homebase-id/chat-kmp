@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -151,16 +152,23 @@ private fun PostCommentPreview(
     onViewAll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shown = summary?.comments.orEmpty().takeLast(2)
-    if (shown.isEmpty()) return
     val encryptedLabel = stringResource(MR.string.feed_comment_encrypted)
+    // content is the raw PostCommentContent JSON — parse out the body (web parseReactionPreview).
+    // Drop media-only / unparseable rows (blank body, not encrypted) rather than show an empty line.
+    val shown = summary?.comments.orEmpty()
+        .map { comment ->
+            comment.odinId to if (comment.isEncrypted) encryptedLabel else comment.previewBody()
+        }
+        .filter { it.second.isNotBlank() }
+        .takeLast(2)
+    if (shown.isEmpty()) return
     Column(modifier = modifier.fillMaxWidth()) {
-        shown.forEach { comment ->
+        shown.forEach { (odinId, body) ->
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(comment.odinId) }
+                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(odinId) }
                     append("  ")
-                    append(if (comment.isEncrypted) encryptedLabel else comment.content)
+                    append(body)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -278,6 +286,10 @@ private fun PostMedia(
  * The signature like gesture: a big ❤️ that springs up with an overshoot and fades, centred over
  * the media — replayed whenever [tick] changes (each double-tap). Renders nothing before the first
  * tap. Purely decorative; the actual reaction is fired by the caller.
+ *
+ * A faint dark scrim heart sits one layer behind the white one so the burst stays legible over
+ * both bright and dark media (the universal IG-style "white heart over photo" — the white tint is
+ * deliberately not a theme role since the media beneath it is arbitrary).
  */
 @Composable
 private fun BoxScope.DoubleTapHeartBurst(tick: Int) {
@@ -296,6 +308,20 @@ private fun BoxScope.DoubleTapHeartBurst(tick: Int) {
         )
         alpha.animateTo(0f, tween(durationMillis = 260))
     }
+    // Shadow heart (slightly larger, dark, low alpha) for legibility on light media.
+    Icon(
+        imageVector = Icons.Filled.Favorite,
+        contentDescription = null,
+        tint = Color.Black.copy(alpha = 0.25f),
+        modifier = Modifier
+            .align(Alignment.Center)
+            .size(110.dp)
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                this.alpha = alpha.value
+            },
+    )
     Icon(
         imageVector = Icons.Filled.Favorite,
         contentDescription = null,
