@@ -3,7 +3,9 @@
 package id.homebase.api.client.contacts
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -202,12 +204,12 @@ class ContactRepository(
      * Fetches and parses a contact's on-demand `ext_data` payload (bios / rich text) — call only
      * when actually showing the bios; it is not part of the list/detail read.
      *
-     * Returns null when there is nothing to show: the contact has no `ext_data` payload
-     * ([Contact.hasExtData] is false, or the fetch 404s), the row is optimistic (no [Contact.fileId]
-     * yet), or the fetch/parse fails. Callers treat null as "empty extended data".
+     * Returns null when there is nothing to show: the contact has no `ext_data` payload (its key is
+     * absent from [Contact.payloadKeys], or the fetch 404s), the row is optimistic (no
+     * [Contact.fileId] yet), or the fetch/parse fails. Callers treat null as "empty extended data".
      */
     suspend fun loadExtData(contact: Contact): ContactExtData? {
-        if (!contact.hasExtData) return null
+        if (ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY !in contact.payloadKeys) return null
         val fileId = contact.fileId ?: return null
         val keyHeader = contact.keyHeader ?: return null
 
@@ -328,5 +330,156 @@ class ContactRepository(
     } catch (e: Exception) {
         Logger.w(e, TAG) { "setContactImage failed for $uniqueId" }
         false
+    }
+
+    // ------------------------------------------------------------
+    // Per-app app-data (two tiers) — write-through + bulk read
+    // ------------------------------------------------------------
+    //
+    // [appId] is this app's id; it is used only to address the local slot (the inline optimistic
+    // patch / the bulk-read map key) — it is never sent on the wire (the server stamps it from the
+    // token). Pass it dashless or hyphenated; it's normalized to the canonical map-key form.
+
+    /**
+     * Inline-tier write (≤ 200 bytes). On success optimistically patches the live contact's
+     * [ContactContent.appData] and adopts the returned versionTag; the authoritative row lands via
+     * drive sync. Returns the new id/versionTag, or null on a generic failure. Rethrows
+     * [ForbiddenException] (403) and [ContactAppDataTooLargeException] (blob over the tier cap — use
+     * [setAppExtData] instead).
+     */
+    suspend fun setAppData(
+        uniqueId: Uuid,
+        appId: String,
+        content: String,
+        versionTag: Uuid,
+    ): ContactWriteResponse? {
+        val response = runAppDataWrite("setAppData", uniqueId) {
+            contactsProvider.setContactAppData(uniqueId, content, versionTag)
+        } ?: return null
+        patchInlineAppData(uniqueId, appId, content, response.versionTag)
+        return response
+    }
+
+    /** Inline-tier delete. Optimistically removes this app's slot. Same error contract as [setAppData]. */
+    suspend fun deleteAppData(
+        uniqueId: Uuid,
+        appId: String,
+        versionTag: Uuid,
+    ): ContactWriteResponse? {
+        val response = runAppDataWrite("deleteAppData", uniqueId) {
+            contactsProvider.deleteContactAppData(uniqueId, versionTag)
+        } ?: return null
+        patchInlineAppData(uniqueId, appId, null, response.versionTag)
+        return response
+    }
+
+    /**
+     * Bulk-tier write (≤ 256 KB), stored as the `appextdata` payload. No optimistic list patch — the
+     * bulk slot isn't in the contacts list; read it back with [loadAppExtData]. Same error contract as
+     * [setAppData].
+     */
+    suspend fun setAppExtData(
+        uniqueId: Uuid,
+        content: String,
+        versionTag: Uuid,
+    ): ContactWriteResponse? = runAppDataWrite("setAppExtData", uniqueId) {
+        contactsProvider.setContactAppExtData(uniqueId, content, versionTag)
+    }
+
+    /** Bulk-tier delete. Same error contract as [setAppData]. */
+    suspend fun deleteAppExtData(
+        uniqueId: Uuid,
+        versionTag: Uuid,
+    ): ContactWriteResponse? = runAppDataWrite("deleteAppExtData", uniqueId) {
+        contactsProvider.deleteContactAppExtData(uniqueId, versionTag)
+    }
+
+    /**
+     * Bulk-tier read: fetches + decrypts the `appextdata` payload and returns this app's opaque
+     * string, or null when absent (no payload, the row is optimistic, or fetch/parse fails). Mirrors
+     * [loadExtData].
+     */
+    suspend fun loadAppExtData(contact: Contact, appId: String): String? {
+        if (ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY !in contact.payloadKeys) return null
+        val fileId = contact.fileId ?: return null
+        val keyHeader = contact.keyHeader ?: return null
+
+        val bytes = try {
+            contactPayloadReader.getPayloadBytes(
+                driveId = driveId,
+                fileId = fileId,
+                key = ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY,
+                keyHeader = keyHeader,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e, TAG) { "loadAppExtData fetch failed for ${contact.uniqueId}" }
+            return null
+        } ?: return null
+
+        return runCatching {
+            OdinSystemSerializer.deserialize<ContactAppExtData>(bytes.decodeToString())
+                .appData[appId.toCanonicalAppId()]
+        }.getOrElse {
+            Logger.w(it, TAG) { "loadAppExtData parse failed for ${contact.uniqueId}" }
+            null
+        }
+    }
+
+    /**
+     * Runs a provider app-data write and unwraps it. Returns the [ContactWriteResponse] on success,
+     * null on a generic failure / 404 / exhausted contention. Rethrows [ForbiddenException] and maps
+     * the size-cap 400 ([ClientException] with [OdinClientErrorCode.MaxContentLengthExceeded]) to
+     * [ContactAppDataTooLargeException].
+     */
+    private suspend fun runAppDataWrite(
+        op: String,
+        uniqueId: Uuid,
+        call: suspend () -> ContactWriteResult,
+    ): ContactWriteResponse? {
+        val result = try {
+            call()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ForbiddenException) {
+            throw e
+        } catch (e: ClientException) {
+            if (e.errorCode == OdinClientErrorCode.MaxContentLengthExceeded) {
+                throw ContactAppDataTooLargeException(
+                    e.message ?: "app-data blob exceeds the tier size cap",
+                )
+            }
+            Logger.w(e, TAG) { "$op failed for $uniqueId (400 ${e.errorCode})" }
+            return null
+        } catch (e: Exception) {
+            Logger.w(e, TAG) { "$op failed for $uniqueId" }
+            return null
+        }
+        return when (result) {
+            is ContactWriteResult.Ok -> result.body
+            // retryVersionGated only surfaces Ok/NotFound; Conflict can't reach here, but the `when`
+            // must be exhaustive. Both non-Ok cases are "nothing written" → null.
+            ContactWriteResult.NotFound -> null
+            is ContactWriteResult.Conflict -> null
+        }
+    }
+
+    /** Optimistically sets ([content] != null) or clears this app's inline slot on the live contact. */
+    private fun patchInlineAppData(uniqueId: Uuid, appId: String, content: String?, newTag: Uuid) {
+        val key = appId.toCanonicalAppId()
+        _contacts.update { current ->
+            val idx = current.indexOfFirst { it.uniqueId == uniqueId }
+            if (idx < 0) return@update current
+            val existing = current[idx]
+            val map = existing.content.appData ?: emptyMap()
+            val newMap = if (content == null) map - key else map + (key to content)
+            current.toMutableList().apply {
+                this[idx] = existing.copy(
+                    content = existing.content.copy(appData = newMap.ifEmpty { null }),
+                    versionTag = newTag,
+                )
+            }
+        }
     }
 }

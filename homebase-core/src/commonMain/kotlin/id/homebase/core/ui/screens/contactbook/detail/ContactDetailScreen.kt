@@ -197,6 +197,9 @@ fun ContactDetailScreen(
                             onToggleMore = { detailsExpanded = !detailsExpanded },
                         )
 
+                        BioSection(entry.shortBio)
+                        SocialSection(entry.socialHandles)
+
                         Spacer(modifier = Modifier.height(28.dp))
                         RecentMediaSection(
                             overview = uiState.overview,
@@ -313,6 +316,17 @@ private fun DetailHeader(
                 text = it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        // Free-text status/tagline the contact set, under the odinId.
+        entry.status?.takeIf { it.isNotBlank() }?.let {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
             )
         }
 

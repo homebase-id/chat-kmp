@@ -42,7 +42,11 @@ data class ContactContent(
     // social stays nullable (not `emptyMap()`): the serializer encodes defaults, so a non-null empty
     // default would emit on every write and the server's merge would treat it as "set this",
     // clobbering stored handles. Null omits.
-    /** Social handles keyed by attribute-type-id GUID (hyphenated). Values are bare handles, not URLs. */
+    /**
+     * Social handles keyed by attribute-type-id GUID in the dashless 32-hex form (e.g.
+     * `54ecbdc035fd1a44d0524303cd104411`). Values are bare handles, not URLs. Resolve known
+     * networks with [socialHandles] / [ContactSocialNetwork].
+     */
     val social: Map<String, String>? = null,
     /**
      * Owner-only flag — a contact either is an emergency contact or isn't, so this is a plain
@@ -53,6 +57,14 @@ data class ContactContent(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val isEmergencyContact: Boolean = false,
+    /**
+     * Inline per-app data (the ≤200-byte tier), keyed by appId as a canonical lowercase hyphenated
+     * UUID string. Populated by the server on read (it rides in the contact content, so the contacts
+     * list query already returns it); absent when nothing has been written. Read it via
+     * [appDataFor]. We never write this through a contact UPDATE — it has its own endpoints
+     * ([ContactsProvider.setContactAppData]) — so it stays nullable to omit on our writes.
+     */
+    val appData: Map<String, String>? = null,
 )
 
 @Serializable

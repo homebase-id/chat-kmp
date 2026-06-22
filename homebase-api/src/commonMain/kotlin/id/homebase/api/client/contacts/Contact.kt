@@ -34,8 +34,12 @@ data class Contact(
      */
     val fileId: Uuid? = null,
     val keyHeader: KeyHeader? = null,
-    /** Whether this contact has an `ext_data` payload at all — false skips a pointless fetch. */
-    val hasExtData: Boolean = false,
+    /**
+     * Keys of the on-demand payloads attached to this contact file (e.g. `ext_data`, `appextdata`).
+     * Lets a reader skip a guaranteed-404 fetch for a payload that isn't there. Empty on an
+     * optimistic, not-yet-synced row.
+     */
+    val payloadKeys: Set<String> = emptySet(),
 )
 
 /** Everything needed to render a contact's stored avatar (`prfl_pic`) without a second drive read. */
@@ -75,8 +79,7 @@ fun HomebaseFile.toContact(): Contact? {
             )
         }
 
-    val hasExtData = fileMetadata.payloads
-        ?.any { it.key == ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY } == true
+    val payloadKeys = fileMetadata.payloads?.mapTo(HashSet()) { it.key } ?: emptySet()
 
     return Contact(
         uniqueId = uniqueId,
@@ -85,6 +88,6 @@ fun HomebaseFile.toContact(): Contact? {
         image = image,
         fileId = fileId,
         keyHeader = keyHeader,
-        hasExtData = hasExtData,
+        payloadKeys = payloadKeys,
     )
 }

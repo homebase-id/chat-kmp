@@ -11,7 +11,9 @@ import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
+import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.api.client.contacts.resolveDisplayName
+import id.homebase.api.client.contacts.socialHandles
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.HomebaseImageData
@@ -49,6 +51,12 @@ data class ContactBookEntry(
     val city: String? = null,
     val country: String? = null,
     val birthday: String? = null,
+    /** Free-text status/tagline (NOT connection state); rendered under the odinId in the header. */
+    val status: String? = null,
+    /** Short header tagline (~<=160 chars); rendered in its own "Bio" section. */
+    val shortBio: String? = null,
+    /** Known social/gaming handles in render order, resolved from [ContactContent.social]. */
+    val socialHandles: List<Pair<ContactSocialNetwork, String>> = emptyList(),
     val source: String? = null,
     /** Pending (optimistic, not yet confirmed by the drive). */
     val isPending: Boolean = false,
@@ -165,6 +173,9 @@ fun Contact.toContactBookEntry(): ContactBookEntry? {
         city = content.location?.city,
         country = content.location?.country,
         birthday = content.birthday?.date,
+        status = content.status,
+        shortBio = content.shortBio,
+        socialHandles = content.socialHandles(),
         source = content.source,
         driveId = image?.driveId,
         keyHeader = image?.keyHeader,

@@ -49,8 +49,11 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
+import id.homebase.resources.contactbook_detail_bio
+import id.homebase.resources.contactbook_detail_social
 import id.homebase.resources.contactbook_detail_block
 import id.homebase.resources.contactbook_detail_circles
 import id.homebase.resources.contactbook_detail_circles_connect
@@ -288,6 +291,47 @@ fun ContactFieldsSection(
                 )
             )
         }
+    }
+}
+
+/** Short free-text bio/tagline, in its own section. Renders nothing when the contact has none. */
+@Composable
+fun BioSection(shortBio: String?) {
+    val bio = shortBio?.takeIf { it.isNotBlank() } ?: return
+    Spacer(modifier = Modifier.height(20.dp))
+    Text(
+        text = stringResource(MR.string.contactbook_detail_bio),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = bio,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+}
+
+/**
+ * The contact's social/gaming handles (resolved to known networks), in its own section. Each row
+ * shows the network name over the bare handle. Renders nothing when there are none.
+ */
+@Composable
+fun SocialSection(handles: List<Pair<ContactSocialNetwork, String>>) {
+    if (handles.isEmpty()) return
+    Spacer(modifier = Modifier.height(20.dp))
+    Text(
+        text = stringResource(MR.string.contactbook_detail_social),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    handles.forEach { (network, handle) ->
+        ListItem(
+            leadingContent = { Icon(Icons.Outlined.AlternateEmail, contentDescription = null) },
+            overlineContent = { Text(network.label) },
+            headlineContent = { Text(handle) },
+        )
     }
 }
 
