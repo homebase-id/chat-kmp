@@ -76,14 +76,22 @@ fun PostAuthorHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            // Web `PostMeta` (Meta.tsx) renders the date first, then a separated channel link
+            // carrying the lock glyph — so timestamp leads, channel follows.
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = formatTimestamp(Instant.fromEpochMilliseconds(createdMs)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
                 if (!channelName.isNullOrBlank()) {
                     Icon(
                         imageVector = Icons.Outlined.Lock,
                         contentDescription = stringResource(MR.string.feed_channel_locked),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
-                            .padding(end = 3.dp)
+                            .padding(start = 6.dp, end = 3.dp)
                             .size(12.dp),
                     )
                     Text(
@@ -92,15 +100,8 @@ fun PostAuthorHeader(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(end = 6.dp),
                     )
                 }
-                Text(
-                    text = formatTimestamp(Instant.fromEpochMilliseconds(createdMs)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
             }
         }
     }

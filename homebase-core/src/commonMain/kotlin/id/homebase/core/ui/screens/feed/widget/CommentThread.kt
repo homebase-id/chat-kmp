@@ -155,23 +155,15 @@ private fun CommentRow(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = displayName,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = formatTimestamp(Instant.fromEpochMilliseconds(comment.createdMs)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
+            // Web `CommentHead` is the author name alone; the timestamp lives at the end of the
+            // action/meta row below (`CommentMeta.tsx`), not next to the name.
+            Text(
+                text = displayName,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
 
             if (isEditing) {
                 // Inline edit — replaces the rendered body + action row until Save/Cancel.
@@ -221,6 +213,7 @@ private fun CommentRow(
                 CommentMedia(comment = comment)
 
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
@@ -264,6 +257,14 @@ private fun CommentRow(
                             )
                         }
                     }
+                    // Web `CommentMeta` ends the action row with the relative timestamp.
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = formatTimestamp(Instant.fromEpochMilliseconds(comment.createdMs)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
                 }
             }
         }

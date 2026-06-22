@@ -1431,7 +1431,7 @@
 
     <!-- Native feed -->
     <string name="feed_post_to_channel">to %1$s</string>
-    <string name="feed_post_read_more">More</string>
+    <string name="feed_post_read_more">More…</string>
     <string name="feed_post_read_less">Less</string>
     <string name="feed_post_comment">Comment</string>
     <string name="feed_post_comment_count">%1$d</string>

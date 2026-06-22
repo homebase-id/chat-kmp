@@ -25,6 +25,21 @@ import org.jetbrains.compose.resources.stringResource
 private const val READ_MORE_LIMIT = 400
 
 /**
+ * Newlines kept in a collapsed caption before the rest are flattened to spaces — mirrors the
+ * web feed (`Body.tsx`: `splitCaption.slice(0, 7)`), which limits a teaser to 7 lines so a
+ * tall newline-heavy post can't dominate the timeline.
+ */
+private const val MAX_TEASER_LINES = 7
+
+/** Flattens everything past the first [MAX_TEASER_LINES] newlines to spaces, per the web teaser. */
+private fun String.clampTeaserLines(): String {
+    val parts = split('\n')
+    if (parts.size <= MAX_TEASER_LINES) return this
+    return parts.take(MAX_TEASER_LINES).joinToString("\n") + " " +
+        parts.drop(MAX_TEASER_LINES).joinToString(" ")
+}
+
+/**
  * Renders a post [caption] as Signal-style markdown with a "More"/"Less" read-more
  * toggle once the text exceeds [READ_MORE_LIMIT] code points (surrogate-safe).
  *
@@ -48,7 +63,7 @@ fun PostBody(
 
     val displayed = remember(fullText, expanded, overflows) {
         if (expanded || !overflows) fullText
-        else caption.truncateToCodePoints(READ_MORE_LIMIT)
+        else caption.clampTeaserLines().truncateToCodePoints(READ_MORE_LIMIT)
     }
 
     // First expand of a pst_text post: pull the full body, then keep it.
