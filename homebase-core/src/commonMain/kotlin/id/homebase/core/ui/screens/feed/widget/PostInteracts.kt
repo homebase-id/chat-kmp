@@ -182,8 +182,9 @@ private fun PostReactionSummary(
     }
     if (emojiCounts.isEmpty()) return
     val total = remember(emojiCounts) { emojiCounts.sumOf { it.second } }
+    // Up to 5 distinct glyphs, matching the web feed's reaction summary.
     val topEmojis = remember(emojiCounts) {
-        emojiCounts.sortedByDescending { it.second }.map { it.first }.distinct().take(3)
+        emojiCounts.sortedByDescending { it.second }.map { it.first }.distinct().take(5)
     }
 
     Row(
