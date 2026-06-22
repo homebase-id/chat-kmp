@@ -80,7 +80,7 @@ class PeerFileByGlobalTransitProviderTest {
             .getPayloadOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "pst_mdi0")
 
         val req = requireNotNull(request)
-        assertEquals("/api/v2/transit/query/payload_byglobaltransitid", req.url.encodedPath)
+        assertEquals("/api/apps/v1/transit/query/payload_byglobaltransitid", req.url.encodedPath)
         assertEquals(peer.toString(), req.param("odinId"))
         assertEquals(driveAlias.toString(), req.param("alias"))
         assertEquals(driveType.toString(), req.param("type"))
@@ -104,10 +104,11 @@ class PeerFileByGlobalTransitProviderTest {
             .getThumbOverPeerByGlobalTransitId(peer, driveAlias, driveType, gtid, "pst_mdi0", 320, 480)
 
         val req = requireNotNull(request)
-        assertEquals("/api/v2/transit/query/thumb_byglobaltransitid", req.url.encodedPath)
+        assertEquals("/api/apps/v1/transit/query/thumb_byglobaltransitid", req.url.encodedPath)
         assertEquals("pst_mdi0", req.param("payloadKey"))
         assertEquals("320", req.param("width"))
         assertEquals("480", req.param("height"))
+        assertEquals("false", req.param("directMatchOnly"))
         assertEquals(thumb.toList(), result!!.bytes.toList())
     }
 

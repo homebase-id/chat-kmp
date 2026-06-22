@@ -20,8 +20,18 @@ import kotlin.uuid.Uuid
  * case).
  *
  * Routes mirror dotyoucore-js `get{Payload,Thumb}BytesOverPeerByGlobalTransitId`:
- * `/transit/query/{payload,thumb}_byglobaltransitid` with the peer + drive (alias+type) + gtid as
- * query params (NOT the `/peer/.../files/...` path form, which only exposes `exists` by gtid).
+ * `/api/apps/v1/transit/query/{payload,thumb}_byglobaltransitid` (PeerQueryControllerBase) with the
+ * peer + drive (alias+type) + gtid as query params.
+ *
+ * KNOWN LIMITATION (verified against the odin backend): these `*_byglobaltransitid` endpoints live
+ * ONLY under the classic App/Owner/Guest API v1 surface, which authenticates a classic app
+ * ClientAuthToken (cookie). chat-kmp logs in via the unified v2 API and sends a v2 bearer token, so
+ * these v1 routes reject it with 401. The unified v2 peer surface exposes payload/thumb over peer
+ * ONLY by **fileId** (`/api/v2/peer/{odinId}/drives/{driveId}/files/{fileId}/payload/{key}[/thumb]`,
+ * V2DrivePeerFileReadonlyController) — never by gtid (v2 by-gtid is `exists` only). So the v2-native
+ * path is: resolve gtid→author-fileId via an over-peer query-batch (FileQueryParams.globalTransitId
+ * filter, supported), then fetch payload/thumb by that fileId. TODO: implement that resolve step;
+ * until then followed-post media falls back to the embedded preview thumbnail (no regression).
  */
 class PeerFileByGlobalTransitProvider(
     httpClient: HttpClient,
@@ -41,7 +51,7 @@ class PeerFileByGlobalTransitProvider(
         val creds = requireCreds()
         val query = "odinId=$peer&alias=$driveAlias&type=$driveType" +
             "&globalTransitId=$globalTransitId&key=$payloadKey"
-        val url = apiUrl(creds.domain, "/transit/query/payload_byglobaltransitid?$query")
+        val url = transitQueryUrl(creds.domain, "payload_byglobaltransitid", query)
         Logger.i(tag = TAG) {
             "getPayload: GET peer=${peer.domainName} alias=$driveAlias gtid=$globalTransitId key=$payloadKey"
         }
@@ -62,14 +72,21 @@ class PeerFileByGlobalTransitProvider(
         require(width > 0 && height > 0) { "width/height must be positive" }
         val creds = requireCreds()
         val query = "odinId=$peer&alias=$driveAlias&type=$driveType" +
-            "&globalTransitId=$globalTransitId&payloadKey=$payloadKey&width=$width&height=$height"
-        val url = apiUrl(creds.domain, "/transit/query/thumb_byglobaltransitid?$query")
+            "&globalTransitId=$globalTransitId&payloadKey=$payloadKey" +
+            "&width=$width&height=$height&directMatchOnly=false"
+        val url = transitQueryUrl(creds.domain, "thumb_byglobaltransitid", query)
         Logger.i(tag = TAG) {
             "getThumb: GET peer=${peer.domainName} alias=$driveAlias gtid=$globalTransitId " +
                 "key=$payloadKey ${width}x$height"
         }
         return fetchAndDecrypt(url)
     }
+
+    // PeerQueryControllerBase routes the *_byglobaltransitid endpoints under the App API v1
+    // transit/query path. The unified /api/v2 peer surface only exposes `exists` by gtid (no
+    // payload/thumb), so [apiUrl]'s /api/v2 base 404s here — build the App-API-v1 URL directly.
+    private fun transitQueryUrl(domain: OdinId, endpoint: String, query: String): String =
+        "https://$domain/api/apps/v1/transit/query/$endpoint?$query"
 
     private suspend fun fetchAndDecrypt(url: String): BytesResponse? {
         val creds = requireCreds()
