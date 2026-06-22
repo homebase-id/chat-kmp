@@ -37,8 +37,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
 import id.homebase.core.config.locationLabeledDrive
-import id.homebase.core.permissions.PermissionsManager
-import id.homebase.core.permissions.PermissionType
+import id.homebase.core.permissions.isLocationPermissionGranted
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -276,10 +275,9 @@ val appModule = module {
     // layer can prompt to set up location instead of starting a share that captures nothing.
     single<LiveShareReadiness> {
         val activation = get<OptionalDriveActivation>()
-        val permissions = get<PermissionsManager>()
         LiveShareReadiness {
             activation.isActivated(locationLabeledDrive) &&
-                permissions.isPermissionGranted(PermissionType.LOCATION)
+                isLocationPermissionGranted()
         }
     }
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
