@@ -56,7 +56,7 @@ import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_note_to_self
-import id.homebase.resources.chat_preview_sender_prefix
+import id.homebase.resources.chat_preview_sender_label
 import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.you
 import org.jetbrains.compose.resources.stringResource
@@ -189,15 +189,18 @@ fun ConversationItem(
                     enrichedData.conversation.lastMessageIsFromActiveUser -> stringResource(MR.string.you)
                     else -> groupSenderName
                 }
-                val previewText = if (senderLabel != null && rawPreview.isNotBlank()) {
-                    stringResource(MR.string.chat_preview_sender_prefix, senderLabel, rawPreview)
+                // Render the sender prefix ("You:" / a group member's name) BEFORE the
+                // content-type icon so it reads "You: <icon> Image", not "<icon> You: Image".
+                val senderPrefix = if (senderLabel != null && rawPreview.isNotBlank()) {
+                    stringResource(MR.string.chat_preview_sender_label, senderLabel)
                 } else {
-                    rawPreview
+                    null
                 }
                 val iconRes = if (pendingSubtitle != null) null else contentLabel?.icon
 
                 ConversationMessagePreview(
-                    text = previewText,
+                    text = rawPreview,
+                    prefix = senderPrefix,
                     iconRes = iconRes,
                     isDeleted = enrichedData.conversation.lastMessageIsDeleted,
                     modifier = Modifier.weight(1f)
@@ -342,12 +345,24 @@ fun ConversationMessagePreview(
     iconRes: ImageVector?,
     isDeleted: Boolean,
     modifier: Modifier = Modifier,
+    prefix: String? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier
     ) {
+        if (prefix != null) {
+            Text(
+                text = prefix,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (isDeleted) 0.5f else 1f
+                ),
+                maxLines = 1,
+            )
+        }
+
         if (iconRes != null) {
             Icon(
                 imageVector = iconRes,
