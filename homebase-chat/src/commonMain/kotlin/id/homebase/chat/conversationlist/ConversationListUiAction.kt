@@ -360,5 +360,9 @@ sealed interface ConversationListUiAction {
     /** Open the Live Location map (tap a live location bubble's map). */
     data object OpenLiveLocationMap : ConversationListUiAction
 
+    /** Open the location setup screen — from the "set up location" prompt shown when a live share
+     *  can't start because location isn't ready. */
+    data object OpenLocationSetup : ConversationListUiAction
+
     // endregion
 }

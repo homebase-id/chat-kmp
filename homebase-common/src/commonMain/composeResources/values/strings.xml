@@ -726,6 +726,7 @@
     <string name="chat_event_scheduled_in_zone">Scheduled: %1$s %2$s</string>
     <string name="chat_event_add_end_time">Add end time</string>
     <string name="chat_event_remove_end_time">Remove end time</string>
+    <string name="chat_event_error_end_before_start">End time must be after the start time</string>
     <string name="chat_event_title_hint">Add title</string>
     <string name="chat_event_location_hint">Add location</string>
     <string name="chat_event_meeting_url_hint">Add meeting link</string>
@@ -1318,6 +1319,9 @@
     <string name="live_share_1h">1 hour</string>
     <string name="live_share_2h">2 hours</string>
     <string name="live_share_4h">4 hours</string>
+    <string name="live_share_enable_location_title">Turn on location to share</string>
+    <string name="live_share_enable_location_body">To share your live location, set up location on this device first so it can send your position.</string>
+    <string name="live_share_enable_location_cta">Set up location</string>
     <string name="location_history_empty">No locations recorded on this day</string>
     <string name="location_history_map_disclosure">Map tiles are fetched from OpenStreetMap — the viewed area becomes visible to their servers.</string>
     <string name="location_history_previous_day">Previous day</string>
