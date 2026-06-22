@@ -3,6 +3,7 @@ package id.homebase.core.image
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import kotlin.math.max
 import kotlin.uuid.Uuid
 
@@ -52,6 +53,14 @@ data class HomebaseImageData(
     val payloadContentType: String? = null,
     /** KeyHeader for decryption of the payload */
     val keyHeader: KeyHeader,
+    /**
+     * When non-null, the payload lives on a FOLLOWED identity's drive and is fetched over peer
+     * (by [globalTransitId]) instead of locally — see [HomebaseImageLoader]. [driveId] is then the
+     * author's channel drive and [remoteOdinId] is the author. Null for ordinary local reads.
+     */
+    val remoteOdinId: OdinId? = null,
+    /** Global transit id of a remote post, required alongside [remoteOdinId] for the over-peer fetch. */
+    val globalTransitId: Uuid? = null,
 ) {
     companion object {
         /** Create data for a pending (not yet uploaded) image */

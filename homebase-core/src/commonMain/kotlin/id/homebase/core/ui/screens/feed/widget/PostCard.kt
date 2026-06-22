@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
@@ -115,10 +116,19 @@ private fun PostMedia(
         post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
     if (mediaPayloads.isEmpty()) return
 
+    // A followed identity's post (remoteOdinId set) keeps its payload bytes on the author's drive:
+    // fetch over peer (by globalTransitId) from the author's public-channel drive instead of the
+    // local feed-drive reference, whose bytes are "marked as remote".
+    // ponytail: assumes the default public-channel drive; posts on a custom channel would need the
+    // channel-specific drive derived from PostContent.channelId — add that if such posts appear.
+    val mediaDriveId =
+        if (post.remoteOdinId != null) SystemDriveConstants.publicPostChannelDrive.alias
+        else post.driveId
+
     MomentMediaGallery(
         payloads = mediaPayloads,
         fileId = post.fileId,
-        driveId = post.driveId,
+        driveId = mediaDriveId,
         previewThumbnail = post.previewThumbnail,
         keyHeader = post.keyHeader,
         modifier = modifier,
@@ -131,5 +141,7 @@ private fun PostMedia(
         animatedVisibilityScope = null,
         messageId = post.id,
         downloadingFiles = emptySet(),
+        remoteOdinId = post.remoteOdinId,
+        globalTransitId = post.globalTransitId,
     )
 }

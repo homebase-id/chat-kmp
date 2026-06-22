@@ -13,6 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
@@ -70,6 +71,10 @@ fun MomentMediaGallery(
     // Force carousel videos to show the whole frame (fit) — set while the host
     // card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
+    // When set, this gallery's media lives on a followed identity's drive and is fetched over peer
+    // (by [globalTransitId]). Null for local media (moments, chat, own posts).
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -90,6 +95,8 @@ fun MomentMediaGallery(
                 downloadingFiles = downloadingFiles,
                 isUploading = isUploading,
                 fitToContent = fitToContent,
+                remoteOdinId = remoteOdinId,
+                globalTransitId = globalTransitId,
             )
         } else {
             MomentMediaCarousel(
@@ -111,6 +118,8 @@ fun MomentMediaGallery(
                 autoplayActive = autoplayActive,
                 onVisiblePayloadChanged = onVisiblePayloadChanged,
                 fitToContent = fitToContent,
+                remoteOdinId = remoteOdinId,
+                globalTransitId = globalTransitId,
             )
         }
     }
@@ -134,6 +143,8 @@ private fun SingleImageLayout(
     // aspect-locked crop — used while the card is shrunk to a band above the
     // comments sheet so the entire photo is visible.
     fitToContent: Boolean = false,
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     // Compute aspect from the payload's thumbnail metadata so the cell sizes
     // before the (possibly remote, encrypted) full image is decoded. Falls
@@ -176,6 +187,8 @@ private fun SingleImageLayout(
         isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
         messageId = messageId,
         isUploading = isUploading,
+        remoteOdinId = remoteOdinId,
+        globalTransitId = globalTransitId,
     )
 }
 

@@ -27,6 +27,7 @@ import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.peer.PeerDriveQueryProvider
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
 import id.homebase.api.client.peer.PeerWebSocketManager
@@ -98,6 +99,7 @@ val apiModule = module {
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::PeerDriveQueryProvider)
+    factoryOf(::PeerFileByGlobalTransitProvider)
     factoryOf(::TemporalDriveReadProvider)
     factoryOf(::PeerDriveUploadProvider)
     factoryOf(::PeerNotificationProvider)

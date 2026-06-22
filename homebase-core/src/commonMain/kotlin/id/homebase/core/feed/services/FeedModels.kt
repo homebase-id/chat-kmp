@@ -52,6 +52,14 @@ data class FeedPostItem(
     val ownReactions: List<String>,
     /** Comment count from the embedded reaction/comment preview. */
     val commentCount: Int,
+    /**
+     * Author whose drive hosts this post when it's a followed-identity reference on the feed
+     * drive — its media bytes are remote and fetched over peer (with [globalTransitId]). Null for
+     * the user's own posts, whose media is local.
+     */
+    val remoteOdinId: OdinId? = null,
+    /** Cross-identity global id of the post, used with [remoteOdinId] for the over-peer media fetch. */
+    val globalTransitId: Uuid? = null,
 )
 
 /**
@@ -93,7 +101,8 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     // feed drive as references that carry only a globalTransitId (no uniqueId) — fall back to it
     // so followed/public posts surface in the timeline instead of being dropped. Both values
     // stably identify the post for dedup; they never collide (own posts aren't feed references).
-    val uniqueId = appData.uniqueId ?: fileMetadata.globalTransitId ?: return null
+    val isReference = appData.uniqueId == null
+    val id = appData.uniqueId ?: fileMetadata.globalTransitId ?: return null
     val content = appData.content?.let { raw ->
         runCatching { OdinSystemSerializer.deserialize<PostContent>(raw) }
             .onFailure { Logger.w(tag = "FeedModels") { "PostContent parse failed: ${it.message}" } }
@@ -103,7 +112,7 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
         .orEmpty()
     return FeedPostItem(
-        id = uniqueId,
+        id = id,
         fileId = fileId,
         driveId = driveId,
         keyHeader = keyHeader,
@@ -123,6 +132,10 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         versionTag = fileMetadata.versionTag,
         ownReactions = ownReactions,
         commentCount = fileMetadata.reactionPreview?.totalCommentCount ?: 0,
+        // A reference (no uniqueId) is a followed identity's post: its media lives on the author's
+        // drive and is fetched over peer. senderOdinId is the author who hosts it.
+        remoteOdinId = if (isReference) (fileMetadata.senderOdinId ?: fileMetadata.originalAuthor) else null,
+        globalTransitId = fileMetadata.globalTransitId,
     )
 }
 

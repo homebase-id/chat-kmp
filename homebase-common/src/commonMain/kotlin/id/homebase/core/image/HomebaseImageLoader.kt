@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.client.withRetry
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
@@ -40,6 +41,7 @@ data class CachedImage(val bytes: ByteArray, val contentType: String, val size: 
 class HomebaseImageLoader(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val peerFileProvider: PeerFileByGlobalTransitProvider,
 ) {
     // Durable scope hosting full-payload loads so a cancelled caller (e.g. a
     // prefetch whose grid item left composition) does not abort a load that
@@ -131,15 +133,29 @@ class HomebaseImageLoader(
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
             val response = try {
-                driveFileProvider.getThumbBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    payloadKey = data.payloadKey,
-                    keyHeader = data.keyHeader,
-                    width = nativeSize.pixelWidth,
-                    height = nativeSize.pixelHeight,
-                    lastModified = data.lastModified,
-                )
+                val remoteOdinId = data.remoteOdinId
+                val gtid = data.globalTransitId
+                if (remoteOdinId != null && gtid != null) {
+                    // Followed-identity post: bytes live on the author's drive — fetch over peer.
+                    peerFileProvider.getThumbOverPeerByGlobalTransitId(
+                        peer = remoteOdinId,
+                        driveId = data.driveId,
+                        globalTransitId = gtid,
+                        payloadKey = data.payloadKey,
+                        width = nativeSize.pixelWidth,
+                        height = nativeSize.pixelHeight,
+                    )
+                } else {
+                    driveFileProvider.getThumbBytesDecrypted(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        payloadKey = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                        width = nativeSize.pixelWidth,
+                        height = nativeSize.pixelHeight,
+                        lastModified = data.lastModified,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -210,12 +226,23 @@ class HomebaseImageLoader(
     ): CachedImage? {
         return withRetry(retryConfig, TAG) {
             val response = try {
-                driveFileProvider.getPayloadBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    key = data.payloadKey,
-                    keyHeader = data.keyHeader
-                )
+                val remoteOdinId = data.remoteOdinId
+                val gtid = data.globalTransitId
+                if (remoteOdinId != null && gtid != null) {
+                    peerFileProvider.getPayloadOverPeerByGlobalTransitId(
+                        peer = remoteOdinId,
+                        driveId = data.driveId,
+                        globalTransitId = gtid,
+                        payloadKey = data.payloadKey,
+                    )
+                } else {
+                    driveFileProvider.getPayloadBytesDecrypted(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        key = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

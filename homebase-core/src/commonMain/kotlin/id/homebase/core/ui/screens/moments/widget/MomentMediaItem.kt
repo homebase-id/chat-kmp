@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -111,6 +112,10 @@ fun MomentMediaItem(
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
     isUploading: Boolean = false,
+    // When set, this payload's bytes live on a followed identity's drive and are fetched over peer
+    // (by [globalTransitId]). Null for ordinary local media (chat, moments, own posts).
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio || fitBounds) ContentScale.Fit else ContentScale.Crop
@@ -270,6 +275,8 @@ fun MomentMediaItem(
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                                 ?: KeyHeader.empty(),
+                            remoteOdinId = remoteOdinId,
+                            globalTransitId = globalTransitId,
                         )
                     }
 
@@ -327,6 +334,8 @@ fun MomentMediaItem(
                         lastModified = payload.lastModified,
                         isEncrypted = true,
                         keyHeader = perPayloadKeyHeader,
+                        remoteOdinId = remoteOdinId,
+                        globalTransitId = globalTransitId,
                     )
                 }
                 val videoLocalContext = localContext as? LocalAttachmentContext.Video

@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.ImageSize
@@ -98,6 +99,9 @@ fun MomentMediaCarousel(
     // Force the whole video frame to show (fit) instead of crop-to-fill —
     // set while the host card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
+    // When set, media lives on a followed identity's drive — fetched over peer (by gtid).
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -230,6 +234,8 @@ fun MomentMediaCarousel(
                     isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
                     messageId = messageId,
                     isUploading = isUploading,
+                    remoteOdinId = remoteOdinId,
+                    globalTransitId = globalTransitId,
                 )
             }
         }
