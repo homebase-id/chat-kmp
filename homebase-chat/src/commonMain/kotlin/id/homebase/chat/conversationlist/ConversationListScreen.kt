@@ -76,6 +76,9 @@ import id.homebase.resources.cancel
 import id.homebase.resources.chat_delete
 import id.homebase.resources.chat_delete_conversation_title
 import id.homebase.resources.chat_message_delete_dialog_title
+import id.homebase.resources.live_share_enable_location_body
+import id.homebase.resources.live_share_enable_location_cta
+import id.homebase.resources.live_share_enable_location_title
 import id.homebase.resources.chat_message_delete_for_everyone
 import id.homebase.resources.chat_message_delete_for_me
 import id.homebase.resources.chat_message_discard_draft
@@ -118,6 +121,7 @@ fun ConversationListScreen(
     onNavigateToSettingsScreen: () -> Unit,
     onNavigateToNewConversation: () -> Unit,
     onNavigateToLiveLocationMap: () -> Unit = {},
+    onNavigateToLocationSetup: () -> Unit = {},
     onNavigateToContactInfo: (odinId: String) -> Unit,
     onNavigateToConversationSettings: (conversationId: String) -> Unit,
     onNavigateToGroupSettings: (conversationId: String) -> Unit,
@@ -183,6 +187,11 @@ fun ConversationListScreen(
             is ConversationListUiEvent.NavigateToLiveLocationMap -> {
                 viewModel.eventConsumed()
                 onNavigateToLiveLocationMap()
+            }
+
+            is ConversationListUiEvent.NavigateToLocationSetup -> {
+                viewModel.eventConsumed()
+                onNavigateToLocationSetup()
             }
 
             is ConversationListUiEvent.NavigateToContactInfo -> {
@@ -331,6 +340,27 @@ fun ConversationListScreen(
                     DialogTitle(
                         text = stringResource(MR.string.chat_message_delete_dialog_title),
                     )
+                }
+            }
+        }
+
+        is ConversationListUiDialog.EnableLocationForShare -> {
+            Dialog(onDismissRequest = { viewModel.dialogClosed() }) {
+                DialogCard(
+                    buttons = {
+                        DialogButtons(
+                            primaryText = stringResource(MR.string.live_share_enable_location_cta),
+                            onPrimaryClick = {
+                                viewModel.onAction(ConversationListUiAction.OpenLocationSetup)
+                                viewModel.dialogClosed()
+                            },
+                            tertiaryText = stringResource(MR.string.cancel),
+                            onTertiaryClick = { viewModel.dialogClosed() },
+                            showButtonsVertically = true,
+                        )
+                    }) {
+                    DialogTitle(text = stringResource(MR.string.live_share_enable_location_title))
+                    DialogText(text = stringResource(MR.string.live_share_enable_location_body))
                 }
             }
         }

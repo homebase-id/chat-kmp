@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Videocam
@@ -30,8 +32,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -384,36 +385,27 @@ private fun EventComposerContent(
                 }
                 Spacer(Modifier.height(12.dp))
             } else {
-                Box(modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedButton(onClick = { showPhotoMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = null,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(MR.string.chat_event_add_photo))
-                    }
-                    DropdownMenu(
-                        expanded = showPhotoMenu,
-                        onDismissRequest = { showPhotoMenu = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.string.vault_image_choose_gallery)) },
-                            onClick = {
-                                showPhotoMenu = false
-                                pendingPhotoAction = PhotoSource.Gallery
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(MR.string.vault_image_take_photo)) },
-                            onClick = {
-                                showPhotoMenu = false
-                                pendingPhotoAction = PhotoSource.Camera
-                            },
-                        )
-                    }
+                OutlinedButton(
+                    onClick = { showPhotoMenu = true },
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(MR.string.chat_event_add_photo))
                 }
                 Spacer(Modifier.height(12.dp))
+            }
+            if (showPhotoMenu) {
+                PhotoSourceDialog(
+                    onPick = {
+                        showPhotoMenu = false
+                        pendingPhotoAction = it
+                    },
+                    onDismiss = { showPhotoMenu = false },
+                )
             }
 
             // Title — borderless headline with a brand-blue underline indicator.
@@ -680,6 +672,64 @@ private fun formatFriendlyDate(d: LocalDateTime): String {
 /** 24h "HH:mm". */
 private fun formatTime(d: LocalDateTime): String =
     d.hour.toString().padStart(2, '0') + ":" + d.minute.toString().padStart(2, '0')
+
+/**
+ * Cover-photo source chooser. A centered, scrimmed [AlertDialog] (the in-sheet
+ * picker idiom this composer already uses for date/time) — visible against the
+ * dark sheet and away from the button it was launched from, unlike the old
+ * dark-on-dark dropdown that opened under the finger (#785).
+ */
+@Composable
+private fun PhotoSourceDialog(
+    onPick: (PhotoSource) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.chat_event_add_photo)) },
+        text = {
+            Column {
+                PhotoSourceRow(
+                    icon = Icons.Default.PhotoLibrary,
+                    label = stringResource(MR.string.vault_image_choose_gallery),
+                    onClick = { onPick(PhotoSource.Gallery) },
+                )
+                PhotoSourceRow(
+                    icon = Icons.Default.PhotoCamera,
+                    label = stringResource(MR.string.vault_image_take_photo),
+                    onClick = { onPick(PhotoSource.Camera) },
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun PhotoSourceRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

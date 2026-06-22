@@ -58,6 +58,7 @@ import kotlin.time.Instant
 fun LocationHistoryScreen(
     viewModel: LocationHistoryViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToDashboard: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
@@ -126,6 +127,8 @@ fun LocationHistoryScreen(
                 showMapTiles = uiState.showMapTiles,
                 isLoading = uiState.isLoading,
                 subjectName = stringResource(MR.string.location_history_you),
+                trackingEnabled = uiState.trackingEnabled,
+                onEnableTracking = onNavigateToDashboard,
                 modifier = Modifier.weight(1f),
             )
         }
