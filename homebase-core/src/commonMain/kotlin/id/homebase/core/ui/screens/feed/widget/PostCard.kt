@@ -79,6 +79,7 @@ fun PostCard(
     modifier: Modifier = Modifier,
     onRepost: (() -> Unit)? = null,
     onExpandFetchFullText: (suspend () -> String?)? = null,
+    embeddedAuthorName: String? = null,
 ) {
     Column(
         modifier = modifier
@@ -109,6 +110,7 @@ fun PostCard(
         post.embeddedPost?.let { embedded ->
             QuotedPost(
                 embedded = embedded,
+                authorName = embeddedAuthorName,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
@@ -153,8 +155,7 @@ private fun PostCommentPreview(
     modifier: Modifier = Modifier,
 ) {
     val encryptedLabel = stringResource(MR.string.feed_comment_encrypted)
-    // content is the raw PostCommentContent JSON — parse out the body (web parseReactionPreview).
-    // Drop media-only / unparseable rows (blank body, not encrypted) rather than show an empty line.
+    // Drop media-only / unparseable rows (blank body) rather than show an empty line.
     val shown = summary?.comments.orEmpty()
         .map { comment ->
             comment.odinId to if (comment.isEncrypted) encryptedLabel else comment.previewBody()
@@ -201,6 +202,7 @@ private fun PostCommentPreview(
 @Composable
 private fun QuotedPost(
     embedded: EmbeddedPost,
+    authorName: String?,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -210,7 +212,8 @@ private fun QuotedPost(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            embedded.author?.takeIf { it.isNotBlank() }?.let { author ->
+            (authorName?.takeIf { it.isNotBlank() } ?: embedded.author?.takeIf { it.isNotBlank() })
+                ?.let { author ->
                 Text(
                     text = author,
                     style = MaterialTheme.typography.labelLarge,

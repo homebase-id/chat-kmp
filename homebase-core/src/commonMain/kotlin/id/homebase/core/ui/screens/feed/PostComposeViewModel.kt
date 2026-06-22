@@ -3,9 +3,11 @@ package id.homebase.core.ui.screens.feed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.link.LinkPreviewProvider
+import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.feed.services.ChannelDefinitionService
@@ -54,6 +56,8 @@ class PostComposeViewModel(
     private val postSender: FeedPostSenderService,
     private val linkPreviewProvider: LinkPreviewProvider,
     private val channelService: ChannelDefinitionService,
+    private val credentialsManager: CredentialsManager,
+    private val publicProfileProvider: PublicProfileProviderCached,
     repostOfJson: String? = null,
     editOfJson: String? = null,
 ) : ViewModel() {
@@ -73,8 +77,7 @@ class PostComposeViewModel(
                 .getOrNull()
                 ?.let { embedded -> _uiState.update { it.copy(embeddedPost = embedded) } }
         }
-        // Seed an edit: prefill the caption from the existing post; submit() then calls updatePost
-        // instead of createPost. A parse failure falls through to a plain compose.
+        // Edit mode: prefill caption; submit() then calls updatePost instead of createPost.
         if (editOfJson != null) {
             runCatching { OdinSystemSerializer.deserialize<PostEditSeed>(editOfJson) }
                 .onFailure { Logger.w(throwable = it, tag = TAG) { "edit payload parse failed" } }
@@ -92,6 +95,17 @@ class PostComposeViewModel(
                 }
         }
         loadChannels()
+        resolveAuthor()
+    }
+
+    // You aren't in your own contacts, so the author name comes from the public profile.
+    private fun resolveAuthor() {
+        viewModelScope.launch {
+            val self = credentialsManager.getActiveCredentials()?.domain ?: return@launch
+            _uiState.update { it.copy(selfOdinId = self) }
+            val name = runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
+            if (!name.isNullOrBlank()) _uiState.update { it.copy(selfName = name) }
+        }
     }
 
     /**
@@ -188,8 +202,7 @@ class PostComposeViewModel(
             try {
                 val edit = editTarget
                 if (edit != null) {
-                    // Edit is caption-only (web parity): updatePost preserves channel/ACL/reactAccess
-                    // and rewrites the caption against the existing post's versionTag.
+                    // Caption-only: updatePost preserves channel/ACL/reactAccess.
                     postSender.updatePost(
                         channelId = Uuid.parse(edit.channelId),
                         postUniqueId = Uuid.parse(edit.postId),
@@ -259,11 +272,7 @@ class PostComposeViewModel(
     private fun firstUrl(text: String): String? = URL_REGEX.find(text)?.value
 }
 
-/**
- * Seed for opening the composer in edit mode. Serialized into the [Route.PostCompose] nav arg
- * (UUIDs as strings) — the post the edit targets, its channel + current versionTag, and the
- * caption to prefill. Caption-only edits mirror dotyoucore-js's post edit.
- */
+/** Edit-mode composer seed (UUIDs as strings). channelId = the post's DRIVE alias. */
 @Serializable
 data class PostEditSeed(
     val postId: String,
@@ -272,11 +281,7 @@ data class PostEditSeed(
     val caption: String,
 )
 
-/**
- * Koin factory arg bundle for the composer — at most one of [repostOfJson] / [editOfJson] is set.
- * A single typed param keeps the DI lookup unambiguous (two nullable Strings could not be told
- * apart by type).
- */
+// One typed koin param so repost vs edit (two nullable Strings) stay unambiguous by type.
 data class ComposerArgs(
     val repostOfJson: String? = null,
     val editOfJson: String? = null,

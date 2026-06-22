@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.feed
 
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.link.LinkPreview
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.FeedProtocol
@@ -40,6 +41,10 @@ data class PostComposeUiState(
     val embeddedPost: EmbeddedPost? = null,
     /** True when editing an existing post (caption-only): hides media/channel controls, retitles. */
     val isEditing: Boolean = false,
+    /** The author the post publishes as (the signed-in identity) — drives the composer's avatar header. */
+    val selfOdinId: OdinId? = null,
+    /** The author's resolved display name (public profile), or null until it loads. */
+    val selfName: String? = null,
     val isPosting: Boolean = false,
     val errorMessage: String? = null,
 ) {

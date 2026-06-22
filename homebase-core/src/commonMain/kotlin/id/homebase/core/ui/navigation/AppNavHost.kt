@@ -1651,15 +1651,10 @@ private fun buildRepostJson(post: FeedPostItem): String = OdinSystemSerializer.s
     ),
 )
 
-/**
- * Serialize a [PostEditSeed] for an edit compose route arg (caption-only edit). Only invoked from
- * the owner-gated overflow menu, so the post always has a local versionTag + channel.
- */
 private fun buildEditJson(post: FeedPostItem): String = OdinSystemSerializer.serialize(
     PostEditSeed(
         postId = post.id.toString(),
-        // updatePost locates the post by its DRIVE alias (getFileHeaderByUid(driveId, uid)), which
-        // is post.driveId — NOT the PostContent channelId field (a channel-definition id).
+        // updatePost locates the post by DRIVE alias (post.driveId), not the PostContent channelId.
         channelId = post.driveId.toString(),
         versionTag = post.versionTag?.toString().orEmpty(),
         caption = post.caption,

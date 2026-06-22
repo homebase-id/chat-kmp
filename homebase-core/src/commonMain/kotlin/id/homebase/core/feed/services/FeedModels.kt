@@ -176,12 +176,7 @@ internal fun decodeReactionEmoji(reactionContent: String): String? = runCatching
     OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
 }.getOrNull()
 
-/**
- * Body text for a server-supplied comment preview. [CommentPreview.content] is the raw serialized
- * [PostCommentContent] JSON (`{"body":...}`), NOT plain text — rendering it verbatim leaks the JSON.
- * Mirrors dotyoucore-js `parseReactionPreview`: encrypted or empty → blank; otherwise JSON-parse and
- * take `body`; parse failure → blank (the caller shows the encrypted/unavailable label instead).
- */
+/** [CommentPreview.content] is raw [PostCommentContent] JSON, not text — parse out the body. */
 fun CommentPreview.previewBody(): String {
     if (isEncrypted || content.isBlank()) return ""
     return runCatching {

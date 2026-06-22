@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.BorderStroke
@@ -67,8 +68,11 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.widget.LinkPreviewCard
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.feed.services.EmbeddedPost
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.core.util.initials
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.feed_compose_audience_anyone
@@ -196,6 +200,26 @@ fun PostComposeScreen(
         ) {
             Spacer(modifier = Modifier.height(4.dp))
 
+            // "Posting as you": author avatar + name (web shows this atop the editor).
+            uiState.selfOdinId?.let { self ->
+                val authorName = uiState.selfName?.takeIf { it.isNotBlank() } ?: self.domainName
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PublicAvatar(
+                        odinId = self,
+                        initials = authorName.initials(),
+                        options = AvatarOptions(size = 40.dp),
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = authorName,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+
             TextField(
                 value = uiState.caption,
                 onValueChange = viewModel::onCaptionChange,
@@ -253,10 +277,7 @@ fun PostComposeScreen(
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
 
-            // Toolbar: add media, camera, channel, audience, react-access. A FlowRow so the
-            // labelled chips wrap to a second line on narrow phones instead of being clipped
-            // off the edge of a fixed Row. Hidden when editing — an edit is caption-only
-            // (updatePost preserves media/channel/audience/react-access), so these would mislead.
+            // Hidden when editing — an edit is caption-only, so these controls would mislead.
             if (!uiState.isEditing) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),

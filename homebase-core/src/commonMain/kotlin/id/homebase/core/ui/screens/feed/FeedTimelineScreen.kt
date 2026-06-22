@@ -266,6 +266,8 @@ private fun FeedTimelineList(
                     onPostClick = { onOpenComments(post.id) },
                     onMediaClick = { onPostClick(post.id) },
                     onAuthorClick = { if (author != null) onAuthorClick(author) },
+                    embeddedAuthorName = post.embeddedPost?.author
+                        ?.let { displayNames[OdinId(it)]?.takeIf { n -> n.isNotBlank() } },
                 )
             }
         }

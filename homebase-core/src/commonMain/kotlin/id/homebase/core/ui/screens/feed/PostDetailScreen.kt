@@ -124,10 +124,7 @@ fun PostDetailScreen(
                     }
                 },
                 actions = {
-                    // Edit + Delete are owner-only — so the whole menu only shows on the user's
-                    // own post. Ownership mirrors the comment idiom below: prefer originalAuthor
-                    // (survives the server stripping senderOdinId on the author's own copy), then
-                    // senderOdinId.
+                    // Owner-only menu. originalAuthor survives the server stripping senderOdinId.
                     val isMyPost = post != null && uiState.selfOdinId != null &&
                         (post.originalAuthor ?: post.senderOdinId) == uiState.selfOdinId
                     if (isMyPost) {
@@ -227,6 +224,8 @@ fun PostDetailScreen(
                                 onToggleReaction = viewModel::togglePostReaction,
                                 onOpenComments = {},
                                 onShowReactors = viewModel::showReactors,
+                                embeddedAuthorName = post.embeddedPost?.author
+                                    ?.let { displayNameFor(OdinId(it)) },
                             )
 
                             if (canComment) {

@@ -808,7 +808,7 @@ val appModule = module {
     viewModelOf(::FeedTimelineViewModel)
     viewModel { params ->
         val args = params.getOrNull<ComposerArgs>() ?: ComposerArgs()
-        PostComposeViewModel(get(), get(), get(), args.repostOfJson, args.editOfJson)
+        PostComposeViewModel(get(), get(), get(), get(), get(), args.repostOfJson, args.editOfJson)
     }
     viewModelOf(::FollowingViewModel)
     viewModel { params ->
