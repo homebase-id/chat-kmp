@@ -20,10 +20,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -713,6 +717,8 @@ fun MessageBubbleRaw(
                                 modifier = Modifier.padding(
                                     horizontal = 12.dp, vertical = 12.dp
                                 ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 if (emojiOnly) {
                                     // Render emoji-only messages prominently
@@ -725,6 +731,22 @@ fun MessageBubbleRaw(
                                         color = contentColor
                                     )
                                 } else {
+                                    // Mirror the conversation-list preview's deleted marker
+                                    // (MessageContentLabel: Block icon + the same string).
+                                    // ponytail: safe only because it sits beside the short fixed
+                                    // "deleted" string. The timestamp-tuck Layout below measures
+                                    // lastLineRight from the text's own origin and assumes it starts
+                                    // at textRowPadding; this icon shifts that origin right by ~20dp.
+                                    // If this icon is ever shown next to variable/long body text,
+                                    // add its width to lastLineEnd or the tucked time can overlap.
+                                    if (message.isDeleted) {
+                                        Icon(
+                                            imageVector = Icons.Default.Block,
+                                            contentDescription = deletedText,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = contentColor,
+                                        )
+                                    }
                                     ChatMarkdown(
                                         content = bodyText,
                                         color = contentColor,
