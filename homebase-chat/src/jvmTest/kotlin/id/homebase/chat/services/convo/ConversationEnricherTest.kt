@@ -55,6 +55,15 @@ class ConversationEnricherTest {
         isGroup = false,
     )
 
+    private fun selfOwnerConvo() = oneOnOneConvo().copy(
+        id = ChatProtocol.ConversationWithYourselfId,
+        participants = listOf(me),
+        avatarModel = ConversationAvatarModel(
+            type = ConversationAvatarModel.Type.Owner,
+            odinId = me,
+        ),
+    )
+
     @Test
     fun enrich_withSelf_returnsEmptyParticipants() {
         val enricher = ConversationEnricher()
@@ -73,5 +82,22 @@ class ConversationEnricherTest {
         assertTrue(result.participants.isEmpty())
         assertTrue(result.missingConnections.isEmpty())
         assertEquals(null, result.oneOnOneConnectionStatus)
+    }
+
+    @Test
+    fun enrich_withSelf_ownerAvatar_alwaysHasInitials_whenNoProfileImage() {
+        // Regression for #793: with no preview image, the Owner avatar must
+        // still carry initials so it degrades to initials instead of a blank
+        // placeholder (the owner's /pub/image is empty).
+        val enricher = ConversationEnricher()
+
+        val result = enricher.enrich(
+            convo = selfOwnerConvo(),
+            contactMap = emptyMap(),
+            ownerSession = session.copy(profileImagePreviewThumbnail = null),
+        )
+
+        assertEquals("O", result.conversation.avatarModel.initials)
+        assertEquals(null, result.conversation.avatarModel.imageData)
     }
 }
