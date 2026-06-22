@@ -100,7 +100,7 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
             .getOrNull()
     }
     val ownReactions = fileMetadata.localAppData?.localReactions
-        ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
+        ?.mapNotNull { raw -> decodeReactionEmoji(raw) }
         .orEmpty()
     return FeedPostItem(
         id = uniqueId,
@@ -144,7 +144,7 @@ fun HomebaseFile.toCommentItem(topLevelPostId: Uuid): PostCommentItem? {
     }
     val isReply = groupId != topLevelPostId
     val ownReactions = fileMetadata.localAppData?.localReactions
-        ?.mapNotNull { raw -> decodeOwnReactionEmoji(raw) }
+        ?.mapNotNull { raw -> decodeReactionEmoji(raw) }
         .orEmpty()
     return PostCommentItem(
         id = uniqueId,
@@ -167,7 +167,7 @@ fun HomebaseFile.toCommentItem(topLevelPostId: Uuid): PostCommentItem? {
     )
 }
 
-/** Decode a stored `localReactions` JSON entry to its bare emoji glyph, or null on failure. */
-internal fun decodeOwnReactionEmoji(reactionContent: String): String? = runCatching {
+/** Decode a reaction's stored `reactionContent` JSON to its bare emoji glyph, or null on failure. */
+internal fun decodeReactionEmoji(reactionContent: String): String? = runCatching {
     OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji
 }.getOrNull()
