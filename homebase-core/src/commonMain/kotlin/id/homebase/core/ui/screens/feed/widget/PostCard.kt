@@ -1,12 +1,30 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.feed.services.FeedPostItem
@@ -97,6 +115,11 @@ fun PostCard(
  * Instagram-style carousel for 2+. Translates the gallery's payload-keyed click into the
  * card's 0-based [onMediaClick] index and forwards the double-tap-to-like gesture.
  * Renders nothing when the post has no media payloads.
+ *
+ * ponytail: reads payload bytes from the post's local drive ([FeedPostItem.driveId]). A followed
+ * identity's media payloads live on the author's drive ("marked as remote"); the feed list still
+ * renders from the header's embedded preview thumbnail. Full-res over-peer fetch is deferred until
+ * the v2 by-globalTransitId payload route exists (see project_native_feed).
  */
 @Composable
 private fun PostMedia(
@@ -109,21 +132,67 @@ private fun PostMedia(
         post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
     if (mediaPayloads.isEmpty()) return
 
-    MomentMediaGallery(
-        payloads = mediaPayloads,
-        fileId = post.fileId,
-        driveId = post.driveId,
-        previewThumbnail = post.previewThumbnail,
-        keyHeader = post.keyHeader,
-        modifier = modifier,
-        onMediaClick = { payload ->
-            val index = mediaPayloads.indexOf(payload).coerceAtLeast(0)
-            onMediaClick(index)
-        },
-        onDoubleTap = onDoubleTapLike,
-        sharedTransitionScope = null,
-        animatedVisibilityScope = null,
-        messageId = post.id,
-        downloadingFiles = emptySet(),
+    // Each double-tap bumps the tick so [DoubleTapHeartBurst] replays its pop-and-fade ❤️.
+    var burstTick by remember { mutableIntStateOf(0) }
+
+    Box(modifier = modifier) {
+        MomentMediaGallery(
+            payloads = mediaPayloads,
+            fileId = post.fileId,
+            driveId = post.driveId,
+            previewThumbnail = post.previewThumbnail,
+            keyHeader = post.keyHeader,
+            modifier = Modifier.fillMaxWidth(),
+            onMediaClick = { payload ->
+                val index = mediaPayloads.indexOf(payload).coerceAtLeast(0)
+                onMediaClick(index)
+            },
+            onDoubleTap = {
+                burstTick++
+                onDoubleTapLike()
+            },
+            sharedTransitionScope = null,
+            animatedVisibilityScope = null,
+            messageId = post.id,
+            downloadingFiles = emptySet(),
+        )
+        DoubleTapHeartBurst(tick = burstTick)
+    }
+}
+
+/**
+ * The signature like gesture: a big ❤️ that springs up with an overshoot and fades, centred over
+ * the media — replayed whenever [tick] changes (each double-tap). Renders nothing before the first
+ * tap. Purely decorative; the actual reaction is fired by the caller.
+ */
+@Composable
+private fun BoxScope.DoubleTapHeartBurst(tick: Int) {
+    if (tick == 0) return
+    val scale = remember { Animatable(0.2f) }
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(tick) {
+        alpha.snapTo(0.95f)
+        scale.snapTo(0.2f)
+        scale.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium,
+            ),
+        )
+        alpha.animateTo(0f, tween(durationMillis = 260))
+    }
+    Icon(
+        imageVector = Icons.Filled.Favorite,
+        contentDescription = null,
+        tint = Color.White,
+        modifier = Modifier
+            .align(Alignment.Center)
+            .size(104.dp)
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                this.alpha = alpha.value
+            },
     )
 }
