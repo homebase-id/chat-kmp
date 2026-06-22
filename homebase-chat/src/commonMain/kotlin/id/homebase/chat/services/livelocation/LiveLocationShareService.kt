@@ -11,7 +11,11 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.location.tracking.LocationPointStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -55,6 +59,10 @@ class LiveLocationShareService(
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private val logger = Logger.withTag(TAG)
+
+    // App-lifetime singleton scope, used only for the fire-and-forget disk cleanup in [reset]
+    // (persist is suspend; reset is called from the non-suspend onPostAuthenticated bootstrap).
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val state = MutableStateFlow(readPersisted())
 
@@ -186,10 +194,24 @@ class LiveLocationShareService(
      * regardless of how the app was started or opened (cold start, manual reopen, background wake), so
      * a 2-week share just keeps going. After a logout the keyValue DB is wiped, so the read returns an
      * empty roster and [onLiveShareChanged] lets the coordinator drop the hold.
+     *
+     * Also **prunes expired entries off disk**. The only other pruning happens in [onGpsBuffered],
+     * which runs solely while GPS is delivering points (i.e. while a share is live). So a share that
+     * expired (or was stopped) while the process wasn't running leaves dead `{recipient, end-time}`
+     * entries in the persisted roster — harmless to behaviour ([live]/[hasLiveShare] filter by now —
+     * but they accumulate on disk across shares. Dropping them here on every bootstrap keeps the
+     * persisted roster from growing without bound.
      */
     fun reset() {
-        state.value = readPersisted()
+        val loaded = readPersisted()
+        val live = LiveShareRoster.live(loaded.recipients, nowMs())
+        state.value = LiveShareState(live)
         lastSentMs = 0L
+        // Persist back only if load contained expired entries — clears stale roster data off disk.
+        if (live.size != loaded.recipients.size) {
+            logger.i { "reset pruned ${loaded.recipients.size - live.size} expired roster entries from disk" }
+            scope.launch { persist(state.value) }
+        }
         onLiveShareChanged()
     }
 
