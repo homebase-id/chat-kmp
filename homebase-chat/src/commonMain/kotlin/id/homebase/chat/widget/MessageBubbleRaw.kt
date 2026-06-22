@@ -231,6 +231,10 @@ fun MessageBubbleRaw(
                 else MaterialTheme.colorScheme.surfaceContainerHigh
                 val captionContent = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
                 else MaterialTheme.colorScheme.onSurface
+                // Same edited-aware footer text as a regular bubble (see messageInfoText below).
+                val locInfoText = formatMessageTimestamp(message.userDate).let {
+                    if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $it" else it
+                }
                 LocationPreviewCard(
                     descriptor = d,
                     fileId = message.fileId,
@@ -245,7 +249,7 @@ fun MessageBubbleRaw(
                     liveControls = liveControls,
                     contentColor = MaterialTheme.colorScheme.onSurface,
                     createdAtMs = message.userDate.toEpochMilliseconds(),
-                    timestamp = formatMessageTimestamp(message.userDate),
+                    timestamp = locInfoText,
                     captionBackgroundColor = captionBg,
                     captionContentColor = captionContent,
                     showDeliveryStatus = sentByYou && !message.isDeleted,
@@ -640,28 +644,17 @@ fun MessageBubbleRaw(
                             )
                         }
                     }
-                    Row(
+                    MessageTimestampFooter(
+                        infoText = messageInfoText,
+                        contentColor = contentColor,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 8.dp, end = 12.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        Text(
-                            text = messageInfoText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
-                        )
-                        if (sentByYou && !message.isDeleted) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            DeliveryStatus(
-                                isPendingSend = isPendingSend,
-                                deliveryStatus = message.messageAppData.deliveryStatus,
-                                contentColor = contentColor.copy(alpha = 0.7f),
-                                pendingSince = message.userDate,
-                            )
-                        }
-                    }
+                    )
                 }
             } else {
                 // Note: If adding composables to Layout here, remember to update layout code to take new widget into account

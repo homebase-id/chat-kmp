@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -388,9 +387,9 @@ fun LocationPreviewCard(
                         if (descriptor.address.isNotEmpty() || liveControls != null) {
                             Spacer(modifier = Modifier.height(6.dp))
                         }
-                        LocationTimestampRow(
-                            timestamp = timestamp!!,
-                            color = contentColor.copy(alpha = 0.7f),
+                        MessageTimestampFooter(
+                            infoText = timestamp!!,
+                            contentColor = contentColor,
                             showDeliveryStatus = showDeliveryStatus,
                             isPendingSend = isPendingSend,
                             deliveryStatus = deliveryStatus,
@@ -417,9 +416,9 @@ fun LocationPreviewCard(
                 )
                 if (timestamp != null) {
                     Spacer(modifier = Modifier.height(2.dp))
-                    LocationTimestampRow(
-                        timestamp = timestamp,
-                        color = captionContentColor.copy(alpha = 0.7f),
+                    MessageTimestampFooter(
+                        infoText = timestamp,
+                        contentColor = captionContentColor,
                         showDeliveryStatus = showDeliveryStatus,
                         isPendingSend = isPendingSend,
                         deliveryStatus = deliveryStatus,
@@ -428,38 +427,6 @@ fun LocationPreviewCard(
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * Timestamp + (for the sender) delivery-status icon, mirroring a regular message's footer. Rendered at
- * the bottom-end of either the card (caption-less) or the caption section.
- */
-@Composable
-private fun LocationTimestampRow(
-    timestamp: String,
-    color: Color,
-    showDeliveryStatus: Boolean,
-    isPendingSend: Boolean,
-    deliveryStatus: Int,
-    pendingSince: Instant?,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier = modifier, verticalAlignment = Alignment.Bottom) {
-        Text(
-            text = timestamp,
-            style = MaterialTheme.typography.labelSmall,
-            color = color,
-        )
-        if (showDeliveryStatus) {
-            Spacer(modifier = Modifier.width(4.dp))
-            DeliveryStatus(
-                isPendingSend = isPendingSend,
-                deliveryStatus = deliveryStatus,
-                contentColor = color,
-                pendingSince = pendingSince,
-            )
         }
     }
 }
