@@ -191,8 +191,11 @@ internal class MessageActionsHandler(
             if (it is MessageListContentModel.Message) it.message else null
         }
         val message = messages.firstOrNull { it.id == action.messageId } ?: return
+        // isFromActiveUser (null == self), NOT a strict originalAuthor compare: an own message that
+        // was updated + re-synced (e.g. a location live-share PATCH) comes back with originalAuthor
+        // null, which a strict compare reads as "not mine" — wrongly hiding "delete for everyone".
         val isCurrentUserMessage =
-            message.originalAuthor?.domainName == uiState.value.ownerSession?.odinId?.domainName
+            message.isFromActiveUser(uiState.value.ownerSession?.odinId)
         val isWithSelf =
             message.conversationId == ChatProtocol.ConversationWithYourselfId
         uiState.update {

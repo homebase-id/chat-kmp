@@ -59,7 +59,13 @@ fun MessageItem(
 
     // Live-location controls for the location bubble (ignored by non-location media). State (LIVE/
     // ENDED) is read from the message descriptor in the bubble; this only carries side + actions.
-    val sentByYou = message.isAuthoredBy(odinId)
+    //
+    // isFromActiveUser (null == self), NOT isAuthoredBy (strict): the server doesn't stamp
+    // originalAuthor on own messages, so after an own message is updated+re-synced (e.g. starting a
+    // live-location share PATCHes the message, then it syncs back) originalAuthor comes back null.
+    // The strict check then mis-rendered an own message as received (left-aligned, "delete for me"
+    // only, no edit). The conversation list already uses isFromActiveUser for this exact reason.
+    val sentByYou = message.isFromActiveUser(odinId)
     val liveLocationControls = remember(message.id, sentByYou) {
         LiveLocationBubbleControls(
             sentByYou = sentByYou,
@@ -136,7 +142,7 @@ fun MessageItem(
     val onReport =
         remember(message.id) { { onUiAction(ConversationListUiAction.ReportContent) } }
 
-    if (message.isAuthoredBy(odinId)) {
+    if (sentByYou) {
         val onEdit = if (policy.allowEdit) {
             remember(message.id) {
                 {
