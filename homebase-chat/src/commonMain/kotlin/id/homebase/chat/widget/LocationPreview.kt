@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
@@ -52,6 +53,7 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_location_pin
@@ -253,6 +255,12 @@ fun LocationPreviewCard(
      * position, so offering it from a stale pin is misleading. Null ⇒ not age-gated (non-bubble callers).
      */
     createdAtMs: Long? = null,
+    /**
+     * Formatted send time shown muted at the bottom of the card — passed only when the message has NO
+     * caption (a captioned message carries the timestamp on its own [LocationCaptionBubble] below the
+     * card instead, like a regular text message). Null ⇒ no timestamp on the card.
+     */
+    bottomTimestamp: String? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
@@ -346,17 +354,63 @@ fun LocationPreviewCard(
                     canStart = canStartShare,
                 )
             }
-            // ── The user's own typed caption, below the fixed parts. Brand blue (primary) so the
-            //    user's words stand apart from the grey auto-generated address on the neutral card. ──
-            if (!descriptor.caption.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
+            // The user's caption is NOT rendered here — it renders as its own normal message bubble
+            // ([LocationCaptionBubble]) below this card. When there's no caption, the send time shows
+            // here instead so a captionless location still has a timestamp.
+            if (bottomTimestamp != null) {
+                if (descriptor.address.isNotEmpty() || liveControls != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
                 Text(
-                    text = descriptor.caption,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    text = bottomTimestamp,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = contentColor.copy(alpha = 0.7f),
+                    modifier = Modifier.align(Alignment.End),
                 )
             }
         }
+    }
+}
+
+/**
+ * The user's optional caption, rendered as a regular chat message bubble directly below the location
+ * card: the message-bubble background (blue when [sentByYou], grey when received), `bodyLarge` text in
+ * the bubble's content color, and the send [timestamp] tucked at the bottom-end — so a captioned
+ * location reads exactly like a normal text message attached under the map.
+ */
+@Composable
+fun LocationCaptionBubble(
+    text: String,
+    timestamp: String,
+    sentByYou: Boolean,
+    modifier: Modifier = Modifier,
+    onLongPress: (() -> Unit)? = null,
+) {
+    val containerColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+    else MaterialTheme.colorScheme.surfaceContainerHigh
+    val contentColor = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+    else MaterialTheme.colorScheme.onSurface
+    Column(
+        modifier = modifier
+            .widthIn(min = 240.dp, max = 320.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(containerColor)
+            .pointerInput(onLongPress) {
+                detectTapGestures(onLongPress = { onLongPress?.invoke() })
+            }
+            .padding(12.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = contentColor,
+        )
+        Text(
+            text = timestamp,
+            style = MaterialTheme.typography.labelSmall,
+            color = contentColor.copy(alpha = 0.7f),
+            modifier = Modifier.align(Alignment.End),
+        )
     }
 }
 

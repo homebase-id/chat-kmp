@@ -224,27 +224,42 @@ fun MessageBubbleRaw(
                     it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
                 }
                 val pIv = mapPayload?.iv?.let { Base64.decode(it) }
-                // Match the Event bubble: a neutral card (NOT a blue "sent" bubble) with grey fixed
-                // text + normal-color caption, the same for sender and receiver. Tinting the card blue
-                // for sentByYou put blue text on a blue background in dark theme.
-                val locContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                val locContentColor = MaterialTheme.colorScheme.onSurface
-                LocationPreviewCard(
-                    descriptor = d,
-                    fileId = message.fileId,
-                    driveId = chatTargetDrive.alias,
-                    payloadKey = ChatProtocol.PAYLOAD_KEY_LOCATION,
-                    keyHeader = KeyHeader(pIv ?: ByteArray(16), message.keyHeader.aesKey),
-                    previewThumbnail = mapPayload?.previewThumbnail?.toEmbeddedThumb(),
-                    modifier = modifier
-                        .widthIn(min = 240.dp, max = 320.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(locContainerColor),
-                    onLongPress = onLongClick,
-                    liveControls = liveControls,
-                    contentColor = locContentColor,
-                    createdAtMs = message.userDate.toEpochMilliseconds(),
-                )
+                val hasCaption = !d.caption.isNullOrBlank()
+                val ts = formatMessageTimestamp(message.userDate)
+                // Map + address stay a neutral card (NOT a blue "sent" bubble). The user's caption, when
+                // present, renders as its own regular message bubble below (blue when sent) carrying the
+                // timestamp; without a caption the card itself shows the muted timestamp.
+                Column(
+                    modifier = modifier,
+                    horizontalAlignment = if (sentByYou) Alignment.End else Alignment.Start,
+                ) {
+                    LocationPreviewCard(
+                        descriptor = d,
+                        fileId = message.fileId,
+                        driveId = chatTargetDrive.alias,
+                        payloadKey = ChatProtocol.PAYLOAD_KEY_LOCATION,
+                        keyHeader = KeyHeader(pIv ?: ByteArray(16), message.keyHeader.aesKey),
+                        previewThumbnail = mapPayload?.previewThumbnail?.toEmbeddedThumb(),
+                        modifier = Modifier
+                            .widthIn(min = 240.dp, max = 320.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                        onLongPress = onLongClick,
+                        liveControls = liveControls,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        createdAtMs = message.userDate.toEpochMilliseconds(),
+                        bottomTimestamp = if (hasCaption) null else ts,
+                    )
+                    if (hasCaption) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        LocationCaptionBubble(
+                            text = d.caption!!,
+                            timestamp = ts,
+                            sentByYou = sentByYou,
+                            onLongPress = onLongClick,
+                        )
+                    }
+                }
             }
             return
         }
