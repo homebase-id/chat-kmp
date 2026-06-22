@@ -36,6 +36,8 @@ data class LocationUiState(
     /** Owner-console deep link to manage the circle's members; null until the identity is known. */
     val emergencyManageUrl: String? = null,
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
+    /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
+    val liveSharingVisible: Boolean = false,
 ) {
     /** Only OSM tiles are implemented today; the canvas takes a boolean. */
     val showMapTiles: Boolean get() = mapProvider == LocationMapProvider.OpenStreetMap
