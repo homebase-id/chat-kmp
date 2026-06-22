@@ -360,14 +360,6 @@ fun ConversationMessagesPane(
                                     )
                                 )
                             },
-                            onRemoveBackground = { conversationId, attachmentId ->
-                                onUiAction(
-                                    id.homebase.chat.conversationlist.ConversationListUiAction.RemoveBackgroundAttachment(
-                                        conversationId,
-                                        attachmentId,
-                                    )
-                                )
-                            },
                             onTrimChange = { conversationId, attachmentId, startMs, endMs ->
                                 onUiAction(
                                     id.homebase.chat.conversationlist.ConversationListUiAction.ApplyTrimResult(
@@ -375,14 +367,6 @@ fun ConversationMessagesPane(
                                         attachmentId,
                                         startMs,
                                         endMs,
-                                    )
-                                )
-                            },
-                            onToggleSticker = { conversationId, attachmentId ->
-                                onUiAction(
-                                    id.homebase.chat.conversationlist.ConversationListUiAction.ToggleStickerAttachment(
-                                        conversationId,
-                                        attachmentId,
                                     )
                                 )
                             },
