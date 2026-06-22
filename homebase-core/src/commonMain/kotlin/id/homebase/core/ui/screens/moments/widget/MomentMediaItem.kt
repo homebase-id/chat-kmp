@@ -250,7 +250,13 @@ fun MomentMediaItem(
             } else {
                 val imageData =
                     remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
-                        val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                        // Public feed posts are unencrypted: a plaintext payload carries
+                        // no IV. Build a plaintext request (isEncrypted=false, empty
+                        // keyHeader) rather than bailing to an empty Box — the server's
+                        // `payloadencrypted=false` header makes the loader return the bytes
+                        // as-is (keyHeader ignored). Encrypted payloads (chat, moments) still
+                        // carry an IV, so they keep the encrypted path unchanged.
+                        val payloadIv = payload.iv?.let { Base64.decode(it) }
                         HomebaseImageData(
                             driveId = driveId,
                             fileId = fileId,
@@ -260,25 +266,23 @@ fun MomentMediaItem(
                             requestedSize = imageSize,
                             availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                             lastModified = payload.lastModified,
-                            isEncrypted = true,
-                            keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                            isEncrypted = payloadIv != null,
+                            keyHeader = payloadIv
+                                ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
+                                ?: KeyHeader.empty(),
                         )
                     }
 
-                if (imageData != null) {
-                    HomebaseImage(
-                        imageData = imageData,
-                        modifier = finalModifier,
-                        contentScale = imageContentScale,
-                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
-                        onClick = onClick,
-                        onLongPress = onLongPress,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                    )
-                } else {
-                    Box(modifier = finalModifier)
-                }
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = finalModifier,
+                    contentScale = imageContentScale,
+                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                    onClick = onClick,
+                    onLongPress = onLongPress,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
             }
         }
 

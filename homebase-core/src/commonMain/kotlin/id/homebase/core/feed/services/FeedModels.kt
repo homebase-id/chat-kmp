@@ -88,7 +88,11 @@ data class PostCommentItem(
  */
 fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     val appData = fileMetadata.appData
-    val uniqueId = appData.uniqueId ?: return null
+    // Own-drive posts carry a uniqueId. Posts from followed identities are aggregated onto the
+    // feed drive as references that carry only a globalTransitId (no uniqueId) — fall back to it
+    // so followed/public posts surface in the timeline instead of being dropped. Both values
+    // stably identify the post for dedup; they never collide (own posts aren't feed references).
+    val uniqueId = appData.uniqueId ?: fileMetadata.globalTransitId ?: return null
     val content = appData.content?.let { raw ->
         runCatching { OdinSystemSerializer.deserialize<PostContent>(raw) }.getOrNull()
     }

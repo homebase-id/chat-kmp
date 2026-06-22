@@ -22,9 +22,10 @@ import kotlin.uuid.Uuid
 /**
  * Drives the native home timeline ([FeedTimelineScreen]).
  *
- * [FeedTimelineService] is an app-scoped singleton already started by
- * `AppModule.onPostAuthenticated`, so this VM only subscribes to its [timeline]
- * flow — it never calls `start()`. The first emission flips [FeedTimelineUiState.isLoading]
+ * [FeedTimelineService] is an app-scoped singleton normally started by
+ * `AppModule.onPostAuthenticated`; this VM also calls its idempotent [start] in `init`
+ * so a session-restore launch (where that preload hook never fires) still loads the
+ * feed without a relogin. The first emission flips [FeedTimelineUiState.isLoading]
  * false; we deliberately seed `isLoading = true` directly in the [MutableStateFlow] (not via
  * a `stateIn(WhileSubscribed)` default) so the spinner doesn't flash back on every
  * re-subscription (see the MomentDetail spinner bug in CLAUDE.md).
@@ -49,6 +50,14 @@ class FeedTimelineViewModel(
     }
 
     init {
+        // Idempotent (`if (started) return`). AppModule.onPostAuthenticated normally
+        // starts the service, but that preload hook is DEFERRED on a session-restore
+        // launch and never fires (the headless Authenticated branch waits for a "next
+        // Authenticated" that doesn't come), leaving a returning user with an empty feed
+        // until a full relogin. Starting here when the Feed screen opens makes the
+        // timeline load regardless — a fresh login that already started the service just
+        // no-ops this call.
+        timelineService.start()
         viewModelScope.launch {
             timelineService.timeline.collect { posts ->
                 _uiState.update {
