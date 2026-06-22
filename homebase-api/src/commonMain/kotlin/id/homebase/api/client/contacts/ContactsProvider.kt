@@ -128,6 +128,12 @@ class ContactsProvider(
             secret = creds.secret,
         )
 
+        // Drop any cached AES key for this contact. The key is cached by uniqueId (= md5(odinId),
+        // stable across delete+recreate), but a recreated contact is a NEW file with a NEW key — a
+        // surviving entry would encrypt the recreated contact's image under the dead file's key.
+        // Safe to evict even on a failed delete: the cache simply repopulates on next image use.
+        aesKeyCacheMutex.withLock { aesKeyCache.remove(uniqueId) }
+
         if (response.status == 404) return false
         throwForFailure(response)
         return true
@@ -292,10 +298,10 @@ class ContactsProvider(
     }
 
     /**
-     * Drops the cached contact AES keys. MUST be called on session end / logout before the image
-     * path goes live: keys are cached by `uniqueId` (= md5(odinId)), which collides across
-     * identities, so a stale entry would encrypt a new identity's image under the previous
-     * identity's key. (Wired into the SessionEnded path when [setContactImage] gets a real caller.)
+     * Drops the cached contact AES keys. Called on session end / logout (from
+     * [ContactRepository.reset]): keys are cached by `uniqueId` (= md5(odinId)), which collides
+     * across identities, so a stale entry would encrypt a new identity's image under the previous
+     * identity's key.
      */
     @OptIn(ExperimentalUuidApi::class)
     suspend fun clearKeyCache() {

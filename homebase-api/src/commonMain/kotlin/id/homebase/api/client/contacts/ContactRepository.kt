@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.crypto.Md5
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import kotlinx.coroutines.CoroutineScope
@@ -56,8 +57,11 @@ class ContactRepository(
     val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
 
     // Resurrection guard: a removed contact must not reappear from a stale batch before the
-    // server-confirmed delete syncs down.
-    private val deletedIds = mutableSetOf<Uuid>()
+    // server-confirmed delete syncs down. A StateFlow<Set> (not a plain MutableSet) because it's
+    // touched from multiple threads — observeEvents runs on the shared Dispatchers.Default scope
+    // while save/delete/loadAll run on arbitrary caller coroutines; atomic update {} / .value
+    // avoids the data race a bare mutableSetOf would have.
+    private val deletedIds = MutableStateFlow<Set<Uuid>>(emptySet())
 
     // Serializes loadAll so concurrent ensureLoaded() callers don't run overlapping queries.
     private val loadMutex = Mutex()
@@ -79,7 +83,11 @@ class ContactRepository(
     fun reset() {
         _contacts.value = emptyList()
         _isLoaded.value = false
-        deletedIds.clear()
+        deletedIds.value = emptySet()
+        // Drop the provider's per-uniqueId AES-key cache: uniqueId = md5(odinId) collides across
+        // identities, so a surviving entry would encrypt the next identity's image under this
+        // identity's key. Launched because clearKeyCache() is suspend (mutex-guarded).
+        scope.launch { contactsProvider.clearKeyCache() }
     }
 
     /**
@@ -110,15 +118,30 @@ class ContactRepository(
                 filetypesAnyOf = listOf(ContactsProvider.CONTACT_FILE_TYPE),
             )
             // The drive can hold >1 row per identity; NewestFirst + distinctBy keeps the freshest.
-            _contacts.value = result.records
+            val deleted = deletedIds.value
+            val fresh = result.records
                 .mapNotNull { it.toContact() }
-                .filter { it.uniqueId !in deletedIds }
                 .distinctBy { it.uniqueId }
+            _contacts.value = fresh.filter { it.uniqueId !in deleted }
+
+            // Bound the resurrection guard so it can't grow unbounded across a session: this query
+            // is authoritative, so any id we know we deleted that the server no longer returns has
+            // had its delete honored and can be forgotten. Remove exactly those (not `intersect
+            // present`) so a delete issued concurrently with this query — whose id isn't in this
+            // snapshot — keeps its suppression.
+            if (deleted.isNotEmpty()) {
+                val present = fresh.mapTo(HashSet()) { it.uniqueId }
+                val confirmedGone = deleted - present
+                if (confirmedGone.isNotEmpty()) deletedIds.update { it - confirmedGone }
+            }
+
+            _isLoaded.value = true
             Logger.d(tag = TAG) { "loadAll: ${_contacts.value.size} contact(s)" }
         } catch (e: Exception) {
+            // Leave _isLoaded untouched so ensureLoaded() will retry this session instead of being
+            // stuck with an empty list from a transient query failure.
             Logger.e(e, TAG) { "Failed to load contacts" }
         }
-        _isLoaded.value = true
     }
 
     private suspend fun observeEvents() {
@@ -134,7 +157,7 @@ class ContactRepository(
                     if (event.driveId != driveId) return@collect
                     for (file in event.batchData) {
                         val contact = file.toContact() ?: continue
-                        if (contact.uniqueId in deletedIds) continue
+                        if (contact.uniqueId in deletedIds.value) continue
                         upsert(contact)
                     }
                 }
@@ -189,7 +212,7 @@ class ContactRepository(
             return null
         }
 
-        deletedIds -= response.uniqueId
+        deletedIds.update { it - response.uniqueId }
         val existingImage = _contacts.value.firstOrNull { it.uniqueId == response.uniqueId }?.image
         upsert(Contact(response.uniqueId, response.versionTag, content, existingImage))
         return response
@@ -200,7 +223,7 @@ class ContactRepository(
      * truth. Returns true on success (or already-gone). Rethrows [ForbiddenException] (403).
      */
     suspend fun delete(uniqueId: Uuid): Boolean {
-        deletedIds += uniqueId
+        deletedIds.update { it + uniqueId }
         _contacts.update { current -> current.filterNot { it.uniqueId == uniqueId } }
         return try {
             contactsProvider.deleteContact(uniqueId)
@@ -208,12 +231,12 @@ class ContactRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: ForbiddenException) {
-            deletedIds -= uniqueId
+            deletedIds.update { it - uniqueId }
             loadAll()
             throw e
         } catch (e: Exception) {
             Logger.w(e, TAG) { "deleteContact failed for $uniqueId" }
-            deletedIds -= uniqueId
+            deletedIds.update { it - uniqueId }
             loadAll()
             false
         }
@@ -221,6 +244,11 @@ class ContactRepository(
 
     /** Best-effort server-side enrichment of a connected identity from its public profile. */
     suspend fun sync(odinId: OdinId) {
+        // A prior delete of this same identity left its uniqueId in the resurrection guard. The
+        // server (re-)creates the contact under uniqueId = md5(odinId), so lift the suppression for
+        // that id first — otherwise the re-created contact's incoming batch would be dropped.
+        // Md5.toGuidId mirrors the server's hash; domainName is already lower-cased/normalized.
+        deletedIds.update { it - Md5.toGuidId(odinId.domainName) }
         try {
             contactsProvider.syncContact(odinId)
         } catch (e: CancellationException) {
