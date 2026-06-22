@@ -38,6 +38,20 @@ object LiveShareRoster {
     ): List<TimedRecipient> =
         current.filter { it.endTimeMs > nowMs } + add.map { TimedRecipient(it, endTimeMs) }
 
+    /**
+     * Remove exactly the entries belonging to one share — those whose [TimedRecipient.odinId] is in
+     * [recipients] **and** whose [TimedRecipient.endTimeMs] equals [endTimeMs]. The `{recipient,
+     * end-time}` pair is the share's key: a chat bubble stores its share's absolute end-time, and
+     * "stop sharing" passes that exact end-time back here so only this share's entries drop — any other
+     * live share to the same person (a different end-time) is left untouched. No-op if nothing matches.
+     */
+    fun remove(
+        current: List<TimedRecipient>,
+        recipients: List<String>,
+        endTimeMs: Long,
+    ): List<TimedRecipient> =
+        current.filterNot { it.endTimeMs == endTimeMs && it.odinId in recipients }
+
     /** The still-live entries at [nowMs] (end-time strictly in the future). May contain duplicates. */
     fun live(roster: List<TimedRecipient>, nowMs: Long): List<TimedRecipient> =
         roster.filter { it.endTimeMs > nowMs }

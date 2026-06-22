@@ -7,6 +7,7 @@ import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.poll.PollDescriptor
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.builder.LocationPreviewDescriptor
 
 /**
  * Parses the `appData.content` JSON for a typed rich-content message.
@@ -47,9 +48,13 @@ object MessageContentParser {
             // before reaching us — it's listed here so the Defragmenter probe
             // (which calls this parser too) doesn't false-positive on
             // historical status messages.
+            // Location: NEW messages carry the LocationPreviewDescriptor verbatim in the header
+            // (like Event) → MessageContent.Location. OLD messages have a MessageAppData header
+            // (descriptor on the chat_loc payload) → parseLocation fails and returns null, so they
+            // flow through the media path unchanged.
+            ChatProtocol.ChatLocationMessageDataType -> parseLocation(content)
             0,
-            ChatProtocol.ChatStatusMessageDataType,
-            ChatProtocol.ChatLocationMessageDataType -> null
+            ChatProtocol.ChatStatusMessageDataType -> null
             // Any other non-zero dataType is a typed kind a future version of
             // the app will know about. Surface it so the user sees a visible
             // "update the app" chip instead of a silently-dropped message.
@@ -108,6 +113,17 @@ object MessageContentParser {
         MessageContent.Groodle(descriptor = null)
     }
 
+    /**
+     * NEW-format location: the header IS a [LocationPreviewDescriptor]. Returns null when the header
+     * isn't a descriptor (old MessageAppData-shaped location messages) so the caller treats it as
+     * MessageAppData and the bubble renders off the chat_loc payload — the back-compat path.
+     */
+    private fun parseLocation(content: String): MessageContent? = try {
+        MessageContent.Location(OdinSystemSerializer.deserialize<LocationPreviewDescriptor>(content))
+    } catch (_: Exception) {
+        null
+    }
+
     private fun parsePoll(content: String): MessageContent.Poll = try {
         val descriptor = OdinSystemSerializer.deserialize<PollDescriptor>(content)
         if (descriptor.isValid()) {
@@ -143,6 +159,10 @@ object MessageContentParser {
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "Poll descriptor must be non-null on send" }
             )
+        is MessageContent.Location ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "Location descriptor must be non-null on send" }
+            )
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be serialized")
     }
@@ -152,6 +172,7 @@ object MessageContentParser {
         is MessageContent.DiceRoll -> ChatProtocol.ChatDiceRollMessageDataType
         is MessageContent.Groodle -> ChatProtocol.ChatGroodleMessageDataType
         is MessageContent.Poll -> ChatProtocol.ChatPollMessageDataType
+        is MessageContent.Location -> ChatProtocol.ChatLocationMessageDataType
         is MessageContent.Unknown ->
             error("Unknown message kind (dataType=${content.dataType}) cannot be re-sent")
     }
@@ -171,7 +192,8 @@ object MessageContentParser {
         is MessageContent.Event,
         is MessageContent.DiceRoll,
         is MessageContent.Groodle,
-        is MessageContent.Poll -> true
+        is MessageContent.Poll,
+        is MessageContent.Location -> true
         is MessageContent.Unknown, null -> false
     }
 }

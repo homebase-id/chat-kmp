@@ -4,6 +4,7 @@ import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
 import id.homebase.chat.poll.PollDescriptor
+import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.notifshared.EVENT_NOTIF_SENTINEL
 
 /**
@@ -123,6 +124,28 @@ sealed interface MessageContent {
     }
 
     /**
+     * A shared location (static pin, or a live share via [LocationPreviewDescriptor.liveShareUntilMs]).
+     * The coordinate descriptor rides in the header (`appData.content`) — like Event — so editing it
+     * (start/stop a live share) goes through the raw-header `updateMessage` path. The map PNG stays a
+     * `chat_loc` payload. The bubble renders via the existing media path (this kind falls through), so
+     * keep a media-like action surface. [descriptor] follows the [Event.descriptor] nullability contract.
+     */
+    data class Location(val descriptor: LocationPreviewDescriptor?) : MessageContent {
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,            // no free-text edit; the live-share toggle lives on the bubble
+            allowReply = true,
+            allowForward = false,
+            allowShare = true,
+            allowInlineReactions = true,
+            allowReactionDetails = true,
+        )
+        override val displayLabel: String get() =
+            descriptor?.caption?.ifBlank { null }
+                ?: descriptor?.address?.ifBlank { null }
+                ?: UNPARSEABLE_LOCATION_LABEL
+    }
+
+    /**
      * A typed message whose [dataType] this client doesn't recognize — typically
      * a newer kind (poll, doodle, …) sent from a more up-to-date peer. The
      * receiver can't render the content itself; the bubble shows an
@@ -144,6 +167,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_DICE_LABEL = "Dice roll"
         const val UNPARSEABLE_GROODLE_LABEL = "Groodle"
         const val UNPARSEABLE_POLL_LABEL = "Poll"
+        const val UNPARSEABLE_LOCATION_LABEL = "Location"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 
