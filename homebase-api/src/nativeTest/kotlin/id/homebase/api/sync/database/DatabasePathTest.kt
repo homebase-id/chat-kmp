@@ -30,9 +30,12 @@ class DatabasePathTest {
 
     @Test
     fun dbPathHelperMatchesWhereSqliterCreatesTheFile() {
-        // Default basePath → sqliter materializes the file at its own default location.
+        // Default basePath → sqliter resolves the file to its own default location.
         val driver = NativeSqliteDriver(schema = OdinDatabase.Schema, name = testDbName)
         try {
+            // NativeSqliteDriver opens the connection (and creates the on-disk file) lazily on
+            // first use, not in the constructor — force a write so the file actually exists.
+            driver.execute(null, "CREATE TABLE IF NOT EXISTS _probe(x INTEGER)", 0)
             assertTrue(
                 NSFileManager.defaultManager.fileExistsAtPath(expectedPath),
                 "iosDatabasesDir() must point at sqliter's storage dir; " +
