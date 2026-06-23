@@ -74,6 +74,8 @@ import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.crypto.Md5
+import id.homebase.core.contactbook.isEmergencyContact
+import id.homebase.core.contactbook.setEmergencyContact
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -481,7 +483,7 @@ val appModule = module {
                             // (or a manual mark) sets it once the row exists.
                             contact == null -> contactRepository.sync(sender)
                             // Already flagged — idempotent no-op (status messages can re-deliver).
-                            contact.content.isEmergencyContact -> Unit
+                            contact.isEmergencyContact() -> Unit
                             versionTag != null ->
                                 contactRepository.setEmergencyContact(uniqueId, versionTag)
                             else -> Unit
@@ -776,8 +778,7 @@ val appModule = module {
             pointStore = get(),
             uploaderService = get(),
             deviceDirectory = get(),
-            connectionNetworkProvider = get(),
-            contactService = get(),
+            contactRepository = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.common.OdinId
@@ -18,6 +19,8 @@ import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.clearEmergencyContact
+import id.homebase.core.contactbook.setEmergencyContact
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.ui.navigation.Route
@@ -53,6 +56,7 @@ class ContactDetailViewModel(
     private val connectionService: ConnectionService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val credentialsManager: CredentialsManager,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<Route.ContactBookDetail>()
@@ -72,6 +76,7 @@ class ContactDetailViewModel(
         viewModelScope.launch { contactRepository.ensureLoaded() }
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
+            val selfDomain = runCatching { credentialsManager.getActiveDomain()?.domainName }.getOrNull()
             combine(
                 contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
                 connectionService.connections,
@@ -82,6 +87,7 @@ class ContactDetailViewModel(
                 val entry = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
                 val domain = entry?.odinId
+                val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
                 val status = domain?.let { d ->
                     conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }
                         ?.value?.status
@@ -106,6 +112,7 @@ class ContactDetailViewModel(
                         connectionStatus = status,
                         circles = circleNames,
                         isLoading = false,
+                        isSelf = isSelf,
                     )
                 }
             }
@@ -205,7 +212,7 @@ class ContactDetailViewModel(
     private fun handleMakeEmergencyContact() {
         val entry = _uiState.value.entry ?: return
         val versionTag = entry.versionTag ?: return
-        if (entry.isEmergencyContact) return
+        if (entry.isEmergencyContact || _uiState.value.isSelf) return
         val recipient = entry.odinId?.ifBlank { null }
             ?.let { runCatching { OdinId(it) }.getOrNull() } ?: return
         _uiState.update { it.copy(actionInProgress = true) }
@@ -236,7 +243,7 @@ class ContactDetailViewModel(
     private fun handleRemoveEmergencyContact() {
         val entry = _uiState.value.entry ?: return
         val versionTag = entry.versionTag ?: return
-        if (!entry.isEmergencyContact) return
+        if (!entry.isEmergencyContact || _uiState.value.isSelf) return
         _uiState.update { it.copy(actionInProgress = true) }
         viewModelScope.launch {
             try {

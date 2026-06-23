@@ -33,6 +33,8 @@ data class ContactDetailUiState(
     val confirm: ContactDetailConfirm? = null,
     /** A management action (delete/block/disconnect/unblock) is running — show a blocking spinner. */
     val actionInProgress: Boolean = false,
+    /** True when this contact is the logged-in identity's own (self) contact. */
+    val isSelf: Boolean = false,
 ) {
     val hasOdinId: Boolean get() = !entry?.odinId.isNullOrBlank()
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected

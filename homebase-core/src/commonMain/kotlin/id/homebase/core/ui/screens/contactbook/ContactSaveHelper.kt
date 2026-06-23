@@ -93,8 +93,21 @@ suspend fun saveContactDraft(
             surname = mergedSurname,
         ),
         source = editing?.source ?: ContactBookSource.MANUAL,
-        location = if (mergedCity != null || mergedCountry != null) {
-            ContactLocation(city = mergedCity, country = mergedCountry)
+        // The edit form only touches city/country; carry the rest of the address from the edited
+        // contact so the optimistic content matches what the per-leaf server merge syncs back (the
+        // omitted street/postcode/label fields are "leave alone", not "clear").
+        location = if (mergedCity != null || mergedCountry != null ||
+            !editing?.addressLine1.isNullOrBlank() || !editing?.addressLine2.isNullOrBlank() ||
+            !editing?.postcode.isNullOrBlank() || !editing?.locationLabel.isNullOrBlank()
+        ) {
+            ContactLocation(
+                label = editing?.locationLabel?.ifBlank { null },
+                addressLine1 = editing?.addressLine1?.ifBlank { null },
+                addressLine2 = editing?.addressLine2?.ifBlank { null },
+                postcode = editing?.postcode?.ifBlank { null },
+                city = mergedCity,
+                country = mergedCountry,
+            )
         } else null,
         phone = mergedPhone?.let { ContactPhone(it) },
         email = mergedEmail?.let { ContactEmail(it) },

@@ -1,9 +1,5 @@
-@file:OptIn(ExperimentalSerializationApi::class)
-
 package id.homebase.api.client.contacts
 
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -49,15 +45,6 @@ data class ContactContent(
      */
     val social: Map<String, String>? = null,
     /**
-     * Owner-only flag — a contact either is an emergency contact or isn't, so this is a plain
-     * non-null [Boolean]. [EncodeDefault.Mode.NEVER] keeps the merge contract intact: the `false`
-     * default is omitted (so a write doesn't clobber the stored value), while `true` is emitted.
-     * Note this can set the flag but not clear it through the merge — a `false` reads as "leave
-     * alone"; clearing needs a dedicated write.
-     */
-    @EncodeDefault(EncodeDefault.Mode.NEVER)
-    val isEmergencyContact: Boolean = false,
-    /**
      * Inline per-app data (the ≤200-byte tier), keyed by appId as a canonical lowercase hyphenated
      * UUID string. Populated by the server on read (it rides in the contact content, so the contacts
      * list query already returns it); absent when nothing has been written. Read it via
@@ -75,19 +62,32 @@ data class ContactName(
     val surname: String? = null,
 )
 
+/**
+ * A postal address. Mirrors the server's `ContactLocation` (odin-js `AddressFields`): the wire keys
+ * are camelCase — `addressLine1`/`addressLine2` (odin-js calls them `address1`/`address2`). Every
+ * field is optional; [label] is a free-form name for the address such as "Home" / "Work".
+ */
 @Serializable
 data class ContactLocation(
+    val label: String? = null,
+    val addressLine1: String? = null,
+    val addressLine2: String? = null,
+    val postcode: String? = null,
     val city: String? = null,
     val country: String? = null,
 )
 
 @Serializable
 data class ContactPhone(
+    /** Free-form name for this number, e.g. "Mobile" / "Work" (odin-js `PhoneFields.label`). */
+    val label: String? = null,
     val number: String? = null,
 )
 
 @Serializable
 data class ContactEmail(
+    /** Free-form name for this email, e.g. "Personal" / "Work" (odin-js `EmailFields.label`). */
+    val label: String? = null,
     val email: String? = null,
 )
 

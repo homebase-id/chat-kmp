@@ -20,11 +20,8 @@ import id.homebase.api.sync.database.QueryBatch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -58,14 +55,6 @@ class ContactRepository(
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     /** Live contacts, freshest-row-per-uniqueId, in drive order (NewestFirst). Consumers sort. */
     val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
-
-    /**
-     * Live subset of [contacts] flagged as emergency contacts. Derived from [contacts], so it tracks
-     * the same optimistic writes and sync reconciliation; consumers sort.
-     */
-    val emergencyContacts: StateFlow<List<Contact>> = _contacts
-        .map { list -> list.filter { it.content.isEmergencyContact } }
-        .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private val _isLoaded = MutableStateFlow(false)
     val isLoaded: StateFlow<Boolean> = _isLoaded.asStateFlow()
@@ -265,59 +254,6 @@ class ContactRepository(
         val existingImage = _contacts.value.firstOrNull { it.uniqueId == response.uniqueId }?.image
         upsert(Contact(response.uniqueId, response.versionTag, content, existingImage))
         return response
-    }
-
-    /**
-     * Marks this contact as one of our emergency contacts — a minimal-delta, version-gated write
-     * that sends only the flag (via [ContactsProvider.writeEmergencyContact]) so the server's field
-     * merge leaves every other stored field untouched. Optimistically copies the flag onto the live
-     * contact's existing content (unlike [save], which replaces it wholesale) and adopts the returned
-     * versionTag; the authoritative row lands later via drive sync.
-     *
-     * Returns the new id/versionTag, or null on a generic failure / no-such-contact. Rethrows
-     * [ForbiddenException] (403). See [clearEmergencyContact] to remove the flag.
-     */
-    suspend fun setEmergencyContact(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
-        writeEmergencyFlag(uniqueId, isEmergencyContact = true, versionTag = versionTag)
-
-    /**
-     * Removes this contact as an emergency contact. Same minimal-delta, version-gated path as
-     * [setEmergencyContact] but explicitly clears the flag — the dedicated [EmergencyContactDelta]
-     * write can express a `false`, which the normal [ContactContent] merge (which omits a `false`)
-     * can't. Rethrows [ForbiddenException] (403).
-     */
-    suspend fun clearEmergencyContact(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
-        writeEmergencyFlag(uniqueId, isEmergencyContact = false, versionTag = versionTag)
-
-    private suspend fun writeEmergencyFlag(
-        uniqueId: Uuid,
-        isEmergencyContact: Boolean,
-        versionTag: Uuid,
-    ): ContactWriteResponse? {
-        val result = try {
-            contactsProvider.writeEmergencyContact(uniqueId, isEmergencyContact, versionTag)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ForbiddenException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "writeEmergencyFlag($isEmergencyContact) failed for $uniqueId" }
-            return null
-        }
-        val body = (result as? ContactWriteResult.Ok)?.body ?: return null
-
-        _contacts.update { current ->
-            val idx = current.indexOfFirst { it.uniqueId == uniqueId }
-            if (idx < 0) return@update current
-            val existing = current[idx]
-            current.toMutableList().apply {
-                this[idx] = existing.copy(
-                    content = existing.content.copy(isEmergencyContact = isEmergencyContact),
-                    versionTag = body.versionTag,
-                )
-            }
-        }
-        return body
     }
 
     /**

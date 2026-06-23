@@ -14,6 +14,7 @@ import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.contacts.socialHandles
+import id.homebase.core.contactbook.isEmergencyContact
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.HomebaseImageData
@@ -48,6 +49,11 @@ data class ContactBookEntry(
     val surname: String? = null,
     val phone: String? = null,
     val email: String? = null,
+    /** Free-form name for the address, e.g. "Home" / "Work"; used as the field label when present. */
+    val locationLabel: String? = null,
+    val addressLine1: String? = null,
+    val addressLine2: String? = null,
+    val postcode: String? = null,
     val city: String? = null,
     val country: String? = null,
     val birthday: String? = null,
@@ -91,10 +97,18 @@ data class ContactBookEntry(
     /** Secondary line under the name in list rows. */
     val subtitle: String? get() = odinId ?: phone ?: email
 
+    /**
+     * The full postal address formatted for display, one component per line:
+     * street lines, then "postcode city", then country. Null when nothing is set.
+     */
     val location: String?
-        get() = listOfNotNull(city?.ifBlank { null }, country?.ifBlank { null })
-            .joinToString(", ")
-            .ifBlank { null }
+        get() = listOfNotNull(
+            addressLine1?.ifBlank { null },
+            addressLine2?.ifBlank { null },
+            listOfNotNull(postcode?.ifBlank { null }, city?.ifBlank { null })
+                .joinToString(" ").ifBlank { null },
+            country?.ifBlank { null },
+        ).joinToString("\n").ifBlank { null }
 
     fun matches(query: String): Boolean {
         if (query.isBlank()) return true
@@ -139,8 +153,19 @@ data class ContactBookEntry(
             surname = surname?.ifBlank { null },
         ),
         source = source,
-        location = if (city.isNullOrBlank() && country.isNullOrBlank()) null
-        else ContactLocation(city = city?.ifBlank { null }, country = country?.ifBlank { null }),
+        location = listOfNotNull(
+            locationLabel, addressLine1, addressLine2, postcode, city, country,
+        ).any { it.isNotBlank() }.let { hasAny ->
+            if (!hasAny) null
+            else ContactLocation(
+                label = locationLabel?.ifBlank { null },
+                addressLine1 = addressLine1?.ifBlank { null },
+                addressLine2 = addressLine2?.ifBlank { null },
+                postcode = postcode?.ifBlank { null },
+                city = city?.ifBlank { null },
+                country = country?.ifBlank { null },
+            )
+        },
         phone = phone?.ifBlank { null }?.let { ContactPhone(number = it) },
         email = email?.ifBlank { null }?.let { ContactEmail(email = it) },
         birthday = birthday?.ifBlank { null }?.let { ContactBirthday(date = it) },
@@ -172,13 +197,17 @@ fun Contact.toContactBookEntry(): ContactBookEntry? {
         surname = name?.surname,
         phone = content.phone?.number,
         email = content.email?.email,
+        locationLabel = content.location?.label,
+        addressLine1 = content.location?.addressLine1,
+        addressLine2 = content.location?.addressLine2,
+        postcode = content.location?.postcode,
         city = content.location?.city,
         country = content.location?.country,
         birthday = content.birthday?.date,
         status = content.status,
         shortBio = content.shortBio,
         socialHandles = content.socialHandles(),
-        isEmergencyContact = content.isEmergencyContact,
+        isEmergencyContact = isEmergencyContact(),
         source = content.source,
         driveId = image?.driveId,
         keyHeader = image?.keyHeader,

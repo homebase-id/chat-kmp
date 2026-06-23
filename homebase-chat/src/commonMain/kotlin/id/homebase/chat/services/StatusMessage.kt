@@ -40,7 +40,6 @@ enum class StatusMessage() {
     /** Sent by a user (the message's `originalAuthor`) when they designate the recipient as one of
      *  their emergency contacts. Renders a system line ("X added you as an emergency contact") AND
      *  drives a receive-side side-effect (wired in AppModule) that marks the SENDER as an emergency
-     *  contact on the recipient's own contact drive — see
-     *  [id.homebase.api.client.contacts.ContactRepository.setEmergencyContact]. */
+     *  contact in the recipient's own contact app-data (core `setEmergencyContact`). */
     EmergencyContactDesignated,
 }

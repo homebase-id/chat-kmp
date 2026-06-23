@@ -3,13 +3,15 @@ package id.homebase.core.ui.screens.location
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
-import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.toContactUiModel
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.contactbook.emergencyContacts
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -52,8 +55,7 @@ class LocationViewModel(
     private val pointStore: LocationPointStore,
     private val uploaderService: LocationTrackUploaderService,
     private val deviceDirectory: LocationDeviceDirectory,
-    private val connectionNetworkProvider: ConnectionNetworkProvider,
-    private val contactService: ContactService,
+    private val contactRepository: ContactRepository,
     private val credentialsManager: CredentialsManager,
     private val receiveStore: LiveLocationReceiveStore,
     private val liveShareService: LiveLocationShareService,
@@ -96,6 +98,26 @@ class LocationViewModel(
     private var activationKicked = false
 
     init {
+        // "Who can locate you" = the contacts you've marked as emergency contacts (the app-data
+        // flag), resolved to display models. Reactive so marking/unmarking a contact updates the
+        // dashboard live. (emergencyContacts is a cold Flow; collecting it here makes it hot for
+        // the lifetime of this ViewModel.)
+        viewModelScope.launch {
+            // Exclude the logged-in identity: a self-contact can carry the flag (e.g. you marked
+            // your own contact), but you are never your own emergency contact for "who can locate me".
+            val self = runCatching { credentialsManager.getActiveDomain() }.getOrNull()
+            contactRepository.emergencyContacts
+                .map { list ->
+                    list.mapNotNull { it.toContactUiModel() }
+                        .filterNot { it.odinId == self }
+                }
+                .collect { members ->
+                    _uiState.update {
+                        it.copy(emergencyContacts = members, emergencyContactsLoaded = true)
+                    }
+                }
+        }
+
         viewModelScope.launch {
             locationPermissionViewModel.permissionsGranted
                 .filter { it }
@@ -190,7 +212,7 @@ class LocationViewModel(
                     .filter { it.endTimeMs > now }
                     .groupBy { it.odinId }
                     .map { (id, entries) ->
-                        val contact = contactService.resolveByOdinId(OdinId(id))
+                        val contact = resolveContact(OdinId(id))
                         OutgoingShareRow(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
@@ -206,7 +228,7 @@ class LocationViewModel(
                     .filter { now - it.receivedAtMs <= LIVE_STALE_MS }
                     .map { lp ->
                         val id = lp.senderOdinId.domainName
-                        val contact = contactService.resolveByOdinId(lp.senderOdinId)
+                        val contact = resolveContact(lp.senderOdinId)
                         IncomingShareRow(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
@@ -229,6 +251,16 @@ class LocationViewModel(
             }
         }
     }
+
+    /**
+     * Resolve a peer odinId to its display model via the contact repository, or null when the
+     * identity isn't a saved contact (the share rows fall back to the raw odinId / initials).
+     * Matching is by [OdinId] equality (normalized hash), mirroring ContactService's by-id map.
+     */
+    private fun resolveContact(odinId: OdinId): ContactUiModel? =
+        contactRepository.contacts.value
+            .firstOrNull { it.content.odinId?.let(::OdinId) == odinId }
+            ?.toContactUiModel()
 
     private fun liveTicker() = flow {
         while (true) {
@@ -361,19 +393,9 @@ class LocationViewModel(
             val devices = runCatching { deviceDirectory.loadDevices() }
                 .getOrDefault(emptyList())
 
-            // Members of the "Emergency Location Access" circle, resolved to contact
-            // models (the contact service owns avatar URLs + initials fallbacks).
-            val circlesResult = runCatching { connectionNetworkProvider.getCirclesWithMembers() }
-            val circle = circlesResult.getOrNull()
-                ?.firstOrNull { it.circle.id.equals(EMERGENCY_CIRCLE_ID, ignoreCase = true) }
-            val circleFound: Boolean? = when {
-                circlesResult.isFailure -> null   // couldn't load — stay neutral, don't claim "missing"
-                circle != null -> true
-                else -> false                     // loaded, but no such circle
-            }
-            val members = circle?.members.orEmpty()
-                .mapNotNull { contactService.resolveByOdinId(it) }
-
+            // The "who can locate you" list itself comes from the emergency-contact flag (collected
+            // reactively in init). Here we only resolve the owner-console deep link for managing the
+            // Emergency Location Access circle (the actual location-drive grant).
             val domain = runCatching { credentialsManager.getActiveCredentials()?.domain?.domainName }
                 .getOrNull()
             val manageUrl = domain?.let { "https://$it/owner/circles/$EMERGENCY_CIRCLE_ID" }
@@ -382,8 +404,6 @@ class LocationViewModel(
                 it.copy(
                     todayTraces = traces,
                     devices = devices,
-                    emergencyContacts = members,
-                    emergencyCircleFound = circleFound,
                     emergencyManageUrl = manageUrl,
                 )
             }

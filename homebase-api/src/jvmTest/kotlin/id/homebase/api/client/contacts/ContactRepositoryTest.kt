@@ -326,64 +326,6 @@ class ContactRepositoryTest {
         assertEquals(1, repo.contacts.value.size, "sync must lift the guard for md5(odinId)")
     }
 
-    @Test
-    fun setEmergencyContact_flipsFlagOptimisticallyPreservingOtherFields() = runTest {
-        val cm = credentialsManager()
-        val eventBus = EventBus()
-        val uid = Uuid.parse("11111111-1111-1111-1111-111111111111")
-        val repo = repo(cm, memoryDb(), eventBus, writeEngine(uid))
-        advanceUntilIdle()
-
-        // A fully-populated contact arrives, not yet an emergency contact.
-        val content = ContactContent(
-            name = ContactName(displayName = "Sam"),
-            phone = ContactPhone(number = "+15550100"),
-            isEmergencyContact = false,
-        )
-        eventBus.emit(batch(contactFile(uid, content)))
-        advanceUntilIdle()
-        assertTrue(repo.emergencyContacts.value.isEmpty())
-
-        val response = repo.setEmergencyContact(uid, versionTag = tag)
-        advanceUntilIdle()
-        assertNotNull(response)
-
-        val after = repo.contacts.value.single()
-        assertTrue(after.content.isEmergencyContact, "flag must be set")
-        assertEquals("Sam", after.content.name?.displayName, "other fields must be preserved")
-        assertEquals("+15550100", after.content.phone?.number, "other fields must be preserved")
-        assertEquals(listOf(uid), repo.emergencyContacts.value.map { it.uniqueId })
-    }
-
-    @Test
-    fun clearEmergencyContact_unflagsOptimisticallyPreservingOtherFields() = runTest {
-        val cm = credentialsManager()
-        val eventBus = EventBus()
-        val uid = Uuid.parse("11111111-1111-1111-1111-111111111111")
-        val repo = repo(cm, memoryDb(), eventBus, writeEngine(uid))
-        advanceUntilIdle()
-
-        // An existing emergency contact arrives.
-        val content = ContactContent(
-            name = ContactName(displayName = "Sam"),
-            phone = ContactPhone(number = "+15550100"),
-            isEmergencyContact = true,
-        )
-        eventBus.emit(batch(contactFile(uid, content)))
-        advanceUntilIdle()
-        assertEquals(listOf(uid), repo.emergencyContacts.value.map { it.uniqueId })
-
-        val response = repo.clearEmergencyContact(uid, versionTag = tag)
-        advanceUntilIdle()
-        assertNotNull(response)
-
-        val after = repo.contacts.value.single()
-        assertFalse(after.content.isEmergencyContact, "flag must be cleared")
-        assertEquals("Sam", after.content.name?.displayName, "other fields must be preserved")
-        assertEquals("+15550100", after.content.phone?.number, "other fields must be preserved")
-        assertTrue(repo.emergencyContacts.value.isEmpty())
-    }
-
     // ------------------------------------------------------------
     // loadAll (real DB)
     // ------------------------------------------------------------

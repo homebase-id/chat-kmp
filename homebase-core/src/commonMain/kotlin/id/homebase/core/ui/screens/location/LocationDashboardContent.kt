@@ -78,7 +78,6 @@ import id.homebase.resources.location_device_this_device
 import id.homebase.resources.location_device_unnamed
 import id.homebase.resources.location_devices_section
 import id.homebase.resources.location_emergency_access_manage
-import id.homebase.resources.location_emergency_access_missing
 import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
@@ -311,13 +310,13 @@ fun LocationDashboardContent(
             )
         }
 
-        // ── Who can locate you (members of the Emergency Location Access circle) ──
+        // ── Who can locate you (contacts marked as emergency contacts) ──
         DashboardSection(
             title = stringResource(MR.string.location_emergency_access_section),
             onManage = onManageEmergencyAccess,
         ) {
             EmergencyAccessBody(
-                circleFound = uiState.emergencyCircleFound,
+                loaded = uiState.emergencyContactsLoaded,
                 members = uiState.emergencyContacts,
             )
         }
@@ -436,24 +435,17 @@ private fun DashboardSection(
  */
 @Composable
 private fun EmergencyAccessBody(
-    circleFound: Boolean?,
+    loaded: Boolean,
     members: List<ContactUiModel>,
 ) {
     var expanded by remember { mutableStateOf(false) }
     when {
-        circleFound == null -> Box(
+        !loaded -> Box(
             modifier = Modifier.fillMaxWidth().padding(24.dp),
             contentAlignment = Alignment.Center,
         ) {
             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
         }
-
-        !circleFound -> Text(
-            text = stringResource(MR.string.location_emergency_access_missing),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-        )
 
         members.isEmpty() -> Text(
             text = stringResource(MR.string.location_emergency_access_none),

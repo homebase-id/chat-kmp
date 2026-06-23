@@ -266,7 +266,11 @@ fun ContactFieldsSection(
         entry.odinId?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.AlternateEmail, lblId, it)) }
         entry.phone?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Call, lblPhone, it)) }
         entry.email?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Email, lblEmail, it)) }
-        entry.location?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.LocationOn, lblLocation, it)) }
+        entry.location?.takeIf { it.isNotBlank() }?.let {
+            // Prefer the address's own label ("Home" / "Work") over the generic "Location".
+            val addressLabel = entry.locationLabel?.takeIf { l -> l.isNotBlank() } ?: lblLocation
+            add(Triple(Icons.Outlined.LocationOn, addressLabel, it))
+        }
         entry.birthday?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Cake, lblBirthday, it)) }
     }
     if (fields.isEmpty()) {
@@ -355,7 +359,7 @@ fun ManagementSection(
     // Emergency-contact toggle — only for a synced Homebase identity. Marking notifies the contact
     // and sets the flag; removing clears it (a dedicated delta write, since the normal content merge
     // can't express a clear).
-    if (uiState.hasOdinId && uiState.entry?.versionTag != null) {
+    if (uiState.hasOdinId && uiState.entry?.versionTag != null && !uiState.isSelf) {
         if (uiState.entry?.isEmergencyContact == true) {
             ManagementAction(
                 Icons.Outlined.ContactEmergency,

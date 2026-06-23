@@ -21,24 +21,6 @@ data class UpdateContactRequest(
 )
 
 /**
- * A content delta carrying only the emergency-contact flag, with the field **always** emitted (no
- * default, so it serializes for both `true` and `false`). [ContactContent.isEmergencyContact] is
- * `@EncodeDefault(NEVER)` and so omits a `false`, which can't express a *clear*; this dedicated
- * shape can — it serializes to `{"isEmergencyContact":true|false}`, a normal partial-content merge.
- */
-@Serializable
-data class EmergencyContactDelta(
-    val isEmergencyContact: Boolean,
-)
-
-/** PUT /api/v2/contacts/{uniqueId} body that sets OR clears only the emergency-contact flag. */
-@Serializable
-data class SetEmergencyContactRequest(
-    val content: EmergencyContactDelta,
-    @Serializable(with = UuidSerializer::class) val versionTag: Uuid,
-)
-
-/**
  * Body for both per-app app-data PUTs — the inline tier (`/app-data`) and the bulk tier
  * (`/app-ext-data`) share the identical shape. The server stamps the app's id from the auth token,
  * so [appId] is never part of the body.

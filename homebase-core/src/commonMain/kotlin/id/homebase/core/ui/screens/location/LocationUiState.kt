@@ -29,11 +29,12 @@ data class LocationUiState(
     // Dashboard state
     val devices: List<LocationDeviceInfo> = emptyList(),
     val todayTraces: List<DeviceTrace> = emptyList(),
-    /** Resolved members of the "Emergency Location Access" circle (avatars on the dashboard). */
+    /** Contacts marked as emergency contacts (the "who can locate you" list on the dashboard). */
     val emergencyContacts: List<ContactUiModel> = emptyList(),
-    /** null = still loading / couldn't load; true = circle present; false = circle doesn't exist. */
-    val emergencyCircleFound: Boolean? = null,
-    /** Owner-console deep link to manage the circle's members; null until the identity is known. */
+    /** False until the emergency-contacts list has loaded at least once (drives the loading spinner). */
+    val emergencyContactsLoaded: Boolean = false,
+    /** Owner-console deep link to manage the Emergency Location Access circle (the actual location
+     *  drive grant); null until the identity is known. */
     val emergencyManageUrl: String? = null,
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
