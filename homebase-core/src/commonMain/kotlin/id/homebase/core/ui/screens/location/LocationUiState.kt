@@ -38,10 +38,35 @@ data class LocationUiState(
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
     val liveSharingVisible: Boolean = false,
+    /** People I'm sharing my live location with — deduped by identity, longest end-time. */
+    val outgoingShares: List<OutgoingShareRow> = emptyList(),
+    /** People sharing their live location with me — with the age of their last fix. */
+    val incomingShares: List<IncomingShareRow> = emptyList(),
 ) {
     /** Only OSM tiles are implemented today; the canvas takes a boolean. */
     val showMapTiles: Boolean get() = mapProvider == LocationMapProvider.OpenStreetMap
 }
+
+/** One row in the "Sharing with" list: a person and the latest time my share to them lasts. */
+data class OutgoingShareRow(
+    /** Identity domain string (OdinId.domainName) — stable list key and stop target. */
+    val odinId: String,
+    val name: String,
+    val avatarInitials: String,
+    val avatarUrl: String?,
+    /** Longest end-time across this person's overlapping shares (UTC epoch-ms). */
+    val untilMs: Long,
+)
+
+/** One row in the "Sharing with you" list: a person and how stale their last fix is. */
+data class IncomingShareRow(
+    val odinId: String,
+    val name: String,
+    val avatarInitials: String,
+    val avatarUrl: String?,
+    /** Age of their last received fix (ms); the label only shows past AGE_LABEL_AFTER_MS. */
+    val ageMs: Long,
+)
 
 /**
  * Main-screen body switch: dashboard once the add-on is fully set up, setup otherwise.
@@ -71,6 +96,10 @@ sealed interface LocationUiAction {
     data class SetTrackingEnabled(val enabled: Boolean) : LocationUiAction
     data class SetIconVisible(val visible: Boolean) : LocationUiAction
     data class SetMapProvider(val provider: LocationMapProvider) : LocationUiAction
+    /** Stop all of one person's outgoing live shares (Dashboard per-row stop). */
+    data class StopSharingWith(val odinId: String) : LocationUiAction
+    /** Stop every outgoing live share (Dashboard "stop sharing with everyone"). */
+    data object StopSharingWithEveryone : LocationUiAction
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction

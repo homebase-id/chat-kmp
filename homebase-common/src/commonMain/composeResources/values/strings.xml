@@ -1311,6 +1311,13 @@
     <string name="location_dashboard_live_section">Live location sharing</string>
     <string name="location_dashboard_live_open">Open live map</string>
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
+    <string name="location_dashboard_sharing_with">Sharing with</string>
+    <string name="location_dashboard_sharing_with_you">Sharing with you</string>
+    <string name="location_dashboard_share_until">until %1$s</string>
+    <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>
+    <string name="location_dashboard_stop_everyone">Stop sharing with everyone</string>
+    <string name="location_dashboard_stop_confirm_title">Stop all sharing?</string>
+    <string name="location_dashboard_stop_confirm_body">This ends every live location share you've started.</string>
     <string name="share_live_location">Share live location</string>
     <string name="stop_sharing">Stop sharing</string>
     <string name="live_share_active">Live location · %1$s left</string>

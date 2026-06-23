@@ -81,4 +81,31 @@ class LiveShareRosterTest {
             LiveShareRoster.remove(roster, recipients = listOf("a"), endTimeMs = 100),
         )
     }
+
+    @Test
+    fun removeRecipients_dropsAllOfAPersonsEntriesRegardlessOfEndTime() {
+        // "a" has two overlapping shares (@100 and @300); "b" has one. The Dashboard's per-person
+        // stop on "a" must drop BOTH of "a"'s entries while leaving "b" untouched.
+        val roster = listOf(
+            TimedRecipient("a", 100),
+            TimedRecipient("a", 300),
+            TimedRecipient("b", 200),
+        )
+        assertEquals(
+            listOf(TimedRecipient("b", 200)),
+            LiveShareRoster.removeRecipients(roster, recipients = listOf("a")),
+        )
+    }
+
+    @Test
+    fun removeRecipients_removesSeveralPeopleAndIsNoOpForUnknown() {
+        val roster = listOf(TimedRecipient("a", 100), TimedRecipient("b", 200), TimedRecipient("c", 300))
+        // A subset of people drops all their entries...
+        assertEquals(
+            listOf(TimedRecipient("c", 300)),
+            LiveShareRoster.removeRecipients(roster, recipients = listOf("a", "b")),
+        )
+        // ...and a recipient with no entries is a no-op.
+        assertEquals(roster, LiveShareRoster.removeRecipients(roster, recipients = listOf("zzz")))
+    }
 }
