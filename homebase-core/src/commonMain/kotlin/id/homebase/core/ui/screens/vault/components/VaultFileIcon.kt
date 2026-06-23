@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.outlined.Article
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.automirrored.outlined.NoteAdd
@@ -26,9 +27,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import id.homebase.core.util.formatFileSize
 import id.homebase.core.util.formatShortDate
@@ -37,9 +42,13 @@ import id.homebase.resources.vault_delete_confirm_action
 import id.homebase.resources.vault_gallery_delete_all
 import id.homebase.resources.vault_gallery_delete_file
 import id.homebase.resources.vault_more_options
+import id.homebase.resources.vault_move_to_section
+import id.homebase.resources.vault_move_to_section_target
 import id.homebase.resources.vault_rename_action
 import id.homebase.resources.vault_share
 import kotlin.time.Instant
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -95,15 +104,23 @@ fun formatFileInfo(sizeBytes: Long, createdAt: Long): String {
 /**
  * Three-dot dropdown menu for vault file actions (share, delete).
  */
+@OptIn(ExperimentalUuidApi::class)
 @Composable
 fun VaultFileDropdownMenu(
     file: VaultEntry,
     onShare: (VaultEntry) -> Unit,
     onDelete: (VaultEntry) -> Unit,
     onDeletePage: (() -> Unit)? = null,
+    sections: List<VaultSection> = emptyList(),
+    onMoveToSection: ((Uuid) -> Unit)? = null,
     iconTint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var moveExpanded by remember { mutableStateOf(false) }
+    // Sections other than the one this file lives in — the valid move targets.
+    val otherSections = remember(sections, file.groupId) {
+        sections.filter { it.sectionId != file.groupId }
+    }
 
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -123,6 +140,21 @@ fun VaultFileDropdownMenu(
                     onClick = {
                         expanded = false
                         onShare(file)
+                    },
+                )
+            }
+            if (onMoveToSection != null && otherSections.isNotEmpty()) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.vault_move_to_section)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.DriveFileMove,
+                            contentDescription = null,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        moveExpanded = true
                     },
                 )
             }
@@ -156,6 +188,23 @@ fun VaultFileDropdownMenu(
                     onDelete(file)
                 },
             )
+        }
+        // Section picker, shown after "Move to section…" is chosen.
+        DropdownMenu(
+            expanded = moveExpanded,
+            onDismissRequest = { moveExpanded = false },
+        ) {
+            otherSections.forEach { section ->
+                val itemLabel = stringResource(MR.string.vault_move_to_section_target, section.title)
+                DropdownMenuItem(
+                    text = { Text(section.title) },
+                    onClick = {
+                        moveExpanded = false
+                        onMoveToSection?.invoke(section.sectionId)
+                    },
+                    modifier = Modifier.semantics { contentDescription = itemLabel },
+                )
+            }
         }
     }
 }

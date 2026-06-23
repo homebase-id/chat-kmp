@@ -167,8 +167,6 @@ fun VaultGalleryScreen(
                     onAppendPages = onAppendPages,
                     onUpdateLabel = onUpdateLabel,
                     onUpdateNotes = onUpdateNotes,
-                    sections = sections,
-                    onMoveToSection = onMoveToSection,
                     localAttachmentStore = localAttachmentStore,
                 )
             },
@@ -301,6 +299,8 @@ fun VaultGalleryScreen(
                                 onShare = { currentDescriptor?.let { onSharePage(it.key) } },
                                 onDelete = { showDeleteEntryConfirm = true },
                                 onDeletePage = { currentDescriptor?.let { pageToDelete = it.key } },
+                                sections = sections,
+                                onMoveToSection = onMoveToSection,
                                 iconTint = MaterialTheme.colorScheme.onSurface,
                             )
                         },
