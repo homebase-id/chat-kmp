@@ -42,6 +42,8 @@ data class ContactDetailUiState(
 sealed interface ContactDetailAction {
     data object MessageClicked : ContactDetailAction
     data object SyncClicked : ContactDetailAction
+    data object MakeEmergencyContactClicked : ContactDetailAction
+    data object RemoveEmergencyContactClicked : ContactDetailAction
     data object EditClicked : ContactDetailAction
     data class SaveContact(val draft: ContactDraft, val photo: io.github.vinceglb.filekit.PlatformFile?) :
         ContactDetailAction
@@ -81,4 +83,8 @@ sealed interface ContactDetailEvent {
     data object Disconnected : ContactDetailEvent
     /** Best-effort profile sync was requested; the enriched contact lands later via drive sync. */
     data object SyncStarted : ContactDetailEvent
+    /** The contact was marked as an emergency contact (and the designation sent). */
+    data object EmergencyContactSet : ContactDetailEvent
+    /** The contact was removed as an emergency contact. */
+    data object EmergencyContactRemoved : ContactDetailEvent
 }

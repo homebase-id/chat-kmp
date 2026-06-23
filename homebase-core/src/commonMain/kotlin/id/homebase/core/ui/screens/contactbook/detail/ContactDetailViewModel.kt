@@ -156,6 +156,8 @@ class ContactDetailViewModel(
         when (action) {
             ContactDetailAction.MessageClicked -> handleMessage()
             ContactDetailAction.SyncClicked -> handleSync()
+            ContactDetailAction.MakeEmergencyContactClicked -> handleMakeEmergencyContact()
+            ContactDetailAction.RemoveEmergencyContactClicked -> handleRemoveEmergencyContact()
             ContactDetailAction.EditClicked -> _uiState.update { it.copy(editOpen = true) }
             ContactDetailAction.CloseEdit -> _uiState.update { it.copy(editOpen = false) }
             is ContactDetailAction.SaveContact -> handleSave(action)
@@ -190,6 +192,64 @@ class ContactDetailViewModel(
                 return@launch
             }
             _events.tryEmit(ContactDetailEvent.OpenConversation(id))
+        }
+    }
+
+    /**
+     * Marks this contact as one of our emergency contacts: sets the owner-only flag on our own
+     * contact record ([ContactRepository.setEmergencyContact]) and then notifies the contact by
+     * posting an EmergencyContactDesignated status into their 1:1. The notification is best-effort
+     * (the local flag is the source of truth); a failed flag write reports an error and skips the
+     * notification. Needs a synced contact (a versionTag) and an odinId to notify.
+     */
+    private fun handleMakeEmergencyContact() {
+        val entry = _uiState.value.entry ?: return
+        val versionTag = entry.versionTag ?: return
+        if (entry.isEmergencyContact) return
+        val recipient = entry.odinId?.ifBlank { null }
+            ?.let { runCatching { OdinId(it) }.getOrNull() } ?: return
+        _uiState.update { it.copy(actionInProgress = true) }
+        viewModelScope.launch {
+            try {
+                val response = contactRepository.setEmergencyContact(entry.uniqueId, versionTag)
+                if (response == null) {
+                    _events.tryEmit(ContactDetailEvent.Error)
+                    return@launch
+                }
+                // Best-effort notify; the flag is already set locally regardless of this result.
+                conversationService.sendEmergencyContactDesignation(recipient)
+                _events.tryEmit(ContactDetailEvent.EmergencyContactSet)
+            } catch (e: ForbiddenException) {
+                _events.tryEmit(ContactDetailEvent.Forbidden)
+            } finally {
+                _uiState.update { it.copy(actionInProgress = false) }
+            }
+        }
+    }
+
+    /**
+     * Removes this contact as an emergency contact: clears the owner-only flag on our own record
+     * ([ContactRepository.clearEmergencyContact]). Local-only — we don't notify the contact (the
+     * "designation" status is one-way; removal is a private bookkeeping change). Needs a synced
+     * contact (a versionTag).
+     */
+    private fun handleRemoveEmergencyContact() {
+        val entry = _uiState.value.entry ?: return
+        val versionTag = entry.versionTag ?: return
+        if (!entry.isEmergencyContact) return
+        _uiState.update { it.copy(actionInProgress = true) }
+        viewModelScope.launch {
+            try {
+                val response = contactRepository.clearEmergencyContact(entry.uniqueId, versionTag)
+                _events.tryEmit(
+                    if (response != null) ContactDetailEvent.EmergencyContactRemoved
+                    else ContactDetailEvent.Error
+                )
+            } catch (e: ForbiddenException) {
+                _events.tryEmit(ContactDetailEvent.Forbidden)
+            } finally {
+                _uiState.update { it.copy(actionInProgress = false) }
+            }
         }
     }
 

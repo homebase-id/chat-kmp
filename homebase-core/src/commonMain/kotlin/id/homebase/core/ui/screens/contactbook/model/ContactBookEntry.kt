@@ -57,6 +57,8 @@ data class ContactBookEntry(
     val shortBio: String? = null,
     /** Known social/gaming handles in render order, resolved from [ContactContent.social]. */
     val socialHandles: List<Pair<ContactSocialNetwork, String>> = emptyList(),
+    /** Owner-only flag: this contact is one of our emergency contacts. */
+    val isEmergencyContact: Boolean = false,
     val source: String? = null,
     /** Pending (optimistic, not yet confirmed by the drive). */
     val isPending: Boolean = false,
@@ -176,6 +178,7 @@ fun Contact.toContactBookEntry(): ContactBookEntry? {
         status = content.status,
         shortBio = content.shortBio,
         socialHandles = content.socialHandles(),
+        isEmergencyContact = content.isEmergencyContact,
         source = content.source,
         driveId = image?.driveId,
         keyHeader = image?.keyHeader,

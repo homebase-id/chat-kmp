@@ -117,6 +117,35 @@ class ContactsProvider(
         return toWriteResult(response, allowNotFound = true)
     }
 
+    /**
+     * PUT /api/v2/contacts/{uniqueId} — sets ([isEmergencyContact] = true) or clears (= false) ONLY
+     * the emergency-contact flag via [EmergencyContactDelta], which always emits the bool (unlike
+     * [ContactContent], whose `@EncodeDefault(NEVER)` omits a `false` and so can't express a clear).
+     * Version-gated with the same bounded merge-and-retry as the image writes: on 409 it takes the
+     * authoritative tag and resends. Returns [ContactWriteResult.NotFound] if there's no such contact.
+     */
+    suspend fun writeEmergencyContact(
+        uniqueId: Uuid,
+        isEmergencyContact: Boolean,
+        versionTag: Uuid,
+        maxAttempts: Int = 3,
+    ): ContactWriteResult {
+        require(maxAttempts >= 1) { "maxAttempts must be >= 1" }
+
+        return retryVersionGated(versionTag, maxAttempts) { tag ->
+            val creds = requireCreds()
+            val response = encryptedPutJson(
+                url = apiUrl(creds.domain, "$BASE/$uniqueId"),
+                token = creds.accessToken,
+                jsonBody = OdinSystemSerializer.serialize(
+                    SetEmergencyContactRequest(EmergencyContactDelta(isEmergencyContact), tag),
+                ),
+                secret = creds.secret,
+            )
+            toWriteResult(response, allowNotFound = true)
+        }
+    }
+
     // ------------------------------------------------------------
     // DELETE
     // ------------------------------------------------------------

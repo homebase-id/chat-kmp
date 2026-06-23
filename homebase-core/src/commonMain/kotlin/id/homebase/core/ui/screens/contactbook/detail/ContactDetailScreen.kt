@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material3.AlertDialog
@@ -62,6 +63,9 @@ import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_action_blocked
 import id.homebase.resources.contactbook_action_sync_started
 import id.homebase.resources.contactbook_action_disconnected
+import id.homebase.resources.contactbook_action_emergency_removed
+import id.homebase.resources.contactbook_action_emergency_set
+import id.homebase.resources.contactbook_detail_emergency_badge
 import id.homebase.resources.contactbook_action_unblocked
 import id.homebase.resources.contactbook_connected
 import id.homebase.resources.contactbook_detail_block
@@ -112,6 +116,8 @@ fun ContactDetailScreen(
     val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
     val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
     val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
+    val msgEmergencySet = stringResource(MR.string.contactbook_action_emergency_set)
+    val msgEmergencyRemoved = stringResource(MR.string.contactbook_action_emergency_removed)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -133,6 +139,10 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
                 ContactDetailEvent.SyncStarted -> snackbarHostState.showSnackbar(msgSyncStarted)
+                ContactDetailEvent.EmergencyContactSet ->
+                    snackbarHostState.showSnackbar(msgEmergencySet)
+                ContactDetailEvent.EmergencyContactRemoved ->
+                    snackbarHostState.showSnackbar(msgEmergencyRemoved)
             }
         }
     }
@@ -349,6 +359,26 @@ private fun DetailHeader(
                 style = MaterialTheme.typography.labelMedium,
                 color = statusColor,
             )
+        }
+
+        // Emergency-contact indicator — visible whenever this contact is one of our emergency
+        // contacts (independent of connection state).
+        if (entry.isEmergencyContact) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.ContactEmergency,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(MR.string.contactbook_detail_emergency_badge),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
 
         when {

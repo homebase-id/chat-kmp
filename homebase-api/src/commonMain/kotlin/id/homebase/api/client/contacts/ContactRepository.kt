@@ -268,38 +268,43 @@ class ContactRepository(
     }
 
     /**
-     * Minimal-delta write of the owner-only [ContactContent.isEmergencyContact] flag: sends ONLY
-     * `{"isEmergencyContact": true}` so the server's field-level merge flips just this flag and
-     * leaves every other stored field untouched — no need to resend the whole contact. On success it
-     * optimistically copies the flag onto the live contact's existing content (so the rest of the UI
-     * model is preserved — unlike [save], which replaces the content wholesale) and adopts the
-     * returned versionTag; the authoritative row lands later via drive sync.
+     * Marks this contact as one of our emergency contacts — a minimal-delta, version-gated write
+     * that sends only the flag (via [ContactsProvider.writeEmergencyContact]) so the server's field
+     * merge leaves every other stored field untouched. Optimistically copies the flag onto the live
+     * contact's existing content (unlike [save], which replaces it wholesale) and adopts the returned
+     * versionTag; the authoritative row lands later via drive sync.
      *
-     * Returns the new id/versionTag, or null on a generic failure. Rethrows [ForbiddenException]
-     * (403).
-     *
-     * Sets the flag only — it cannot be CLEARED this way: `isEmergencyContact` is
-     * `@EncodeDefault(NEVER)`, so a `false` is omitted from the JSON and the merge reads an omitted
-     * field as "leave alone" (clearing needs dedicated server support).
+     * Returns the new id/versionTag, or null on a generic failure / no-such-contact. Rethrows
+     * [ForbiddenException] (403). See [clearEmergencyContact] to remove the flag.
      */
-    suspend fun setEmergencyContact(
+    suspend fun setEmergencyContact(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
+        writeEmergencyFlag(uniqueId, isEmergencyContact = true, versionTag = versionTag)
+
+    /**
+     * Removes this contact as an emergency contact. Same minimal-delta, version-gated path as
+     * [setEmergencyContact] but explicitly clears the flag — the dedicated [EmergencyContactDelta]
+     * write can express a `false`, which the normal [ContactContent] merge (which omits a `false`)
+     * can't. Rethrows [ForbiddenException] (403).
+     */
+    suspend fun clearEmergencyContact(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
+        writeEmergencyFlag(uniqueId, isEmergencyContact = false, versionTag = versionTag)
+
+    private suspend fun writeEmergencyFlag(
         uniqueId: Uuid,
+        isEmergencyContact: Boolean,
         versionTag: Uuid,
     ): ContactWriteResponse? {
-        val response = try {
-            contactsProvider.saveContact(
-                content = ContactContent(isEmergencyContact = true),
-                knownUniqueId = uniqueId,
-                knownVersionTag = versionTag,
-            )
+        val result = try {
+            contactsProvider.writeEmergencyContact(uniqueId, isEmergencyContact, versionTag)
         } catch (e: CancellationException) {
             throw e
         } catch (e: ForbiddenException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(e, TAG) { "setEmergencyContact failed for $uniqueId" }
+            Logger.w(e, TAG) { "writeEmergencyFlag($isEmergencyContact) failed for $uniqueId" }
             return null
         }
+        val body = (result as? ContactWriteResult.Ok)?.body ?: return null
 
         _contacts.update { current ->
             val idx = current.indexOfFirst { it.uniqueId == uniqueId }
@@ -307,12 +312,12 @@ class ContactRepository(
             val existing = current[idx]
             current.toMutableList().apply {
                 this[idx] = existing.copy(
-                    content = existing.content.copy(isEmergencyContact = true),
-                    versionTag = response.versionTag,
+                    content = existing.content.copy(isEmergencyContact = isEmergencyContact),
+                    versionTag = body.versionTag,
                 )
             }
         }
-        return response
+        return body
     }
 
     /**
