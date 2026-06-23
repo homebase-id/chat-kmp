@@ -112,7 +112,11 @@ class StickerCreator(
             // large pick.
             val outlined: ByteArray? = withContext(workDispatcher) {
                 when {
-                    isTransparent(bytes) -> addOutline(bytes)
+                    // A user-picked transparent PNG can carry dead transparent margins (a small
+                    // subject floating in a full-frame canvas). Crop to the alpha bbox FIRST so the
+                    // subject fills the sticker frame, same as the bg-removal path — otherwise the
+                    // margins bake into the upload and render as blank space (issue #815).
+                    isTransparent(bytes) -> addOutline(cropToSubject(bytes))
                     bgRemovalSupported() -> cutOut(bytes)?.let { addOutline(cropToSubject(it)) }
                     else -> null
                 }
