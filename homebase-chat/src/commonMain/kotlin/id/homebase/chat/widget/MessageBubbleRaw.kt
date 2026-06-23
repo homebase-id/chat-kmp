@@ -63,6 +63,7 @@ import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
@@ -146,6 +147,12 @@ fun MessageBubbleRaw(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
 ) {
+
+    // #814: render the timestamp + delivery footer only on the last bubble of a
+    // same-sender cluster (END/ALONE), or whenever a sent message failed to deliver.
+    val showMessageFooter = clusterPosition == MessageClusterPosition.END ||
+        clusterPosition == MessageClusterPosition.ALONE ||
+        (sentByYou && message.messageAppData.deliveryStatus == ChatDeliveryStatus.Failed.value)
 
     // Typed rich-content (event today; poll/doodle later) bypasses the text+media
     // path entirely — each kind paints its own bubble, with its own background and
@@ -256,6 +263,7 @@ fun MessageBubbleRaw(
                     timestamp = locInfoText,
                     captionBackgroundColor = captionBg,
                     captionContentColor = captionContent,
+                    showTimestamp = showMessageFooter,
                     showDeliveryStatus = sentByYou && !message.isDeleted,
                     isPendingSend = message.isPendingSend,
                     deliveryStatus = message.messageAppData.deliveryStatus,
@@ -462,6 +470,7 @@ fun MessageBubbleRaw(
                     deliveryStatus = message.messageAppData.deliveryStatus,
                     contentColor = contentColor,
                     pendingSince = message.userDate,
+                    showTimestamp = showMessageFooter,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = { handleLongClick() },
                     onRequestDecryptedFile = onRequestDecryptedFile,
@@ -492,6 +501,7 @@ fun MessageBubbleRaw(
                         uploadStatus = uploadStatus,
                     )
                     MediaTimestampOverlay(
+                        showTimestamp = showMessageFooter,
                         messageInfoText = messageInfoText,
                         sentByYou = sentByYou,
                         isPendingSend = isPendingSend,
@@ -532,6 +542,7 @@ fun MessageBubbleRaw(
                                 uploadStatus = uploadStatus,
                             )
                             MediaTimestampOverlay(
+                                showTimestamp = showMessageFooter,
                                 messageInfoText = messageInfoText,
                                 sentByYou = sentByYou,
                                 isPendingSend = isPendingSend,
@@ -649,6 +660,7 @@ fun MessageBubbleRaw(
                         }
                     }
                     MessageTimestampFooter(
+                        visible = showMessageFooter,
                         infoText = messageInfoText,
                         contentColor = contentColor,
                         showDeliveryStatus = sentByYou && !message.isDeleted,
@@ -803,19 +815,24 @@ fun MessageBubbleRaw(
                                 verticalAlignment = Alignment.Bottom,
                                 horizontalArrangement = Arrangement.End,
                             ) {
-                                Text(
-                                    text = messageInfoText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contentColor.copy(alpha = 0.7f)
-                                )
-                                if (sentByYou && !message.isDeleted) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    DeliveryStatus(
-                                        isPendingSend = isPendingSend,
-                                        deliveryStatus = message.messageAppData.deliveryStatus,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
-                                        pendingSince = message.userDate,
+                                // #814: keep this Row child present (the timestamp-tuck
+                                // Layout indexes children by position) but hide its
+                                // contents on non-terminal cluster bubbles.
+                                if (showMessageFooter) {
+                                    Text(
+                                        text = messageInfoText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = contentColor.copy(alpha = 0.7f)
                                     )
+                                    if (sentByYou && !message.isDeleted) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        DeliveryStatus(
+                                            isPendingSend = isPendingSend,
+                                            deliveryStatus = message.messageAppData.deliveryStatus,
+                                            contentColor = contentColor.copy(alpha = 0.7f),
+                                            pendingSince = message.userDate,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1055,7 +1072,9 @@ private fun BoxScope.MediaTimestampOverlay(
     deliveryStatus: Int,
     contentColor: Color,
     pendingSince: Instant?,
+    showTimestamp: Boolean = true,
 ) {
+    if (!showTimestamp) return
     Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
         Box(
             modifier = Modifier.fillMaxWidth().height(40.dp)

@@ -68,6 +68,7 @@ fun StickerMessage(
     animatedVisibilityScope: AnimatedVisibilityScope?,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
+    showTimestamp: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     if (payloads.isEmpty()) return
@@ -108,20 +109,24 @@ fun StickerMessage(
 
             // Subtle timestamp + delivery status — identical styling to the emoji-only
             // footer (labelSmall, contentColor @ 0.7 alpha), no scrim, no background.
+            // #814: keep this Row child (measurables[1]) but hide its contents on
+            // non-terminal cluster bubbles; the gap below collapses when it's empty.
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = messageInfoText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.7f),
-                )
-                if (sentByYou) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    DeliveryStatus(
-                        isPendingSend = isPendingSend,
-                        deliveryStatus = deliveryStatus,
-                        contentColor = contentColor.copy(alpha = 0.7f),
-                        pendingSince = pendingSince,
+                if (showTimestamp) {
+                    Text(
+                        text = messageInfoText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.7f),
                     )
+                    if (sentByYou) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        DeliveryStatus(
+                            isPendingSend = isPendingSend,
+                            deliveryStatus = deliveryStatus,
+                            contentColor = contentColor.copy(alpha = 0.7f),
+                            pendingSince = pendingSince,
+                        )
+                    }
                 }
             }
         },
@@ -132,7 +137,7 @@ fun StickerMessage(
             constraints.copy(minWidth = 0, maxWidth = imagePlaceable.width)
         )
 
-        val gap = 4.dp.roundToPx()
+        val gap = if (infoPlaceable.height > 0) 4.dp.roundToPx() else 0
         val width = imagePlaceable.width
         val height = imagePlaceable.height + gap + infoPlaceable.height
 
