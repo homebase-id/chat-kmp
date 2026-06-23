@@ -13,6 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -34,7 +36,8 @@ import kotlin.uuid.Uuid
  * single transparent image is loaded through the SAME encrypted-image path
  * [MediaMessage]/[MediaItem] use (so the existing sticker-aware [MediaItem] already
  * drops the rounded clip and the opaque letterbox fill), but it is constrained to
- * [Dimens.Sticker.maxSize] with [androidx.compose.ui.layout.ContentScale.Fit].
+ * [Dimens.Sticker.baseSize] — clamped to [Dimens.Sticker.maxHeightFraction] of the
+ * viewport height — with [androidx.compose.ui.layout.ContentScale.Fit].
  *
  * The timestamp + delivery status are tucked under the bottom-end corner of the image
  * via the same custom [Layout] idiom the emoji-only bubble uses for its `infoPlaceable`
@@ -73,6 +76,16 @@ fun StickerMessage(
     if (payloads.isEmpty()) return
     val payload = payloads[0]
 
+    // Larger than the old flat 160.dp, but never taller than a fraction of the viewport so
+    // a sticker can't dominate the list on short/landscape windows. containerSize is the
+    // window height in px; convert to dp and take the smaller of the base size and the cap.
+    val density = LocalDensity.current
+    val viewportHeightPx = LocalWindowInfo.current.containerSize.height
+    val stickerMaxSize = with(density) {
+        val heightCap = viewportHeightPx.toDp() * Dimens.Sticker.maxHeightFraction
+        if (viewportHeightPx > 0) minOf(Dimens.Sticker.baseSize, heightCap) else Dimens.Sticker.baseSize
+    }
+
     Layout(
         modifier = modifier,
         content = {
@@ -88,7 +101,7 @@ fun StickerMessage(
                     ?: payload.previewThumbnail?.toEmbeddedThumb(),
                 decryptedFiles = decryptedFiles,
                 keyHeader = keyHeader,
-                modifier = Modifier.sizeIn(maxWidth = Dimens.Sticker.maxSize, maxHeight = Dimens.Sticker.maxSize),
+                modifier = Modifier.sizeIn(maxWidth = stickerMaxSize, maxHeight = stickerMaxSize),
                 imageSize = ImageSize.THUMB_MEDIUM,
                 preserveAspectRatio = true,
                 isSticker = true,
