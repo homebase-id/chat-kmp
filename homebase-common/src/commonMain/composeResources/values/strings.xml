@@ -509,7 +509,7 @@
     <string name="chat_no_gallery_items">No items</string>
     <string name="chat_select_more_photos">Select more photos</string>
     <string name="chat_gallery_selection_index">%1$d</string>
-    <string name="chat_gallery_send_count">Send (%1$d)</string>
+    <string name="chat_gallery_next_count">Next (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>
