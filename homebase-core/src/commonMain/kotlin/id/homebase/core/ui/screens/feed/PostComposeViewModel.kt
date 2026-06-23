@@ -179,17 +179,8 @@ class PostComposeViewModel(
         _uiState.update { it.copy(audience = audience) }
     }
 
-    /** Cycle the reaction policy: All → EmojiOnly → CommentOnly → None → All. */
-    fun toggleReactAccess() {
-        _uiState.update {
-            val next = when (it.reactAccess) {
-                ReactAccess.All -> ReactAccess.EmojiOnly
-                ReactAccess.EmojiOnly -> ReactAccess.CommentOnly
-                ReactAccess.CommentOnly -> ReactAccess.None
-                ReactAccess.None -> ReactAccess.All
-            }
-            it.copy(reactAccess = next)
-        }
+    fun setReactAccess(reactAccess: ReactAccess) {
+        _uiState.update { it.copy(reactAccess = reactAccess) }
     }
 
     fun submit() {

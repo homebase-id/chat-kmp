@@ -26,7 +26,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.builder.LinkPreviewDescriptor
+import id.homebase.chat.widget.LinkPreviewCard
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.previewBody
@@ -43,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import id.homebase.api.client.drives.files.ReactionSummary
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_encrypted
 import id.homebase.resources.feed_view_all_comments
@@ -50,6 +56,16 @@ import org.jetbrains.compose.resources.stringResource
 
 /** Emoji applied by the double-tap-to-like media gesture. */
 private const val DOUBLE_TAP_EMOJI = "❤️"
+
+/**
+ * Aspect floor (width/height) for a single feed image: a portrait taller than this is
+ * center-cropped to it so one post can't take over the scroll. 0.8 == a 4:5 frame (≈1350px at
+ * 1080-wide = ~80% of the scrollable viewport, so the next post always peeks below). This is the
+ * Instagram "portrait max 4:5" convention; since it equals the gallery's wide-image cap
+ * [MomentMediaGallery.MaxFeedMediaAspect], every feed image renders as a uniform 4:5 card. The
+ * full image is still shown uncropped in the detail/full-screen view.
+ */
+internal const val FeedMinMediaAspect = 0.8f
 
 /**
  * A single feed post: author header → caption → edge-to-edge media → interaction row.
@@ -99,7 +115,14 @@ fun PostCard(
             )
         }
 
-        if (post.caption.isNotBlank()) {
+        // When the caption is nothing but the URL the link card already represents, drop the bare
+        // URL line so the card stands alone (Slack/X style). A URL embedded in real caption text is
+        // kept — we don't silently edit the author's words.
+        val hasLinkCard = post.payloads.any { it.key == FeedProtocol.LinksPayloadKey }
+        val captionIsLoneUrl = post.caption.trim().let { c ->
+            c.startsWith("http", ignoreCase = true) && c.none { it.isWhitespace() }
+        }
+        if (post.caption.isNotBlank() && !(hasLinkCard && captionIsLoneUrl)) {
             PostBody(
                 caption = post.caption,
                 onExpandFetchFullText = onExpandFetchFullText,
@@ -114,6 +137,13 @@ fun PostCard(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
+
+        // Link-preview card — only when the post carries a `pst_links` payload (mutually exclusive
+        // with media: the sender saves one or the other). A bare URL with no payload stays plain text.
+        PostLinkPreview(
+            post = post,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
 
         // Edge-to-edge — no horizontal padding, no corner clip — for the full-bleed feed look.
         PostMedia(
@@ -144,7 +174,7 @@ fun PostCard(
 }
 
 /**
- * FB-style inline preview of the latest 1–2 comments + a "View all" affordance, read straight from
+ * FB-style inline preview of the latest 1–3 comments + a "View all" affordance, read straight from
  * the post's [ReactionSummary.comments] (server-supplied with the header — no per-post fetch).
  * Each row and the link open the comments modal. Renders nothing when there are no comments.
  */
@@ -161,7 +191,7 @@ private fun PostCommentPreview(
             comment.odinId to if (comment.isEncrypted) encryptedLabel else comment.previewBody()
         }
         .filter { it.second.isNotBlank() }
-        .takeLast(2)
+        .takeLast(3)
     if (shown.isEmpty()) return
     Column(modifier = modifier.fillMaxWidth()) {
         shown.forEach { (odinId, body) ->
@@ -235,6 +265,52 @@ private fun QuotedPost(
 }
 
 /**
+ * Renders the post's saved link-preview (`pst_links`) payload as a [LinkPreviewCard], reusing the
+ * chat receiver-side card. Renders nothing when the post has no such payload or the descriptor
+ * can't be parsed — a bare URL in the caption with no preview payload just stays plain text (we
+ * never fetch previews on the fly in the timeline). The card's image comes from the drive payload
+ * (subject to the same over-peer fetch limits as media); the title/domain/description read straight
+ * from the header descriptor, so they show even when the image can't load.
+ */
+@OptIn(ExperimentalEncodingApi::class)
+@Composable
+private fun PostLinkPreview(
+    post: FeedPostItem,
+    modifier: Modifier = Modifier,
+) {
+    val payload = post.payloads.firstOrNull { it.key == FeedProtocol.LinksPayloadKey } ?: return
+    val descriptor = remember(payload.descriptorContent) {
+        payload.descriptorContent?.let { content ->
+            // Parse-tolerant: malformed/older descriptors yield null → no card, not a crash.
+            runCatching {
+                OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(content).firstOrNull()
+            }.getOrNull()
+        }
+    } ?: return
+
+    // Public feed posts ship the payload plaintext (no per-payload iv) — only encrypted posts carry
+    // one. With an iv, decrypt the image with a payload-scoped key header; without, reuse the post's
+    // own key header (the same one the media path uses for plaintext public posts). Either way the
+    // descriptor text renders; this only governs the image fetch.
+    val keyHeader = remember(payload.iv, post.keyHeader) {
+        payload.iv
+            ?.let { runCatching { Base64.decode(it) }.getOrNull() }
+            ?.let { KeyHeader(it, post.keyHeader.aesKey) }
+            ?: post.keyHeader
+    }
+
+    LinkPreviewCard(
+        descriptor = descriptor,
+        fileId = post.fileId,
+        driveId = post.driveId,
+        payloadKey = payload.key,
+        keyHeader = keyHeader,
+        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb(),
+        modifier = modifier,
+    )
+}
+
+/**
  * The post's media payloads (key prefix [FeedProtocol.MediaPayloadKeyPrefix]) rendered
  * through the feed-shaped [MomentMediaGallery] — aspect-driven, full-width, with an
  * Instagram-style carousel for 2+. Translates the gallery's payload-keyed click into the
@@ -280,6 +356,7 @@ private fun PostMedia(
             animatedVisibilityScope = null,
             messageId = post.id,
             downloadingFiles = emptySet(),
+            minAspect = FeedMinMediaAspect,
         )
         DoubleTapHeartBurst(tick = burstTick)
     }

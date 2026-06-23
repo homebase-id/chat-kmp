@@ -70,6 +70,11 @@ fun MomentMediaGallery(
     // Force carousel videos to show the whole frame (fit) — set while the host
     // card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
+    // Optional floor on a single image's width/height aspect: clamps very tall
+    // portraits to this ratio (center-cropped) so one post can't dominate the
+    // scroll. Null = no floor (Moments keeps natural portrait height); the feed
+    // passes [id.homebase.core.ui.screens.feed.widget.FeedMinMediaAspect].
+    minAspect: Float? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -90,6 +95,7 @@ fun MomentMediaGallery(
                 downloadingFiles = downloadingFiles,
                 isUploading = isUploading,
                 fitToContent = fitToContent,
+                minAspect = minAspect,
             )
         } else {
             MomentMediaCarousel(
@@ -134,6 +140,10 @@ private fun SingleImageLayout(
     // aspect-locked crop — used while the card is shrunk to a band above the
     // comments sheet so the entire photo is visible.
     fitToContent: Boolean = false,
+    // Optional lower bound on the aspect (see [MomentMediaGallery]). When set, a
+    // very tall portrait is center-cropped to this ratio instead of rendering at
+    // full natural height.
+    minAspect: Float? = null,
 ) {
     // Compute aspect from the payload's thumbnail metadata so the cell sizes
     // before the (possibly remote, encrypted) full image is decoded. Falls
@@ -141,7 +151,11 @@ private fun SingleImageLayout(
     // [MaxFeedMediaAspect] so a wide landscape doesn't render as a thin strip
     // — the cell stays a comfortable height and ContentScale.Crop
     // (preserveAspectRatio = false, below) fills it, trimming the far edges.
-    val aspect = (aspectRatioFor(payload) ?: 1f).coerceAtMost(MaxFeedMediaAspect)
+    // A non-null [minAspect] also floors very tall portraits so a single post
+    // can't take over the whole viewport (the feed's "80vh" cap).
+    val aspect = (aspectRatioFor(payload) ?: 1f)
+        .coerceAtMost(MaxFeedMediaAspect)
+        .let { if (minAspect != null) it.coerceAtLeast(minAspect) else it }
 
     MomentMediaItem(
         payload = payload,

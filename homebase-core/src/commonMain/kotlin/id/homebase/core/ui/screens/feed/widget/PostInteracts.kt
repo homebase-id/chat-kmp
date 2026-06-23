@@ -134,8 +134,9 @@ fun PostInteracts(
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-
+        // Left-grouped action cluster (like → reactions → repost → comment). No weight spacer:
+        // a far-right split left a large empty middle that read as unbalanced when a post had no
+        // reactions. Grouping them tight reads as an intentional toolbar (IG/stream style).
         if (onRepost != null && canRepost) {
             FeedActionButton(
                 icon = Icons.Outlined.Repeat,

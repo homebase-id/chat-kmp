@@ -1,13 +1,13 @@
 package id.homebase.core.ui.screens.feed
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +22,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
@@ -80,6 +81,7 @@ import id.homebase.resources.feed_compose_audience_connections
 import id.homebase.resources.feed_compose_audience_owner
 import id.homebase.resources.feed_compose_audience_registered
 import id.homebase.resources.feed_compose_add_media
+import id.homebase.resources.feed_compose_audience
 import id.homebase.resources.feed_compose_attachment_image
 import id.homebase.resources.feed_compose_camera
 import id.homebase.resources.feed_compose_caption_placeholder
@@ -103,7 +105,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import kotlin.uuid.Uuid
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PostComposeScreen(
     viewModel: PostComposeViewModel = koinViewModel(),
@@ -188,6 +190,25 @@ fun PostComposeScreen(
                 },
             )
         },
+        // Compose actions docked at the bottom (media left, audience/channel right) like the web
+        // composer's control bar — Scaffold's imePadding lifts it above the keyboard. Hidden when
+        // editing: an edit is caption-only, so these controls would mislead. Post stays in the top
+        // bar (above) so it's never covered by the IME.
+        bottomBar = {
+            if (!uiState.isEditing) {
+                ComposerActionBar(
+                    channels = uiState.channels,
+                    selectedChannelId = uiState.selectedChannelId,
+                    audience = uiState.audience,
+                    reactAccess = uiState.reactAccess,
+                    onAddMedia = { galleryLauncher.launch() },
+                    onCamera = { cameraLauncher.launch() },
+                    onSelectChannel = viewModel::selectChannel,
+                    onSelectAudience = viewModel::pickAudience,
+                    onSelectReactAccess = viewModel::setReactAccess,
+                )
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Column(
@@ -223,7 +244,11 @@ fun PostComposeScreen(
             TextField(
                 value = uiState.caption,
                 onValueChange = viewModel::onCaptionChange,
-                modifier = Modifier.fillMaxWidth(),
+                // Fill the available height so the whole editor area is the tappable input (X/Twitter
+                // composer pattern) — no dead void between a short caption and the docked action bar.
+                // Bounded siblings (quoted/attachments/preview) below take their space; the field
+                // absorbs the rest.
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 placeholder = {
                     // Web shows "Add a comment?" when quoting/reposting, else "What's up?".
                     Text(
@@ -276,40 +301,66 @@ fun PostComposeScreen(
             if (uiState.isFetchingLinkPreview && uiState.effectiveLinkPreview == null) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
             }
+        }
+    }
+}
 
-            // Hidden when editing — an edit is caption-only, so these controls would mislead.
-            if (!uiState.isEditing) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    itemVerticalAlignment = Alignment.CenterVertically,
+/**
+ * Docked compose toolbar: media actions (add photo, camera) on the left as borderless icon
+ * buttons, then the post's audience/visibility chips (channel, audience, reactions) in a single
+ * horizontally-scrollable row — one baseline, never wraps, scrolls if the labels overrun a narrow
+ * screen. Sits in the Scaffold's `bottomBar`, lifted above the IME.
+ */
+@Composable
+private fun ComposerActionBar(
+    channels: List<ChannelOption>,
+    selectedChannelId: Uuid,
+    audience: SecurityGroupType,
+    reactAccess: ReactAccess,
+    onAddMedia: () -> Unit,
+    onCamera: () -> Unit,
+    onSelectChannel: (Uuid) -> Unit,
+    onSelectAudience: (SecurityGroupType) -> Unit,
+    onSelectReactAccess: (ReactAccess) -> Unit,
+) {
+    Surface(tonalElevation = 3.dp, modifier = Modifier.fillMaxWidth()) {
+        Column {
+            HorizontalDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onAddMedia) {
+                    Icon(
+                        imageVector = Icons.Outlined.AddPhotoAlternate,
+                        contentDescription = stringResource(MR.string.feed_compose_add_media),
+                    )
+                }
+                IconButton(onClick = onCamera) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = stringResource(MR.string.feed_compose_camera),
+                    )
+                }
+                // Visibility chips share one scrollable baseline so nothing wraps; the row takes the
+                // remaining width and scrolls horizontally when the labels overrun. The partially
+                // clipped trailing chip signals there's more to scroll.
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = { galleryLauncher.launch() }) {
-                        Icon(
-                            imageVector = Icons.Outlined.AddPhotoAlternate,
-                            contentDescription = stringResource(MR.string.feed_compose_add_media),
-                        )
-                    }
-                    IconButton(onClick = { cameraLauncher.launch() }) {
-                        Icon(
-                            imageVector = Icons.Default.PhotoCamera,
-                            contentDescription = stringResource(MR.string.feed_compose_camera),
-                        )
-                    }
                     ChannelChip(
-                        channels = uiState.channels,
-                        selectedChannelId = uiState.selectedChannelId,
-                        onSelect = viewModel::selectChannel,
+                        channels = channels,
+                        selectedChannelId = selectedChannelId,
+                        onSelect = onSelectChannel,
                     )
-                    AudienceChip(
-                        audience = uiState.audience,
-                        onCycle = { viewModel.pickAudience(uiState.audience.next()) },
-                    )
-                    ReactAccessChip(
-                        reactAccess = uiState.reactAccess,
-                        onCycle = viewModel::toggleReactAccess,
-                    )
+                    AudienceChip(audience = audience, onSelect = onSelectAudience)
+                    ReactAccessChip(reactAccess = reactAccess, onSelect = onSelectReactAccess)
                 }
             }
         }
@@ -443,75 +494,94 @@ private fun ChannelChip(
     }
 }
 
+/** The audiences offered, in widening-then-narrowing reach order. */
+private val AudienceOptions = listOf(
+    SecurityGroupType.Anonymous,
+    SecurityGroupType.Authenticated,
+    SecurityGroupType.Connected,
+    SecurityGroupType.Owner,
+)
+
+/**
+ * Audience (visibility) selector. Labelled "Audience: <value>" so it can't be mistaken for the
+ * adjacent channel chip — they answer different questions (where it's posted vs who can see it).
+ * Opens a [DropdownMenu] of the reach options with the current one checked.
+ */
 @Composable
 private fun AudienceChip(
     audience: SecurityGroupType,
-    onCycle: () -> Unit,
+    onSelect: (SecurityGroupType) -> Unit,
 ) {
-    AssistChip(
-        onClick = onCycle,
-        label = { Text(stringResource(audience.labelRes())) },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Outlined.Public,
-                contentDescription = null,
-                modifier = Modifier.size(AssistChipDefaults.IconSize),
-            )
-        },
-    )
+    var expanded by remember { mutableStateOf(false) }
+    val label = "${stringResource(MR.string.feed_compose_audience)}: ${stringResource(audience.labelRes())}"
+    Box {
+        AssistChip(
+            onClick = { expanded = true },
+            label = { Text(label) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.Public,
+                    contentDescription = null,
+                    modifier = Modifier.size(AssistChipDefaults.IconSize),
+                )
+            },
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            AudienceOptions.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(option.labelRes())) },
+                    leadingIcon = { if (option == audience) Icon(Icons.Filled.Check, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                )
+            }
+        }
+    }
 }
 
+/** Reaction/comment policies offered in the composer. */
+private val ReactAccessOptions = listOf(
+    ReactAccess.All,
+    ReactAccess.EmojiOnly,
+    ReactAccess.CommentOnly,
+    ReactAccess.None,
+)
+
+/**
+ * Reaction-policy selector. The label already names the mode ("Reactions & comments",
+ * "Comments only", "No reactions", …), and the [DropdownMenu] checkmarks the current choice — so
+ * the state is legible at rest and on open, rather than a mystery cycle-on-tap.
+ */
 @Composable
 private fun ReactAccessChip(
     reactAccess: ReactAccess,
-    onCycle: () -> Unit,
+    onSelect: (ReactAccess) -> Unit,
 ) {
-    AssistChip(
-        onClick = onCycle,
-        label = { Text(stringResource(reactAccess.labelRes())) },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Outlined.ThumbUp,
-                contentDescription = null,
-                modifier = Modifier.size(AssistChipDefaults.IconSize),
-            )
-        },
-    )
-}
-
-@Composable
-private fun PostComposeBottomBar(
-    enabled: Boolean,
-    isPosting: Boolean,
-    onPost: () -> Unit,
-) {
-    Surface(
-        tonalElevation = 3.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column {
-            HorizontalDivider()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End,
-            ) {
-                Button(
-                    onClick = onPost,
-                    enabled = enabled,
-                ) {
-                    if (isPosting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    } else {
-                        Text(stringResource(MR.string.feed_compose_post))
-                    }
-                }
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        AssistChip(
+            onClick = { expanded = true },
+            label = { Text(stringResource(reactAccess.labelRes())) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.ThumbUp,
+                    contentDescription = null,
+                    modifier = Modifier.size(AssistChipDefaults.IconSize),
+                )
+            },
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ReactAccessOptions.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(option.labelRes())) },
+                    leadingIcon = { if (option == reactAccess) Icon(Icons.Filled.Check, contentDescription = null) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                )
             }
         }
     }
@@ -535,14 +605,6 @@ private fun AttachmentPendingFile.previewModel(): Any? = when (this) {
     is AttachmentPendingFile.Gallery -> image.file.toString()
     is AttachmentPendingFile.File -> file.toString()
     is AttachmentPendingFile.Audio -> null
-}
-
-private fun SecurityGroupType.next(): SecurityGroupType = when (this) {
-    SecurityGroupType.Anonymous -> SecurityGroupType.Authenticated
-    SecurityGroupType.Authenticated -> SecurityGroupType.Connected
-    SecurityGroupType.Connected -> SecurityGroupType.Owner
-    SecurityGroupType.Owner -> SecurityGroupType.Anonymous
-    SecurityGroupType.AutoConnected -> SecurityGroupType.Anonymous
 }
 
 private fun SecurityGroupType.labelRes() = when (this) {

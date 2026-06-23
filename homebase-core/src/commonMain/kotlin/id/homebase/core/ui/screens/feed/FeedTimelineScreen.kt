@@ -240,13 +240,16 @@ private fun FeedTimelineList(
     ) {
         LazyColumn(
             state = listState,
-            // Posts are flat bands on `surface`; the list paints a slightly-darker
-            // surfaceContainerLowest behind them so the 8dp gaps read as separators.
+            // Posts are flat bands on `surface`; the list paints a clearly-darker
+            // surfaceContainerHigh behind them so the gaps read as distinct separators between
+            // posts (surfaceContainerLowest was lighter than `surface`, so the seams vanished).
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest),
-            contentPadding = PaddingValues(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            // Extra bottom inset so the last post's interaction row can scroll clear of the
+            // floating "New post" FAB instead of being covered by it.
+            contentPadding = PaddingValues(top = 10.dp, bottom = 88.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->
                 // Read `channels` so the row recomposes when definitions arrive; the lambda
@@ -294,9 +297,9 @@ private fun snapshotFlowShouldLoadMore(
 @Composable
 private fun FeedTimelineLoading(modifier: Modifier = Modifier) {
     LazyColumn(
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerLowest),
-        contentPadding = PaddingValues(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        contentPadding = PaddingValues(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         userScrollEnabled = false,
     ) {
         items(FEED_SKELETON_COUNT) {
