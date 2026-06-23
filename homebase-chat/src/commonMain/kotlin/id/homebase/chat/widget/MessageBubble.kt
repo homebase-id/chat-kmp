@@ -839,7 +839,9 @@ fun MessageTimestampFooter(
     deliveryStatus: Int,
     pendingSince: Instant?,
     modifier: Modifier = Modifier,
+    visible: Boolean = true,
 ) {
+    if (!visible) return
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.Bottom,
