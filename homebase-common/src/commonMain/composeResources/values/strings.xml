@@ -1451,6 +1451,7 @@
 
     <!-- Native feed -->
     <string name="feed_post_to_channel">to %1$s</string>
+    <string name="feed_audience_public">Public</string>
     <string name="feed_post_read_more">More…</string>
     <string name="feed_post_read_less">Less</string>
     <string name="feed_post_comment">Comment</string>
@@ -1509,6 +1510,10 @@
     <string name="feed_post_detail_title">Post</string>
     <string name="feed_post_detail_more_actions">More actions</string>
     <string name="feed_post_detail_delete">Delete post</string>
+    <string name="feed_post_edit">Edit post</string>
+    <string name="feed_post_report">Report</string>
+    <string name="feed_post_delete_failed">Couldn't delete the post. Please try again.</string>
+    <string name="feed_post_delete_confirm">Are you sure you want to delete this post? This can't be undone.</string>
     <string name="feed_post_detail_not_found">This post is no longer available.</string>
     <string name="feed_post_detail_comments_disabled">Comments are turned off for this post.</string>
     <string name="feed_comments_title">Comments</string>

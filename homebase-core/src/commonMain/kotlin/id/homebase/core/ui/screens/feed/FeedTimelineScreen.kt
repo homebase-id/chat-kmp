@@ -43,7 +43,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
 import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
+import id.homebase.core.feed.services.PostType
 import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.ui.screens.feed.widget.CommentsModalSheet
 import id.homebase.core.ui.screens.feed.widget.FEED_SKELETON_COUNT
 import id.homebase.core.ui.screens.feed.widget.FeedMessageState
@@ -84,8 +87,11 @@ fun FeedTimelineScreen(
     onRepost: (FeedPostItem) -> Unit,
     onNavigateToFollowing: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
+    onEditPost: (FeedPostItem) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Opens the author's report intake when a viewer reports someone else's post (web parity).
+    val uriHandler = getUriHandler()
     // Collected so the list recomposes (and channel labels appear) once definitions load.
     val channels by viewModel.channels.collectAsStateWithLifecycle()
     // Resolved author names (saved contacts + connections); the row falls back to the raw
@@ -180,11 +186,17 @@ fun FeedTimelineScreen(
                 onLoadMore = viewModel::loadMore,
                 onPostClick = viewModel::onPostClick,
                 onOpenComments = { commentsPostId = it },
+                onShowReactors = viewModel::showReactors,
                 onToggleReaction = viewModel::onToggleReaction,
                 onRepost = onRepost,
                 onAuthorClick = onAuthorClick,
+                onEditPost = onEditPost,
+                onDeletePost = viewModel::deletePost,
+                onReportPost = { uriHandler.openUrl(FEED_REPORT_URL) },
+                selfOdinId = uiState.selfOdinId,
                 channels = channels,
                 channelNameFor = viewModel::channelNameFor,
+                isPublicChannel = viewModel::isPublicChannel,
                 displayNames = displayNames,
                 modifier = contentModifier,
             )
@@ -198,10 +210,27 @@ fun FeedTimelineScreen(
             onAuthorClick = onAuthorClick,
         )
     }
+
+    // Inline "who reacted" sheet for tweet/media posts (articles use the detail screen). Names
+    // fall back to the reactor's domain; the avatar is derived from the odinId inside the sheet.
+    uiState.reactorsSheet?.let { reactors ->
+        ReactionsBottomSheet(
+            reactions = reactors,
+            isLoading = uiState.isReactorsLoading,
+            ownerOdinId = uiState.selfOdinId?.domainName,
+            onContactClick = { onAuthorClick(OdinId(it)) },
+            onDismiss = viewModel::dismissReactors,
+        )
+    }
 }
 
 /** Number of items from the end at which [onLoadMore] is triggered. */
 private const val LOAD_MORE_THRESHOLD = 4
+
+// Reporting intake opened by the post overflow "Report" action on someone else's post.
+// ponytail: the documented web fallback URL; the per-identity `{author}/config/reporting` lookup
+// is the refinement (it needs an HTTP client wired into the feed layer — not worth it yet).
+private const val FEED_REPORT_URL = "https://ravenhosting.cloud/report"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -211,11 +240,17 @@ private fun FeedTimelineList(
     onLoadMore: () -> Unit,
     onPostClick: (Uuid) -> Unit,
     onOpenComments: (Uuid) -> Unit,
+    onShowReactors: (FeedPostItem) -> Unit,
     onToggleReaction: (post: FeedPostItem, emoji: String) -> Unit,
     onRepost: (FeedPostItem) -> Unit,
     onAuthorClick: (OdinId) -> Unit,
+    onEditPost: (FeedPostItem) -> Unit,
+    onDeletePost: (FeedPostItem) -> Unit,
+    onReportPost: (FeedPostItem) -> Unit,
+    selfOdinId: OdinId?,
     channels: Map<String, ChannelDefinition>,
     channelNameFor: (String) -> String?,
+    isPublicChannel: (String) -> Boolean,
     displayNames: Map<OdinId, String>,
     modifier: Modifier = Modifier,
 ) {
@@ -256,21 +291,34 @@ private fun FeedTimelineList(
                 // returns null for public/unknown channels.
                 channels
                 val author = post.originalAuthor ?: post.senderOdinId
+                // The full PostDetail screen is reserved for long-form Articles. A tweet/media
+                // post stays inline: comments open as a modal sheet, the reaction facepile opens
+                // the inline reactors sheet, and tapping media is a no-op (double-tap still likes;
+                // the fullscreen lightbox is deferred until the over-peer media route lands).
+                val isArticle = post.type == PostType.Article
+                // originalAuthor survives the server stripping senderOdinId, so it's the reliable
+                // own-vs-other signal for the overflow menu (Edit/Delete vs Report).
+                val isOwnPost = selfOdinId != null && author == selfOdinId
                 PostCard(
                     post = post,
                     displayName = author
                     ?.let { displayNames[it]?.takeIf { n -> n.isNotBlank() } ?: it.domainName }
                     .orEmpty(),
                     channelName = channelNameFor(post.channelId),
+                    isPublic = isPublicChannel(post.channelId),
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
                     onRepost = { onRepost(post) },
                     onOpenComments = { onOpenComments(post.id) },
-                    onShowReactors = { onPostClick(post.id) },
+                    onShowReactors = { if (isArticle) onPostClick(post.id) else onShowReactors(post) },
                     onPostClick = { onOpenComments(post.id) },
-                    onMediaClick = { onPostClick(post.id) },
+                    onMediaClick = { if (isArticle) onPostClick(post.id) },
                     onAuthorClick = { if (author != null) onAuthorClick(author) },
                     embeddedAuthorName = post.embeddedPost?.author
                         ?.let { displayNames[OdinId(it)]?.takeIf { n -> n.isNotBlank() } },
+                    isOwnPost = isOwnPost,
+                    onEditPost = { onEditPost(post) },
+                    onDeletePost = { onDeletePost(post) },
+                    onReportPost = { onReportPost(post) },
                 )
             }
         }

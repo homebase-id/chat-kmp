@@ -96,6 +96,11 @@ fun PostCard(
     onRepost: (() -> Unit)? = null,
     onExpandFetchFullText: (suspend () -> String?)? = null,
     embeddedAuthorName: String? = null,
+    isPublic: Boolean = false,
+    isOwnPost: Boolean = false,
+    onEditPost: (() -> Unit)? = null,
+    onDeletePost: (() -> Unit)? = null,
+    onReportPost: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -109,9 +114,17 @@ fun PostCard(
                 authorOdinId = authorOdinId,
                 displayName = displayName,
                 channelName = channelName,
-                createdMs = post.createdMs,
+                // userDate (author's post time), not createdMs — createdMs is the local feed-drive
+                // aggregation time for followed/public posts, which renders wrong dates (web parity:
+                // Meta.tsx uses appData.userDate). createdMs still drives the timeline sort.
+                timestampMs = post.userDateMs,
                 onAuthorClick = onAuthorClick,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp),
+                isPublic = isPublic,
+                isOwnPost = isOwnPost,
+                onEditPost = onEditPost,
+                onDeletePost = onDeletePost,
+                onReportPost = onReportPost,
             )
         }
 

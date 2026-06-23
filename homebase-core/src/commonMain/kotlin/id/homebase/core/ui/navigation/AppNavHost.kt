@@ -799,6 +799,11 @@ fun AppNavHost(
                                             navController.navigate(Route.Following)
                                         },
                                         onAuthorClick = { /* identity/profile nav not yet wired */ },
+                                        onEditPost = { post ->
+                                            navController.navigate(
+                                                Route.PostCompose(editOfJson = buildEditJson(post)),
+                                            )
+                                        },
                                     )
                                 } else {
                                     // Legacy WebView feed — user opted out of the native feed.

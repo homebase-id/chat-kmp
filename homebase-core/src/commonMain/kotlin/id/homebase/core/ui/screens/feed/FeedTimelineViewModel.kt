@@ -10,10 +10,13 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
+import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostReactionService
+import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
+import id.homebase.resources.feed_post_delete_failed
 import id.homebase.resources.feed_reaction_failed
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +55,7 @@ class FeedTimelineViewModel(
     private val contactService: ContactService,
     private val credentialsManager: CredentialsManager,
     private val publicProfileProvider: PublicProfileProviderCached,
+    private val senderService: FeedPostSenderService,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FeedTimelineUiState(isLoading = true))
@@ -81,11 +85,16 @@ class FeedTimelineViewModel(
      * Public posts (blank id or the public alias) are never labelled.
      */
     fun channelNameFor(channelId: String): String? =
-        if (channelId.isBlank() || channelId == FeedProtocol.PublicChannelDriveAlias.toString()) {
+        if (isPublicChannel(channelId)) {
             null
         } else {
             channelService.nameFor(channelId)
         }
+
+    /** True for the public channel (blank id or the public alias) — visible to everyone. The
+     *  header shows a globe + "Public" for these instead of a lock + channel name. */
+    fun isPublicChannel(channelId: String): Boolean =
+        channelId.isBlank() || channelId == FeedProtocol.PublicChannelDriveAlias.toString()
 
     private val _events = MutableSharedFlow<FeedTimelineEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<FeedTimelineEvent> = _events.asSharedFlow()
@@ -108,6 +117,8 @@ class FeedTimelineViewModel(
         contactService.start()
         viewModelScope.launch {
             val self = credentialsManager.getActiveCredentials()?.domain ?: return@launch
+            // Drives the reactors-sheet "owner" highlight and the overflow menu's own-vs-other split.
+            _uiState.update { it.copy(selfOdinId = self) }
             val name = runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
             if (!name.isNullOrBlank()) _selfName.value = self to name
         }
@@ -182,6 +193,62 @@ class FeedTimelineViewModel(
                     "toggleReaction failed for post=${post.id} emoji=$emoji: ${t.message}"
                 }
                 _events.tryEmit(FeedTimelineEvent.ShowSnackbar(MR.string.feed_reaction_failed))
+            }
+        }
+    }
+
+    /**
+     * Open the inline "who reacted" sheet for a tweet/media post and fetch its roster (articles
+     * route to the detail screen instead). Opens immediately with an empty list + loading flag,
+     * then fills in once [PostReactionService.listReactors] returns. Names resolve through
+     * [ContactService], falling back to the raw domain. Mirrors `PostDetailViewModel.showReactors`.
+     */
+    fun showReactors(post: FeedPostItem) {
+        _uiState.update { it.copy(reactorsSheet = emptyList(), isReactorsLoading = true) }
+        viewModelScope.launch {
+            try {
+                val reactors = reactionService.listReactors(post, null).map {
+                    ReactionDisplayItem(
+                        odinId = it.odinId.domainName,
+                        displayName = contactService.resolveByOdinId(it.odinId)?.name
+                            ?: it.odinId.domainName,
+                        emoji = it.emoji,
+                    )
+                }
+                // Drop the result if the user dismissed the sheet while the fetch was in flight.
+                _uiState.update {
+                    if (it.reactorsSheet != null) {
+                        it.copy(reactorsSheet = reactors, isReactorsLoading = false)
+                    } else {
+                        it
+                    }
+                }
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) {
+                    "showReactors failed for post=${post.id}: ${t.message}"
+                }
+                _uiState.update { it.copy(reactorsSheet = null, isReactorsLoading = false) }
+            }
+        }
+    }
+
+    fun dismissReactors() {
+        _uiState.update { it.copy(reactorsSheet = null, isReactorsLoading = false) }
+    }
+
+    /**
+     * Delete the user's own post from the feed. The post's [FeedPostItem.driveId] is the channel
+     * drive it lives on, so it's the correct `channelId` for [FeedPostSenderService.deletePost].
+     * The optimistic writer drops it from the timeline before this returns; on failure we surface a
+     * snackbar. Mirrors `PostDetailViewModel.deletePost` (the menu only offers this for own posts).
+     */
+    fun deletePost(post: FeedPostItem) {
+        viewModelScope.launch {
+            try {
+                senderService.deletePost(channelId = post.driveId, postUniqueId = post.id)
+            } catch (t: Throwable) {
+                Logger.e(throwable = t, tag = TAG) { "deletePost failed for post=${post.id}: ${t.message}" }
+                _events.tryEmit(FeedTimelineEvent.ShowSnackbar(MR.string.feed_post_delete_failed))
             }
         }
     }

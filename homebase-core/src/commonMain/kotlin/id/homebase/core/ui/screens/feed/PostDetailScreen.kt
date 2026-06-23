@@ -206,11 +206,10 @@ fun PostDetailScreen(
                             val authorOdinId = post.originalAuthor ?: post.senderOdinId
                             // Null for a public/unknown channel; a name (once `channels` loads)
                             // for a restricted one.
+                            val isPublicChannel = post.channelId.isBlank() ||
+                                post.channelId == FeedProtocol.PublicChannelDriveAlias.toString()
                             val channelName = post.channelId
-                                .takeUnless {
-                                    it.isBlank() ||
-                                        it == FeedProtocol.PublicChannelDriveAlias.toString()
-                                }
+                                .takeUnless { isPublicChannel }
                                 ?.let { channels[it]?.name }
                             PostCard(
                                 post = post,
@@ -218,6 +217,7 @@ fun PostDetailScreen(
                                 // avatar/initials from this, falling back to the raw domain.
                                 displayName = displayNameFor(authorOdinId),
                                 channelName = channelName,
+                                isPublic = isPublicChannel,
                                 onPostClick = {},
                                 onAuthorClick = viewModel::navigateToAuthor,
                                 onMediaClick = {},
