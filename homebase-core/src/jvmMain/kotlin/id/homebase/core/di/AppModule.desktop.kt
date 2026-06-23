@@ -6,8 +6,9 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
-import id.homebase.api.sync.database.JvmDatabaseSizeProbe
+import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
 import id.homebase.chat.dice.JvmShakeDetector
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
@@ -47,7 +48,7 @@ actual fun platformModule(): Module = module {
     single<AudioRecorder> { JvmAudioRecorder() }
     single<AudioPlayer> { JvmAudioPlayer() }
     single<AudioWaveFormGenerator> { JvmWaveFormGenerator() }
-    single<DatabaseSizeProbe> { JvmDatabaseSizeProbe() }
+    single<DatabaseSizeProbe> { DefaultDatabaseSizeProbe(DatabaseDriverFactory()) }
     single<UpdateAppManager> { JvmUpdateAppManager(
         httpClient = get(),
         platformInfo = get(),
