@@ -1,6 +1,10 @@
 package id.homebase.core.ui.screens.vault.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.MoreVert
@@ -16,12 +20,14 @@ import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.VideoFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,12 +38,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.util.CONTENT_TYPE_MARKDOWN
 import id.homebase.core.util.formatFileSize
 import id.homebase.core.util.formatShortDate
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.vault_delete_confirm_action
 import id.homebase.resources.vault_gallery_delete_all
 import id.homebase.resources.vault_gallery_delete_file
@@ -189,22 +197,42 @@ fun VaultFileDropdownMenu(
                 },
             )
         }
-        // Section picker, shown after "Move to section…" is chosen.
-        DropdownMenu(
-            expanded = moveExpanded,
+    }
+
+    // Section picker dialog, shown after "Move to section…" is chosen. A simple
+    // tap-to-move list (M3 basic dialog) — sections are few, so a dialog is lighter
+    // and more focused than a nested menu or a bottom sheet.
+    if (moveExpanded) {
+        AlertDialog(
             onDismissRequest = { moveExpanded = false },
-        ) {
-            otherSections.forEach { section ->
-                val itemLabel = stringResource(MR.string.vault_move_to_section_target, section.title)
-                DropdownMenuItem(
-                    text = { Text(section.title) },
-                    onClick = {
-                        moveExpanded = false
-                        onMoveToSection?.invoke(section.sectionId)
-                    },
-                    modifier = Modifier.semantics { contentDescription = itemLabel },
-                )
-            }
-        }
+            title = { Text(stringResource(MR.string.vault_move_to_section)) },
+            text = {
+                Column {
+                    otherSections.forEach { section ->
+                        val itemLabel = stringResource(
+                            MR.string.vault_move_to_section_target,
+                            section.title,
+                        )
+                        Text(
+                            text = section.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    moveExpanded = false
+                                    onMoveToSection?.invoke(section.sectionId)
+                                }
+                                .semantics { contentDescription = itemLabel }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { moveExpanded = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            },
+        )
     }
 }
