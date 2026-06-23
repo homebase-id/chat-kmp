@@ -509,7 +509,7 @@
     <string name="chat_no_gallery_items">No items</string>
     <string name="chat_select_more_photos">Select more photos</string>
     <string name="chat_gallery_selection_index">%1$d</string>
-    <string name="chat_gallery_send_count">Send (%1$d)</string>
+    <string name="chat_gallery_next_count">Next (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>
@@ -1311,6 +1311,8 @@
     <string name="location_dashboard_live_section">Live location sharing</string>
     <string name="location_dashboard_live_open">Open live map</string>
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
+    <string name="location_maps_off_title">Maps are turned off</string>
+    <string name="location_maps_off_cta">Turn on maps</string>
     <string name="location_dashboard_sharing_with">Sharing with</string>
     <string name="location_dashboard_sharing_with_you">Sharing with you</string>
     <string name="location_dashboard_share_until">until %1$s</string>

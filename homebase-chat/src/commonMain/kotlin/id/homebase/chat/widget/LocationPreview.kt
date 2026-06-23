@@ -275,6 +275,7 @@ fun LocationPreviewCard(
     isPendingSend: Boolean = false,
     deliveryStatus: Int = 0,
     pendingSince: Instant? = null,
+    showTimestamp: Boolean = true,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(descriptor.lat, descriptor.lon, descriptor.address) {
@@ -383,7 +384,7 @@ fun LocationPreviewCard(
                         )
                     }
                     // No caption ⇒ the timestamp (+ delivery status) sits muted at the bottom of the card.
-                    if (showCardTimestamp) {
+                    if (showCardTimestamp && showTimestamp) {
                         if (descriptor.address.isNotEmpty() || liveControls != null) {
                             Spacer(modifier = Modifier.height(6.dp))
                         }
@@ -414,7 +415,7 @@ fun LocationPreviewCard(
                     style = MaterialTheme.typography.bodyLarge,
                     color = captionContentColor,
                 )
-                if (timestamp != null) {
+                if (timestamp != null && showTimestamp) {
                     Spacer(modifier = Modifier.height(2.dp))
                     MessageTimestampFooter(
                         infoText = timestamp,
