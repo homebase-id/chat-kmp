@@ -13,13 +13,19 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,11 +43,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.delete
+import id.homebase.resources.location_history_delete_day
+import id.homebase.resources.location_history_delete_text
+import id.homebase.resources.location_history_delete_title
 import id.homebase.resources.location_history_next_day
 import id.homebase.resources.location_history_pick_date
 import id.homebase.resources.location_history_previous_day
 import id.homebase.resources.location_history_title
 import id.homebase.resources.location_history_you
+import id.homebase.resources.location_menu_more
 import id.homebase.resources.menu_back
 import id.homebase.resources.ok
 import kotlinx.datetime.LocalDate
@@ -62,6 +73,8 @@ fun LocationHistoryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
     val deviceTz = remember { TimeZone.currentSystemDefault() }
 
     Scaffold(
@@ -73,6 +86,35 @@ fun LocationHistoryScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back),
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(MR.string.location_menu_more),
+                        )
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(MR.string.location_history_delete_day),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                showDeleteConfirm = true
+                            },
                         )
                     }
                 },
@@ -170,5 +212,29 @@ fun LocationHistoryScreen(
         ) {
             DatePicker(state = state)
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text(stringResource(MR.string.location_history_delete_title)) },
+            text = { Text(stringResource(MR.string.location_history_delete_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    viewModel.onAction(LocationHistoryUiAction.DeleteHistoryForDay)
+                }) {
+                    Text(
+                        text = stringResource(MR.string.delete),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            },
+        )
     }
 }
