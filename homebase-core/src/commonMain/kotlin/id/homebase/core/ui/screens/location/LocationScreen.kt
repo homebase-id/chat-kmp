@@ -154,14 +154,14 @@ fun LocationScreen(
             (action as? LocationUiAction.SetTrackingEnabled)?.enabled == true
     }
 
-    // Body switcher. The default is permission-gated: Setup until the add-on is
-    // fully set up (activated + tracking + both location grants), Dashboard after.
+    // Body switcher. The default is grant-gated: Setup until the add-on is activated
+    // with both location grants, Dashboard after — independent of the "Track my location"
+    // toggle (a granted user with tracking off still wants the dashboard, bug #822).
     // The three-dot menu lets the user override either way (null = follow default);
     // the override resets when the screen leaves the back stack.
     var dashboardOverride by remember { mutableStateOf<Boolean?>(null) }
     val defaultsToDashboard = isDashboard(
         activated = uiState.activated,
-        trackingEnabled = uiState.trackingEnabled,
         trackerAvailable = uiState.trackingAvailable,
         // Both location grants required before defaulting to the dashboard — "while
         // using the app" alone keeps Setup as the default to finish the always grant.
