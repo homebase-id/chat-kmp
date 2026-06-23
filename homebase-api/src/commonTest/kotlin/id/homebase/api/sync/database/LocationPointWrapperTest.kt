@@ -158,6 +158,29 @@ class LocationPointWrapperTest {
     }
 
     @Test
+    fun deleteByTimeRangeRemovesOnlyTheTargetDay() = runDbTest { buffer ->
+        val dayMs = 24 * hourMs
+        val dayStart = 3 * dayMs // arbitrary middle day
+        // One point just before the day, three across it, one at the next day's start.
+        buffer.insertPoints(
+            listOf(
+                point(dayStart - 1),            // prev day
+                point(dayStart),                // day start (inclusive)
+                point(dayStart + 12 * hourMs),  // midday
+                point(dayStart + dayMs - 1),    // last ms of the day
+                point(dayStart + dayMs),        // next day start (exclusive — must survive)
+            ),
+        )
+
+        buffer.deleteByTimeRange(dayStart, dayStart + dayMs)
+
+        // Target day emptied, both neighbours untouched.
+        assertEquals(0, buffer.selectByTimeRange(dayStart, dayStart + dayMs).size)
+        assertEquals(1, buffer.selectByTimeRange(dayStart - dayMs, dayStart).size)
+        assertEquals(1, buffer.selectByTimeRange(dayStart + dayMs, dayStart + 2 * dayMs).size)
+    }
+
+    @Test
     fun countSinceAndLatestAndRetention() = runDbTest { buffer ->
         buffer.insertPoints(listOf(point(1000), point(5000), point(9000)))
         assertEquals(2, buffer.countSince(5000))

@@ -226,6 +226,9 @@ val appModule = module {
         LocationPointStore(
             databaseManager = get(),
             deviceSensors = get(),
+            // History persistence is gated on the tracking master switch; a live share's GPS
+            // fixes are relayed but not recorded as history when tracking is off (bug #823).
+            isTrackingEnabled = { get<LocationPreferences>().trackingEnabled.value },
             // Every buffered batch drains immediately (rate-gated by the
             // uploader). Lazy get() avoids the construction-time cycle; resolved
             // at flush time. This is the iOS background-flush fix — the Apple
@@ -419,6 +422,14 @@ val appModule = module {
             // a missing promoteToForeground() can't hang the app on "syncing".
             startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
+                // Live Relay receive store: clear any prior identity's positions for a clean
+                // slate (they rehydrate from the server's flush-on-connect). Resolved FIRST and
+                // independent of the other services so its app-lifetime init{} collector is
+                // guaranteed up — a throw in a later location reset() below can't prevent the
+                // consumer from existing when relay packets arrive (bug #824). The collector is
+                // never cancelled here; logout clears it in-stream via SessionEnded.
+                get<LiveLocationReceiveStore>().reset()
+
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()
@@ -510,8 +521,6 @@ val appModule = module {
                 // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
                 get<LiveLocationShareService>().reset()
                 get<LocationTrackingCoordinator>().reset()
-                // In-memory receive store rehydrates from the server's flush-on-connect.
-                get<LiveLocationReceiveStore>().apply { reset(); start() }
             }
         )
     }

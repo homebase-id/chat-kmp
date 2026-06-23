@@ -33,11 +33,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +65,7 @@ import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
@@ -99,6 +102,17 @@ import kotlin.uuid.Uuid
  * layout) — it is never used as an array index or loop bound.
  */
 private const val CollapsedBodyMaxLines = 10
+
+/**
+ * Per-message "Read more" expanded flag, owned ABOVE the LazyColumn (in
+ * `ConversationContent`) and keyed by the message's stable uniqueId. The bubble's own
+ * composition slot is recreated whenever the LazyColumn recomposes (a new message
+ * arrives) or a recycled slot is reused on scroll — a `remember(message.id)` flag held
+ * inside the item is lost on both, so an expanded long body would collapse back to
+ * truncated when a new message arrived. Hoisting the flag here makes it survive that
+ * churn while only the bubbles that read a changed entry recompose (SnapshotStateMap).
+ */
+internal val LocalExpandedMessages = compositionLocalOf<SnapshotStateMap<Uuid, Boolean>?> { null }
 
 /**
  * Core message bubble composable that renders message content with smart layout.
@@ -146,6 +160,12 @@ fun MessageBubbleRaw(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
 ) {
+
+    // #814: render the timestamp + delivery footer only on the last bubble of a
+    // same-sender cluster (END/ALONE), or whenever a sent message failed to deliver.
+    val showMessageFooter = clusterPosition == MessageClusterPosition.END ||
+        clusterPosition == MessageClusterPosition.ALONE ||
+        (sentByYou && message.messageAppData.deliveryStatus == ChatDeliveryStatus.Failed.value)
 
     // Typed rich-content (event today; poll/doodle later) bypasses the text+media
     // path entirely — each kind paints its own bubble, with its own background and
@@ -256,6 +276,7 @@ fun MessageBubbleRaw(
                     timestamp = locInfoText,
                     captionBackgroundColor = captionBg,
                     captionContentColor = captionContent,
+                    showTimestamp = showMessageFooter,
                     showDeliveryStatus = sentByYou && !message.isDeleted,
                     isPendingSend = message.isPendingSend,
                     deliveryStatus = message.messageAppData.deliveryStatus,
@@ -279,9 +300,17 @@ fun MessageBubbleRaw(
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
     // Task F: collapse header-resident long bodies (< 7 KB, hasMore = false) that still
-    // overflow a screenful, on mobile only. Transient (no rememberSaveable) and reset per
-    // message identity so recycled bubbles don't inherit a stale expanded state.
-    var bodyExpanded by remember(message.id) { mutableStateOf(false) }
+    // overflow a screenful, on mobile only. The expanded flag is hoisted above the
+    // LazyColumn (LocalExpandedMessages) and keyed by uniqueId so it survives list
+    // recomposition and scroll recycling — an expanded body stays expanded when a new
+    // message arrives. Falls back to a local per-item flag when no host map is provided
+    // (standalone bubble previews/tests), preserving the old behaviour there.
+    val expandedMessages = LocalExpandedMessages.current
+    var localBodyExpanded by remember(message.id) { mutableStateOf(false) }
+    val bodyExpanded = expandedMessages?.get(message.id) ?: localBodyExpanded
+    fun expandBody() {
+        if (expandedMessages != null) expandedMessages[message.id] = true else localBodyExpanded = true
+    }
     val isMobileDevice = isMobile()
     // Desktop always shows the full body and never an expander.
     val bodyMaxLines = if (isMobileDevice && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
@@ -462,6 +491,7 @@ fun MessageBubbleRaw(
                     deliveryStatus = message.messageAppData.deliveryStatus,
                     contentColor = contentColor,
                     pendingSince = message.userDate,
+                    showTimestamp = showMessageFooter,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = { handleLongClick() },
                     onRequestDecryptedFile = onRequestDecryptedFile,
@@ -492,6 +522,7 @@ fun MessageBubbleRaw(
                         uploadStatus = uploadStatus,
                     )
                     MediaTimestampOverlay(
+                        showTimestamp = showMessageFooter,
                         messageInfoText = messageInfoText,
                         sentByYou = sentByYou,
                         isPendingSend = isPendingSend,
@@ -532,6 +563,7 @@ fun MessageBubbleRaw(
                                 uploadStatus = uploadStatus,
                             )
                             MediaTimestampOverlay(
+                                showTimestamp = showMessageFooter,
                                 messageInfoText = messageInfoText,
                                 sentByYou = sentByYou,
                                 isPendingSend = isPendingSend,
@@ -649,6 +681,7 @@ fun MessageBubbleRaw(
                         }
                     }
                     MessageTimestampFooter(
+                        visible = showMessageFooter,
                         infoText = messageInfoText,
                         contentColor = contentColor,
                         showDeliveryStatus = sentByYou && !message.isDeleted,
@@ -785,7 +818,7 @@ fun MessageBubbleRaw(
                                         modifier = Modifier
                                             .clickable {
                                                 if (message.hasMore) onShowMoreClick?.invoke()
-                                                bodyExpanded = true
+                                                expandBody()
                                             }
                                             .padding(
                                                 start = 12.dp,
@@ -803,19 +836,24 @@ fun MessageBubbleRaw(
                                 verticalAlignment = Alignment.Bottom,
                                 horizontalArrangement = Arrangement.End,
                             ) {
-                                Text(
-                                    text = messageInfoText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contentColor.copy(alpha = 0.7f)
-                                )
-                                if (sentByYou && !message.isDeleted) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    DeliveryStatus(
-                                        isPendingSend = isPendingSend,
-                                        deliveryStatus = message.messageAppData.deliveryStatus,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
-                                        pendingSince = message.userDate,
+                                // #814: keep this Row child present (the timestamp-tuck
+                                // Layout indexes children by position) but hide its
+                                // contents on non-terminal cluster bubbles.
+                                if (showMessageFooter) {
+                                    Text(
+                                        text = messageInfoText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = contentColor.copy(alpha = 0.7f)
                                     )
+                                    if (sentByYou && !message.isDeleted) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        DeliveryStatus(
+                                            isPendingSend = isPendingSend,
+                                            deliveryStatus = message.messageAppData.deliveryStatus,
+                                            contentColor = contentColor.copy(alpha = 0.7f),
+                                            pendingSince = message.userDate,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1055,7 +1093,9 @@ private fun BoxScope.MediaTimestampOverlay(
     deliveryStatus: Int,
     contentColor: Color,
     pendingSince: Instant?,
+    showTimestamp: Boolean = true,
 ) {
+    if (!showTimestamp) return
     Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
         Box(
             modifier = Modifier.fillMaxWidth().height(40.dp)

@@ -167,10 +167,16 @@ object Dimens {
         val previewStickerSize = 96.dp
         val previewGutterSize = 16.dp
 
-        // Max edge of a sticker rendered in a chat bubble. Comparable to the emoji-only
-        // big glyph size (and well under Signal's 512 logical-px sticker) so the bare
-        // image floats on the wallpaper without dominating the column.
-        val maxSize = 160.dp
+        // Preferred max edge of a sticker rendered in a chat bubble. Larger than the old
+        // flat 160.dp so cut-outs read clearly (closer to the WhatsApp/Telegram sticker
+        // size) while staying well under Signal's 512 logical-px sticker.
+        val baseSize = 220.dp
+
+        // The base size is additionally clamped to this fraction of the viewport height so
+        // a sticker can never dominate the message list on short/landscape windows. On a
+        // typical phone viewport (~700-800.dp tall) 0.35 yields ~250-280.dp — above
+        // [baseSize], so phones get the full base; the fraction only bites on short windows.
+        const val maxHeightFraction = 0.35f
     }
 
     // Tooltip

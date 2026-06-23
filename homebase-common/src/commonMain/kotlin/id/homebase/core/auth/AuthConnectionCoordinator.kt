@@ -121,6 +121,17 @@ class AuthConnectionCoordinator(
     @Volatile private var lastAuthenticatedDrives: List<LabeledDrive>? = null
 
     /**
+     * Gates [onPostAuthenticated] to exactly once per authenticated session. The headless
+     * session-restore race could otherwise DROP it: the foreground call (below) is skipped
+     * while headless, and [promoteToForeground] bails when it fires mid-bootstrap with
+     * [lastAuthenticatedDrives] still null — so VaultStream/StickerStream/etc. are never
+     * started and their screens spin forever. All call sites go through
+     * [runPostAuthenticatedOnce]; reset on Unauthenticated so the next login re-runs it.
+     */
+    @Volatile private var postAuthenticatedRan = false
+    private val postAuthGate = kotlinx.coroutines.sync.Mutex()
+
+    /**
      * Normalized (lowercased, hyphen-stripped) aliases of the drives this app token can READ,
      * resolved from the security context on each Authenticated transition. Null when unknown
      * (security-context fetch failed) — in that case [retainGrantedDrives] does not filter, so a
@@ -177,7 +188,7 @@ class AuthConnectionCoordinator(
                 // local-DB warmups while drive mount + WS handshake happen in
                 // parallel). Deferred to [promoteToForeground] in headless mode.
                 if (!headless) {
-                    onPostAuthenticated()
+                    runPostAuthenticatedOnce()
                 }
 
                 // Mount mandatory drives FIRST — before bootstrap, before any network I/O.
@@ -225,6 +236,14 @@ class AuthConnectionCoordinator(
                     return
                 }
 
+                // Race recovery: we started headless (so the foreground call above was skipped)
+                // but promoteToForeground flipped us to foreground mid-bootstrap and bailed
+                // because lastAuthenticatedDrives was still null — so its deferred
+                // onPostAuthenticated never ran, leaving VaultStream/StickerStream/etc. unstarted
+                // (the infinite spinner). We're past the headless return, so run it now;
+                // runPostAuthenticatedOnce() is a no-op if the foreground path already ran it.
+                runPostAuthenticatedOnce()
+
                 connect(extraDrives = initialDrives)
                 // Owner-hosted (peer) drives don't ride the own-host WebSocket — open a per-owner
                 // peer websocket for each so live community updates arrive over the owner's host.
@@ -245,6 +264,8 @@ class AuthConnectionCoordinator(
             }
             is YouAuthState.Unauthenticated -> {
                 disconnect()
+                // Reset the post-auth gate so the next login re-runs onPostAuthenticated().
+                postAuthGate.withLock { postAuthenticatedRan = false }
                 // The profile is loaded here on auth (loadProfile); clear it on the
                 // way out so the owner avatar/name doesn't bleed into the login screen
                 // or the next identity. AuthCC owns the profile lifecycle, so it clears
@@ -298,7 +319,7 @@ class AuthConnectionCoordinator(
                 "driveRegistry.start, loadProfile]"
         }
         scope.launch {
-            onPostAuthenticated()
+            runPostAuthenticatedOnce()
             connect(extraDrives = drives)
             startPeerConnections(drives)
             driveRegistry.start(
@@ -329,6 +350,19 @@ class AuthConnectionCoordinator(
                 "dsmRunning=${driveSyncManager.isRunning} " +
                 "driveStatuses=$statusesSummary"
         }
+    }
+
+    /**
+     * Run [onPostAuthenticated] at most once per authenticated session. Called from the
+     * foreground branch, [promoteToForeground]'s replay, and the race-recovery path in
+     * [onAuthStateChanged]; the gate makes the narrow window where both the Authenticated
+     * branch and a mid-bootstrap [promoteToForeground] reach it a single, safe run.
+     */
+    private suspend fun runPostAuthenticatedOnce() {
+        val shouldRun = postAuthGate.withLock {
+            if (postAuthenticatedRan) false else { postAuthenticatedRan = true; true }
+        }
+        if (shouldRun) onPostAuthenticated()
     }
 
     private fun loadProfile() {

@@ -38,32 +38,59 @@ data class LocationUiState(
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
     val liveSharingVisible: Boolean = false,
+    /** People I'm sharing my live location with — deduped by identity, longest end-time. */
+    val outgoingShares: List<OutgoingShareRow> = emptyList(),
+    /** People sharing their live location with me — with the age of their last fix. */
+    val incomingShares: List<IncomingShareRow> = emptyList(),
 ) {
     /** Only OSM tiles are implemented today; the canvas takes a boolean. */
     val showMapTiles: Boolean get() = mapProvider == LocationMapProvider.OpenStreetMap
 }
 
+/** One row in the "Sharing with" list: a person and the latest time my share to them lasts. */
+data class OutgoingShareRow(
+    /** Identity domain string (OdinId.domainName) — stable list key and stop target. */
+    val odinId: String,
+    val name: String,
+    val avatarInitials: String,
+    val avatarUrl: String?,
+    /** Longest end-time across this person's overlapping shares (UTC epoch-ms). */
+    val untilMs: Long,
+)
+
+/** One row in the "Sharing with you" list: a person and how stale their last fix is. */
+data class IncomingShareRow(
+    val odinId: String,
+    val name: String,
+    val avatarInitials: String,
+    val avatarUrl: String?,
+    /** Age of their last received fix (ms); the label only shows past AGE_LABEL_AFTER_MS. */
+    val ageMs: Long,
+)
+
 /**
  * Main-screen body switch: dashboard once the add-on is fully set up, setup otherwise.
  *
- * A tracker device only reaches the dashboard once it is [activated], tracking is on,
- * AND its location permissions are complete ([permissionsComplete] = while-in-use AND
- * always/background both granted). This keeps a user who just allowed "while using the
- * app" on Setup to finish the background grant, rather than jumping to the dashboard
- * the moment the first permission lands (and auto-enables tracking).
+ * A tracker device reaches the dashboard once it is [activated] AND its location permissions
+ * are complete ([permissionsComplete] = while-in-use AND always/background both granted). The
+ * landing keys on the GRANTS, not the tracking master switch: a user with both grants but
+ * "Track my location" off still wants the dashboard (to view live shares / others), so gating
+ * on the toggle wrongly stranded them on Setup (bug #822). Conversely, with both grants denied,
+ * permissionsComplete is false and they land on Setup — where they can grant access. A
+ * while-in-use-only grant likewise keeps Setup as the default so the background grant can be
+ * finished.
  *
- * Viewer devices (desktop/web, trackerAvailable = false) never track or request
- * permissions — once activated they are pure viewers and always get the dashboard;
- * requiring the switch or permissions would strand them on Setup forever.
+ * Viewer devices (desktop/web, trackerAvailable = false) never track or request permissions —
+ * once activated they are pure viewers and always get the dashboard; requiring permissions
+ * would strand them on Setup forever.
  */
 fun isDashboard(
     activated: Boolean,
-    trackingEnabled: Boolean,
     trackerAvailable: Boolean,
     permissionsComplete: Boolean,
     setupOverride: Boolean,
 ): Boolean = !setupOverride && activated &&
-    (!trackerAvailable || (trackingEnabled && permissionsComplete))
+    (!trackerAvailable || permissionsComplete)
 
 sealed interface LocationUiAction {
     data object SetupClicked : LocationUiAction
@@ -71,6 +98,10 @@ sealed interface LocationUiAction {
     data class SetTrackingEnabled(val enabled: Boolean) : LocationUiAction
     data class SetIconVisible(val visible: Boolean) : LocationUiAction
     data class SetMapProvider(val provider: LocationMapProvider) : LocationUiAction
+    /** Stop all of one person's outgoing live shares (Dashboard per-row stop). */
+    data class StopSharingWith(val odinId: String) : LocationUiAction
+    /** Stop every outgoing live share (Dashboard "stop sharing with everyone"). */
+    data object StopSharingWithEveryone : LocationUiAction
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction

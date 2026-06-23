@@ -178,30 +178,24 @@ adb logcat -d --pid=$(adb shell pidof id.homebase.feed.dev)
 adb logcat -c
 ```
 
-### De-obfuscating release crash stack traces
+### Reading release crash stack traces
 
-Release and `dev` builds run R8 with `isMinifyEnabled = true`, so on-device
-traces (logcat, `homebase.log`, the crash-recovery screen, a tester's
-screenshot) show obfuscated names like `a.b.c`. **Do not disable obfuscation** —
-it's defense-in-depth for a crypto/E2E app and keeps the AAB small. Instead,
-translate the trace with the `mapping.txt` R8 emits each build.
+Release and `dev` builds run R8 with `isMinifyEnabled = true` for shrinking and
+optimization, but `proguard-rules.pro` sets `-dontobfuscate`, so identifier
+renaming is **off**. On-device traces (logcat, `homebase.log`, the crash-recovery
+screen, a tester's screenshot) already show the real class/method names — e.g.
+`id.homebase.feed.MainActivity` — with exact line numbers (`-keepattributes
+SourceFile,LineNumberTable`). No `retrace` and no per-build `mapping.txt` is
+needed to read names; a raw trace is directly triageable.
 
-- **Crashlytics / Play Console** de-obfuscate automatically: the Crashlytics
-  Gradle plugin uploads `mapping.txt` on every minified build. `proguard-rules.pro`
-  keeps `SourceFile,LineNumberTable`, so these show the exact original file + line.
-- **A raw trace** (logcat / log file / screenshot) — retrace it locally against
-  the mapping for the exact build that produced it:
+- **Crashlytics / Play Console** still work as before: the Crashlytics Gradle
+  plugin uploads `mapping.txt` on every minified build, and these show the exact
+  original file + line. Harmless to keep.
 
-```bash
-# mapping.txt is written per variant by the release build:
-#   androidApp/build/outputs/mapping/release/mapping.txt   (release)
-#   androidApp/build/outputs/mapping/dev/mapping.txt       (dev)
-# Save the obfuscated trace to trace.txt, then:
-retrace androidApp/build/outputs/mapping/release/mapping.txt trace.txt
-# `retrace` ships in the Android SDK (build-tools / cmdline-tools). `r8 retrace`
-# also works. Keep the mapping.txt from each shipped build — a stale mapping
-# from a different build produces wrong line numbers.
-```
+(Renaming was disabled because the app is open-source — obfuscating names that
+are public on GitHub anyway protected nothing, while readable raw traces make
+real-world crash triage from logs/screenshots far easier. Shrinking and
+optimization, which is where R8's size win actually comes from, stay on.)
 
 ## Desktop App Logs (JVM / Android Studio `desktopApp:run`)
 

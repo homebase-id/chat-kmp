@@ -512,7 +512,7 @@
     <string name="chat_no_gallery_items">No items</string>
     <string name="chat_select_more_photos">Select more photos</string>
     <string name="chat_gallery_selection_index">%1$d</string>
-    <string name="chat_gallery_send_count">Send (%1$d)</string>
+    <string name="chat_gallery_next_count">Next (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>
@@ -1065,6 +1065,11 @@
     <string name="vault_gallery_delete_file">Delete file</string>
     <string name="vault_gallery_delete_all">Delete all</string>
 
+    <!-- Vault Move to section -->
+    <string name="vault_move_to_section">Move to section…</string>
+    <string name="vault_move_to_section_target">Move to %1$s</string>
+    <string name="vault_move_to_section_failed">Couldn't move the file. Please try again.</string>
+
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>
     <string name="vault_notes_placeholder">Add notes about this entry…</string>
@@ -1314,6 +1319,15 @@
     <string name="location_dashboard_live_section">Live location sharing</string>
     <string name="location_dashboard_live_open">Open live map</string>
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
+    <string name="location_maps_off_title">Maps are turned off</string>
+    <string name="location_maps_off_cta">Turn on maps</string>
+    <string name="location_dashboard_sharing_with">Sharing with</string>
+    <string name="location_dashboard_sharing_with_you">Sharing with you</string>
+    <string name="location_dashboard_share_until">until %1$s</string>
+    <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>
+    <string name="location_dashboard_stop_everyone">Stop sharing with everyone</string>
+    <string name="location_dashboard_stop_confirm_title">Stop all sharing?</string>
+    <string name="location_dashboard_stop_confirm_body">This ends every live location share you've started.</string>
     <string name="share_live_location">Share live location</string>
     <string name="stop_sharing">Stop sharing</string>
     <string name="live_share_active">Live location · %1$s left</string>
@@ -1332,6 +1346,9 @@
     <string name="location_history_previous_day">Previous day</string>
     <string name="location_history_next_day">Next day</string>
     <string name="location_history_pick_date">Pick a date</string>
+    <string name="location_history_delete_day">Delete history this day</string>
+    <string name="location_history_delete_title">Delete this day?</string>
+    <string name="location_history_delete_text">This permanently removes all location history recorded for this day. This can't be undone.</string>
     <string name="location_history_distance">%1$s km</string>
     <string name="location_history_points">%1$d points</string>
     <string name="location_history_devices">%1$d devices</string>

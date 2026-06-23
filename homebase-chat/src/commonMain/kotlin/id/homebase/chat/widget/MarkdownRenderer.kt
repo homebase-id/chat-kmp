@@ -12,6 +12,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -167,7 +168,13 @@ fun ChatMarkdown(
     // which opens the URL through LocalUriHandler), so a plain Text handles taps
     // without any pointerInput reading the layout result. This single stable node
     // is what keeps the bubble's last-line timestamp tuck reentrancy-free.
-    if (!markdownHasBlockElements(content)) {
+    // Memoize the inline-vs-block decision: markdownHasBlockElements runs a full
+    // MarkdownParser tree build, a pure function of `content`. Recomputing it on every
+    // recomposition (e.g. each scroll-in) is wasted work AND lets the chosen render path
+    // momentarily differ across frames, which shows up as a height bounce as a rich-text
+    // bubble re-enters view. Keying on `content` makes the path stable.
+    val isBlock = remember(content) { markdownHasBlockElements(content) }
+    if (!isBlock) {
         // Single stable Text over the inline annotated string (bold/italic/strike/
         // inline-code + native Compose link annotations, with chat soft breaks
         // promoted to hard breaks). See [buildChatInlineAnnotatedString] for the full
@@ -346,14 +353,24 @@ internal fun buildChatInlineAnnotatedString(
         color = color,
         fontFamily = FontFamily.Monospace,
     ).toSpanStyle().copy(background = color.copy(alpha = INLINE_CODE_BG_ALPHA))
-    return content.withChatHardLineBreaks().buildMarkdownAnnotatedString(
-        style = style,
-        annotatorSettings = annotatorSettings(
-            linkTextSpanStyle = linkSpanStyle,
-            codeSpanStyle = inlineCodeStyle,
-            referenceLinkHandler = null,
-        ),
+    // annotatorSettings is @Composable (it can read CompositionLocals), so it stays in
+    // composition; its output here is fully determined by the stable link/code styles.
+    val settings = annotatorSettings(
+        linkTextSpanStyle = linkSpanStyle,
+        codeSpanStyle = inlineCodeStyle,
+        referenceLinkHandler = null,
     )
+    // The actual parse (buildMarkdownAnnotatedString) is a pure, non-composable string
+    // build over `content` + `style` + the bubble `color`-derived styles. Memoize it so
+    // a scroll-in recomposition doesn't re-parse the body each frame — pure work whose
+    // result is identical for unchanged inputs, and re-parsing it is part of the
+    // rich-text scroll-in bounce.
+    return remember(content, style, color) {
+        content.withChatHardLineBreaks().buildMarkdownAnnotatedString(
+            style = style,
+            annotatorSettings = settings,
+        )
+    }
 }
 
 /** Faint tint behind an inline-code chip, alpha-blended onto the bubble content colour. */
