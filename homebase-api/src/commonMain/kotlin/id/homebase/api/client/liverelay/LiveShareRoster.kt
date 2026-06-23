@@ -52,6 +52,19 @@ object LiveShareRoster {
     ): List<TimedRecipient> =
         current.filterNot { it.endTimeMs == endTimeMs && it.odinId in recipients }
 
+    /**
+     * Remove **every** entry belonging to any of [recipients], regardless of end-time — the
+     * "stop sharing with this person entirely" primitive. Unlike [remove] (which keys on a single
+     * `{recipient, end-time}` share), this drops all of a recipient's overlapping shares at once, so
+     * the deduped Dashboard row that represents a person disappears in one action. No-op for
+     * recipients with no entries.
+     */
+    fun removeRecipients(
+        current: List<TimedRecipient>,
+        recipients: List<String>,
+    ): List<TimedRecipient> =
+        current.filterNot { it.odinId in recipients }
+
     /** The still-live entries at [nowMs] (end-time strictly in the future). May contain duplicates. */
     fun live(roster: List<TimedRecipient>, nowMs: Long): List<TimedRecipient> =
         roster.filter { it.endTimeMs > nowMs }

@@ -153,6 +153,14 @@ class LocationPointWrapper(
         }
     }
 
+    /** Delete buffer rows in the half-open range [fromInclusiveMs, toExclusiveMs) — the local
+     *  half of the history "delete this day" action. */
+    suspend fun deleteByTimeRange(fromInclusiveMs: Long, toExclusiveMs: Long) {
+        databaseManager.withWrite { db ->
+            db.locationPointQueries.deleteByTimeRange(fromInclusiveMs, toExclusiveMs)
+        }
+    }
+
     suspend fun deleteAll() {
         databaseManager.withWrite { db ->
             db.locationPointQueries.deleteAll()

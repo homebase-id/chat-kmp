@@ -63,6 +63,7 @@ import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
@@ -146,6 +147,12 @@ fun MessageBubbleRaw(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
 ) {
+
+    // #814: render the timestamp + delivery footer only on the last bubble of a
+    // same-sender cluster (END/ALONE), or whenever a sent message failed to deliver.
+    val showMessageFooter = clusterPosition == MessageClusterPosition.END ||
+        clusterPosition == MessageClusterPosition.ALONE ||
+        (sentByYou && message.messageAppData.deliveryStatus == ChatDeliveryStatus.Failed.value)
 
     // Typed rich-content (event today; poll/doodle later) bypasses the text+media
     // path entirely — each kind paints its own bubble, with its own background and
@@ -256,6 +263,7 @@ fun MessageBubbleRaw(
                     timestamp = locInfoText,
                     captionBackgroundColor = captionBg,
                     captionContentColor = captionContent,
+                    showTimestamp = showMessageFooter,
                     showDeliveryStatus = sentByYou && !message.isDeleted,
                     isPendingSend = message.isPendingSend,
                     deliveryStatus = message.messageAppData.deliveryStatus,
@@ -462,6 +470,7 @@ fun MessageBubbleRaw(
                     deliveryStatus = message.messageAppData.deliveryStatus,
                     contentColor = contentColor,
                     pendingSince = message.userDate,
+                    showTimestamp = showMessageFooter,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = { handleLongClick() },
                     onRequestDecryptedFile = onRequestDecryptedFile,
@@ -492,6 +501,7 @@ fun MessageBubbleRaw(
                         uploadStatus = uploadStatus,
                     )
                     MediaTimestampOverlay(
+                        showTimestamp = showMessageFooter,
                         messageInfoText = messageInfoText,
                         sentByYou = sentByYou,
                         isPendingSend = isPendingSend,
@@ -532,6 +542,7 @@ fun MessageBubbleRaw(
                                 uploadStatus = uploadStatus,
                             )
                             MediaTimestampOverlay(
+                                showTimestamp = showMessageFooter,
                                 messageInfoText = messageInfoText,
                                 sentByYou = sentByYou,
                                 isPendingSend = isPendingSend,
@@ -649,6 +660,7 @@ fun MessageBubbleRaw(
                         }
                     }
                     MessageTimestampFooter(
+                        visible = showMessageFooter,
                         infoText = messageInfoText,
                         contentColor = contentColor,
                         showDeliveryStatus = sentByYou && !message.isDeleted,
@@ -733,12 +745,10 @@ fun MessageBubbleRaw(
                                 } else {
                                     // Mirror the conversation-list preview's deleted marker
                                     // (MessageContentLabel: Block icon + the same string).
-                                    // ponytail: safe only because it sits beside the short fixed
-                                    // "deleted" string. The timestamp-tuck Layout below measures
-                                    // lastLineRight from the text's own origin and assumes it starts
-                                    // at textRowPadding; this icon shifts that origin right by ~20dp.
-                                    // If this icon is ever shown next to variable/long body text,
-                                    // add its width to lastLineEnd or the tucked time can overlap.
+                                    // This icon (16dp) + the row's 4dp gap shift the text's
+                                    // visual origin right; the timestamp-tuck Layout below adds
+                                    // that same offset (leadingIconOffset) to lastLineEnd so the
+                                    // tucked time clears the text instead of overlapping it.
                                     if (message.isDeleted) {
                                         Icon(
                                             imageVector = Icons.Default.Block,
@@ -805,23 +815,35 @@ fun MessageBubbleRaw(
                                 verticalAlignment = Alignment.Bottom,
                                 horizontalArrangement = Arrangement.End,
                             ) {
-                                Text(
-                                    text = messageInfoText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contentColor.copy(alpha = 0.7f)
-                                )
-                                if (sentByYou && !message.isDeleted) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    DeliveryStatus(
-                                        isPendingSend = isPendingSend,
-                                        deliveryStatus = message.messageAppData.deliveryStatus,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
-                                        pendingSince = message.userDate,
+                                // #814: keep this Row child present (the timestamp-tuck
+                                // Layout indexes children by position) but hide its
+                                // contents on non-terminal cluster bubbles.
+                                if (showMessageFooter) {
+                                    Text(
+                                        text = messageInfoText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = contentColor.copy(alpha = 0.7f)
                                     )
+                                    if (sentByYou && !message.isDeleted) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        DeliveryStatus(
+                                            isPendingSend = isPendingSend,
+                                            deliveryStatus = message.messageAppData.deliveryStatus,
+                                            contentColor = contentColor.copy(alpha = 0.7f),
+                                            pendingSince = message.userDate,
+                                        )
+                                    }
                                 }
                             }
                         }
                     ) { measurables, constraints ->
+                        // The deleted-message Block icon sits left of the body inside the text
+                        // row (icon 16dp + the row's 4dp gap), shifting the text's visual origin
+                        // right. lastLineRight is measured from the text's own origin, so add this
+                        // offset to lastLineEnd below or the tucked timestamp overlaps the text.
+                        val leadingIconOffset =
+                            if (message.isDeleted) (16.dp + 4.dp).roundToPx() else 0
+
                         // Find MediaMessage index (after author and reply preview)
                         var mediaIndex = 0
                         if (authorName != null) mediaIndex++
@@ -888,7 +910,7 @@ fun MessageBubbleRaw(
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
@@ -947,7 +969,7 @@ fun MessageBubbleRaw(
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
@@ -1050,7 +1072,9 @@ private fun BoxScope.MediaTimestampOverlay(
     deliveryStatus: Int,
     contentColor: Color,
     pendingSince: Instant?,
+    showTimestamp: Boolean = true,
 ) {
+    if (!showTimestamp) return
     Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
         Box(
             modifier = Modifier.fillMaxWidth().height(40.dp)
