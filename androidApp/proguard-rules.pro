@@ -12,15 +12,19 @@
 #   public *;
 #}
 
-# Keep line numbers in release stack traces. Obfuscation stays ON — this only
-# preserves the line-number table so Crashlytics / Play Console (which have the
-# uploaded mapping.txt) and `retrace` resolve crashes to the exact original
-# file + line instead of showing "Unknown Source".
+# Disable identifier renaming only. R8 shrinking + optimization stay on (the AAB
+# size wins are theirs, not renaming's). The app is open-source, so renamed
+# identifiers protect nothing public; leaving names intact makes raw traces
+# (logcat / homebase.log / crash-recovery screen / screenshots) directly readable
+# with no retrace / per-build mapping.txt.
+-dontobfuscate
+
+# Keep line numbers in release stack traces so Crashlytics / Play Console and
+# `retrace` resolve crashes to the exact original file + line instead of
+# "Unknown Source".
 -keepattributes SourceFile,LineNumberTable
 
-# Replace the original .kt file name with a constant ("SourceFile") in the
-# bytecode — keeps the line numbers above while still hiding source file names.
-# The mapping file maps everything back during retrace/Crashlytics.
+# Moot with -dontobfuscate (no renaming happens); kept to minimise the diff.
 -renamesourcefileattribute SourceFile
 
 # Filekit
