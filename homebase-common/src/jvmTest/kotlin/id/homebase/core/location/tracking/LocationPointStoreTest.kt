@@ -150,6 +150,35 @@ class LocationPointStoreTest {
     }
 
     @Test
+    fun trackingOffSkipsPersistButStillRelays() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val db = DatabaseManager(
+            { JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) },
+            dispatcher = dispatcher,
+            readDispatcher = dispatcher,
+        )
+        try {
+            var relays = 0
+            // Tracking OFF: fixes arrive only because a live share holds GPS on (bug #823).
+            val store = LocationPointStore(
+                db,
+                FakeSensors(),
+                isTrackingEnabled = { false },
+                onPointsBuffered = { relays++ },
+            )
+            store.submit(listOf(point(t = 0), point(t = 60_000, lon = 13.01)))
+            // No history persisted: nothing buffered for upload, DB empty, point-count zero.
+            assertEquals(0, store.countPendingUpload())
+            assertEquals(0, db.locationPoint.selectByTimeRange(0, 3_600_000).size)
+            // But the relay seam still fired and lastPoint advanced, so the live share keeps sending.
+            assertEquals(1, relays)
+            assertEquals(60_000, assertNotNull(store.lastPoint.value).t)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun haversineSanity() {
         // One degree of longitude at the equator ≈ 111.3 km.
         val d = LocationPointStore.haversineMeters(0.0, 0.0, 0.0, 1.0)

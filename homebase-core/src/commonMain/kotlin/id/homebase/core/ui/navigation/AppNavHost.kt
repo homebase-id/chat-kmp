@@ -1387,6 +1387,9 @@ fun AppNavHost(
                                 LiveLocationScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
+                                    // Maps-off CTA → location/maps setup (Route.Location when
+                                    // activated, else onboarding), reusing the shared nav lambda.
+                                    onOpenSetup = openLocation,
                                 )
                             }
                         }

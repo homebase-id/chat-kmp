@@ -8,7 +8,6 @@ import id.homebase.api.client.liverelay.LiveLocationCodec
 import id.homebase.api.client.liverelay.LiveLocationPoint
 import id.homebase.api.common.OdinId
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,39 +44,63 @@ class LiveLocationReceiveStore(
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private val logger = Logger.withTag(TAG)
-    private var job: Job? = null
 
     private val _positions = MutableStateFlow<Map<OdinId, LivePosition>>(emptyMap())
     val positions: StateFlow<Map<OdinId, LivePosition>> = _positions.asStateFlow()
 
-    fun start() {
-        if (job?.isActive == true) return
-        job = scope.launch {
-            eventBus.events.collect { event ->
-                if (event !is BackendEvent.LiveRelayReceived) return@collect
-                if (event.channelKey != LIVE_LOCATION_CHANNEL_KEY) return@collect
-                val pt = LiveLocationCodec.decode(event.blob)
-                if (pt == null) {
-                    logger.w {
-                        "RECV-DECODE-FAIL from=${event.senderOdinId.domainName} bytes=${event.blob.length}"
+    // The collector runs for the whole app lifetime on the app-scope (SupervisorJob, never
+    // cancelled on logout), so a received packet always has a live consumer — independent of
+    // whether the fragile onPostAuthenticated bootstrap ran, was deferred (headless), or a
+    // reconnect happened. Logout is handled in-stream via SessionEnded; see [reset]. (Bug #824:
+    // the old start()/reset()-job model left the collector dead whenever start() wasn't reached.)
+    init {
+        scope.launch { observeEvents() }
+    }
+
+    private suspend fun observeEvents() {
+        logger.i { "receive collector started" }
+        // Unlike ContactBookStream, we deliberately do NOT drop the replay buffer: EventBus
+        // replay=1 lets a slightly-late collector still catch the server's last flush-on-connect
+        // point, and a stale replayed position is harmless (overwritten; aged out by receivedAt).
+        eventBus.events.collect { event ->
+            when (event) {
+                is BackendEvent.SessionEnded -> reset()
+
+                is BackendEvent.LiveRelayReceived -> {
+                    if (event.channelKey != LIVE_LOCATION_CHANNEL_KEY) {
+                        logger.d {
+                            "RECV-DROP wrong-channel from=${event.senderOdinId.domainName} ch=${event.channelKey}"
+                        }
+                        return@collect
                     }
-                    return@collect
+                    val pt = LiveLocationCodec.decode(event.blob)
+                    if (pt == null) {
+                        logger.w {
+                            "RECV-DECODE-FAIL from=${event.senderOdinId.domainName} bytes=${event.blob.length}"
+                        }
+                        return@collect
+                    }
+                    _positions.update { current ->
+                        current + (event.senderOdinId to LivePosition(event.senderOdinId, pt, event.receivedAt))
+                    }
+                    logger.i {
+                        "RECV-DECODED from=${event.senderOdinId.domainName} lat=${pt.lat} lon=${pt.lon} " +
+                            "ageMs=${nowMs() - event.receivedAt} tracked=${_positions.value.size}"
+                    }
                 }
-                _positions.update { current ->
-                    current + (event.senderOdinId to LivePosition(event.senderOdinId, pt, event.receivedAt))
-                }
-                logger.i {
-                    "RECV-DECODED from=${event.senderOdinId.domainName} lat=${pt.lat} lon=${pt.lon} " +
-                        "ageMs=${nowMs() - event.receivedAt} tracked=${_positions.value.size}"
-                }
+
+                else -> {}
             }
         }
     }
 
-    /** Stop collecting and drop all positions (logout). They rehydrate from the server on next login. */
+    /**
+     * Drop all positions (logout / new identity). The collector is NOT cancelled — it stays
+     * subscribed for the app's lifetime; positions rehydrate from the server's flush-on-connect
+     * after the next login. Called in-stream on [BackendEvent.SessionEnded] and from the post-auth
+     * bootstrap for a clean slate.
+     */
     fun reset() {
-        job?.cancel()
-        job = null
         _positions.value = emptyMap()
     }
 

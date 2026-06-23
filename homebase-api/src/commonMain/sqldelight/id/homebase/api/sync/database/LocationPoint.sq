@@ -108,5 +108,12 @@ deleteOlderThan:
 DELETE FROM LocationPoint
 WHERE t < ?;
 
+-- Delete a day's (or any half-open range's) buffer rows — the local half of the
+-- history "delete this day" action; the hour files on the drive are soft-deleted
+-- separately.
+deleteByTimeRange:
+DELETE FROM LocationPoint
+WHERE t >= ? AND t < ?;
+
 deleteAll:
 DELETE FROM LocationPoint;

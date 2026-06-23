@@ -69,6 +69,24 @@ fun formatMomentDate(timestamp: Instant): String {
     }
 }
 
+/**
+ * Forward-looking label for a future moment (e.g. a live-share expiry): the clock time when it
+ * lands on the current local day, otherwise a date + clock time (year added only across years).
+ * Unlike [formatTimestamp], this never collapses a near-future instant to "Just now".
+ */
+@Composable
+fun formatUntilTime(timestamp: Instant): String {
+    val zone = TimeZone.currentSystemDefault()
+    val nowDate = Clock.System.now().toLocalDateTime(zone).date
+    val tsDate = timestamp.toLocalDateTime(zone).date
+    val time = formatTime(timestamp)
+    return when {
+        nowDate == tsDate -> time
+        nowDate.year == tsDate.year -> formatMediumDateNoYear(timestamp) + " " + time
+        else -> formatMediumDate(timestamp) + " " + time
+    }
+}
+
 @Composable
 fun formatMessageTimestamp(timestamp: Instant): String {
     val now = Clock.System.now()

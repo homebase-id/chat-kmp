@@ -80,8 +80,8 @@ android {
 
     buildTypes {
         release {
-            // Enables code shrinking, obfuscation, and optimization for only
-            // your project's release build type.
+            // Enables code shrinking and optimization. Identifier obfuscation is
+            // turned off via -dontobfuscate in proguard-rules.pro.
             isMinifyEnabled = true
 
             // Enables resource shrinking, which is performed by the
@@ -99,8 +99,8 @@ android {
         create("dev") {
             applicationIdSuffix = ".dev"
 
-            // Enables code shrinking, obfuscation, and optimization for only
-            // your project's release build type.
+            // Enables code shrinking and optimization. Identifier obfuscation is
+            // turned off via -dontobfuscate in proguard-rules.pro.
             isMinifyEnabled = true
 
             // Enables resource shrinking, which is performed by the

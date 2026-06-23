@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
@@ -35,6 +36,8 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedButton
@@ -65,6 +68,7 @@ import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.GalleryImage
 import id.homebase.core.gallery.rememberGalleryPermissionState
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.noRippleClickable
 import id.homebase.resources.MR
@@ -82,7 +86,7 @@ import id.homebase.resources.cd_gallery_thumbnail
 import id.homebase.resources.cd_not_selected
 import id.homebase.resources.cd_play_video
 import id.homebase.resources.chat_gallery_selection_index
-import id.homebase.resources.chat_gallery_send_count
+import id.homebase.resources.chat_gallery_next_count
 import id.homebase.resources.chat_select_more_photos
 import id.homebase.resources.go_to_settings
 import id.homebase.resources.manage
@@ -335,18 +339,30 @@ fun AttachmentGallery(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    ElevatedButton(
+                    // "Next", not "Send": tapping opens the full-screen attachment editor.
+                    // Reuse the "+" button's blue so it reads as the primary action.
+                    Button(
                         onClick = {
                             val ordered = selectedIds.mapNotNull { byId[it] }
                             resetSelection()
                             if (ordered.isNotEmpty()) {
                                 onImagesSelected(ordered)
                             }
-                        }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                            contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface
+                        )
                     ) {
-                        Text(stringResource(MR.string.chat_gallery_send_count, sendCount))
+                        Text(stringResource(MR.string.chat_gallery_next_count, sendCount))
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null
+                        )
                     }
                 }
             }
