@@ -81,6 +81,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -1015,10 +1016,19 @@ fun ConversationContent(
                     animationsEnabled = true
                 }
 
+                // Per-message "Read more" expanded state, owned here (above the LazyColumn)
+                // so an expanded long body survives item recomposition/recycling and does
+                // NOT collapse when a new message arrives. Keyed on conversation id so the
+                // set clears when switching chats. See LocalExpandedMessages.
+                val expandedMessages = remember(conversation.conversation.id) {
+                    mutableStateMapOf<Uuid, Boolean>()
+                }
+
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) {
                     if (!uiState.isLoadingMessages) {
+                        CompositionLocalProvider(LocalExpandedMessages provides expandedMessages) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize().dismissKeyboardOnTap(),
                             state = listState,
@@ -1187,6 +1197,7 @@ fun ConversationContent(
                             if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
                                 item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
                             }
+                        }
                         }
                         HomebaseVerticalScrollbar(
                             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
