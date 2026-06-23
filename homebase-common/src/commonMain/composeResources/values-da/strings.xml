@@ -693,4 +693,9 @@
     <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
     <string name="moments_push_new_comment">Kommenterede på et øjeblik, du er en del af</string>
 
+    <!-- Vault Move to section -->
+    <string name="vault_move_to_section">Flyt til sektion…</string>
+    <string name="vault_move_to_section_target">Flyt til %1$s</string>
+    <string name="vault_move_to_section_failed">Kunne ikke flytte filen. Prøv igen.</string>
+
 </resources>

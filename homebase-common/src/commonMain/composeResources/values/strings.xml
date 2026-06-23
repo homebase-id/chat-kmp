@@ -1062,6 +1062,11 @@
     <string name="vault_gallery_delete_file">Delete file</string>
     <string name="vault_gallery_delete_all">Delete all</string>
 
+    <!-- Vault Move to section -->
+    <string name="vault_move_to_section">Move to section…</string>
+    <string name="vault_move_to_section_target">Move to %1$s</string>
+    <string name="vault_move_to_section_failed">Couldn't move the file. Please try again.</string>
+
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>
     <string name="vault_notes_placeholder">Add notes about this entry…</string>
