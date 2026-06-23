@@ -4,7 +4,9 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.WebFileOperationsProvider
+import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
+import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
 import id.homebase.core.audio.AudioPlayer
@@ -39,7 +41,7 @@ actual fun platformModule(): Module = module {
     single<AudioRecorder> { WebAudioRecorder() }
     single<AudioPlayer> { getAudioPlayer() }
     single<AudioWaveFormGenerator> { WebAudioWaveFormGenerator() }
-    single<DatabaseSizeProbe> { WebDatabaseSizeProbe() }
+    single<DatabaseSizeProbe> { DefaultDatabaseSizeProbe(DatabaseDriverFactory()) }
     single<UpdateAppManager> { WebUpdateAppManager() }
     single<ShakeDetector> { WebShakeDetector() }
 
