@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.Computer
@@ -29,14 +30,17 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.LocationSearching
 import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,15 +53,26 @@ import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
+import id.homebase.core.ui.screens.location.livelocation.AGE_LABEL_AFTER_MS
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.formatUntilTime
 import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
+import id.homebase.resources.live_location_age_minutes
 import id.homebase.resources.location_dashboard_empty_today
 import id.homebase.resources.location_dashboard_history_section
 import id.homebase.resources.location_dashboard_live_empty
 import id.homebase.resources.location_dashboard_live_open
 import id.homebase.resources.location_dashboard_live_section
 import id.homebase.resources.location_dashboard_perm_banner
+import id.homebase.resources.location_dashboard_share_until
+import id.homebase.resources.location_dashboard_sharing_with
+import id.homebase.resources.location_dashboard_sharing_with_you
+import id.homebase.resources.location_dashboard_stop_confirm_body
+import id.homebase.resources.location_dashboard_stop_confirm_title
+import id.homebase.resources.location_dashboard_stop_everyone
+import id.homebase.resources.location_dashboard_stop_one_cd
 import id.homebase.resources.location_device_no_fix
 import id.homebase.resources.location_device_this_device
 import id.homebase.resources.location_device_unnamed
@@ -71,6 +86,7 @@ import id.homebase.resources.location_locatable_coming_soon
 import id.homebase.resources.location_locatable_section
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
+import id.homebase.resources.stop_sharing
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
@@ -87,6 +103,8 @@ fun LocationDashboardContent(
     fetchTile: suspend (zoom: Int, x: Int, y: Int) -> ByteArray?,
     onOpenHistory: () -> Unit,
     onOpenLiveMap: () -> Unit,
+    onStopSharingWith: (String) -> Unit,
+    onStopSharingWithEveryone: () -> Unit,
     onOpenDevice: (Uuid) -> Unit,
     onOpenSetup: () -> Unit,
     onManageEmergencyAccess: () -> Unit,
@@ -129,12 +147,13 @@ fun LocationDashboardContent(
             }
         }
 
-        // ── Live location sharing (title always shown; card opens the map or shows an empty state) ──
+        // ── Live location sharing (title always shown; below it the map link + who's sharing) ──
         Text(
             text = stringResource(MR.string.location_dashboard_live_section),
             style = MaterialTheme.typography.titleMedium,
         )
         if (uiState.liveSharingVisible) {
+            // Map link — opens the live map (Route.LocationLive).
             Card(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenLiveMap),
             ) {
@@ -158,6 +177,62 @@ fun LocationDashboardContent(
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+
+            // People I'm sharing with — one row per person (longest "until"), per-row + all stop.
+            if (uiState.outgoingShares.isNotEmpty()) {
+                var confirmStopAll by remember { mutableStateOf(false) }
+                Text(
+                    text = stringResource(MR.string.location_dashboard_sharing_with),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        uiState.outgoingShares.forEachIndexed { index, row ->
+                            if (index > 0) HorizontalDivider()
+                            OutgoingShareRowItem(row = row, onStop = { onStopSharingWith(row.odinId) })
+                        }
+                    }
+                }
+                TextButton(onClick = { confirmStopAll = true }) {
+                    Text(text = stringResource(MR.string.location_dashboard_stop_everyone))
+                }
+                if (confirmStopAll) {
+                    AlertDialog(
+                        onDismissRequest = { confirmStopAll = false },
+                        title = { Text(stringResource(MR.string.location_dashboard_stop_confirm_title)) },
+                        text = { Text(stringResource(MR.string.location_dashboard_stop_confirm_body)) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmStopAll = false
+                                onStopSharingWithEveryone()
+                            }) { Text(stringResource(MR.string.stop_sharing)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmStopAll = false }) {
+                                Text(stringResource(MR.string.cancel))
+                            }
+                        },
+                    )
+                }
+            }
+
+            // People sharing with me — name + live-updating age (shown only past 2 minutes stale).
+            if (uiState.incomingShares.isNotEmpty()) {
+                Text(
+                    text = stringResource(MR.string.location_dashboard_sharing_with_you),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        uiState.incomingShares.forEachIndexed { index, row ->
+                            if (index > 0) HorizontalDivider()
+                            IncomingShareRowItem(row = row)
+                        }
+                    }
                 }
             }
         } else {
@@ -476,6 +551,78 @@ private fun EmergencyAvatarStack(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
+        }
+    }
+}
+
+/** One row in the "Sharing with" list: avatar, name, "until …", and a per-person stop button. */
+@Composable
+private fun OutgoingShareRowItem(
+    row: OutgoingShareRow,
+    onStop: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AvatarImage(
+            avatarUrl = row.avatarUrl,
+            avatarInitials = row.avatarInitials,
+            size = 40.dp,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = row.name,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = stringResource(
+                    MR.string.location_dashboard_share_until,
+                    formatUntilTime(Instant.fromEpochMilliseconds(row.untilMs)),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onStop) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = stringResource(MR.string.location_dashboard_stop_one_cd, row.name),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** One row in the "Sharing with you" list: avatar, name, and the last-fix age (only past 2 min). */
+@Composable
+private fun IncomingShareRowItem(row: IncomingShareRow) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AvatarImage(
+            avatarUrl = row.avatarUrl,
+            avatarInitials = row.avatarInitials,
+            size = 40.dp,
+        )
+        Text(
+            text = row.name,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f),
+        )
+        if (row.ageMs > AGE_LABEL_AFTER_MS) {
+            Text(
+                text = stringResource(MR.string.live_location_age_minutes, (row.ageMs / 60_000L).toInt()),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

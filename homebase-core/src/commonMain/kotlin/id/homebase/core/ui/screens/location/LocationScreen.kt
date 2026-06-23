@@ -233,6 +233,8 @@ fun LocationScreen(
                 fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
                 onOpenHistory = onNavigateToHistory,
                 onOpenLiveMap = onNavigateToLiveMap,
+                onStopSharingWith = { execute(LocationUiAction.StopSharingWith(it)) },
+                onStopSharingWithEveryone = { execute(LocationUiAction.StopSharingWithEveryone) },
                 onOpenDevice = { onNavigateToFindDevice(it) },
                 onOpenSetup = { dashboardOverride = false },
                 onManageEmergencyAccess = {
