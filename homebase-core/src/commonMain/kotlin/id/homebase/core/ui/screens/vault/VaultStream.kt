@@ -373,6 +373,31 @@ class VaultStream(
     }
 
     /**
+     * Move an entry to a different section optimistically: drop it from whichever
+     * section currently holds it and add it (with [targetSectionId] as its new
+     * groupId) to the target section's list. No-op if the entry isn't found or is
+     * already in the target section.
+     */
+    fun moveOptimisticEntry(uniqueId: Uuid, targetSectionId: Uuid) {
+        if (targetSectionId in deletedSectionIds) return
+        _entriesBySection.update { current ->
+            val sourceSectionId = current.entries
+                .firstOrNull { (_, list) -> list.any { it.uniqueId == uniqueId } }
+                ?.key ?: return@update current
+            if (sourceSectionId == targetSectionId) return@update current
+
+            val entry = current[sourceSectionId]
+                ?.firstOrNull { it.uniqueId == uniqueId }
+                ?.copy(groupId = targetSectionId)
+                ?: return@update current
+
+            val sourceList = current[sourceSectionId].orEmpty().filterNot { it.uniqueId == uniqueId }
+            val targetList = current[targetSectionId].orEmpty() + entry
+            current + (sourceSectionId to sourceList) + (targetSectionId to targetList)
+        }
+    }
+
+    /**
      * Remove an entry from all sections. Called after a delete is enqueued.
      */
     fun removeEntry(uniqueId: Uuid) {

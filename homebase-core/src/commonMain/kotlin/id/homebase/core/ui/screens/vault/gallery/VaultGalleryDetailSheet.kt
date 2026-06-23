@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalEncodingApi::class, ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalEncodingApi::class, ExperimentalComposeUiApi::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.vault.gallery
 
@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -28,8 +30,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -49,6 +55,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -63,13 +71,18 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.resources.MR
 import id.homebase.resources.vault_gallery_add_page
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_label_placeholder
+import id.homebase.resources.vault_move_to_section
+import id.homebase.resources.vault_move_to_section_target
 import id.homebase.resources.vault_notes_placeholder
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -83,6 +96,8 @@ fun VaultGalleryDetailSheet(
     onAppendPages: () -> Unit,
     onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
+    sections: List<VaultSection>,
+    onMoveToSection: (Uuid) -> Unit,
     localAttachmentStore: LocalAttachmentContextStore,
 ) {
     val scope = rememberCoroutineScope()
@@ -318,6 +333,81 @@ fun VaultGalleryDetailSheet(
             },
         )
 
+        val otherSections = remember(sections, file.groupId) {
+            sections.filter { it.sectionId != file.groupId }
+        }
+        if (otherSections.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            MoveToSectionRow(
+                sections = otherSections,
+                onMoveToSection = onMoveToSection,
+            )
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun MoveToSectionRow(
+    sections: List<VaultSection>,
+    onMoveToSection: (Uuid) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val moveLabel = stringResource(MR.string.vault_move_to_section)
+
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClickLabel = moveLabel) { expanded = true }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.DriveFileMove,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = moveLabel,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            sections.forEach { section ->
+                val itemLabel = stringResource(
+                    MR.string.vault_move_to_section_target,
+                    section.title,
+                )
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = section.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onMoveToSection(section.sectionId)
+                    },
+                    modifier = Modifier.semantics { contentDescription = itemLabel },
+                )
+            }
+        }
     }
 }
