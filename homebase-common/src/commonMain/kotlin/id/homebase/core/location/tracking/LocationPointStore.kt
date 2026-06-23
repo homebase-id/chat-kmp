@@ -25,6 +25,14 @@ class LocationPointStore(
     private val databaseManager: DatabaseManager,
     private val deviceSensors: DeviceSensors,
     /**
+     * Read at submit() time to decide whether to PERSIST a fix as history. A live share holds
+     * GPS on even with tracking off (the coordinator's wantsGps()), so fixes still arrive here —
+     * but with tracking off they must only be relayed, never recorded as the user's history
+     * (bug #823). Relay (onPointsBuffered + lastPoint) stays unconditional. Defaults to true so
+     * tests and any non-tracking caller persist as before; AppModule wires the live preference.
+     */
+    private val isTrackingEnabled: () -> Boolean = { true },
+    /**
      * Invoked after a non-empty batch lands in the buffer, on submit()'s
      * coroutine. Wired in AppModule to the uploader's rate-gated flushIfDue so
      * EVERY capture path triggers a drain — the Android background receiver AND
@@ -75,14 +83,22 @@ class LocationPointStore(
                 steps = if (i == lastIndex) sample?.deltaSteps else null,
             )
         }
-        databaseManager.locationPoint.insertPoints(buffered)
+        // Persist as history ONLY when tracking is on. With tracking off (fixes arriving solely
+        // because a live share holds GPS on), skip the DB insert so no history/trace/point-count
+        // is recorded — but still update _lastPoint and fire onPointsBuffered below so the live
+        // share keeps relaying (bug #823).
+        val persist = isTrackingEnabled()
+        if (persist) {
+            databaseManager.locationPoint.insertPoints(buffered)
+        }
         _lastPoint.value = last
         // Info (not debug) so the background capture/upload pipeline is auditable
         // in homebase.log — pending is the not-yet-uploaded backlog that the
         // iPhone stall would have shown climbing without a flush.
         val pending = runCatching { databaseManager.locationPoint.countUnmarked() }.getOrDefault(-1L)
         logger.i {
-            "Buffered ${accepted.size}/${points.size} points pending=$pending " +
+            val verb = if (persist) "Buffered" else "Relayed-only (tracking off)"
+            "$verb ${accepted.size}/${points.size} points pending=$pending " +
                 "(last src=${last?.src} bat=$battery steps=${sample?.deltaSteps})"
         }
         // Trigger a drain from common code so iOS gets the same background flush

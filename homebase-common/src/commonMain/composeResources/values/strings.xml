@@ -1311,6 +1311,8 @@
     <string name="location_dashboard_live_section">Live location sharing</string>
     <string name="location_dashboard_live_open">Open live map</string>
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
+    <string name="location_maps_off_title">Maps are turned off</string>
+    <string name="location_maps_off_cta">Turn on maps</string>
     <string name="location_dashboard_sharing_with">Sharing with</string>
     <string name="location_dashboard_sharing_with_you">Sharing with you</string>
     <string name="location_dashboard_share_until">until %1$s</string>
