@@ -239,6 +239,7 @@ class VaultViewModel(
             is VaultUiAction.DeletePage,
             is VaultUiAction.UpdateNotes,
             is VaultUiAction.UpdateLabel,
+            is VaultUiAction.MoveEntryToSection,
             is VaultUiAction.SharePage,
             is VaultUiAction.SavePage,
             is VaultUiAction.ShareFile,
@@ -275,6 +276,7 @@ class VaultViewModel(
             is VaultUiAction.DeletePage -> handleDeletePage(action)
             is VaultUiAction.UpdateNotes -> handleUpdateNotes(action)
             is VaultUiAction.UpdateLabel -> handleUpdateLabel(action)
+            is VaultUiAction.MoveEntryToSection -> handleMoveEntryToSection(action)
             is VaultUiAction.SharePage -> handleSharePage(action)
             is VaultUiAction.SavePage -> handleSavePage(action)
             is VaultUiAction.EntryClicked -> handleEntryClicked(action)
@@ -653,6 +655,24 @@ class VaultViewModel(
             )
             if (!success) {
                 _events.tryEmit(VaultUiEvent.Error(VaultError.UpdateLabelFailed(action.file.fileName)))
+            }
+        }
+    }
+
+    private fun handleMoveEntryToSection(action: VaultUiAction.MoveEntryToSection) {
+        val sourceSectionId = action.entry.groupId
+        if (sourceSectionId == action.targetSectionId) return
+
+        _overlayState.update { null }
+        vaultStream.moveOptimisticEntry(action.entry.uniqueId, action.targetSectionId)
+
+        viewModelScope.launch {
+            val success = vaultService.moveEntryToSection(action.entry, action.targetSectionId)
+            if (!success) {
+                if (sourceSectionId != null) {
+                    vaultStream.moveOptimisticEntry(action.entry.uniqueId, sourceSectionId)
+                }
+                _events.tryEmit(VaultUiEvent.Error(VaultError.MoveEntryFailed))
             }
         }
     }

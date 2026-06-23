@@ -273,6 +273,29 @@ class VaultService(
         }
     }
 
+    suspend fun moveEntryToSection(
+        entry: VaultEntry,
+        targetSectionId: Uuid,
+    ): Boolean {
+        return try {
+            enqueueFileContentUpdate(
+                uniqueId = entry.uniqueId,
+                fileContent = VaultFileContent(
+                    name = entry.fileName,
+                    label = entry.label,
+                    notes = entry.notes,
+                    pdfPageCount = entry.pdfPageCount,
+                ),
+                groupId = targetSectionId,
+                versionTag = entry.versionTag,
+                keyHeader = entry.keyHeader,
+            )
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to enqueue move for ${entry.uniqueId} -> $targetSectionId" }
+            false
+        }
+    }
+
     suspend fun updateNotes(
         entry: VaultEntry,
         notes: String?,
