@@ -382,6 +382,43 @@ class ConversationService(
     )
 
     /**
+     * Notifies [recipient] that the local user has designated them as an emergency contact by
+     * posting a [StatusMessage.EmergencyContactDesignated] status into their 1:1 conversation
+     * (created if it doesn't exist yet). [StatusMessageData.subject] carries [recipient] so the
+     * sender's own copy renders "You added {recipient}…"; the receiver's copy renders "{sender}
+     * added you…" and drives the receive-side bit (see
+     * [id.homebase.chat.services.convo.ConversationStream.onEmergencyContactDesignated]).
+     *
+     * Unlike the "conversation started" status this is posted on every designation (not just a
+     * freshly-created thread). Best-effort: returns the conversation id on success, or null on
+     * failure (logged). Rethrows cancellation.
+     */
+    suspend fun sendEmergencyContactDesignation(recipient: OdinId): Uuid? {
+        return try {
+            val result = createConversation(
+                recipients = listOf(recipient),
+                title = null,
+                payloadBundle = null,
+            )
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = Uuid.random(),
+                conversationId = result.conversationId,
+                previousMessageUniqueId = result.conversationId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.EmergencyContactDesignated,
+                    subject = recipient,
+                ),
+            )
+            result.conversationId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Failed to send emergency-contact designation to ${recipient.domainName}" }
+            null
+        }
+    }
+
+    /**
      * Creates a conversation file locally and enqueues it for server upload.
      * Shared by [createConversation] and [ensureNoteToSelfExists].
      *
