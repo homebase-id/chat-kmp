@@ -1,6 +1,5 @@
 package id.homebase.core.di
 
-import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.dice.ShakeEvent
 import id.homebase.core.audio.AudioFileInfo
@@ -52,11 +51,6 @@ internal class WebAudioWaveFormGenerator : AudioWaveFormGenerator {
 
     override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
         ByteArray(0)
-}
-
-internal class WebDatabaseSizeProbe : DatabaseSizeProbe {
-    // In-memory sql.js — no on-disk footprint to report.
-    override fun sizeBytes(): Long = 0L
 }
 
 internal class WebShakeDetector : ShakeDetector {
