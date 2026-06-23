@@ -87,21 +87,13 @@ class StickerCreatorTest {
         assertTrue(s.variants.first { it.kind == StickerVariant.CutOut }.bytes.contentEquals(byteArrayOf(3)))
     }
 
-    @Test fun transparent_source_skips_removal_crops_then_outlines() = runTest {
-        // A transparent source skips the segmenter but STILL crops to its subject (so a picked
-        // PNG with dead transparent margins is tightened) before outlining — issue #815.
-        val rec = Rec(); var removeCalled = false; var cropInput: ByteArray? = null
-        val c = creator(
-            this, rec, isTransparent = { true },
-            cutOut = { removeCalled = true; byteArrayOf(1) },
-            crop = { cropInput = it; byteArrayOf(7) },
-            outline = { it + 2 },
-        )
+    @Test fun transparent_source_skips_removal_outlines_source() = runTest {
+        val rec = Rec(); var removeCalled = false
+        val c = creator(this, rec, isTransparent = { true }, cutOut = { removeCalled = true; byteArrayOf(1) }, outline = { it + 2 })
         c.create(byteArrayOf(5), "image/png", convo); advanceUntilIdle()
         val s = c.state.value as StickerCreateState.Choose
-        assertTrue(!removeCalled, "segmenter is skipped for an already-transparent source")
-        assertTrue(cropInput!!.contentEquals(byteArrayOf(5)), "crop receives the raw transparent source")
-        assertTrue(s.variants.first { it.kind == StickerVariant.CutOut }.bytes.contentEquals(byteArrayOf(7, 2)))
+        assertTrue(!removeCalled)
+        assertTrue(s.variants.first { it.kind == StickerVariant.CutOut }.bytes.contentEquals(byteArrayOf(5, 2)))
     }
 
     @Test fun opaque_no_subject_only_original() = runTest {

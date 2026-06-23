@@ -76,7 +76,7 @@ class StickerImageProcessorTest {
         val out = StickerImageProcessor.cropToSubject(src)
 
         val size = ImageUtils.getNaturalSize(out)
-        // Cropped to roughly the oval bbox (~750x500) + a tiny 2% margin — far smaller than the full frame.
+        // Cropped to roughly the oval bbox (~750x500) + a 4% margin — far smaller than the full frame.
         assertTrue(
             size.pixelWidth < 1500 && size.pixelHeight < 1000,
             "must crop tighter than the full frame, was ${size.pixelWidth}x${size.pixelHeight}",

@@ -145,7 +145,7 @@ object StickerImageProcessor {
      * Dispatchers.Default; returns the input unchanged on decode failure / fully-transparent input
      * / any error so it can never block sticker creation.
      */
-    suspend fun cropToSubject(cutOutPng: ByteArray, marginFraction: Float = 0.02f): ByteArray =
+    suspend fun cropToSubject(cutOutPng: ByteArray, marginFraction: Float = 0.04f): ByteArray =
         withContext(Dispatchers.Default) {
             try {
                 val img = ImageUtils.decodeToArgb(cutOutPng) ?: return@withContext cutOutPng
@@ -171,9 +171,7 @@ object StickerImageProcessor {
                 }
 
                 val bw = maxX - minX + 1; val bh = maxY - minY + 1
-                // Tiny margin only — [addWhiteOutline] pads its own canvas by the outline radius,
-                // so the halo is never clipped here. A larger crop margin would just bake dead
-                // transparent space into the upload and render as blank space around the sticker.
+                // Small margin keeps the later white-outline halo from being clipped at the edge.
                 val pad = (maxOf(bw, bh) * marginFraction).roundToInt()
                 val x0 = (minX - pad).coerceAtLeast(0)
                 val y0 = (minY - pad).coerceAtLeast(0)
