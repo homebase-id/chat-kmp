@@ -71,24 +71,26 @@ data class IncomingShareRow(
 /**
  * Main-screen body switch: dashboard once the add-on is fully set up, setup otherwise.
  *
- * A tracker device only reaches the dashboard once it is [activated], tracking is on,
- * AND its location permissions are complete ([permissionsComplete] = while-in-use AND
- * always/background both granted). This keeps a user who just allowed "while using the
- * app" on Setup to finish the background grant, rather than jumping to the dashboard
- * the moment the first permission lands (and auto-enables tracking).
+ * A tracker device reaches the dashboard once it is [activated] AND its location permissions
+ * are complete ([permissionsComplete] = while-in-use AND always/background both granted). The
+ * landing keys on the GRANTS, not the tracking master switch: a user with both grants but
+ * "Track my location" off still wants the dashboard (to view live shares / others), so gating
+ * on the toggle wrongly stranded them on Setup (bug #822). Conversely, with both grants denied,
+ * permissionsComplete is false and they land on Setup — where they can grant access. A
+ * while-in-use-only grant likewise keeps Setup as the default so the background grant can be
+ * finished.
  *
- * Viewer devices (desktop/web, trackerAvailable = false) never track or request
- * permissions — once activated they are pure viewers and always get the dashboard;
- * requiring the switch or permissions would strand them on Setup forever.
+ * Viewer devices (desktop/web, trackerAvailable = false) never track or request permissions —
+ * once activated they are pure viewers and always get the dashboard; requiring permissions
+ * would strand them on Setup forever.
  */
 fun isDashboard(
     activated: Boolean,
-    trackingEnabled: Boolean,
     trackerAvailable: Boolean,
     permissionsComplete: Boolean,
     setupOverride: Boolean,
 ): Boolean = !setupOverride && activated &&
-    (!trackerAvailable || (trackingEnabled && permissionsComplete))
+    (!trackerAvailable || permissionsComplete)
 
 sealed interface LocationUiAction {
     data object SetupClicked : LocationUiAction
