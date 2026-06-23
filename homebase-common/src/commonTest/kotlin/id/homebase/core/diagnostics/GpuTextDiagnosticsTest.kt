@@ -33,7 +33,7 @@ class GpuTextDiagnosticsTest {
     fun fullSnapshotEmitsEveryFieldInOrder() {
         val line = GpuTextDiagnostics.format(
             GpuTextDiagnostics.Snapshot(
-                event = GpuTextDiagnostics.Event.MemoryWarning,
+                event = GpuTextDiagnostics.Event.Foreground,
                 note = "after lunch",
                 backgroundDurationMs = 5_400_000,
                 fontCacheUsedBytes = 16_504,
@@ -45,16 +45,10 @@ class GpuTextDiagnosticsTest {
             )
         )
         assertEquals(
-            "event=MemoryWarning note=\"after lunch\" bgMs=5400000 " +
+            "event=Foreground note=\"after lunch\" bgMs=5400000 " +
                 "fontCacheUsed=16504 fontCacheLimit=33554432 fontCacheCount=42 " +
                 "thermal=serious lowPower=true physMemMb=6144",
             line,
         )
-    }
-
-    @Test
-    fun captureRoutesThroughManualCaptureEventWithReasonAsNote() {
-        // No Probe registered in a JVM test, so capture() is a no-op that must not throw.
-        GpuTextDiagnostics.capture("manual shake")
     }
 }
