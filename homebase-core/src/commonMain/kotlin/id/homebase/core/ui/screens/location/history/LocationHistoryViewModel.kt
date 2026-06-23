@@ -50,6 +50,16 @@ class LocationHistoryViewModel(
             is LocationHistoryUiAction.SelectDay -> loadDay(localDayStart(action.dayStartMs))
             LocationHistoryUiAction.PreviousDay -> loadDay(shiftDay(_uiState.value.dayStartMs, -1))
             LocationHistoryUiAction.NextDay -> loadDay(shiftDay(_uiState.value.dayStartMs, 1))
+            LocationHistoryUiAction.DeleteHistoryForDay -> deleteDay(_uiState.value.dayStartMs)
+        }
+    }
+
+    private fun deleteDay(dayStartMs: Long) {
+        _uiState.update { it.copy(isLoading = true) }
+        viewModelScope.launch {
+            runCatching { deviceDirectory.deleteDayTraces(dayStartMs, shiftDay(dayStartMs, 1)) }
+                .onFailure { logger.e(it) { "deleteDayTraces failed for $dayStartMs" } }
+            loadDay(dayStartMs) // re-query → the deleted day now renders empty
         }
     }
 

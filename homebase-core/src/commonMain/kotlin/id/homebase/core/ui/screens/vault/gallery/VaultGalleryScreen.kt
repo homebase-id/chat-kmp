@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalComposeUiApi::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.vault.gallery
 
@@ -60,6 +60,7 @@ import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_delete_confirm_action
@@ -73,6 +74,8 @@ import id.homebase.resources.vault_gallery_save_page
 import id.homebase.resources.vault_gallery_share_page
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.chat.services.LocalAttachmentContextStore
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -90,6 +93,8 @@ fun VaultGalleryScreen(
     onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
     onDeleteEntry: () -> Unit,
+    sections: List<VaultSection>,
+    onMoveToSection: (Uuid) -> Unit,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -294,6 +299,8 @@ fun VaultGalleryScreen(
                                 onShare = { currentDescriptor?.let { onSharePage(it.key) } },
                                 onDelete = { showDeleteEntryConfirm = true },
                                 onDeletePage = { currentDescriptor?.let { pageToDelete = it.key } },
+                                sections = sections,
+                                onMoveToSection = onMoveToSection,
                                 iconTint = MaterialTheme.colorScheme.onSurface,
                             )
                         },

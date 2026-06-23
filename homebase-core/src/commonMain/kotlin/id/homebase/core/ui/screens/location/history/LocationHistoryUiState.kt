@@ -14,4 +14,7 @@ sealed interface LocationHistoryUiAction {
     data class SelectDay(val dayStartMs: Long) : LocationHistoryUiAction
     data object PreviousDay : LocationHistoryUiAction
     data object NextDay : LocationHistoryUiAction
+
+    /** Soft-delete all location history for the currently-shown day, then refresh it empty. */
+    data object DeleteHistoryForDay : LocationHistoryUiAction
 }
