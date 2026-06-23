@@ -147,6 +147,7 @@ class ConversationListViewModel(
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
     private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
+    private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
 ) : ViewModel() {
 
     companion object {
@@ -841,12 +842,23 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
             }
 
+            is ConversationListUiAction.OpenLocationSetup -> {
+                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
+            }
+
             // Live share has two linked halves: the synced *declaration* (the message's
             // liveShareUntilMs header descriptor — Location is a raw-header typed kind, so
             // updateMessage(content = descriptorJson) sets it and syncs to both sides) AND the local
             // *relay* roster that actually streams GPS. Both use the SAME absolute end-time so stop can
             // later remove exactly this share's {recipient, end-time} roster entries.
             is ConversationListUiAction.StartLiveLocationShare -> viewModelScope.launch {
+                // Guard: a live share is pointless if location can't actually capture GPS (add-on not
+                // set up / permission not granted) — prompt the user to set it up instead of silently
+                // broadcasting nothing.
+                if (!liveShareReadiness.isReady()) {
+                    _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
+                    return@launch
+                }
                 val untilMs = Clock.System.now().toEpochMilliseconds() + action.durationMs
                 val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
                 val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)

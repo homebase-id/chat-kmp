@@ -35,6 +35,9 @@ import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.chat.services.livelocation.LiveShareReadiness
+import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.permissions.isLocationPermissionGranted
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -224,6 +227,9 @@ val appModule = module {
         LocationPointStore(
             databaseManager = get(),
             deviceSensors = get(),
+            // History persistence is gated on the tracking master switch; a live share's GPS
+            // fixes are relayed but not recorded as history when tracking is off (bug #823).
+            isTrackingEnabled = { get<LocationPreferences>().trackingEnabled.value },
             // Every buffered batch drains immediately (rate-gated by the
             // uploader). Lazy get() avoids the construction-time cycle; resolved
             // at flush time. This is the iOS background-flush fix — the Apple
@@ -247,6 +253,15 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    // Readiness gate for "Share live location": activated add-on + location permission, so the chat
+    // layer can prompt to set up location instead of starting a share that captures nothing.
+    single<LiveShareReadiness> {
+        val activation = get<OptionalDriveActivation>()
+        LiveShareReadiness {
+            activation.isActivated(locationLabeledDrive) &&
+                isLocationPermissionGranted()
+        }
+    }
     single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
     single {
         LocationTrackUploaderService(
@@ -408,6 +423,14 @@ val appModule = module {
             // a missing promoteToForeground() can't hang the app on "syncing".
             startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
+                // Live Relay receive store: clear any prior identity's positions for a clean
+                // slate (they rehydrate from the server's flush-on-connect). Resolved FIRST and
+                // independent of the other services so its app-lifetime init{} collector is
+                // guaranteed up — a throw in a later location reset() below can't prevent the
+                // consumer from existing when relay packets arrive (bug #824). The collector is
+                // never cancelled here; logout clears it in-stream via SessionEnded.
+                get<LiveLocationReceiveStore>().reset()
+
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()
@@ -469,8 +492,6 @@ val appModule = module {
                 // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
                 get<LiveLocationShareService>().reset()
                 get<LocationTrackingCoordinator>().reset()
-                // In-memory receive store rehydrates from the server's flush-on-connect.
-                get<LiveLocationReceiveStore>().apply { reset(); start() }
             }
         )
     }
@@ -684,6 +705,7 @@ val appModule = module {
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
             liveLocationShareService = get(),
+            liveShareReadiness = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)

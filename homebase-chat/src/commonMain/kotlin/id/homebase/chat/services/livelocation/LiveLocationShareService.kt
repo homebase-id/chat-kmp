@@ -15,6 +15,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -65,6 +69,14 @@ class LiveLocationShareService(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val state = MutableStateFlow(readPersisted())
+
+    /**
+     * The current share roster (all entries, including not-yet-expired ones) for UI to observe —
+     * e.g. the Location Dashboard's "Sharing with" list, which dedups by identity and shows the
+     * longest end-time. Read-only; mutate only through [start]/[stop]/[stopAll].
+     */
+    val recipients: StateFlow<List<TimedRecipient>> =
+        state.map { it.recipients }.stateIn(scope, SharingStarted.Eagerly, state.value.recipients)
 
     // Authoritative throttle bookkeeping — only touched under [sendLock].
     private val sendLock = Mutex()
@@ -119,12 +131,32 @@ class LiveLocationShareService(
         logger.i { "STOP -${recipients.size} until=$endTimeMs entries=${roster.size}" }
     }
 
-    /** Stop ALL live sharing now. Reserved for logout/reset paths — not the per-bubble stop. */
+    /** Stop ALL live sharing now. The Dashboard's "stop sharing with everyone" and logout/reset. */
     suspend fun stopAll() {
         update(LiveShareState())
         onLiveShareChanged() // coordinator stops GPS if nothing else needs it
         logger.i { "STOP ALL" }
     }
+
+    /**
+     * Stop **every** live share to any of [recipients] — all their roster entries, regardless of
+     * end-time. This is the Dashboard's per-person "stop sharing with this person" (the list is
+     * deduped to one row per identity), distinct from [stop] which targets a single
+     * `{recipient, end-time}` share (the per-bubble stop). No-op on an empty list.
+     */
+    suspend fun stopAll(recipients: List<OdinId>) {
+        if (recipients.isEmpty()) return
+        val roster = LiveShareRoster.removeRecipients(
+            current = state.value.recipients,
+            recipients = recipients.map { it.domainName },
+        )
+        update(LiveShareState(roster))
+        onLiveShareChanged() // coordinator stops GPS if nothing else needs it
+        logger.i { "STOP recipients=${recipients.size} entries=${roster.size}" }
+    }
+
+    /** Stop all of one person's live shares. Convenience over [stopAll]`(List<OdinId>)`. */
+    suspend fun stopAll(odinId: OdinId) = stopAll(listOf(odinId))
 
     /**
      * Relay the latest GPS fix to [recipientIds] right now, ignoring the throttle window — used on

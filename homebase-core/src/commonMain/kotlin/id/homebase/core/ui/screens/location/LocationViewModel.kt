@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.convo.contact.ContactService
@@ -19,6 +20,7 @@ import id.homebase.core.ui.screens.location.history.localDayStart
 import id.homebase.core.ui.screens.location.history.shiftDay
 import id.homebase.core.ui.screens.location.livelocation.LIVE_STALE_MS
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
+import id.homebase.core.util.initials
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -172,16 +174,58 @@ class LocationViewModel(
                 _uiState.update { it.copy(pendingUploadCount = n.toInt()) }
             }
         }
-        // "Live location sharing" dashboard section is visible when I'm sharing OR someone's recent
-        // position is in the receive store. isActive() is a plain getter (no flow), so the 30 s ticker
-        // re-evaluates it; the receive store flow covers inbound updates.
+        // "Live location sharing" dashboard section: who I'm sharing with (deduped, longest until),
+        // who's sharing with me (with age), and whether to show the section/map-link at all. Recomputed
+        // on the 30 s ticker so the live entries prune and ages/until stay fresh without a second timer.
         viewModelScope.launch {
-            combine(receiveStore.positions, liveTicker()) { positions, _ ->
+            combine(
+                liveShareService.recipients,
+                receiveStore.positions,
+                liveTicker(),
+            ) { roster, positions, _ ->
                 val now = Clock.System.now().toEpochMilliseconds()
-                liveShareService.isActive() ||
-                    positions.values.any { now - it.receivedAtMs <= LIVE_STALE_MS }
-            }.collect { visible ->
-                _uiState.update { it.copy(liveSharingVisible = visible) }
+
+                // Outgoing: one row per identity, longest end-time across overlapping shares.
+                val outgoing = roster
+                    .filter { it.endTimeMs > now }
+                    .groupBy { it.odinId }
+                    .map { (id, entries) ->
+                        val contact = contactService.resolveByOdinId(OdinId(id))
+                        OutgoingShareRow(
+                            odinId = id,
+                            name = contact?.name?.ifEmpty { null } ?: id,
+                            avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
+                            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
+                            untilMs = entries.maxOf { it.endTimeMs },
+                        )
+                    }
+                    .sortedBy { it.name.lowercase() }
+
+                // Incoming: people whose last fix is still fresh, with its age.
+                val incoming = positions.values
+                    .filter { now - it.receivedAtMs <= LIVE_STALE_MS }
+                    .map { lp ->
+                        val id = lp.senderOdinId.domainName
+                        val contact = contactService.resolveByOdinId(lp.senderOdinId)
+                        IncomingShareRow(
+                            odinId = id,
+                            name = contact?.name?.ifEmpty { null } ?: id,
+                            avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
+                            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
+                            ageMs = now - lp.receivedAtMs,
+                        )
+                    }
+                    .sortedBy { it.name.lowercase() }
+
+                Triple(outgoing.isNotEmpty() || incoming.isNotEmpty(), outgoing, incoming)
+            }.collect { (visible, outgoing, incoming) ->
+                _uiState.update {
+                    it.copy(
+                        liveSharingVisible = visible,
+                        outgoingShares = outgoing,
+                        incomingShares = incoming,
+                    )
+                }
             }
         }
     }
@@ -240,6 +284,14 @@ class LocationViewModel(
 
             is LocationUiAction.SetMapProvider -> {
                 viewModelScope.launch { locationPreferences.setMapProvider(action.provider) }
+            }
+
+            is LocationUiAction.StopSharingWith -> {
+                viewModelScope.launch { liveShareService.stopAll(OdinId(action.odinId)) }
+            }
+
+            LocationUiAction.StopSharingWithEveryone -> {
+                viewModelScope.launch { liveShareService.stopAll() }
             }
 
             // Permission requests are dispatched at the screen level (the
