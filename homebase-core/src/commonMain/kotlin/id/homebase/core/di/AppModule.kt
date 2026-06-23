@@ -834,6 +834,8 @@ val appModule = module {
             localAttachmentStore = get(),
             fileOperationsProvider = get(),
             driveSyncManager = get(),
+            cropResultBus = get(),
+            drawResultBus = get(),
         )
     }
     viewModelOf(::VaultSettingsViewModel)

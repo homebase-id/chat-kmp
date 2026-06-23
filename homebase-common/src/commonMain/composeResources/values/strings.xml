@@ -1062,6 +1062,15 @@
     <string name="vault_gallery_delete_file">Delete file</string>
     <string name="vault_gallery_delete_all">Delete all</string>
 
+    <!-- Vault image editor -->
+    <string name="vault_edit_picture">Edit picture</string>
+    <string name="vault_edit_before_adding">Edit before adding?</string>
+    <string name="vault_edit_crop">Crop</string>
+    <string name="vault_edit_draw">Draw</string>
+    <string name="vault_edit_add_as_is">Add as-is</string>
+    <string name="vault_error_edit_page">Couldn't save the edited picture.</string>
+    <string name="vault_error_open_editor">Couldn't open the picture editor.</string>
+
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>
     <string name="vault_notes_placeholder">Add notes about this entry…</string>

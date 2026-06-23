@@ -19,6 +19,8 @@ sealed interface VaultOverlay {
     data class Gallery(val file: VaultEntry, val initialPage: Int = 0) : VaultOverlay
 }
 
+enum class VaultEditorTool { Crop, Draw }
+
 sealed interface VaultUiAction {
     data object SetupClicked : VaultUiAction
     data object DismissOnboardingClicked : VaultUiAction
@@ -37,6 +39,25 @@ sealed interface VaultUiAction {
     data class AppendPages(
         val file: VaultEntry,
         val newFiles: List<PlatformFile>,
+    ) : VaultUiAction
+
+    /** Route a freshly-picked single image through the editor before it lands
+     *  in the existing add/append path. [tool] picks crop vs draw. When
+     *  [appendTo] is non-null the edited image is appended to that entry;
+     *  otherwise it starts a new entry in [sectionId]. */
+    data class EditPickedImageThenAdd(
+        val file: PlatformFile,
+        val tool: VaultEditorTool,
+        val sectionId: Uuid?,
+        val appendTo: VaultEntry?,
+    ) : VaultUiAction
+
+    /** Re-edit an already-stored image page; the edited bytes replace the
+     *  payload at [payloadKey] in place. */
+    data class EditExistingPage(
+        val file: VaultEntry,
+        val payloadKey: String,
+        val tool: VaultEditorTool,
     ) : VaultUiAction
 
     data class DeletePage(
@@ -78,6 +99,8 @@ sealed interface VaultUiEvent {
     ) : VaultUiEvent
     data class Error(val error: VaultError) : VaultUiEvent
     data class OpenNoteEditor(val sectionId: Uuid, val entryId: Uuid? = null) : VaultUiEvent
+    data class NavigateToCropper(val requestId: Uuid) : VaultUiEvent
+    data class NavigateToDrawer(val requestId: Uuid) : VaultUiEvent
 }
 
 sealed interface VaultError {
@@ -94,4 +117,6 @@ sealed interface VaultError {
     data class UpdateLabelFailed(val fileName: String) : VaultError
     data object DownloadPageFailed : VaultError
     data object OutboxUploadFailed : VaultError
+    data object EditPageFailed : VaultError
+    data object OpenEditorFailed : VaultError
 }

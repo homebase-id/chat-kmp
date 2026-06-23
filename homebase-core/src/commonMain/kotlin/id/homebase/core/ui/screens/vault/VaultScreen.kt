@@ -52,6 +52,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.ui.screens.vault.auth.VaultBiometricGate
 import id.homebase.core.ui.screens.vault.components.VaultAddSectionControl
 import id.homebase.core.ui.screens.vault.components.VaultAddEntrySheet
+import id.homebase.core.ui.screens.vault.components.VaultImageEditChoiceSheet
 import id.homebase.core.ui.screens.vault.components.VaultNewSectionSheet
 import id.homebase.core.ui.screens.vault.gallery.VaultGalleryScreen
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -67,6 +68,8 @@ import id.homebase.resources.vault_error_delete_page
 import id.homebase.resources.vault_error_delete_section
 import id.homebase.resources.vault_error_download
 import id.homebase.resources.vault_error_download_page
+import id.homebase.resources.vault_error_edit_page
+import id.homebase.resources.vault_error_open_editor
 import id.homebase.resources.vault_error_outbox_upload
 import id.homebase.resources.vault_error_rename_file
 import id.homebase.resources.vault_error_rename_section
@@ -99,6 +102,8 @@ fun VaultScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToChats: () -> Unit,
     onNavigateToNoteEditor: (sectionId: String, entryId: String?) -> Unit = { _, _ -> },
+    onNavigateToCropper: (Uuid) -> Unit = {},
+    onNavigateToDrawer: (Uuid) -> Unit = {},
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -160,6 +165,8 @@ fun VaultScreen(
                         event.entryId?.toString(),
                     )
                 }
+                is VaultUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
+                is VaultUiEvent.NavigateToDrawer -> onNavigateToDrawer(event.requestId)
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
             }
@@ -187,35 +194,51 @@ fun VaultScreen(
 
     var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
 
-    // Camera picker — dispatches to append or add based on fileForAppend
-    val cameraLauncher = rememberCameraManager { file ->
-        file?.let {
-            val appendFile = fileForAppend
-            if (appendFile != null) {
-                viewModel.onAction(VaultUiAction.AppendPages(appendFile, listOf(it)))
-                fileForAppend = null
-            } else {
-                activeSectionForEntry?.let { section ->
-                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, listOf(it)))
-                }
+    // A freshly-picked single image awaiting the optional "edit before adding?"
+    // choice. Multi-image picks and non-image files skip editing (no batch
+    // editing — out of scope) and dispatch straight to add/append.
+    var pendingImageEditChoice by remember { mutableStateOf<PendingImageEdit?>(null) }
+
+    fun dispatchImagesDirectly(files: List<io.github.vinceglb.filekit.PlatformFile>) {
+        val appendFile = fileForAppend
+        if (appendFile != null) {
+            viewModel.onAction(VaultUiAction.AppendPages(appendFile, files))
+            fileForAppend = null
+        } else {
+            activeSectionForEntry?.let { section ->
+                viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
             }
         }
     }
 
-    // Image picker — dispatches to append or add based on fileForAppend
+    // Camera picker — single image; offer the optional editor before upload.
+    val cameraLauncher = rememberCameraManager { file ->
+        file?.let {
+            pendingImageEditChoice = PendingImageEdit(
+                file = it,
+                sectionId = activeSectionForEntry?.sectionId,
+                appendTo = fileForAppend,
+            )
+            fileForAppend = null
+        }
+    }
+
+    // Image picker — single pick offers the optional editor; multi-pick goes
+    // straight through (batch editing is out of scope).
     val imagePicker = rememberFilePickerLauncher(
         type = FileKitType.Image,
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (!files.isNullOrEmpty()) {
-            val appendFile = fileForAppend
-            if (appendFile != null) {
-                viewModel.onAction(VaultUiAction.AppendPages(appendFile, files))
+            if (files.size == 1) {
+                pendingImageEditChoice = PendingImageEdit(
+                    file = files.first(),
+                    sectionId = activeSectionForEntry?.sectionId,
+                    appendTo = fileForAppend,
+                )
                 fileForAppend = null
             } else {
-                activeSectionForEntry?.let { section ->
-                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
-                }
+                dispatchImagesDirectly(files)
             }
         }
     }
@@ -357,6 +380,11 @@ fun VaultScreen(
                             onDeleteEntry = {
                                 viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
                             },
+                            onEditPage = { payloadKey, tool ->
+                                viewModel.onAction(
+                                    VaultUiAction.EditExistingPage(overlay.file, payloadKey, tool)
+                                )
+                            },
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@AnimatedContent,
                         )
@@ -435,6 +463,48 @@ fun VaultScreen(
         )
     }
 
+    // Optional "edit before adding?" sheet for a freshly-picked single image.
+    pendingImageEditChoice?.let { pending ->
+        val sheetState = rememberModalBottomSheetState()
+        VaultImageEditChoiceSheet(
+            sheetState = sheetState,
+            onCrop = {
+                viewModel.onAction(
+                    VaultUiAction.EditPickedImageThenAdd(
+                        file = pending.file,
+                        tool = VaultEditorTool.Crop,
+                        sectionId = pending.sectionId,
+                        appendTo = pending.appendTo,
+                    )
+                )
+                pendingImageEditChoice = null
+            },
+            onDraw = {
+                viewModel.onAction(
+                    VaultUiAction.EditPickedImageThenAdd(
+                        file = pending.file,
+                        tool = VaultEditorTool.Draw,
+                        sectionId = pending.sectionId,
+                        appendTo = pending.appendTo,
+                    )
+                )
+                pendingImageEditChoice = null
+            },
+            onAddAsIs = {
+                val appendTo = pending.appendTo
+                if (appendTo != null) {
+                    viewModel.onAction(VaultUiAction.AppendPages(appendTo, listOf(pending.file)))
+                } else if (pending.sectionId != null) {
+                    viewModel.onAction(
+                        VaultUiAction.AddEntryToSection(pending.sectionId, listOf(pending.file))
+                    )
+                }
+                pendingImageEditChoice = null
+            },
+            onDismiss = { pendingImageEditChoice = null },
+        )
+    }
+
     // Section delete confirmation dialog
     sectionToDelete?.let { section ->
         AlertDialog(
@@ -508,6 +578,12 @@ fun VaultScreen(
 
 private enum class VaultPickerAction { Camera, Gallery, File, Note }
 
+private data class PendingImageEdit(
+    val file: io.github.vinceglb.filekit.PlatformFile,
+    val sectionId: Uuid?,
+    val appendTo: VaultEntry?,
+)
+
 @Composable
 private fun resolveVaultError(error: VaultError): String = when (error) {
     VaultError.CreateSectionFailed -> stringResource(MR.string.vault_error_create_section)
@@ -523,4 +599,6 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     is VaultError.UpdateLabelFailed -> stringResource(MR.string.vault_error_update_label, error.fileName)
     VaultError.DownloadPageFailed -> stringResource(MR.string.vault_error_download_page)
     VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
+    VaultError.EditPageFailed -> stringResource(MR.string.vault_error_edit_page)
+    VaultError.OpenEditorFailed -> stringResource(MR.string.vault_error_open_editor)
 }

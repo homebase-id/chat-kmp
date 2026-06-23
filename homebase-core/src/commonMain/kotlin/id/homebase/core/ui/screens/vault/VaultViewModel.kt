@@ -20,8 +20,11 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
+import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.util.resolveContentType
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.imageeditor.ui.CropResultBus
+import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
@@ -60,6 +63,8 @@ class VaultViewModel(
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveSyncManager: DriveSyncManager,
+    private val cropResultBus: CropResultBus,
+    private val drawResultBus: DrawResultBus,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
@@ -236,6 +241,8 @@ class VaultViewModel(
             is VaultUiAction.MoveSectionDown,
             is VaultUiAction.AddEntryToSection,
             is VaultUiAction.AppendPages,
+            is VaultUiAction.EditPickedImageThenAdd,
+            is VaultUiAction.EditExistingPage,
             is VaultUiAction.DeletePage,
             is VaultUiAction.UpdateNotes,
             is VaultUiAction.UpdateLabel,
@@ -272,6 +279,8 @@ class VaultViewModel(
             is VaultUiAction.MoveSectionDown -> handleMoveSectionDown(action.section)
             is VaultUiAction.AddEntryToSection -> handleAddEntryToSection(action)
             is VaultUiAction.AppendPages -> handleAppendPages(action)
+            is VaultUiAction.EditPickedImageThenAdd -> handleEditPickedImageThenAdd(action)
+            is VaultUiAction.EditExistingPage -> handleEditExistingPage(action)
             is VaultUiAction.DeletePage -> handleDeletePage(action)
             is VaultUiAction.UpdateNotes -> handleUpdateNotes(action)
             is VaultUiAction.UpdateLabel -> handleUpdateLabel(action)
@@ -611,6 +620,102 @@ class VaultViewModel(
             }
         }
     }
+
+    // region Image editor (crop/draw) — reuses image-editor-ui's generic seam
+
+    /**
+     * Routes a freshly-picked single image through the crop/draw editor, then
+     * feeds the edited JPEG back into the EXISTING add or append path (so
+     * HEIC→JPEG, thumbnail gen, encryption + outbox are all preserved). The
+     * editor itself is optional — VaultScreen only dispatches this when the
+     * user explicitly chose Crop/Draw; "Add as-is" goes straight to
+     * AddEntryToSection/AppendPages.
+     */
+    private fun handleEditPickedImageThenAdd(action: VaultUiAction.EditPickedImageThenAdd) {
+        launchEditor(
+            tool = action.tool,
+            readSource = { fileOperationsProvider.readFileBytes(action.file.pathCompat) },
+        ) { editedBytes ->
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            val edited = platformFileFromPath(tempPath)
+            val appendTo = action.appendTo
+            if (appendTo != null) {
+                onAction(VaultUiAction.AppendPages(appendTo, listOf(edited)))
+            } else if (action.sectionId != null) {
+                onAction(VaultUiAction.AddEntryToSection(action.sectionId, listOf(edited)))
+            }
+        }
+    }
+
+    /**
+     * Re-edits an already-stored image page. Downloads the page payload,
+     * routes it through the editor, then replaces that payload IN PLACE
+     * (same payload key) rather than appending a new page — so the page count
+     * and order stay stable and the thumbnail simply refreshes.
+     */
+    private fun handleEditExistingPage(action: VaultUiAction.EditExistingPage) {
+        launchEditor(
+            tool = action.tool,
+            readSource = {
+                val path = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                    ?: throw IllegalStateException("Failed to download page payload")
+                fileOperationsProvider.readFileBytes(path)
+            },
+        ) { editedBytes ->
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            // Refresh the gallery thumbnail immediately from the edited local file
+            // while the outbox replace propagates.
+            localAttachmentStore.put(
+                action.file.uniqueId,
+                action.payloadKey,
+                LocalAttachmentContext.Image(localFilePath = tempPath, aspectRatio = null),
+            )
+            val success = vaultUploaderService.replacePagePayload(
+                file = action.file,
+                payloadKey = action.payloadKey,
+                newFilePath = tempPath,
+                contentType = "image/jpeg",
+                scope = viewModelScope,
+            )
+            if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.EditPageFailed))
+        }
+    }
+
+    private fun launchEditor(
+        tool: VaultEditorTool,
+        readSource: suspend () -> ByteArray,
+        onResult: suspend (ByteArray) -> Unit,
+    ) {
+        viewModelScope.launch {
+            try {
+                val bytes = readSource()
+                val requestId = Uuid.random()
+                when (tool) {
+                    VaultEditorTool.Crop -> {
+                        cropResultBus.postSource(requestId, bytes)
+                        viewModelScope.launch {
+                            cropResultBus.resultsFor(requestId).collect { onResult(it.bytes) }
+                        }
+                        _events.tryEmit(VaultUiEvent.NavigateToCropper(requestId))
+                    }
+                    VaultEditorTool.Draw -> {
+                        drawResultBus.postSource(requestId, bytes)
+                        viewModelScope.launch {
+                            drawResultBus.resultsFor(requestId).collect { onResult(it.bytes) }
+                        }
+                        _events.tryEmit(VaultUiEvent.NavigateToDrawer(requestId))
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "Failed to open vault image editor: ${e.message}" }
+                _events.tryEmit(VaultUiEvent.Error(VaultError.OpenEditorFailed))
+            }
+        }
+    }
+
+    // endregion
 
     private fun handleDeletePage(action: VaultUiAction.DeletePage) {
         val isLastPage = action.file.payloadDescriptors.size <= 1

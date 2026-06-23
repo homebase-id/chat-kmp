@@ -27,9 +27,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -61,9 +65,13 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.thumbSizesFrom
+import id.homebase.core.ui.screens.vault.VaultEditorTool
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.resources.MR
+import id.homebase.resources.vault_edit_crop
+import id.homebase.resources.vault_edit_draw
+import id.homebase.resources.vault_edit_picture
 import id.homebase.resources.vault_gallery_add_page
 import id.homebase.resources.vault_gallery_page_counter
 import id.homebase.resources.vault_label_placeholder
@@ -83,6 +91,7 @@ fun VaultGalleryDetailSheet(
     onAppendPages: () -> Unit,
     onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
+    onEditPage: (payloadKey: String, tool: VaultEditorTool) -> Unit,
     localAttachmentStore: LocalAttachmentContextStore,
 ) {
     val scope = rememberCoroutineScope()
@@ -317,6 +326,45 @@ fun VaultGalleryDetailSheet(
                 }
             },
         )
+
+        // Edit-picture actions — only for the current image page. Routes the
+        // stored payload through the shared crop/draw editor; the result
+        // replaces this page's payload in place.
+        val currentDescriptor = pages.getOrNull(pagerState.currentPage)
+        val currentIsImage = currentDescriptor?.contentType?.startsWith("image/") == true
+        if (currentDescriptor != null && currentIsImage) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = stringResource(MR.string.vault_edit_picture),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilledTonalButton(onClick = { onEditPage(currentDescriptor.key, VaultEditorTool.Crop) }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Crop,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(MR.string.vault_edit_crop))
+                }
+                FilledTonalButton(onClick = { onEditPage(currentDescriptor.key, VaultEditorTool.Draw) }) {
+                    Icon(
+                        imageVector = Icons.Outlined.Draw,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(MR.string.vault_edit_draw))
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
     }

@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.media.MediaPager
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.ui.screens.vault.VaultEditorTool
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
@@ -90,6 +91,7 @@ fun VaultGalleryScreen(
     onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
     onDeleteEntry: () -> Unit,
+    onEditPage: (payloadKey: String, tool: VaultEditorTool) -> Unit = { _, _ -> },
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -162,6 +164,7 @@ fun VaultGalleryScreen(
                     onAppendPages = onAppendPages,
                     onUpdateLabel = onUpdateLabel,
                     onUpdateNotes = onUpdateNotes,
+                    onEditPage = onEditPage,
                     localAttachmentStore = localAttachmentStore,
                 )
             },
