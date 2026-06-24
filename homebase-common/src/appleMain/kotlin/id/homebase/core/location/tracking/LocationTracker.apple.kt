@@ -11,6 +11,7 @@ import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
 import platform.CoreLocation.kCLLocationAccuracyBest
 import platform.CoreLocation.kCLLocationAccuracyHundredMeters
+import platform.CoreLocation.kCLLocationAccuracyNearestTenMeters
 import platform.Foundation.NSError
 import platform.Foundation.timeIntervalSince1970
 import platform.darwin.NSObject
@@ -42,13 +43,13 @@ private class AppleLocationTracker(
     override val isAvailable: Boolean = true
 
     private var started = false
-    private var mode = TrackingMode.Background
+    private var profile = TrackingProfile.HistoryBackground
 
     private val delegate = object : NSObject(), CLLocationManagerDelegateProtocol {
         override fun locationManager(manager: CLLocationManager, didUpdateLocations: List<*>) {
             val points = didUpdateLocations
                 .filterIsInstance<CLLocation>()
-                .map { it.toRawPoint(fg = mode == TrackingMode.Foreground) }
+                .map { it.toRawPoint(fg = isForegroundProfile(profile)) }
             if (points.isEmpty()) return
             scope.launch { sink.submit(points) }
         }
@@ -67,22 +68,22 @@ private class AppleLocationTracker(
         }
     }
 
-    override fun start(mode: TrackingMode) {
-        this.mode = mode
-        applyProfile(mode)
+    override fun start(profile: TrackingProfile) {
+        this.profile = profile
+        applyProfile(profile)
         if (started) return
         manager.startMonitoringSignificantLocationChanges()
         manager.startUpdatingLocation()
         started = true
-        logger.i { "Started (mode=$mode)" }
+        logger.i { "Started (profile=$profile)" }
     }
 
-    override fun setMode(mode: TrackingMode) {
-        if (this.mode == mode) return
-        this.mode = mode
+    override fun setProfile(profile: TrackingProfile) {
+        if (this.profile == profile) return
+        this.profile = profile
         if (!started) return
-        applyProfile(mode)
-        logger.i { "Profile -> $mode" }
+        applyProfile(profile)
+        logger.i { "Profile -> $profile" }
     }
 
     override fun stop() {
@@ -92,19 +93,28 @@ private class AppleLocationTracker(
         logger.i { "Stopped" }
     }
 
-    private fun applyProfile(mode: TrackingMode) {
-        when (mode) {
-            TrackingMode.Foreground -> {
+    private fun applyProfile(profile: TrackingProfile) {
+        when (profile) {
+            // Live (share / live-map view): best accuracy, tight filter — fresh fixes matter.
+            TrackingProfile.LiveForeground -> {
                 manager.desiredAccuracy = kCLLocationAccuracyBest
                 manager.distanceFilter = 10.0
             }
-
-            TrackingMode.Background -> {
+            // History-only foreground: balanced — no live consumer needs best accuracy (#846).
+            TrackingProfile.HistoryForeground -> {
+                manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+                manager.distanceFilter = 25.0
+            }
+            // Background (live or history): low power, OS-throttled — unchanged.
+            TrackingProfile.LiveBackground, TrackingProfile.HistoryBackground -> {
                 manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
                 manager.distanceFilter = 50.0
             }
         }
     }
+
+    private fun isForegroundProfile(profile: TrackingProfile): Boolean =
+        profile == TrackingProfile.LiveForeground || profile == TrackingProfile.HistoryForeground
 }
 
 @OptIn(ExperimentalForeignApi::class)

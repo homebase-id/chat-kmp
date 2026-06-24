@@ -34,6 +34,22 @@ class GpsDemand {
     fun wants(allowHistory: Boolean, liveShare: Boolean): Boolean =
         allowHistory || liveShare || tokens.value.isNotEmpty()
 
+    /**
+     * Pick the acquisition profile for the current consumers (#846). A **live** consumer — an active
+     * share OR a transient hold (the live-map view) — wants frequent, high-accuracy fixes and takes
+     * priority; otherwise (history only) use the battery-friendly profile. Crossed with the app's
+     * foreground state. Caller must only act on this when [wants] is true.
+     */
+    fun resolveProfile(isForeground: Boolean, allowHistory: Boolean, liveShare: Boolean): TrackingProfile {
+        val wantsLive = liveShare || hasTransient()
+        return when {
+            wantsLive && isForeground -> TrackingProfile.LiveForeground
+            wantsLive -> TrackingProfile.LiveBackground
+            isForeground -> TrackingProfile.HistoryForeground
+            else -> TrackingProfile.HistoryBackground
+        }
+    }
+
     /** Whether any transient hold is currently held. */
     fun hasTransient(): Boolean = tokens.value.isNotEmpty()
 
