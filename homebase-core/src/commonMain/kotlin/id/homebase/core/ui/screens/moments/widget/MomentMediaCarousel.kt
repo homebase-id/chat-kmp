@@ -113,6 +113,11 @@ fun MomentMediaCarousel(
     // so the previous video pauses without the user having to tap again.
     var playingPayloadKey by remember(messageId) { mutableStateOf<String?>(null) }
 
+    // Set while the centred photo is pinched past fit. Disables page-swiping
+    // so panning a zoomed photo doesn't flip carousel pages; clears (and paging
+    // resumes) when the photo returns to fit or the page scrolls off.
+    var zoomedPageActive by remember(messageId) { mutableStateOf(false) }
+
     // Two modes share this effect:
     //   - autoplayActive=true (card is the visible / active card): autoplay
     //     the current page if it's a video; clear on swipe-to-non-video.
@@ -167,6 +172,9 @@ fun MomentMediaCarousel(
             // descriptor prep finishes before the user lands on the page —
             // arrival should feel instant, not "blank tile that loads in."
             beyondViewportPageCount = 1,
+            // Suspend page-swiping while a photo is zoomed so panning the
+            // zoomed image doesn't flip pages; resumes at fit.
+            userScrollEnabled = !zoomedPageActive,
             // Match the visual pattern of the existing single-cell renderers
             // (no inter-page gap on the moment card). If we want IG-style
             // 4dp "peek" gaps, add `pageSpacing = 4.dp` here.
@@ -230,6 +238,17 @@ fun MomentMediaCarousel(
                     isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
                     messageId = messageId,
                     isUploading = isUploading,
+                    // Inline pinch-zoom; while shrunk for comments the box is a
+                    // short band, so keep the lightweight fit render there.
+                    enableZoom = !fitToContent,
+                    // Only the centred page may gate the pager — a neighbour
+                    // (kept composed by beyondViewportPageCount) can't be
+                    // pinched, but ignore its reports defensively.
+                    onZoomedChanged = { zoomed ->
+                        if (pagerState.currentPage == pageIndex) {
+                            zoomedPageActive = zoomed
+                        }
+                    },
                 )
             }
         }
