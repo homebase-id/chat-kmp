@@ -1477,6 +1477,11 @@ private fun MomentDetailContent(
         pageCount = { pageCount },
     )
 
+    // Set while the centred photo is pinched past fit. Disables the pager's
+    // horizontal paging so panning a zoomed photo doesn't flip pages; clears
+    // (paging resumes) at fit or when the page scrolls off.
+    var zoomedPageActive by remember(moment.id) { mutableStateOf(false) }
+
     // Report the on-screen carousel payload up to the overflow "Save current".
     // Description-only moments have no payloads → report null so the item hides.
     // snapshotFlow already dedups, so this only fires on a real page change.
@@ -1614,7 +1619,11 @@ private fun MomentDetailContent(
                 // page so single-payload moments (the common case) leave the
                 // vertical gesture entirely to the parent. Real carousels keep
                 // horizontal paging.
-                userScrollEnabled = pageCount > 1,
+                //
+                // Also suspend paging while the centred photo is pinched past
+                // fit so panning the zoomed image doesn't flip carousel pages;
+                // paging resumes when it returns to fit.
+                userScrollEnabled = pageCount > 1 && !zoomedPageActive,
             ) { page ->
                 val payload = moment.payloads[page]
                 val contentType = payload.contentType ?: ""
@@ -1707,10 +1716,23 @@ private fun MomentDetailContent(
                             shape = RectangleShape,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
-                            // Tap handled by the wrapping Box above (opens the
-                            // panel); keep the image itself gesture-free so the
-                            // horizontal swipe drives the pager cleanly.
-                            onClick = null,
+                            // With zoom on, the zoomable owns the tap surface:
+                            // at base scale its onTap opens the panel/lightbox;
+                            // while zoomed it pans. With zoom off keep the image
+                            // gesture-free so the tap falls to the wrapping Box
+                            // and the horizontal swipe drives the pager cleanly.
+                            onClick = if (commentsOpen) null else onMediaTap,
+                            // Inline pinch-zoom in the reels viewer. Disabled
+                            // while the media is shrunk to the comments band —
+                            // there the lightweight fit render is enough.
+                            enableZoom = !commentsOpen,
+                            // Only the centred page may gate the pager; ignore a
+                            // composed neighbour's reports defensively.
+                            onZoomedChanged = { zoomed ->
+                                if (pagerState.currentPage == page) {
+                                    zoomedPageActive = zoomed
+                                }
+                            },
                         )
                     }
                 }
