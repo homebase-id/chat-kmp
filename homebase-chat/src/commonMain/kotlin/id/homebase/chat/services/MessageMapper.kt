@@ -47,6 +47,9 @@ import id.homebase.resources.system_group_heal_requested_you
 import id.homebase.resources.system_emergency_contact_designated
 import id.homebase.resources.system_emergency_contact_designated_you
 import id.homebase.resources.system_emergency_contact_designated_you_unknown
+import id.homebase.resources.system_emergency_contact_revoked
+import id.homebase.resources.system_emergency_contact_revoked_you
+import id.homebase.resources.system_emergency_contact_revoked_you_unknown
 import id.homebase.resources.chat_poll_ended_other
 import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
@@ -536,6 +539,16 @@ internal suspend fun renderStatusMessage(
                     TranslationUtil.getString(MR.string.system_emergency_contact_designated_you_unknown)
                 else ->
                     TranslationUtil.getString(MR.string.system_emergency_contact_designated, name)
+            }
+
+        StatusMessage.EmergencyContactRevoked ->
+            when {
+                authorIsYou && subject != null ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you, subject)
+                authorIsYou ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you_unknown)
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked, name)
             }
     }
 }

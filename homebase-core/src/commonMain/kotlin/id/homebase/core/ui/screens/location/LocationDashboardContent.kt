@@ -81,7 +81,7 @@ import id.homebase.resources.location_emergency_access_manage
 import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
-import id.homebase.resources.location_locatable_coming_soon
+import id.homebase.resources.location_locatable_none
 import id.homebase.resources.location_locatable_section
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
@@ -300,24 +300,24 @@ fun LocationDashboardContent(
             }
         }
 
-        // ── Who you can locate (placeholder — reciprocal list, not built yet) ──
+        // ── Who you can locate (contacts carrying our iCanLocate flag) ──
         DashboardSection(title = stringResource(MR.string.location_locatable_section)) {
-            Text(
-                text = stringResource(MR.string.location_locatable_coming_soon),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            PeopleListBody(
+                loaded = uiState.whoICanLocateLoaded,
+                members = uiState.whoICanLocate,
+                emptyText = stringResource(MR.string.location_locatable_none),
             )
         }
 
-        // ── Who can locate you (contacts marked as emergency contacts) ──
+        // ── Who can locate you (members of our emergency-location-access circle) ──
         DashboardSection(
             title = stringResource(MR.string.location_emergency_access_section),
             onManage = onManageEmergencyAccess,
         ) {
-            EmergencyAccessBody(
-                loaded = uiState.emergencyContactsLoaded,
-                members = uiState.emergencyContacts,
+            PeopleListBody(
+                loaded = uiState.whoCanLocateMeLoaded,
+                members = uiState.whoCanLocateMe,
+                emptyText = stringResource(MR.string.location_emergency_access_none),
             )
         }
 
@@ -430,13 +430,14 @@ private fun DashboardSection(
 }
 
 /**
- * Body of the "Who can locate you" section: the members of the "Emergency Location
- * Access" circle. Collapses to an avatar stack that expands to a named list.
+ * Body of a people-list dashboard section ("Who can locate you" / "Who you can locate"): a loading
+ * spinner, an [emptyText] empty state, or an avatar stack that expands to a named list.
  */
 @Composable
-private fun EmergencyAccessBody(
+private fun PeopleListBody(
     loaded: Boolean,
     members: List<ContactUiModel>,
+    emptyText: String,
 ) {
     var expanded by remember { mutableStateOf(false) }
     when {
@@ -448,7 +449,7 @@ private fun EmergencyAccessBody(
         }
 
         members.isEmpty() -> Text(
-            text = stringResource(MR.string.location_emergency_access_none),
+            text = emptyText,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(16.dp),

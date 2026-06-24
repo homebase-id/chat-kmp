@@ -14,7 +14,7 @@ import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.contacts.socialHandles
-import id.homebase.core.contactbook.isEmergencyContact
+import id.homebase.core.contactbook.iCanLocate
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.HomebaseImageData
@@ -63,8 +63,8 @@ data class ContactBookEntry(
     val shortBio: String? = null,
     /** Known social/gaming handles in render order, resolved from [ContactContent.social]. */
     val socialHandles: List<Pair<ContactSocialNetwork, String>> = emptyList(),
-    /** Owner-only flag: this contact is one of our emergency contacts. */
-    val isEmergencyContact: Boolean = false,
+    /** Owner-only flag: we can locate this contact in an emergency (they designated us). */
+    val iCanLocate: Boolean = false,
     val source: String? = null,
     /** Pending (optimistic, not yet confirmed by the drive). */
     val isPending: Boolean = false,
@@ -207,7 +207,7 @@ fun Contact.toContactBookEntry(): ContactBookEntry? {
         status = content.status,
         shortBio = content.shortBio,
         socialHandles = content.socialHandles(),
-        isEmergencyContact = isEmergencyContact(),
+        iCanLocate = iCanLocate(),
         source = content.source,
         driveId = image?.driveId,
         keyHeader = image?.keyHeader,

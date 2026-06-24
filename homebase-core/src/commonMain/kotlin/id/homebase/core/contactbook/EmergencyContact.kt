@@ -25,19 +25,25 @@ import kotlin.uuid.Uuid
  */
 @Serializable
 data class ChatContactAppData(
-    val isEmergencyContact: Boolean = false,
+    /**
+     * Whether *we* can locate this contact in an emergency — i.e. they added us to their emergency
+     * circle, granting our identity `ConditionalTemporalRead` on their location drive. Set on receipt
+     * of their `EmergencyContactDesignated` status message; this flag is the cheap reactive cache,
+     * the authoritative check is a temporal-access preflight against the peer.
+     */
+    val iCanLocate: Boolean = false,
 )
 
-/** Whether this contact is one of our emergency contacts, read from our app-data slot. */
-fun Contact.isEmergencyContact(): Boolean = chatAppData()?.isEmergencyContact == true
+/** Whether we can locate this contact (the cached [ChatContactAppData.iCanLocate] flag). */
+fun Contact.iCanLocate(): Boolean = chatAppData()?.iCanLocate == true
 
 /**
- * Live list of our emergency contacts, derived from [ContactRepository.contacts] via the app-data
+ * Live list of the contacts we can locate, derived from [ContactRepository.contacts] via the app-data
  * flag — so it tracks the same optimistic writes and sync reconciliation. Cold flow: collect it
  * (e.g. `collectAsStateWithLifecycle`) or `stateIn` it yourself. Consumers sort.
  */
-val ContactRepository.emergencyContacts: Flow<List<Contact>>
-    get() = contacts.map { list -> list.filter { it.isEmergencyContact() } }
+val ContactRepository.locatableContacts: Flow<List<Contact>>
+    get() = contacts.map { list -> list.filter { it.iCanLocate() } }
 
 private fun Contact.chatAppData(): ChatContactAppData? =
     appDataFor(AppConfig.APP_ID)?.let {
@@ -45,25 +51,25 @@ private fun Contact.chatAppData(): ChatContactAppData? =
     }
 
 /**
- * Marks the contact as an emergency contact in our app-data slot — a minimal-delta write that merges
- * onto any existing blob ([ContactRepository.setAppData]). Returns the write response, or null on
- * failure; rethrows the same exceptions as [ContactRepository.setAppData].
+ * Marks that we can locate the contact in our app-data slot — a minimal-delta write that merges onto
+ * any existing blob ([ContactRepository.setAppData]). Returns the write response, or null on failure;
+ * rethrows the same exceptions as [ContactRepository.setAppData].
  */
-suspend fun ContactRepository.setEmergencyContact(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
-    writeEmergencyFlag(uniqueId, versionTag, isEmergency = true)
+suspend fun ContactRepository.setICanLocate(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
+    writeICanLocateFlag(uniqueId, versionTag, canLocate = true)
 
-/** Clears the emergency-contact flag in our app-data slot (dropping the slot if it becomes empty). */
-suspend fun ContactRepository.clearEmergencyContact(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
-    writeEmergencyFlag(uniqueId, versionTag, isEmergency = false)
+/** Clears the can-locate flag in our app-data slot (dropping the slot if it becomes empty). */
+suspend fun ContactRepository.clearICanLocate(uniqueId: Uuid, versionTag: Uuid): ContactWriteResponse? =
+    writeICanLocateFlag(uniqueId, versionTag, canLocate = false)
 
-private suspend fun ContactRepository.writeEmergencyFlag(
+private suspend fun ContactRepository.writeICanLocateFlag(
     uniqueId: Uuid,
     versionTag: Uuid,
-    isEmergency: Boolean,
+    canLocate: Boolean,
 ): ContactWriteResponse? {
     val current = contacts.value.firstOrNull { it.uniqueId == uniqueId }?.chatAppData()
         ?: ChatContactAppData()
-    val updated = current.copy(isEmergencyContact = isEmergency)
+    val updated = current.copy(iCanLocate = canLocate)
     return if (updated == ChatContactAppData()) {
         // All flags back to default — drop the whole slot rather than keep an empty blob.
         deleteAppData(uniqueId, AppConfig.APP_ID, versionTag)

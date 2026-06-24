@@ -136,6 +136,14 @@ class ConversationStream(
      * our own contact drive. Side effect only — does not affect message-list dispatch.
      */
     var onEmergencyContactDesignated: (suspend (sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
+
+    /**
+     * Hook invoked when the live receive stream observes an incoming
+     * [StatusMessage.EmergencyContactRevoked] status — i.e. the [sender] removed us from their
+     * emergency circle. Wired in AppModule to clear our can-locate flag for the [sender]. Side effect
+     * only — does not affect message-list dispatch.
+     */
+    var onEmergencyContactRevoked: (suspend (sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion
 
 // region Orphan-recovery: read-path dedup of recover attempts
@@ -429,6 +437,26 @@ class ConversationStream(
         }
     }
 
+    private suspend fun dispatchEmergencyRevocations(messageFiles: List<HomebaseFile>) {
+        val handler = onEmergencyContactRevoked ?: return
+        for (file in messageFiles) {
+            val appData = file.fileMetadata.appData
+            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
+            // originalAuthor is null on our own synced copy, so this only fires on the receiver side.
+            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
+            val content = appData.content ?: continue
+            val status = runCatching {
+                OdinSystemSerializer.deserialize<StatusMessageData>(content)
+            }.getOrNull() ?: continue
+            if (status.statusMessage != StatusMessage.EmergencyContactRevoked) continue
+            try {
+                handler(sender, file)
+            } catch (e: Exception) {
+                Logger.e(e) { "ConversationStream: emergency-revocation handler threw for sender=${sender.domainName}: ${e.message}" }
+            }
+        }
+    }
+
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
@@ -436,8 +464,10 @@ class ConversationStream(
         // handler. Done here (live BatchReceived only — never on cold reads or
         // searches) so the side effects fire exactly once per arrival.
         dispatchGroupHealRequests(messageFiles)
-        // Same live-only contract: mark the sender as an emergency contact when they designate us.
+        // Same live-only contract: mark the sender as an emergency contact when they designate us,
+        // and clear that mark when they revoke us.
         dispatchEmergencyDesignations(messageFiles)
+        dispatchEmergencyRevocations(messageFiles)
 
         // For each file in the batch, map to model (fetch last message from DB if needed).
         // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can

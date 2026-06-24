@@ -72,11 +72,9 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
-import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactRepository
-import id.homebase.api.crypto.Md5
-import id.homebase.core.contactbook.isEmergencyContact
-import id.homebase.core.contactbook.setEmergencyContact
+import id.homebase.core.contactbook.EmergencyContactReceiveService
+import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -150,6 +148,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
@@ -463,6 +462,8 @@ val appModule = module {
                 get<MomentsRecipientLookupService>().start()
                 get<MomentsFeedService>().start()
                 get<MomentGroupService>().start()
+                // Notify peers when our emergency-location circle membership changes (grant/revoke).
+                get<EmergencyCircleNotifier>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -484,33 +485,16 @@ val appModule = module {
                 }
                 // endregion
 
-                // region Emergency contact: incoming EmergencyContactDesignated status
-                // The sender designated us as their emergency contact; mark THEM as an emergency
-                // contact on our own contact drive. Best-effort and idempotent.
-                val contactRepository = get<ContactRepository>()
-                conversationStream.onEmergencyContactDesignated = { sender, _ ->
-                    try {
-                        contactRepository.ensureLoaded()
-                        val uniqueId = Md5.toGuidId(sender.domainName)
-                        val contact = contactRepository.contacts.value
-                            .firstOrNull { it.uniqueId == uniqueId }
-                        val versionTag = contact?.versionTag
-                        when {
-                            // Not a contact on our drive yet — create/enrich it from the sender's
-                            // profile. The flag isn't applied on this delivery; a later designation
-                            // (or a manual mark) sets it once the row exists.
-                            contact == null -> contactRepository.sync(sender)
-                            // Already flagged — idempotent no-op (status messages can re-deliver).
-                            contact.isEmergencyContact() -> Unit
-                            versionTag != null ->
-                                contactRepository.setEmergencyContact(uniqueId, versionTag)
-                            else -> Unit
-                        }
-                    } catch (e: ForbiddenException) {
-                        Logger.w(e) { "emergency designation: missing ManageContacts permission" }
-                    } catch (e: Exception) {
-                        Logger.w(e) { "emergency designation handling failed for ${sender.domainName}" }
-                    }
+                // region Emergency contact: incoming designation / revocation status messages.
+                // A peer adding us to (designation) or removing us from (revocation) their emergency
+                // circle posts us a status; the receive service records/clears our can-locate flag for
+                // them and consumes the message so a re-delivery can't re-apply stale state.
+                val emergencyContactReceive = get<EmergencyContactReceiveService>()
+                conversationStream.onEmergencyContactDesignated = { sender, file ->
+                    emergencyContactReceive.onDesignated(sender, file)
+                }
+                conversationStream.onEmergencyContactRevoked = { sender, file ->
+                    emergencyContactReceive.onRevoked(sender, file)
                 }
                 // endregion
 
@@ -568,6 +552,9 @@ val appModule = module {
 
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
+    singleOf(::EmergencyCircleNotifier)
+    singleOf(::EmergencyContactReceiveService)
+    singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
@@ -797,6 +784,9 @@ val appModule = module {
             uploaderService = get(),
             deviceDirectory = get(),
             contactRepository = get(),
+            connectionService = get(),
+            contactService = get(),
+            emergencyContactReconciler = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),

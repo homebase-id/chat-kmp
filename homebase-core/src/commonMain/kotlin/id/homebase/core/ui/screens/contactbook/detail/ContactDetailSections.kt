@@ -22,7 +22,6 @@ import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Call
-import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.LocationOn
@@ -61,8 +60,6 @@ import id.homebase.resources.contactbook_detail_circles_connect
 import id.homebase.resources.contactbook_detail_circles_empty
 import id.homebase.resources.contactbook_detail_contact_details
 import id.homebase.resources.contactbook_detail_location
-import id.homebase.resources.contactbook_detail_make_emergency
-import id.homebase.resources.contactbook_detail_remove_emergency
 import id.homebase.resources.contactbook_edit_birthday
 import id.homebase.resources.contactbook_edit_email
 import id.homebase.resources.contactbook_edit_given_name
@@ -354,23 +351,6 @@ fun ManagementSection(
             Icons.Outlined.Sync,
             stringResource(MR.string.contactbook_detail_sync),
         ) { onAction(ContactDetailAction.SyncClicked) }
-    }
-
-    // Emergency-contact toggle — only for a synced Homebase identity. Marking notifies the contact
-    // and sets the flag; removing clears it (a dedicated delta write, since the normal content merge
-    // can't express a clear).
-    if (uiState.hasOdinId && uiState.entry?.versionTag != null && !uiState.isSelf) {
-        if (uiState.entry?.isEmergencyContact == true) {
-            ManagementAction(
-                Icons.Outlined.ContactEmergency,
-                stringResource(MR.string.contactbook_detail_remove_emergency),
-            ) { onAction(ContactDetailAction.RemoveEmergencyContactClicked) }
-        } else {
-            ManagementAction(
-                Icons.Outlined.ContactEmergency,
-                stringResource(MR.string.contactbook_detail_make_emergency),
-            ) { onAction(ContactDetailAction.MakeEmergencyContactClicked) }
-        }
     }
 
     // Danger zone — set apart with a divider so it's clearly separated from the rest.

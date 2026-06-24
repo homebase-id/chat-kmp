@@ -13,8 +13,8 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Pins the read side of the app-data emergency flag: [Contact.isEmergencyContact] decodes only THIS
- * app's slot ([AppConfig.APP_ID]) and tolerates absent/foreign/malformed data.
+ * Pins the read side of the app-data can-locate flag: [Contact.iCanLocate] decodes only THIS app's
+ * slot ([AppConfig.APP_ID]) and tolerates absent/foreign/malformed data.
  */
 class EmergencyContactTest {
 
@@ -25,28 +25,28 @@ class EmergencyContactTest {
         Contact(uniqueId = uid, versionTag = null, content = ContactContent(appData = appData))
 
     @Test
-    fun absentAppData_isNotEmergency() {
-        assertFalse(contact(null).isEmergencyContact())
+    fun absentAppData_isNotLocatable() {
+        assertFalse(contact(null).iCanLocate())
     }
 
     @Test
-    fun ourSlotTrue_isEmergency() {
-        assertTrue(contact(mapOf(ourSlot to """{"isEmergencyContact":true}""")).isEmergencyContact())
+    fun ourSlotTrue_isLocatable() {
+        assertTrue(contact(mapOf(ourSlot to """{"iCanLocate":true}""")).iCanLocate())
     }
 
     @Test
-    fun ourSlotFalse_isNotEmergency() {
-        assertFalse(contact(mapOf(ourSlot to """{"isEmergencyContact":false}""")).isEmergencyContact())
+    fun ourSlotFalse_isNotLocatable() {
+        assertFalse(contact(mapOf(ourSlot to """{"iCanLocate":false}""")).iCanLocate())
     }
 
     @Test
     fun anotherAppsSlot_isNotReadAsOurs() {
         val other = "99999999-9999-9999-9999-999999999999"
-        assertFalse(contact(mapOf(other to """{"isEmergencyContact":true}""")).isEmergencyContact())
+        assertFalse(contact(mapOf(other to """{"iCanLocate":true}""")).iCanLocate())
     }
 
     @Test
-    fun malformedSlot_isNotEmergency() {
-        assertFalse(contact(mapOf(ourSlot to "not json {{{")).isEmergencyContact())
+    fun malformedSlot_isNotLocatable() {
+        assertFalse(contact(mapOf(ourSlot to "not json {{{")).iCanLocate())
     }
 }
