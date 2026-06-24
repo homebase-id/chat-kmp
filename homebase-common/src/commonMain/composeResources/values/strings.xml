@@ -1310,6 +1310,10 @@
     <string name="location_history_you">(you)</string>
     <string name="live_location_title">Live location</string>
     <string name="live_location_empty">No one is sharing their live location right now.</string>
+    <string name="live_location_enable_gps_title">Show your location?</string>
+    <string name="live_location_enable_gps_text">Allow location access so your position appears on the map alongside the people sharing with you.</string>
+    <string name="live_location_enable_gps_confirm">Allow</string>
+    <string name="live_location_enable_gps_dismiss">Not now</string>
     <string name="live_location_marker_cd">%1$s's live location</string>
     <string name="live_location_you">You</string>
     <string name="live_location_age_minutes">%1$dm</string>

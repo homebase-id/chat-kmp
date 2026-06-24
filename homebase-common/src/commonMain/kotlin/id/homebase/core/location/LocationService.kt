@@ -80,6 +80,13 @@ class LocationService(
      */
     fun acquireDemand(reason: DemandReason): DemandToken = coordinator.acquireTransientDemand(reason)
 
+    /**
+     * Re-evaluate the GPS hold — e.g. after location permission is granted while a transient demand
+     * is already held (the live map): the held demand now passes the permission gate and GPS arms,
+     * so the user's own dot appears without re-acquiring or leaving the screen.
+     */
+    fun refreshGpsHold() = coordinator.refreshGpsHold()
+
     /** Turn location-history persistence on/off (also arms/disarms GPS accordingly). */
     suspend fun setAllowLocationHistory(enabled: Boolean) =
         coordinator.setAllowLocationHistory(enabled)
