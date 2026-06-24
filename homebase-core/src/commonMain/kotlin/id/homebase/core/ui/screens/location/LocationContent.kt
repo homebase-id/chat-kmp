@@ -84,10 +84,10 @@ fun LocationContent(
                         modifier = Modifier.weight(1f),
                     )
                     Switch(
-                        checked = uiState.trackingEnabled,
-                        onCheckedChange = { onAction(LocationUiAction.SetTrackingEnabled(it)) },
+                        checked = uiState.allowLocationHistory,
+                        onCheckedChange = { onAction(LocationUiAction.SetAllowLocationHistory(it)) },
                         enabled = uiState.trackingAvailable &&
-                            (uiState.trackingEnabled || uiState.whileInUseGranted),
+                            (uiState.allowLocationHistory || uiState.whileInUseGranted),
                     )
                 }
                 if (!uiState.trackingAvailable) {

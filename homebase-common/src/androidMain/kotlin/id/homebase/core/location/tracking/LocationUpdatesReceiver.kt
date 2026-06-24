@@ -39,10 +39,9 @@ class LocationUpdatesReceiver : BroadcastReceiver(), KoinComponent {
         val pendingResult = goAsync()
         scope.launch {
             try {
-                // submit() drains via its onPointsBuffered hook (wired to the
-                // uploader's rate-gated flushIfDue in AppModule) — the same
-                // common trigger iOS now uses, so no platform-specific call here.
-                get<LocationPointStore>().submit(points)
+                // The router (#835) owns persist-vs-relay; submitting here routes background fixes
+                // exactly like foreground ones — history persist (if on) + live relay (if sharing).
+                get<LocationFixRouter>().submit(points)
             } finally {
                 pendingResult.finish()
             }

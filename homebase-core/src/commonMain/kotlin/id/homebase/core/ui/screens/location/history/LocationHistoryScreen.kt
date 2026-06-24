@@ -169,7 +169,7 @@ fun LocationHistoryScreen(
                 showMapTiles = uiState.showMapTiles,
                 isLoading = uiState.isLoading,
                 subjectName = stringResource(MR.string.location_history_you),
-                trackingEnabled = uiState.trackingEnabled,
+                allowLocationHistory = uiState.allowLocationHistory,
                 onEnableTracking = onNavigateToDashboard,
                 modifier = Modifier.weight(1f),
             )

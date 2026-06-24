@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +46,11 @@ fun ZoomableSubSamplingImage(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     onTap: (() -> Unit)? = null,
+    // Fires with `true` once the user pinches past fit and `false` when the
+    // transform returns to fit. Lets a host (e.g. a Moments carousel pager)
+    // disable page-swiping while a photo is zoomed so panning a zoomed image
+    // doesn't flip pages. Off by default — most callers ignore zoom state.
+    onZoomedChanged: ((Boolean) -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
     sharedContentStateKey: String? = null,
@@ -72,6 +78,10 @@ fun ZoomableSubSamplingImage(
     // strict same-aspect-ratio check usually treats as "not a thumbnail" and
     // resets to fit.
     PreserveUserZoomAcrossContentSizeChange(zoomState.zoomable)
+
+    if (onZoomedChanged != null) {
+        ReportZoomedState(zoomState.zoomable, onZoomedChanged)
+    }
 
     val platformContext = LocalPlatformContext.current
     val windowSize = LocalWindowInfo.current.containerSize
@@ -315,5 +325,28 @@ private data class ContentZoomSample(
     val visibleCenterX: Float,
     val visibleCenterY: Float,
 )
+
+/**
+ * Reports whether the user has zoomed past fit (user scale > 1). The visible
+ * region is `baseTransform * userTransform`; only the user transform reflects a
+ * pinch, so a base-painter size change that re-fits the image doesn't read as a
+ * zoom. snapshotFlow already dedups, so [onZoomedChanged] only fires on the 1↔n
+ * crossing. Reports `false` on dispose so a host re-enables paging if this page
+ * scrolls off while still zoomed.
+ */
+@Composable
+private fun ReportZoomedState(
+    zoomable: ZoomableState,
+    onZoomedChanged: (Boolean) -> Unit,
+) {
+    val latestCallback by rememberUpdatedState(onZoomedChanged)
+    DisposableEffect(zoomable) {
+        onDispose { latestCallback(false) }
+    }
+    LaunchedEffect(zoomable) {
+        snapshotFlow { zoomable.userTransform.scaleX > USER_SCALE_EPSILON }
+            .collect { latestCallback(it) }
+    }
+}
 
 private const val USER_SCALE_EPSILON = 1.01f

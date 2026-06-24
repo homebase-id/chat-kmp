@@ -10,7 +10,7 @@ data class LocationUiState(
     val setupInitiated: Boolean = false,
     // Main-screen state
     val activated: Boolean = false,
-    val trackingEnabled: Boolean = false,
+    val allowLocationHistory: Boolean = false,
     val trackingAvailable: Boolean = false,
     /** Bottom-nav icon visibility (soft-launch opt-in), toggled on the Setup screen. */
     val iconVisible: Boolean = false,
@@ -96,7 +96,7 @@ fun isDashboard(
 sealed interface LocationUiAction {
     data object SetupClicked : LocationUiAction
     data object DismissOnboardingClicked : LocationUiAction
-    data class SetTrackingEnabled(val enabled: Boolean) : LocationUiAction
+    data class SetAllowLocationHistory(val enabled: Boolean) : LocationUiAction
     data class SetIconVisible(val visible: Boolean) : LocationUiAction
     data class SetMapProvider(val provider: LocationMapProvider) : LocationUiAction
     /** Stop all of one person's outgoing live shares (Dashboard per-row stop). */

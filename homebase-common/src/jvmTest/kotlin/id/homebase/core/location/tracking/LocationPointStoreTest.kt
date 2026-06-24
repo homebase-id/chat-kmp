@@ -6,8 +6,8 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Sensors stub: fixed battery + step delta, so the store's stamping is testable. */
 private class FakeSensors(
@@ -20,6 +20,11 @@ private class FakeSensors(
         StepSample(delta, cumulative)
 }
 
+/**
+ * Pins the thin-store primitives [LocationPointStore.dedup] (out-of-order + stationary-noise filter)
+ * and [LocationPointStore.persistHistory] (device-reading stamping). The persist-vs-relay routing is
+ * tested in [LocationFixRouterTest].
+ */
 class LocationPointStoreTest {
 
     private fun point(
@@ -47,66 +52,57 @@ class LocationPointStoreTest {
     }
 
     @Test
-    fun dropsStationaryNoiseWithinTimeAndDistanceWindow() = runStoreTest { store, _ ->
+    fun dedupDropsStationaryNoiseWithinTimeAndDistanceWindow() = runStoreTest { store, _ ->
         // ~5.5 m east of the first point (well under 8 m), 10 s later (under 20 s).
-        store.submit(
-            listOf(
-                point(t = 0),
-                point(t = 10_000, lon = 13.00008),
-            )
-        )
-        assertEquals(1, store.countPendingUpload())
+        val accepted = store.dedup(listOf(point(t = 0), point(t = 10_000, lon = 13.00008)))
+        assertEquals(1, accepted.size)
     }
 
     @Test
-    fun keepsPointThatMovedFarEnough() = runStoreTest { store, _ ->
+    fun dedupKeepsPointThatMovedFarEnough() = runStoreTest { store, _ ->
         // ~70 m east, 10 s later — distance clears the gate even though time doesn't.
-        store.submit(
-            listOf(
-                point(t = 0),
-                point(t = 10_000, lon = 13.001),
-            )
-        )
-        assertEquals(2, store.countPendingUpload())
+        val accepted = store.dedup(listOf(point(t = 0), point(t = 10_000, lon = 13.001)))
+        assertEquals(2, accepted.size)
     }
 
     @Test
-    fun keepsStationaryPointAfterTimeWindow() = runStoreTest { store, _ ->
-        store.submit(
-            listOf(
-                point(t = 0),
-                point(t = 25_000),
-            )
-        )
-        assertEquals(2, store.countPendingUpload())
+    fun dedupKeepsStationaryPointAfterTimeWindow() = runStoreTest { store, _ ->
+        val accepted = store.dedup(listOf(point(t = 0), point(t = 25_000)))
+        assertEquals(2, accepted.size)
     }
 
     @Test
-    fun dropsOutOfOrderAndDuplicateTimestamps() = runStoreTest { store, _ ->
-        store.submit(listOf(point(t = 60_000, lon = 14.0)))
-        store.submit(listOf(point(t = 30_000), point(t = 60_000)))
-        assertEquals(1, store.countPendingUpload())
-        assertEquals(60_000, assertNotNull(store.lastPoint.value).t)
+    fun dedupDropsPointsOlderOrEqualToLastKnown() = runStoreTest { store, _ ->
+        store.publishLastKnown(point(t = 60_000, lon = 14.0))
+        // Both are <= the last-known time, so both are dropped (the sort doesn't rescue them).
+        val accepted = store.dedup(listOf(point(t = 30_000), point(t = 60_000)))
+        assertTrue(accepted.isEmpty())
     }
 
     @Test
-    fun dedupsAgainstDbAfterColdStart() = runStoreTest { store, db ->
-        store.submit(listOf(point(t = 0)))
-        // Fresh store instance — in-memory lastPoint empty, must seed from DB.
+    fun dedupUsesDbBaselineAfterColdStart() = runStoreTest { store, db ->
+        store.persistHistory(listOf(point(t = 0)))
+        // Fresh store instance — in-memory lastPoint empty, must seed the dedup baseline from the DB.
         val coldStore = LocationPointStore(db, FakeSensors())
-        coldStore.submit(listOf(point(t = 5_000)))
-        assertEquals(1, coldStore.countPendingUpload())
+        // 5 s later, same spot → stationary noise relative to the persisted point → dropped.
+        val accepted = coldStore.dedup(listOf(point(t = 5_000)))
+        assertTrue(accepted.isEmpty())
     }
 
     @Test
-    fun stampsBatteryOnEveryPointAndStepDeltaOnNewest() = runStoreTest(
+    fun publishLastKnownUpdatesLatest() = runStoreTest { store, _ ->
+        store.publishLastKnown(point(t = 42_000, lon = 9.0))
+        assertEquals(42_000, store.lastPoint.value?.t)
+        assertEquals(9.0, store.lastPoint.value?.lon)
+    }
+
+    @Test
+    fun persistHistoryStampsBatteryOnEveryPointAndStepDeltaOnNewest() = runStoreTest(
         sensors = FakeSensors(battery = 80, delta = 42, cumulative = 1000L),
     ) { store, db ->
-        // Two far-apart points accepted in one submit.
-        store.submit(listOf(point(t = 0), point(t = 60_000, lon = 13.01)))
+        store.persistHistory(listOf(point(t = 0), point(t = 60_000, lon = 13.01)))
         val rows = db.locationPoint.selectByTimeRange(0, 3_600_000)
         assertEquals(2, rows.size)
-        // Battery on both.
         assertEquals(80, rows[0].bat)
         assertEquals(80, rows[1].bat)
         // Step delta only on the newest (the window since the previous point).
@@ -115,67 +111,11 @@ class LocationPointStoreTest {
     }
 
     @Test
-    fun nullSensorsLeaveStepsAndBatteryNull() = runStoreTest { store, db ->
-        store.submit(listOf(point(t = 0)))
+    fun persistHistoryNullSensorsLeaveStepsAndBatteryNull() = runStoreTest { store, db ->
+        store.persistHistory(listOf(point(t = 0)))
         val row = db.locationPoint.selectByTimeRange(0, 3_600_000).single()
         assertNull(row.steps)
         assertNull(row.bat)
-    }
-
-    @Test
-    fun firesFlushTriggerWhenPointsAreBuffered() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val db = DatabaseManager(
-            { JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) },
-            dispatcher = dispatcher,
-            readDispatcher = dispatcher,
-        )
-        try {
-            var triggers = 0
-            val store = LocationPointStore(db, FakeSensors(), onPointsBuffered = { triggers++ })
-            // First batch accepts a point → one trigger.
-            store.submit(listOf(point(t = 0)))
-            assertEquals(1, triggers)
-            // A stationary-noise-only batch buffers nothing → no trigger (the
-            // common flush trigger is the iOS background-flush fix; it must not
-            // fire on dropped fixes).
-            store.submit(listOf(point(t = 5_000, lon = 13.00008)))
-            assertEquals(1, triggers)
-            // A far-enough point is accepted → another trigger.
-            store.submit(listOf(point(t = 25_000, lon = 13.001)))
-            assertEquals(2, triggers)
-        } finally {
-            db.close()
-        }
-    }
-
-    @Test
-    fun trackingOffSkipsPersistButStillRelays() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val db = DatabaseManager(
-            { JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) },
-            dispatcher = dispatcher,
-            readDispatcher = dispatcher,
-        )
-        try {
-            var relays = 0
-            // Tracking OFF: fixes arrive only because a live share holds GPS on (bug #823).
-            val store = LocationPointStore(
-                db,
-                FakeSensors(),
-                isTrackingEnabled = { false },
-                onPointsBuffered = { relays++ },
-            )
-            store.submit(listOf(point(t = 0), point(t = 60_000, lon = 13.01)))
-            // No history persisted: nothing buffered for upload, DB empty, point-count zero.
-            assertEquals(0, store.countPendingUpload())
-            assertEquals(0, db.locationPoint.selectByTimeRange(0, 3_600_000).size)
-            // But the relay seam still fired and lastPoint advanced, so the live share keeps sending.
-            assertEquals(1, relays)
-            assertEquals(60_000, assertNotNull(store.lastPoint.value).t)
-        } finally {
-            db.close()
-        }
     }
 
     @Test

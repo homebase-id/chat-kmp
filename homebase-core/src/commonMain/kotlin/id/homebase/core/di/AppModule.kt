@@ -32,6 +32,7 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
+import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
@@ -153,7 +154,10 @@ import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
 import id.homebase.core.location.tracking.createDeviceSensors
+import id.homebase.core.location.LocationService
+import id.homebase.core.location.tracking.LocationFixRouter
 import id.homebase.core.location.tracking.LocationPointStore
+import id.homebase.core.location.tracking.createOneShotLocationProvider
 import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
@@ -224,28 +228,29 @@ val appModule = module {
     single { LocationPreferences(get()) }
     single { LocationDeviceId() }
     single<DeviceSensors> { createDeviceSensors() }
+    single { LocationPointStore(databaseManager = get(), deviceSensors = get()) }
+    // The single routing seam (#835): every capture path submits here. It owns the persist-vs-relay
+    // decision so the policy is greppable in one place instead of smeared across store + DI + share.
     single {
-        LocationPointStore(
-            databaseManager = get(),
-            deviceSensors = get(),
-            // History persistence is gated on the tracking master switch; a live share's GPS
-            // fixes are relayed but not recorded as history when tracking is off (bug #823).
-            isTrackingEnabled = { get<LocationPreferences>().trackingEnabled.value },
-            // Every buffered batch drains immediately (rate-gated by the
-            // uploader). Lazy get() avoids the construction-time cycle; resolved
-            // at flush time. This is the iOS background-flush fix — the Apple
-            // tracker funnels through submit() and now triggers a flush too.
-            onPointsBuffered = {
-                // Live Relay: relay the latest point if a share is active. Rides this same
-                // background-capable seam (NOT a UI Flow) so it fires on cold-woken background points.
-                get<LiveLocationShareService>().onGpsBuffered()
+        LocationFixRouter(
+            store = get(),
+            // The only place (besides the coordinator's acquire gate) that reads the history flag:
+            // persist iff history on; a live share's fixes relay but aren't recorded (#823).
+            allowHistory = { get<LocationPreferences>().allowLocationHistory.value },
+            // History: persist + drain to hour files (rate-gated). Lazy get() avoids the
+            // construction-time cycle; runs only when history is on.
+            persistAsHistory = { points ->
+                get<LocationPointStore>().persistHistory(points)
                 get<LocationTrackUploaderService>().flushIfDue()
             },
+            // Live: relay the latest fix. Rides this same background-capable seam (NOT a UI Flow) so
+            // it fires on cold-woken background points; self-gates on the share roster.
+            relayLatest = { point -> get<LiveLocationShareService>().relayLatest(point) },
         )
     }
     single {
         LiveLocationShareService(
-            liveRelayProvider = get(),
+            relay = get<LiveRelayProvider>()::relay,
             locationPointStore = get(),
             databaseManager = get(),
             // The coordinator is the single owner of the GPS tracker; the share service only declares
@@ -263,7 +268,7 @@ val appModule = module {
                 isLocationPermissionGranted()
         }
     }
-    single<LocationTracker> { createLocationTracker(get<LocationPointStore>()) }
+    single<LocationTracker> { createLocationTracker(get<LocationFixRouter>()) }
     single {
         LocationTrackUploaderService(
             outboxSync = get(),
@@ -292,6 +297,19 @@ val appModule = module {
             // cold start / iOS relaunch) without referencing homebase-chat.
             liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
         }
+    }
+    // The single public entry point for "this device's location" — composes coordinator (acquire) +
+    // router (route) + store/permission (access). One-shot fixes route through the router too.
+    // The one-shot provider is constructed HERE (not a standalone single) so nothing can inject it
+    // directly and bypass getCurrentGps's routing — every fetched fix is guaranteed to be routed.
+    single {
+        LocationService(
+            coordinator = get(),
+            router = get(),
+            pointStore = get(),
+            preferences = get(),
+            oneShot = createOneShotLocationProvider(),
+        )
     }
     // endregion
 
@@ -795,6 +813,7 @@ val appModule = module {
             locationPreferences = get(),
             pointStore = get(),
             credentialsManager = get(),
+            locationService = get(),
         )
     }
     viewModelOf(::ContactBookViewModel)
