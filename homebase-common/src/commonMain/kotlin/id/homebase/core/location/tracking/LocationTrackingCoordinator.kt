@@ -60,6 +60,10 @@ class LocationTrackingCoordinator(
     private var isForeground = false
     private var tickerJob: Job? = null
 
+    // Tracks whether we've armed the tracker, so [applyGpsHold] logs only on transitions (not on
+    // every idempotent re-evaluation).
+    private var gpsRunning = false
+
     /** GPS should run when history is allowed, a live share needs it, OR a transient hold is held. */
     private fun wantsGps(): Boolean =
         demand.wants(preferences.allowLocationHistory.value, liveShareActive())
@@ -73,12 +77,33 @@ class LocationTrackingCoordinator(
      */
     private fun applyGpsHold() {
         if (!tracker.isAvailable) return
-        if (wantsGps() && canRunGps()) {
+        val wants = wantsGps()
+        if (wants && canRunGps()) {
             tracker.start(if (isForeground) TrackingMode.Foreground else TrackingMode.Background)
             if (isForeground) startTicker()
+            if (!gpsRunning) {
+                gpsRunning = true
+                logger.i {
+                    "GPS armed (mode=${if (isForeground) "FG" else "BG"} " +
+                        "allowHistory=${preferences.allowLocationHistory.value} " +
+                        "liveShare=${liveShareActive()} transient=${demand.hasTransient()})"
+                }
+            }
         } else {
             tracker.stop()
             stopTicker()
+            if (gpsRunning) {
+                gpsRunning = false
+                logger.i { "GPS stopped (nothing wants it, or not permitted)" }
+            }
+            // Key diagnostic for "I'm on the live map but my dot never appears": something wants GPS
+            // (e.g. the live-map transient hold) but it can't run because permission isn't granted.
+            if (wants && !isLocationPermissionGranted()) {
+                logger.i {
+                    "GPS wanted but NOT started — location permission not granted " +
+                        "(transient=${demand.hasTransient()} liveShare=${liveShareActive()})"
+                }
+            }
         }
     }
 

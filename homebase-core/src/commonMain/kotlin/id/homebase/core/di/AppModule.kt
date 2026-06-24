@@ -33,6 +33,7 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
+import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
@@ -248,7 +249,7 @@ val appModule = module {
     }
     single {
         LiveLocationShareService(
-            liveRelayProvider = get(),
+            relay = get<LiveRelayProvider>()::relay,
             locationPointStore = get(),
             databaseManager = get(),
             // The coordinator is the single owner of the GPS tracker; the share service only declares
@@ -296,16 +297,17 @@ val appModule = module {
             liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
         }
     }
-    single { createOneShotLocationProvider() }
     // The single public entry point for "this device's location" — composes coordinator (acquire) +
     // router (route) + store/permission (access). One-shot fixes route through the router too.
+    // The one-shot provider is constructed HERE (not a standalone single) so nothing can inject it
+    // directly and bypass getCurrentGps's routing — every fetched fix is guaranteed to be routed.
     single {
         LocationService(
             coordinator = get(),
             router = get(),
             pointStore = get(),
             preferences = get(),
-            oneShot = get(),
+            oneShot = createOneShotLocationProvider(),
         )
     }
     // endregion

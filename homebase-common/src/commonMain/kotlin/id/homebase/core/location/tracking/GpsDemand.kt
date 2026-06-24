@@ -8,12 +8,6 @@ import kotlinx.coroutines.flow.updateAndGet
 enum class DemandReason {
     /** The live-location map is open and wants the user's own dot. */
     LiveMapOpen,
-
-    /** A one-shot `getCurrentGps()` is in flight. */
-    CurrentFixRequest,
-
-    /** The "share my current location" composer is fetching a fix. */
-    ShareComposer,
 }
 
 /** Released by a transient GPS consumer when it no longer needs GPS. Idempotent. */

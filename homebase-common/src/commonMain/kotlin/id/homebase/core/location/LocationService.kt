@@ -8,6 +8,7 @@ import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.OneShotLocationProvider
 import id.homebase.core.location.tracking.RawLocationPoint
+import co.touchlab.kermit.Logger
 import id.homebase.core.permissions.isLocationPermissionGranted
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Clock
@@ -31,6 +32,8 @@ class LocationService(
     private val permissionGranted: () -> Boolean = ::isLocationPermissionGranted,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
+    private val logger = Logger.withTag("LocationService")
+
     /** Latest known position (updated for every accepted fix, history on or off). */
     val lastKnown: StateFlow<RawLocationPoint?> get() = pointStore.lastPoint
 
@@ -50,11 +53,25 @@ class LocationService(
         maxAgeMs: Long = DEFAULT_MAX_AGE_MS,
         timeoutMs: Long = OneShotLocationProvider.DEFAULT_TIMEOUT_MS,
     ): GpsFixResult {
-        lastKnown.value?.let { if (nowMs() - it.t <= maxAgeMs) return GpsFixResult.Success(it) }
-        if (!permissionGranted()) return GpsFixResult.PermissionDenied
-        return oneShot.getCurrentFix(timeoutMs).also { result ->
-            if (result is GpsFixResult.Success) router.submit(listOf(result.point))
+        lastKnown.value?.let {
+            val age = nowMs() - it.t
+            if (age <= maxAgeMs) {
+                logger.d { "getCurrentGps: served cached fix (age=${age}ms)" }
+                return GpsFixResult.Success(it)
+            }
         }
+        if (!permissionGranted()) {
+            logger.i { "getCurrentGps: location permission not granted" }
+            return GpsFixResult.PermissionDenied
+        }
+        val result = oneShot.getCurrentFix(timeoutMs)
+        if (result is GpsFixResult.Success) {
+            router.submit(listOf(result.point)) // route so the fetched fix isn't wasted
+            logger.i { "getCurrentGps: fetched & routed (src=${result.point.src})" }
+        } else {
+            logger.i { "getCurrentGps: fetch did not yield a fix ($result)" }
+        }
+        return result
     }
 
     /**

@@ -39,7 +39,7 @@ class GpsDemandTest {
     fun refcountsMultipleHolds() {
         val demand = GpsDemand()
         val a = demand.acquire(DemandReason.LiveMapOpen)
-        val b = demand.acquire(DemandReason.CurrentFixRequest)
+        val b = demand.acquire(DemandReason.LiveMapOpen)
         demand.release(a)
         assertTrue(demand.hasTransient()) // b still held
         demand.release(b)
@@ -49,7 +49,7 @@ class GpsDemandTest {
     @Test
     fun releasingUnknownTokenIsNoOp() {
         val demand = GpsDemand()
-        val token = demand.acquire(DemandReason.ShareComposer)
+        val token = demand.acquire(DemandReason.LiveMapOpen)
         demand.release(token + 999) // unknown id
         assertTrue(demand.hasTransient())
         demand.release(token)

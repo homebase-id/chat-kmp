@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.liverelay.LIVE_LOCATION_CHANNEL_KEY
 import id.homebase.api.client.liverelay.LiveLocationCodec
 import id.homebase.api.client.liverelay.LiveLocationPoint
-import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.client.liverelay.LiveShareRoster
 import id.homebase.api.client.liverelay.TimedRecipient
 import id.homebase.api.common.OdinId
@@ -56,7 +55,9 @@ import kotlin.uuid.Uuid
  * / logout — never cleared by a mere app open. Ephemeral by design — no drive writes, no outbox.
  */
 class LiveLocationShareService(
-    private val liveRelayProvider: LiveRelayProvider,
+    /** Relay seam: app→server live-relay POST. Wired to `LiveRelayProvider::relay`; a plain function
+     *  so the share logic is testable without an HttpClient. Returns true on a 2xx. */
+    private val relay: suspend (channelKey: String, recipients: List<String>, blob: String) -> Boolean,
     private val locationPointStore: LocationPointStore,
     private val databaseManager: DatabaseManager,
     /** Wired in AppModule to LocationTrackingCoordinator.refreshGpsHold(). */
@@ -171,7 +172,7 @@ class LiveLocationShareService(
             val blob = LiveLocationCodec.encode(
                 LiveLocationPoint(lat = p.lat, lon = p.lon, acc = p.acc, spd = p.spd, hdg = p.hdg, ts = p.t)
             )
-            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds.distinct(), blob) }
+            runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds.distinct(), blob) }
                 .onFailure { logger.w(it) { "immediate push failed" } }
             lastSentMs = nowMs()
         }
@@ -210,7 +211,7 @@ class LiveLocationShareService(
                     spd = point.spd, hdg = point.hdg, ts = point.t,
                 )
             )
-            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds, blob) }
+            runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds, blob) }
                 .onFailure { logger.w(it) { "relay failed" } }
             lastSentMs = t
         } finally {

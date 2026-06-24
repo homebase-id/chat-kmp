@@ -32,7 +32,12 @@ class LocationFixRouter(
 
     override suspend fun submit(points: List<RawLocationPoint>) {
         val accepted = store.dedup(points)
-        if (accepted.isEmpty()) return
+        if (accepted.isEmpty()) {
+            if (points.isNotEmpty()) {
+                logger.d { "Dropped all ${points.size} fix(es) (out-of-order / stationary-noise)" }
+            }
+            return
+        }
         val latest = accepted.last()
 
         // 1. Latest-known — always.
