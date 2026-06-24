@@ -1343,6 +1343,9 @@
     <string name="location_history_previous_day">Previous day</string>
     <string name="location_history_next_day">Next day</string>
     <string name="location_history_pick_date">Pick a date</string>
+    <string name="location_history_delete_day">Delete history this day</string>
+    <string name="location_history_delete_title">Delete this day?</string>
+    <string name="location_history_delete_text">This permanently removes all location history recorded for this day. This can't be undone.</string>
     <string name="location_history_distance">%1$s km</string>
     <string name="location_history_points">%1$d points</string>
     <string name="location_history_devices">%1$d devices</string>

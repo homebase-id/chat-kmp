@@ -6,8 +6,9 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.IOSFileOperationsProvider
+import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
-import id.homebase.api.sync.database.NativeDatabaseSizeProbe
+import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
 import id.homebase.chat.dice.IosShakeDetector
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
@@ -53,7 +54,7 @@ actual fun platformModule(): Module = module {
     single<AudioRecorder> { IOSAudioRecorder() }
     single<AudioPlayer> { IOSAudioPlayer() }
     single<AudioWaveFormGenerator> { IOSWaveFormGenerator() }
-    single<DatabaseSizeProbe> { NativeDatabaseSizeProbe() }
+    single<DatabaseSizeProbe> { DefaultDatabaseSizeProbe(DatabaseDriverFactory()) }
     single<UpdateAppManager> { IOSUpdateAppManager(get()) }
     single<ShakeDetector> { IosShakeDetector() }
     // Warm pool of AVPlayer instances reused across moments inline-tile

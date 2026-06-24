@@ -303,7 +303,18 @@ class DatabaseManager(
                 factory.deleteOnDiskFiles()
                 DatabaseKeyManager.clearKey()
                 val freshKey = DatabaseKeyManager.getOrGenerateKey()
-                initialize { factory.createDriver(freshKey) }
+                // Wrap the retry: if the reset *also* fails (e.g. the on-disk files
+                // couldn't be removed, or the fresh open is itself broken), surface a
+                // clear, logged fatal instead of letting an opaque exception escape
+                // uncaught from the recovery path — which is how the iOS
+                // "no such column: fileState" double-fault reached users as a bare crash.
+                try {
+                    initialize { factory.createDriver(freshKey) }
+                } catch (retry: Exception) {
+                    Logger.withTag("DatabaseManager")
+                        .e(retry) { "initializeWithRecovery: reset retry also failed — database unopenable" }
+                    throw retry
+                }
             }
         }
     }

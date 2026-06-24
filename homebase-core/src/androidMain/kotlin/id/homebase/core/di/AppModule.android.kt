@@ -10,7 +10,8 @@ import coil3.memory.MemoryCache
 import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.sync.database.AndroidDatabaseSizeProbe
+import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
 import id.homebase.chat.dice.AndroidShakeDetector
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
@@ -69,7 +70,7 @@ actual fun platformModule(): Module = module {
     single<AudioRecorder> { AndroidAudioRecorder(androidContext()) }
     single<AudioPlayer> { AndroidAudioPlayer() }
     single<AudioWaveFormGenerator> { AndroidWaveFormGenerator() }
-    single<DatabaseSizeProbe> { AndroidDatabaseSizeProbe(androidContext()) }
+    single<DatabaseSizeProbe> { DefaultDatabaseSizeProbe(DatabaseDriverFactory(androidContext())) }
     single<UpdateAppManager> { AndroidUpdateAppManager(androidContext()) }
     single<ShakeDetector> { AndroidShakeDetector(androidContext()) }
     // Warm pool of ExoPlayer instances reused across moments inline-video
