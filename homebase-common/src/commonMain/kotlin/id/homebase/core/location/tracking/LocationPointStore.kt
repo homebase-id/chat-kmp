@@ -62,8 +62,16 @@ class LocationPointStore(
         return accepted
     }
 
-    /** A fix closer than [MIN_DISPLACEMENT_M] in space AND [MIN_INTERVAL_MS] in time to the previous
-     *  accepted fix is stationary noise — drop it before it costs DB and upload bytes. */
+    /**
+     * A fix closer than [MIN_DISPLACEMENT_M] in space AND [MIN_INTERVAL_MS] in time to the previous
+     * accepted fix is stationary noise — drop it before it costs DB and upload bytes.
+     *
+     * Deliberately defensive over the OS-level displacement filter (#846 Q3): it is the **single**
+     * gate every capture path funnels through — the Android foreground overlay (10 m), the iOS
+     * distance filter (which drifts and re-fires near the threshold), the background PendingIntent
+     * (25 m), **and** one-shot `getCurrentGps` fixes (no OS displacement filter at all). Enforcing the
+     * 8 m∧20 s rule here guarantees consistent thinning regardless of which source produced the fix.
+     */
     private fun isStationaryNoise(prev: RawLocationPoint, p: RawLocationPoint): Boolean =
         p.t - prev.t < MIN_INTERVAL_MS &&
             haversineMeters(prev.lat, prev.lon, p.lat, p.lon) < MIN_DISPLACEMENT_M

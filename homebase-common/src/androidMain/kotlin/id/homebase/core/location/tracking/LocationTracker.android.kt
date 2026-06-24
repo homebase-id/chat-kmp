@@ -26,11 +26,14 @@ actual fun createLocationTracker(sink: LocationPointSink): LocationTracker =
  *   [LocationUpdatesReceiver] even when the app process is dead (the receiver
  *   wake restarts it). This is the only path that works in the background
  *   without a foreground service, at whatever cadence the OS allows.
- * - **Foreground overlay** (only in [TrackingMode.Foreground]): a high-accuracy
- *   callback at 15s/10m feeding [sink] directly for precise capture while the
- *   user has the app open. Removed on backgrounding; the PendingIntent stays
- *   registered throughout so there is no gap, and the store's time/displacement
- *   dedup absorbs the overlap.
+ * - **Foreground overlay** (only for a foreground profile): a callback feeding
+ *   [sink] directly for precise capture while the user has the app open. Its
+ *   accuracy/cadence depends on the profile (#846): `LiveForeground` runs
+ *   high-accuracy 15s/10m (a live share or the live map wants fresh fixes);
+ *   `HistoryForeground` runs balanced 30s/25m (history-only doesn't need the
+ *   battery cost of second-by-second precision). Removed on backgrounding; the
+ *   PendingIntent stays registered throughout so there is no gap, and the
+ *   store's time/displacement dedup absorbs the overlap.
  *
  * NOTE: this codebase previously saw fused *one-shot* reads (lastLocation /
  * getCurrentLocation) return null (see chat's LocationLauncher.android.kt);
@@ -49,14 +52,17 @@ private class AndroidLocationTracker(
 
     private var started = false
     private var foregroundCallback: LocationCallback? = null
+    // Which foreground profile the overlay is currently registered with (null = no overlay), so a
+    // change between LiveForeground and HistoryForeground re-registers with the new params.
+    private var foregroundProfile: TrackingProfile? = null
 
     private val context: Context get() = ActivityProvider.requireApplicationContext()
     private val fusedClient get() = LocationServices.getFusedLocationProviderClient(context)
 
     @SuppressLint("MissingPermission")
-    override fun start(mode: TrackingMode) {
+    override fun start(profile: TrackingProfile) {
         if (started) {
-            setMode(mode)
+            setProfile(profile)
             return
         }
         runCatching {
@@ -75,51 +81,64 @@ private class AndroidLocationTracker(
             logger.e(it) { "Failed to start location updates" }
             return
         }
-        setMode(mode)
+        setProfile(profile)
     }
 
     @SuppressLint("MissingPermission")
-    override fun setMode(mode: TrackingMode) {
+    override fun setProfile(profile: TrackingProfile) {
         if (!started) return
-        when (mode) {
-            TrackingMode.Foreground -> {
-                if (foregroundCallback != null) return
-                val callback = object : LocationCallback() {
-                    override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
-                        val points = result.locations.map { it.toRawPoint(fg = true) }
-                        if (points.isEmpty()) return
-                        scope.launch { sink.submit(points) }
-                    }
-                }
-                runCatching {
-                    val request = LocationRequest.Builder(
-                        Priority.PRIORITY_HIGH_ACCURACY,
-                        FOREGROUND_INTERVAL_MS,
-                    )
-                        .setMinUpdateDistanceMeters(FOREGROUND_MIN_DISPLACEMENT_M)
-                        .build()
-                    fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
-                    foregroundCallback = callback
-                    logger.i { "Foreground precise overlay on" }
-                }.onFailure { logger.e(it) { "Failed to start foreground overlay" } }
-            }
-
-            TrackingMode.Background -> {
-                foregroundCallback?.let {
-                    fusedClient.removeLocationUpdates(it)
-                    foregroundCallback = null
-                    logger.i { "Foreground precise overlay off" }
-                }
+        val overlay = foregroundOverlayParams(profile)
+        if (overlay == null) {
+            // Background profile — drop the precise overlay; the PendingIntent keeps running.
+            removeForegroundOverlay()
+            return
+        }
+        if (foregroundProfile == profile) return // overlay already running with the right params
+        // Foreground profile changed (e.g. History→Live when a share starts) — re-register.
+        removeForegroundOverlay()
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(result: com.google.android.gms.location.LocationResult) {
+                val points = result.locations.map { it.toRawPoint(fg = true) }
+                if (points.isEmpty()) return
+                scope.launch { sink.submit(points) }
             }
         }
+        runCatching {
+            val request = LocationRequest.Builder(overlay.priority, overlay.intervalMs)
+                .setMinUpdateDistanceMeters(overlay.minDisplacementM)
+                .build()
+            fusedClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+            foregroundCallback = callback
+            foregroundProfile = profile
+            logger.i { "Foreground overlay on (profile=$profile)" }
+        }.onFailure { logger.e(it) { "Failed to start foreground overlay" } }
     }
 
     override fun stop() {
-        foregroundCallback?.let { fusedClient.removeLocationUpdates(it) }
-        foregroundCallback = null
+        removeForegroundOverlay()
         fusedClient.removeLocationUpdates(backgroundPendingIntent())
         started = false
         logger.i { "Stopped all location updates" }
+    }
+
+    private fun removeForegroundOverlay() {
+        foregroundCallback?.let {
+            fusedClient.removeLocationUpdates(it)
+            foregroundCallback = null
+            foregroundProfile = null
+            logger.i { "Foreground overlay off" }
+        }
+    }
+
+    private data class OverlayParams(val priority: Int, val intervalMs: Long, val minDisplacementM: Float)
+
+    /** Foreground overlay params per profile; null for background profiles (no precise overlay). */
+    private fun foregroundOverlayParams(profile: TrackingProfile): OverlayParams? = when (profile) {
+        TrackingProfile.LiveForeground ->
+            OverlayParams(Priority.PRIORITY_HIGH_ACCURACY, LIVE_FG_INTERVAL_MS, LIVE_FG_MIN_DISPLACEMENT_M)
+        TrackingProfile.HistoryForeground ->
+            OverlayParams(Priority.PRIORITY_BALANCED_POWER_ACCURACY, HISTORY_FG_INTERVAL_MS, HISTORY_FG_MIN_DISPLACEMENT_M)
+        TrackingProfile.LiveBackground, TrackingProfile.HistoryBackground -> null
     }
 
     private fun backgroundPendingIntent(): PendingIntent {
@@ -142,8 +161,14 @@ private class AndroidLocationTracker(
         const val BACKGROUND_MAX_DELAY_MS = 600_000L
         const val BACKGROUND_MIN_DISPLACEMENT_M = 25f
 
-        const val FOREGROUND_INTERVAL_MS = 15_000L
-        const val FOREGROUND_MIN_DISPLACEMENT_M = 10f
+        // Live foreground (share or live-map view): high accuracy, frequent — fresh fixes matter.
+        const val LIVE_FG_INTERVAL_MS = 15_000L
+        const val LIVE_FG_MIN_DISPLACEMENT_M = 10f
+
+        // History-only foreground: balanced power, larger displacement. No live consumer needs
+        // second-by-second precision, so trade freshness for battery (#846). Tune on-device.
+        const val HISTORY_FG_INTERVAL_MS = 30_000L
+        const val HISTORY_FG_MIN_DISPLACEMENT_M = 25f
     }
 }
 

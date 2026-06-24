@@ -11,7 +11,7 @@ import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.OneShotLocationProvider
 import id.homebase.core.location.tracking.RawLocationPoint
 import id.homebase.core.location.tracking.StepSample
-import id.homebase.core.location.tracking.TrackingMode
+import id.homebase.core.location.tracking.TrackingProfile
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -35,8 +35,8 @@ class LocationServiceTest {
 
     private object UnavailableTracker : LocationTracker {
         override val isAvailable = false
-        override fun start(mode: TrackingMode) {}
-        override fun setMode(mode: TrackingMode) {}
+        override fun start(profile: TrackingProfile) {}
+        override fun setProfile(profile: TrackingProfile) {}
         override fun stop() {}
     }
 

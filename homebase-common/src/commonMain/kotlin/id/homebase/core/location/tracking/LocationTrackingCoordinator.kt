@@ -60,9 +60,10 @@ class LocationTrackingCoordinator(
     private var isForeground = false
     private var tickerJob: Job? = null
 
-    // Tracks whether we've armed the tracker, so [applyGpsHold] logs only on transitions (not on
-    // every idempotent re-evaluation).
+    // Tracks armed-state + the last-applied profile, so [applyGpsHold] logs only on transitions
+    // (armed/stopped or a profile change), not on every idempotent re-evaluation.
     private var gpsRunning = false
+    private var lastProfile: TrackingProfile? = null
 
     /** GPS should run when history is allowed, a live share needs it, OR a transient hold is held. */
     private fun wantsGps(): Boolean =
@@ -70,6 +71,10 @@ class LocationTrackingCoordinator(
 
     /** GPS can only physically run with hardware present AND location permission granted. */
     private fun canRunGps(): Boolean = tracker.isAvailable && isLocationPermissionGranted()
+
+    /** The acquisition profile for the current foreground state + consumers (#846). */
+    private fun currentProfile(): TrackingProfile =
+        demand.resolveProfile(isForeground, preferences.allowLocationHistory.value, liveShareActive())
 
     /**
      * Start or stop the tracker to match [wantsGps] (gated by [canRunGps]). The single start/stop
@@ -79,21 +84,24 @@ class LocationTrackingCoordinator(
         if (!tracker.isAvailable) return
         val wants = wantsGps()
         if (wants && canRunGps()) {
-            tracker.start(if (isForeground) TrackingMode.Foreground else TrackingMode.Background)
-            if (isForeground) startTicker()
-            if (!gpsRunning) {
-                gpsRunning = true
+            val profile = currentProfile()
+            tracker.start(profile)
+            if (isForeground) startTicker() else stopTicker()
+            if (!gpsRunning || profile != lastProfile) {
                 logger.i {
-                    "GPS armed (mode=${if (isForeground) "FG" else "BG"} " +
+                    "GPS armed (profile=$profile " +
                         "allowHistory=${preferences.allowLocationHistory.value} " +
                         "liveShare=${liveShareActive()} transient=${demand.hasTransient()})"
                 }
             }
+            gpsRunning = true
+            lastProfile = profile
         } else {
             tracker.stop()
             stopTicker()
             if (gpsRunning) {
                 gpsRunning = false
+                lastProfile = null
                 logger.i { "GPS stopped (nothing wants it, or not permitted)" }
             }
             // Key diagnostic for "I'm on the live map but my dot never appears": something wants GPS
@@ -134,12 +142,11 @@ class LocationTrackingCoordinator(
                 "liveShare=${liveShareActive()} transient=${demand.hasTransient()} permitted=${isLocationPermissionGranted()})"
         }
 
+        // A foreground/background transition changes both the desired profile (live/history × FG/BG)
+        // and the flush ticker; re-applying the hold handles start/stop/profile/ticker + logging.
         observeAppForeground { foreground ->
             isForeground = foreground
-            if (wantsGps() && canRunGps()) {
-                tracker.setMode(if (foreground) TrackingMode.Foreground else TrackingMode.Background)
-            }
-            if (foreground) startTicker() else stopTicker()
+            applyGpsHold()
         }
     }
 
@@ -177,6 +184,14 @@ class LocationTrackingCoordinator(
         }
     }
 
+    /**
+     * Foreground flush ticker (#846 Q2). Its job is to **drain the history buffer to hour files even
+     * when no new fixes are arriving** — e.g. a stationary user whose fixes are all dropped by the
+     * store's stationary-noise filter would otherwise never trigger a flush (those are fired from the
+     * router's persist path). It is intentionally slower (120 s) than the uploader's own 60 s flush
+     * rate-gate: the gate bounds how often a flush *can* run; this ticker only guarantees one happens
+     * periodically while foregrounded. Background flushes piggyback on batch deliveries instead.
+     */
     private fun startTicker() {
         if (tickerJob?.isActive == true) return
         tickerJob = scope.launch {
