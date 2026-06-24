@@ -69,8 +69,8 @@ import id.homebase.chat.composer.ComposerEditableField
 import id.homebase.chat.composer.ComposerRow
 import id.homebase.chat.composer.ComposerTitleField
 import id.homebase.chat.conversationlist.materializeForUpload
-import id.homebase.chat.location.LocationResult
-import id.homebase.chat.location.rememberCurrentLocationLauncher
+import id.homebase.core.location.rememberCurrentGps
+import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
@@ -225,24 +225,25 @@ private fun EventComposerContent(
     var fetchingLocation by remember { mutableStateOf(false) }
 
     val locationPreviewProvider: LocationPreviewProvider = koinInject()
-    val currentLocationLauncher = rememberCurrentLocationLauncher { result ->
+    val currentLocationLauncher = rememberCurrentGps { result ->
         when (result) {
-            is LocationResult.Success -> {
+            is GpsFixResult.Success -> {
                 scope.launch {
                     val preview = runCatching {
                         locationPreviewProvider.getLocationPreview(
-                            result.fix.latitude, result.fix.longitude,
+                            result.point.lat, result.point.lon,
                         )
                     }.getOrNull()
                     locationText = preview?.address?.takeIf { it.isNotBlank() }
-                        ?: "${result.fix.latitude}, ${result.fix.longitude}"
-                    locationLat = result.fix.latitude
-                    locationLon = result.fix.longitude
+                        ?: "${result.point.lat}, ${result.point.lon}"
+                    locationLat = result.point.lat
+                    locationLon = result.point.lon
                     fetchingLocation = false
                 }
             }
-            is LocationResult.PermissionDenied,
-            is LocationResult.Unavailable -> {
+            is GpsFixResult.PermissionDenied,
+            is GpsFixResult.Unavailable,
+            is GpsFixResult.Timeout -> {
                 fetchingLocation = false
             }
         }

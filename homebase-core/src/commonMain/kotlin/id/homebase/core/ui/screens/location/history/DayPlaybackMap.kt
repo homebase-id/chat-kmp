@@ -71,8 +71,8 @@ fun DayPlaybackMap(
     modifier: Modifier = Modifier,
     subjectName: String? = null,
     isLoading: Boolean = false,
-    /** Whether personal location tracking is on. Drives the empty-state "turn on tracking" hint. */
-    trackingEnabled: Boolean = true,
+    /** Whether personal location history is on. Drives the empty-state "turn on tracking" hint. */
+    allowLocationHistory: Boolean = true,
     /** Tap target for the empty-state "turn on location tracking" link. Null ⇒ no link (the link is
      *  only meaningful for one's own history, so non-history callers leave it null). */
     onEnableTracking: (() -> Unit)? = null,
@@ -152,7 +152,7 @@ fun DayPlaybackMap(
                         )
                         // Only when this is the user's own history (onEnableTracking provided) and the
                         // day is empty *because* tracking is off — nudge them to turn it on.
-                        if (onEnableTracking != null && !trackingEnabled) {
+                        if (onEnableTracking != null && !allowLocationHistory) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = stringResource(MR.string.location_history_enable_tracking),

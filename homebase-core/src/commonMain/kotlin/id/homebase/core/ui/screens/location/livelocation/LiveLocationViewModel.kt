@@ -7,6 +7,8 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.location.LocationService
+import id.homebase.core.location.tracking.DemandReason
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.util.initials
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,15 +34,26 @@ class LiveLocationViewModel(
     private val locationPreferences: LocationPreferences,
     private val pointStore: LocationPointStore,
     private val credentialsManager: CredentialsManager,
+    private val locationService: LocationService,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) : ViewModel() {
 
     private val ownOdinId = MutableStateFlow<OdinId?>(null)
 
+    // Hold GPS while the live map is open so the user's own dot appears — without enabling location
+    // history (the #841 coupling fix). No-op where GPS is unavailable / permission not yet granted;
+    // released in onCleared when the screen is left.
+    private val demandToken = locationService.acquireDemand(DemandReason.LiveMapOpen)
+
     init {
         viewModelScope.launch {
             ownOdinId.value = runCatching { credentialsManager.getActiveCredentials()?.domain }.getOrNull()
         }
+    }
+
+    override fun onCleared() {
+        demandToken.release()
+        super.onCleared()
     }
 
     // Re-emits so age labels update and stale dots drop without a new store packet.
