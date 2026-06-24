@@ -1298,6 +1298,7 @@
     <string name="location_find_last_seen">Last seen %1$s</string>
     <string name="location_find_battery">🔋 %1$s</string>
     <string name="location_find_no_location">No known location for this device</string>
+    <string name="location_find_history_off">Location history is off, so this device hasn't recorded its position yet.</string>
     <string name="location_find_freshness">Position is as of the device's last upload and this device's last sync.</string>
     <string name="location_find_refresh">Refresh</string>
     <string name="location_dashboard_perm_banner">Location permission needs attention — tap to fix</string>

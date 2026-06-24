@@ -1333,6 +1333,9 @@ fun AppNavHost(
                                             Route.LocationFindDevice(deviceId.toString())
                                         )
                                     },
+                                    // Empty-because-history-off → link to the Location dashboard
+                                    // where the history toggle lives.
+                                    onEnableHistory = openLocation,
                                 )
                             }
                         }

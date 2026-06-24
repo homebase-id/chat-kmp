@@ -1,12 +1,15 @@
 package id.homebase.core.ui.screens.location.devices
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -27,6 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.location.LocationPreviewProvider
@@ -38,10 +43,12 @@ import id.homebase.resources.MR
 import id.homebase.resources.location_device_unnamed
 import id.homebase.resources.location_find_battery
 import id.homebase.resources.location_find_freshness
+import id.homebase.resources.location_find_history_off
 import id.homebase.resources.location_find_last_seen
 import id.homebase.resources.location_find_no_location
 import id.homebase.resources.location_find_refresh
 import id.homebase.resources.location_find_title
+import id.homebase.resources.location_history_enable_tracking
 import id.homebase.resources.menu_back
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -60,6 +67,7 @@ fun FindDeviceScreen(
     viewModel: FindDeviceViewModel,
     onNavigateBack: () -> Unit,
     onOpenDevice: (Uuid) -> Unit,
+    onEnableHistory: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val previewProvider = koinInject<LocationPreviewProvider>()
@@ -161,6 +169,33 @@ fun FindDeviceScreen(
                         when {
                             uiState.isLoading && trace == null ->
                                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+
+                            // This device, empty *because* history is off → link to turn it on,
+                            // instead of a dead-end "no data" + refresh that can never help. Other
+                            // devices (whose tracking we can't control), or history-on-but-no-fix-
+                            // yet, fall through to the plain "no location data" text.
+                            trace == null && uiState.device?.isThisDevice == true &&
+                                !uiState.allowLocationHistory ->
+                                Column(
+                                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        text = stringResource(MR.string.location_find_history_off),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = stringResource(MR.string.location_history_enable_tracking),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        textDecoration = TextDecoration.Underline,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.clickable { onEnableHistory() },
+                                    )
+                                }
 
                             trace == null ->
                                 Text(
