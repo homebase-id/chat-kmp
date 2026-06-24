@@ -108,7 +108,7 @@ private class AppleLocationTracker(
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun CLLocation.toRawPoint(fg: Boolean): RawLocationPoint {
+internal fun CLLocation.toRawPoint(fg: Boolean): RawLocationPoint {
     val (lat, lon) = coordinate.useContents { latitude to longitude }
     return RawLocationPoint(
         t = (timestamp.timeIntervalSince1970 * 1000).toLong(),
