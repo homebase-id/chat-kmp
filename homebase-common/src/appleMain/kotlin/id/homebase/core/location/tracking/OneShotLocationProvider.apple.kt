@@ -32,7 +32,7 @@ private object AppleOneShotLocationProvider : OneShotLocationProvider {
         if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
         return withContext(Dispatchers.Main) {
             withTimeoutOrNull(timeoutMs) {
-                suspendCancellableCoroutine { cont ->
+                suspendCancellableCoroutine<GpsFixResult> { cont ->
                     val mgr = CLLocationManager()
                     mgr.desiredAccuracy = kCLLocationAccuracyBest
                     val delegate = object : NSObject(), CLLocationManagerDelegateProtocol {
