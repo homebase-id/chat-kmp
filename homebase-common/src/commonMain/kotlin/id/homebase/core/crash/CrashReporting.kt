@@ -24,6 +24,9 @@ object CrashReporting {
     private const val LOG_TAIL_CHARS = 32_000
     private const val DEFAULT_KEEP = 5
     private const val LAUNCH_FILE = "launch_failures"
+    // Records the app version that last owned the crash state, so an update can clear
+    // stale reports — see [install].
+    private const val VERSION_FILE = "app_version"
     // iOS only: show next-launch recovery once this many consecutive launches have
     // crashed before reaching a usable state (a startup crash loop). One silent retry.
     private const val STARTUP_FAILURE_THRESHOLD = 2
@@ -39,6 +42,37 @@ object CrashReporting {
         val dir = Path(logDir, "crash")
         this.crashDir = dir
         runCatching { SystemFileSystem.createDirectories(dir) }
+        discardStaleRecoveryStateOnVersionChange(metadata.appVersion)
+    }
+
+    /**
+     * The crash report, its [PENDING_FILE] marker, and the [LAUNCH_FILE] failure counter
+     * all belong to the *binary that wrote them*. After an app update they're no longer
+     * actionable: a crash fixed by the update would otherwise be replayed on the new
+     * version's first launch (the recovery screen shows the OLD version's report — e.g. a
+     * 1.4.1731 crash surfacing on 1.4.1738), and the stale failure counter can trip the
+     * recovery gate even though the new binary never crashed.
+     *
+     * So on the first launch where [current] differs from the stored version, clear the
+     * pending marker, reset the failure counter, and drop every old `crash-*.txt`. A crash
+     * on the *new* version is written after this runs ([install] is the first startup
+     * step), so it is unaffected and surfaces normally. First install ever (no stored
+     * version) just records it without clearing.
+     */
+    private fun discardStaleRecoveryStateOnVersionChange(current: String) {
+        val dir = crashDir ?: return
+        runCatching {
+            val versionFile = Path(dir, VERSION_FILE)
+            val previous = readSmallFile(versionFile)
+            if (previous == current) return
+            if (previous != null) {
+                clearPending()
+                writeLaunchCount(0)
+                pruneOld(keep = 0)
+                runCatching { Logger.i(tag = TAG) { "App version changed ($previous -> $current); cleared stale crash recovery state" } }
+            }
+            writeSmallFile(versionFile, current)
+        }
     }
 
     /**
@@ -53,18 +87,32 @@ object CrashReporting {
         val failures = readLaunchCount()
         val report = pendingReport()
         if (failures >= STARTUP_FAILURE_THRESHOLD && report != null) return report
-        runCatching {
-            SystemFileSystem.sink(Path(dir, LAUNCH_FILE)).buffered().use { it.writeString((failures + 1).toString()) }
-        }
+        writeLaunchCount(failures + 1)
         return null
     }
 
     /** App reached a usable state — reset the consecutive-startup-failure counter. */
     fun markStartupComplete() {
+        writeLaunchCount(0)
+    }
+
+    private fun writeLaunchCount(n: Int) {
         val dir = crashDir ?: return
         runCatching {
-            SystemFileSystem.sink(Path(dir, LAUNCH_FILE)).buffered().use { it.writeString("0") }
+            SystemFileSystem.sink(Path(dir, LAUNCH_FILE)).buffered().use { it.writeString(n.toString()) }
         }
+    }
+
+    /** Read a small single-line marker file (version stamp); null if absent/empty/unreadable. */
+    private fun readSmallFile(path: Path): String? = try {
+        if (SystemFileSystem.metadataOrNull(path) == null) null
+        else SystemFileSystem.source(path).buffered().use { it.readString() }.trim().ifEmpty { null }
+    } catch (t: Throwable) {
+        null
+    }
+
+    private fun writeSmallFile(path: Path, text: String) {
+        runCatching { SystemFileSystem.sink(path).buffered().use { it.writeString(text) } }
     }
 
     private fun readLaunchCount(): Int {
