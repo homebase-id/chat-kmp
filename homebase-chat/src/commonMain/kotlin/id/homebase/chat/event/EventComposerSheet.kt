@@ -41,6 +41,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
@@ -207,23 +208,12 @@ private fun EventComposerContent(
     val systemTz = remember { TimeZone.currentSystemDefault() }
     var timezone by remember { mutableStateOf(systemTz.id) }
 
-    // Default start: next round hour. End: start + 1 hour.
-    val defaultStart = remember {
-        val now = Clock.System.now().toLocalDateTime(systemTz)
-        LocalDateTime(
-            year = now.year, month = now.month, day = now.day,
-            hour = (now.hour + 1).coerceAtMost(23), minute = 0, second = 0, nanosecond = 0,
-        )
-    }
+    // Default window: start = top of the next hour (always in the future, rolls past
+    // midnight), end = start + 1h. Never collapses to start==end — the old hour-clamp did
+    // at/after 22:00, which left Send disabled and the chip at "0m" (#786).
+    val (defaultStart, defaultEnd) = remember { defaultEventWindow(Clock.System.now(), systemTz) }
     var startDateTime by remember { mutableStateOf(defaultStart) }
-    var endDateTime by remember {
-        mutableStateOf(
-            LocalDateTime(
-                year = defaultStart.year, month = defaultStart.month, day = defaultStart.day,
-                hour = (defaultStart.hour + 1).coerceAtMost(23), minute = 0,
-            )
-        )
-    }
+    var endDateTime by remember { mutableStateOf(defaultEnd) }
     var locationText by remember { mutableStateOf("") }
     var locationLat by remember { mutableStateOf<Double?>(null) }
     var locationLon by remember { mutableStateOf<Double?>(null) }
@@ -288,8 +278,12 @@ private fun EventComposerContent(
             sending = true
             scope.launch {
                 val tz = runCatching { TimeZone.of(timezone) }.getOrDefault(systemTz)
-                val startUtcMs = startDateTime.toInstant(tz).toEpochMilliseconds()
-                val endUtcMs = endDateTime.toInstant(tz).toEpochMilliseconds()
+                // If the start drifted into the past while the sheet was open, snap it to
+                // now (shifting the end to preserve the duration) so no past event is sent.
+                val effectiveStart = clampStartToNow(startDateTime, tz, Clock.System.now())
+                val effectiveEnd = shiftEndPreservingDuration(startDateTime, effectiveStart, endDateTime, tz)
+                val startUtcMs = effectiveStart.toInstant(tz).toEpochMilliseconds()
+                val endUtcMs = effectiveEnd.toInstant(tz).toEpochMilliseconds()
                 val descriptor = EventDescriptor(
                     title = title.truncateToCodePoints(MAX_TITLE_CODEPOINTS),
                     description = description.truncateToCodePoints(MAX_DESCRIPTION_CODEPOINTS),
@@ -549,8 +543,12 @@ private fun EventComposerContent(
     if (showStartDate) {
         DatePickerSheet(
             initial = startDateTime,
+            // No past days: lower-bound the picker at today (start-of-day, UTC frame).
+            minDateMillis = remember(systemTz) { startOfTodayUtcMillis(Clock.System.now(), systemTz) },
             onConfirm = { date ->
-                val newStart = LocalDateTime(date.year, date.month, date.day, startDateTime.hour, startDateTime.minute)
+                val picked = LocalDateTime(date.year, date.month, date.day, startDateTime.hour, startDateTime.minute)
+                // A past pick snaps to the current time — events never start in the past.
+                val newStart = clampStartToNow(picked, systemTz, Clock.System.now())
                 endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
                 startDateTime = newStart
                 showStartDate = false
@@ -562,7 +560,9 @@ private fun EventComposerContent(
         TimePickerSheet(
             initial = LocalTime(startDateTime.hour, startDateTime.minute),
             onConfirm = { time ->
-                val newStart = LocalDateTime(startDateTime.year, startDateTime.month, startDateTime.day, time.hour, time.minute)
+                val picked = LocalDateTime(startDateTime.year, startDateTime.month, startDateTime.day, time.hour, time.minute)
+                // A past pick snaps to the current time — events never start in the past.
+                val newStart = clampStartToNow(picked, systemTz, Clock.System.now())
                 endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
                 startDateTime = newStart
                 showStartTime = false
@@ -692,6 +692,46 @@ internal fun eventDurationParts(
         totalMinutes = (end.toInstant(tz) - start.toInstant(tz)).inWholeMinutes,
         sameDay = start.date == end.date,
     )
+
+/**
+ * Default start/end for a fresh composer: start = top of the next hour (always strictly
+ * after [now], rolling past midnight), end = start + 1h. Instant math, so it never collapses
+ * to start==end the way the old `(hour+1).coerceAtMost(23)` did at/after 22:00. Unit-tested
+ * in EventStartValidationTest.
+ */
+internal fun defaultEventWindow(now: Instant, tz: TimeZone): Pair<LocalDateTime, LocalDateTime> {
+    val local = now.toLocalDateTime(tz)
+    val start = LocalDateTime(local.year, local.month, local.day, local.hour, 0)
+        .toInstant(tz).plus(1.hours).toLocalDateTime(tz)
+    val end = start.toInstant(tz).plus(1.hours).toLocalDateTime(tz)
+    return start to end
+}
+
+/**
+ * True when an event starting at [start] in [tz] would begin before [now]. An event can't
+ * start in the past — drives the Send guard + inline error. Unit-tested in
+ * EventStartValidationTest.
+ */
+internal fun isEventStartInPast(start: LocalDateTime, tz: TimeZone, now: Instant): Boolean =
+    start.toInstant(tz) < now
+
+/**
+ * Snap [start] to the current minute (in [tz]) if it would be in the past; otherwise return
+ * it unchanged. Used so a past date/time pick silently becomes "now" rather than erroring.
+ */
+internal fun clampStartToNow(start: LocalDateTime, tz: TimeZone, now: Instant): LocalDateTime {
+    if (!isEventStartInPast(start, tz, now)) return start
+    val n = now.toLocalDateTime(tz)
+    return LocalDateTime(n.year, n.month, n.day, n.hour, n.minute)
+}
+
+/**
+ * UTC-start-of-day millis of "today" in [tz] — the earliest day the start date picker
+ * allows (it greys out anything before this). The picker works in a UTC frame, so today's
+ * local date is mapped to its UTC midnight. Unit-tested in EventStartValidationTest.
+ */
+internal fun startOfTodayUtcMillis(now: Instant, tz: TimeZone): Long =
+    now.toLocalDateTime(tz).date.atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
 
 /** Resource label for a same-day minute count: "30m", "1h", "1h 30m". */
 @Composable
@@ -838,12 +878,27 @@ private fun DatePickerSheet(
     initial: LocalDateTime,
     onConfirm: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
+    /** Earliest selectable day as a UTC-start-of-day millis; null = no lower bound. */
+    minDateMillis: Long? = null,
 ) {
     val initialMs = remember(initial) {
         LocalDate(initial.year, initial.month, initial.day)
             .atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
     }
-    val state = rememberDatePickerState(initialSelectedDateMillis = initialMs)
+    val selectableDates = remember(minDateMillis) {
+        object : SelectableDates {
+            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                minDateMillis == null || utcTimeMillis >= minDateMillis
+            override fun isSelectableYear(year: Int): Boolean =
+                minDateMillis == null ||
+                    year >= Instant.fromEpochMilliseconds(minDateMillis)
+                        .toLocalDateTime(TimeZone.UTC).year
+        }
+    }
+    val state = rememberDatePickerState(
+        initialSelectedDateMillis = initialMs,
+        selectableDates = selectableDates,
+    )
     DatePickerDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
