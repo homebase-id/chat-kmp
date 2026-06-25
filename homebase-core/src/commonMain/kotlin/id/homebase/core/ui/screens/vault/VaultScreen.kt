@@ -77,6 +77,7 @@ import id.homebase.resources.vault_error_save_notes
 import id.homebase.resources.vault_error_update_label
 import id.homebase.resources.vault_error_upload
 import id.homebase.resources.vault_label
+import id.homebase.resources.vault_move_to_section_failed
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.resources.vault_rename_action
 import id.homebase.resources.vault_rename_title
@@ -385,6 +386,12 @@ fun VaultScreen(
                                     VaultUiAction.EditExistingPage(overlay.file, payloadKey, tool)
                                 )
                             },
+                            sections = uiState.sections,
+                            onMoveToSection = { targetSectionId ->
+                                viewModel.onAction(
+                                    VaultUiAction.MoveEntryToSection(overlay.file, targetSectionId),
+                                )
+                            },
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@AnimatedContent,
                         )
@@ -593,6 +600,7 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     VaultError.DownloadFailed -> stringResource(MR.string.vault_error_download)
     is VaultError.RenameFileFailed -> stringResource(MR.string.vault_error_rename_file, error.fileName)
     is VaultError.DeleteFileFailed -> stringResource(MR.string.vault_error_delete_file, error.fileName)
+    VaultError.MoveEntryFailed -> stringResource(MR.string.vault_move_to_section_failed)
     VaultError.AppendPagesFailed -> stringResource(MR.string.vault_error_append_pages)
     VaultError.DeletePageFailed -> stringResource(MR.string.vault_error_delete_page)
     VaultError.SaveNotesFailed -> stringResource(MR.string.vault_error_save_notes)

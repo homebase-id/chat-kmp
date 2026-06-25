@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.location.devices
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.common.time.UnixTimeUtc
@@ -51,6 +52,7 @@ class LocationDeviceDirectory(
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
     private val deviceId: LocationDeviceId,
+    private val driveFileProvider: DriveFileProvider,
 ) {
     private val logger = Logger.withTag("LocationDeviceDirectory")
     private val driveId = locationLabeledDrive.drive.alias
@@ -151,6 +153,47 @@ class LocationDeviceDirectory(
             dayStartMs = dayStartMs,
             dayEndMs = dayEndMs,
         )
+    }
+
+    /**
+     * Delete the day's location history: soft-delete (tombstone) the on-drive hour files for
+     * `[dayStartMs, dayEndMs)` and clear this device's matching buffer rows. The tombstone keeps
+     * `fileType=5610` but flips `fileState` to Deleted, which [loadDayTraces]'s default
+     * Active-only QueryBatch filter excludes — so the day renders empty and the deletion
+     * propagates without re-syncing back. Because `softDeleteFile` only hits the server, the
+     * local index row is also removed (`driveMainIndex.deleteBy`) so the refresh is immediate.
+     *
+     * Mirrors [loadDayTraces]'s query (one-hour left-widened window for boundary-straddling
+     * hour files), but only deletes a file that actually carries a point inside the day — so the
+     * prior-day file the widen pulls in (which contributes nothing) is left untouched.
+     */
+    suspend fun deleteDayTraces(dayStartMs: Long, dayEndMs: Long) {
+        val creds = credentialsManager.getActiveCredentials() ?: return
+        val identityId = creds.getIdentityId()
+        val result = QueryBatch(identityId).queryBatchAsync(
+            dbm = databaseManager,
+            driveId = driveId,
+            noOfItems = 24 * 16,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.UserDate,
+            fileSystemType = FileSystemType.Standard.value,
+            filetypesAnyOf = listOf(LOCATION_TRACK_FILE_TYPE),
+            userDateSpan = UnixTimeUtcRange(
+                start = UnixTimeUtc(dayStartMs - HOUR_MS),
+                end = UnixTimeUtc(dayEndMs),
+            ),
+        )
+        for (file in result.records) {
+            val hour = file.fileMetadata.appData.content?.let { LocationTrackCodec.decodeHeader(it) } ?: continue
+            if (hour.points.none { it.t in dayStartMs until dayEndMs }) continue
+            // Personal labeled drive — no peer recipients.
+            val deleted = runCatching { driveFileProvider.softDeleteFile(driveId, file.fileId, recipients = null) }
+                .onFailure { logger.w(it) { "softDelete hour file ${file.fileId} failed" } }
+                .isSuccess
+            if (deleted) databaseManager.driveMainIndex.deleteBy(identityId, driveId, file.fileId)
+        }
+        // Clear this device's buffer rows for the day (flushed copies + not-yet-uploaded).
+        databaseManager.locationPoint.deleteByTimeRange(dayStartMs, dayEndMs)
     }
 
     private companion object {

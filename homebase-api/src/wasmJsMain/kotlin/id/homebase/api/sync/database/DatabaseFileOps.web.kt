@@ -6,3 +6,6 @@ package id.homebase.api.sync.database
 internal actual fun deleteSqliteFileIfExists(path: String) {
     // intentionally empty
 }
+
+// sql.js is in-memory — no on-disk footprint to report.
+internal actual fun fileSizeBytes(path: String): Long = 0L

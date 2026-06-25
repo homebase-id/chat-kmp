@@ -6,12 +6,15 @@ data class LocationHistoryUiState(
     val traces: List<DeviceTrace> = emptyList(),
     val isLoading: Boolean = true,
     val showMapTiles: Boolean = false,
-    /** Whether personal location tracking is on — drives the empty-state "turn on tracking" hint. */
-    val trackingEnabled: Boolean = false,
+    /** Whether personal location history is on — drives the empty-state "turn on tracking" hint. */
+    val allowLocationHistory: Boolean = false,
 )
 
 sealed interface LocationHistoryUiAction {
     data class SelectDay(val dayStartMs: Long) : LocationHistoryUiAction
     data object PreviousDay : LocationHistoryUiAction
     data object NextDay : LocationHistoryUiAction
+
+    /** Soft-delete all location history for the currently-shown day, then refresh it empty. */
+    data object DeleteHistoryForDay : LocationHistoryUiAction
 }

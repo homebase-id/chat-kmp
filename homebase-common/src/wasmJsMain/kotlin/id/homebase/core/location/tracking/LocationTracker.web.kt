@@ -9,7 +9,7 @@ actual fun createLocationTracker(sink: LocationPointSink): LocationTracker =
  */
 private object UnavailableLocationTracker : LocationTracker {
     override val isAvailable: Boolean = false
-    override fun start(mode: TrackingMode) {}
-    override fun setMode(mode: TrackingMode) {}
+    override fun start(profile: TrackingProfile) {}
+    override fun setProfile(profile: TrackingProfile) {}
     override fun stop() {}
 }

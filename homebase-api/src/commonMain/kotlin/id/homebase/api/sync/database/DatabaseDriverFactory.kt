@@ -2,8 +2,37 @@ package id.homebase.api.sync.database
 
 import app.cash.sqldelight.db.SqlDriver
 
-/** The on-disk database file name used by every platform's [DatabaseDriverFactory]. */
+/**
+ * The on-disk database file name used by every platform's [DatabaseDriverFactory].
+ *
+ * **This name is permanent — do not bump it.** The `-2` is historical: it was once
+ * changed (from `odin.db`) to force a fresh database, before it was understood that the
+ * `-- Version: N` comment on the DriveMainIndex CREATE statement already drives
+ * [DatabaseManager.wipeAndRecreate]. The version bump is the *only* DB-reset mechanism;
+ * renaming the file again would orphan every existing install's database and force a full
+ * re-sync. To rebuild the schema, bump the version comment — never the filename.
+ */
 internal const val DB_FILE_NAME = "odin-2.db"
+
+/**
+ * The SQLite database file plus the sidecar files it can spawn — the single suffix list
+ * shared by everything that enumerates DB files (recovery delete, size probe). `-journal`
+ * (rollback mode), `-wal` (write-ahead log), `-shm` (WAL shared-memory index); any may
+ * exist depending on which journal mode last touched the DB.
+ */
+internal val DB_FILE_SUFFIXES = listOf("", "-wal", "-shm", "-journal")
+
+/**
+ * Every on-disk file backing the database at [basePath] (the `.db` itself plus its
+ * [DB_FILE_SUFFIXES] sidecars). The one place this list is built. Returns an empty list
+ * when [basePath] is blank (platforms with no on-disk DB, e.g. wasmJs's in-memory sql.js).
+ */
+internal fun databaseFilePaths(basePath: String): List<String> =
+    if (basePath.isEmpty()) emptyList() else DB_FILE_SUFFIXES.map { basePath + it }
+
+/** All on-disk files backing this factory's database — see [databaseFilePaths]. */
+internal fun DatabaseDriverFactory.databaseFiles(): List<String> =
+    databaseFilePaths(dbFilePath())
 
 /**
  * Shared SQLite tuning applied identically on every platform — the single source of
@@ -65,8 +94,14 @@ expect class DatabaseDriverFactory {
 internal expect fun deleteSqliteFileIfExists(path: String)
 
 /**
+ * Size in bytes of a single file at [path], or 0 if it doesn't exist. Per-platform for
+ * the same reason as [deleteSqliteFileIfExists] (no shared filesystem API across wasmJs).
+ */
+internal expect fun fileSizeBytes(path: String): Long
+
+/**
  * Delete the on-disk database file plus its WAL/SHM/journal siblings. The
- * loop and suffix list live in commonMain because they aren't
+ * suffix list lives in commonMain ([DB_FILE_SUFFIXES]) because it isn't
  * platform-specific — only [DatabaseDriverFactory.dbFilePath] is. Missing
  * files are treated as a no-op.
  */
@@ -75,23 +110,11 @@ internal fun DatabaseDriverFactory.deleteOnDiskFiles() {
 }
 
 /**
- * Delete the database file at [dbFilePath] plus its WAL/SHM/journal
- * siblings. Extracted from [DatabaseDriverFactory.deleteOnDiskFiles] so
- * unit tests can exercise the suffix loop against a temp-directory path
- * without instantiating a real factory (which would target the user's
- * actual data directory).
- *
- * SQLite writes up to three side files alongside the primary database:
- *   - `-journal` (rollback journal mode)
- *   - `-wal` (write-ahead log mode)
- *   - `-shm` (WAL shared-memory index)
- * All three may exist at recovery time depending on which mode last
- * touched the file; deleting the primary alone would leave the others as
- * zombies.
+ * Delete the database file at [dbFilePath] plus its [DB_FILE_SUFFIXES] siblings.
+ * Extracted from [DatabaseDriverFactory.deleteOnDiskFiles] so unit tests can exercise the
+ * suffix loop against a temp-directory path without instantiating a real factory (which
+ * would target the user's actual data directory).
  */
 internal fun deleteDatabaseFiles(dbFilePath: String) {
-    if (dbFilePath.isEmpty()) return
-    for (suffix in listOf("", "-journal", "-wal", "-shm")) {
-        deleteSqliteFileIfExists(dbFilePath + suffix)
-    }
+    databaseFilePaths(dbFilePath).forEach { deleteSqliteFileIfExists(it) }
 }

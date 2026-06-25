@@ -1071,6 +1071,11 @@
     <string name="vault_error_edit_page">Couldn't save the edited picture.</string>
     <string name="vault_error_open_editor">Couldn't open the picture editor.</string>
 
+    <!-- Vault Move to section -->
+    <string name="vault_move_to_section">Move to section…</string>
+    <string name="vault_move_to_section_target">Move to %1$s</string>
+    <string name="vault_move_to_section_failed">Couldn't move the file. Please try again.</string>
+
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>
     <string name="vault_notes_placeholder">Add notes about this entry…</string>
@@ -1314,6 +1319,10 @@
     <string name="location_history_you">(you)</string>
     <string name="live_location_title">Live location</string>
     <string name="live_location_empty">No one is sharing their live location right now.</string>
+    <string name="live_location_enable_gps_title">Show your location?</string>
+    <string name="live_location_enable_gps_text">Allow location access so your position appears on the map alongside the people sharing with you.</string>
+    <string name="live_location_enable_gps_confirm">Allow</string>
+    <string name="live_location_enable_gps_dismiss">Not now</string>
     <string name="live_location_marker_cd">%1$s's live location</string>
     <string name="live_location_you">You</string>
     <string name="live_location_age_minutes">%1$dm</string>
@@ -1347,6 +1356,9 @@
     <string name="location_history_previous_day">Previous day</string>
     <string name="location_history_next_day">Next day</string>
     <string name="location_history_pick_date">Pick a date</string>
+    <string name="location_history_delete_day">Delete history this day</string>
+    <string name="location_history_delete_title">Delete this day?</string>
+    <string name="location_history_delete_text">This permanently removes all location history recorded for this day. This can't be undone.</string>
     <string name="location_history_distance">%1$s km</string>
     <string name="location_history_points">%1$d points</string>
     <string name="location_history_devices">%1$d devices</string>

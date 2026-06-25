@@ -24,7 +24,7 @@ class LocationHistoryViewModel(
         LocationHistoryUiState(
             dayStartMs = localDayStart(Clock.System.now().toEpochMilliseconds()),
             showMapTiles = locationPreferences.mapProvider.value == LocationMapProvider.OpenStreetMap,
-            trackingEnabled = locationPreferences.trackingEnabled.value,
+            allowLocationHistory = locationPreferences.allowLocationHistory.value,
         )
     )
     val uiState: StateFlow<LocationHistoryUiState> = _uiState.asStateFlow()
@@ -38,8 +38,8 @@ class LocationHistoryViewModel(
             }
         }
         viewModelScope.launch {
-            locationPreferences.trackingEnabled.collect { enabled ->
-                _uiState.update { it.copy(trackingEnabled = enabled) }
+            locationPreferences.allowLocationHistory.collect { enabled ->
+                _uiState.update { it.copy(allowLocationHistory = enabled) }
             }
         }
         loadDay(_uiState.value.dayStartMs)
@@ -50,6 +50,16 @@ class LocationHistoryViewModel(
             is LocationHistoryUiAction.SelectDay -> loadDay(localDayStart(action.dayStartMs))
             LocationHistoryUiAction.PreviousDay -> loadDay(shiftDay(_uiState.value.dayStartMs, -1))
             LocationHistoryUiAction.NextDay -> loadDay(shiftDay(_uiState.value.dayStartMs, 1))
+            LocationHistoryUiAction.DeleteHistoryForDay -> deleteDay(_uiState.value.dayStartMs)
+        }
+    }
+
+    private fun deleteDay(dayStartMs: Long) {
+        _uiState.update { it.copy(isLoading = true) }
+        viewModelScope.launch {
+            runCatching { deviceDirectory.deleteDayTraces(dayStartMs, shiftDay(dayStartMs, 1)) }
+                .onFailure { logger.e(it) { "deleteDayTraces failed for $dayStartMs" } }
+            loadDay(dayStartMs) // re-query → the deleted day now renders empty
         }
     }
 
