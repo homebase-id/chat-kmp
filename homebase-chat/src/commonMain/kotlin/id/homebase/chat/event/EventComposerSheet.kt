@@ -3,14 +3,12 @@ package id.homebase.chat.event
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -38,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
@@ -83,12 +82,15 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.close
 import id.homebase.resources.ok
-import id.homebase.resources.chat_event_add_end_time
-import id.homebase.resources.chat_event_error_end_before_start
 import id.homebase.resources.chat_event_description_hint
+import id.homebase.resources.chat_event_duration_custom_end
+import id.homebase.resources.chat_event_duration_hours
+import id.homebase.resources.chat_event_duration_hours_minutes
+import id.homebase.resources.chat_event_duration_minutes
+import id.homebase.resources.chat_event_duration_title
+import id.homebase.resources.chat_event_ends_at
 import id.homebase.resources.chat_event_location_hint
 import id.homebase.resources.chat_event_meeting_url_hint
-import id.homebase.resources.chat_event_remove_end_time
 import id.homebase.resources.chat_event_send
 import id.homebase.resources.chat_event_add_photo
 import id.homebase.resources.chat_event_cover_photo
@@ -101,6 +103,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -217,7 +220,6 @@ private fun EventComposerContent(
             )
         )
     }
-    var hasEndTime by remember { mutableStateOf(false) }
     var locationText by remember { mutableStateOf("") }
     var locationLat by remember { mutableStateOf<Double?>(null) }
     var locationLon by remember { mutableStateOf<Double?>(null) }
@@ -254,16 +256,16 @@ private fun EventComposerContent(
     var showStartTime by remember { mutableStateOf(false) }
     var showEndDate by remember { mutableStateOf(false) }
     var showEndTime by remember { mutableStateOf(false) }
+    var showDurationPicker by remember { mutableStateOf(false) }
     var tzExpanded by remember { mutableStateOf(false) }
 
-    // End must stay strictly after start. Picker callbacks clamp to keep this true,
-    // so this is a defensive guard — if an invalid state is somehow reached, Send is
-    // disabled and the inline error below the end row is shown.
+    // Every event always has an end (default start + 1h); the picker callbacks clamp so
+    // end stays strictly after start. This is a defensive guard for Send.
     val timesValid by remember {
         derivedStateOf {
             // LocalDateTime is Comparable; wall-clock ordering is what matters and is
             // zone-independent, so compare directly instead of round-tripping via a zone.
-            !hasEndTime || startDateTime < endDateTime
+            startDateTime < endDateTime
         }
     }
     val isValid by remember {
@@ -283,7 +285,7 @@ private fun EventComposerContent(
             scope.launch {
                 val tz = runCatching { TimeZone.of(timezone) }.getOrDefault(systemTz)
                 val startUtcMs = startDateTime.toInstant(tz).toEpochMilliseconds()
-                val endUtcMs = if (hasEndTime) endDateTime.toInstant(tz).toEpochMilliseconds() else null
+                val endUtcMs = endDateTime.toInstant(tz).toEpochMilliseconds()
                 val descriptor = EventDescriptor(
                     title = title.truncateToCodePoints(MAX_TITLE_CODEPOINTS),
                     description = description.truncateToCodePoints(MAX_DESCRIPTION_CODEPOINTS),
@@ -419,7 +421,9 @@ private fun EventComposerContent(
 
             Spacer(Modifier.height(12.dp))
 
-            // WHEN group — clock row (start/end + toggle) and timezone row.
+            // WHEN group — start "date · time" line, a hyperlinked duration beneath it,
+            // and the timezone row. Every event has an end (default start + 1h); tapping
+            // the duration opens the duration/end picker (#786).
             ComposerRow(icon = Icons.Default.Schedule, filled = true, verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
                     DateTimeLine(
@@ -427,43 +431,15 @@ private fun EventComposerContent(
                         onPickDate = { showStartDate = true },
                         onPickTime = { showStartTime = true },
                     )
-                    if (hasEndTime) {
-                        DateTimeLine(
-                            local = endDateTime,
-                            onPickDate = { showEndDate = true },
-                            onPickTime = { showEndTime = true },
-                        )
-                        if (!timesValid) {
-                            Text(
-                                text = stringResource(MR.string.chat_event_error_end_before_start),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                    TextButton(
-                        // Re-clamp on enable: the start may have moved past the stale
-                        // end while end-time was off, so guarantee end > start the moment
-                        // the row appears (else the user lands straight on the error).
-                        onClick = {
-                            hasEndTime = !hasEndTime
-                            if (hasEndTime) {
-                                endDateTime = clampEndAfterStart(startDateTime, endDateTime, systemTz)
-                            }
-                        },
-                        // Negative offset cancels the wider horizontal content
-                        // padding, so the label stays left-aligned with the date
-                        // above it while the hover/ripple splash reads wider.
-                        modifier = Modifier.offset(x = (-12).dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Text(
-                            text = stringResource(
-                                if (hasEndTime) MR.string.chat_event_remove_end_time
-                                else MR.string.chat_event_add_end_time,
-                            ),
-                        )
-                    }
+                    Text(
+                        text = eventDurationLabel(startDateTime, endDateTime, systemTz),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = { showDurationPicker = true })
+                            .padding(vertical = 6.dp),
+                    )
                 }
             }
             ComposerRow(
@@ -568,7 +544,7 @@ private fun EventComposerContent(
             initial = startDateTime,
             onConfirm = { date ->
                 val newStart = LocalDateTime(date.year, date.month, date.day, startDateTime.hour, startDateTime.minute)
-                if (hasEndTime) endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
+                endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
                 startDateTime = newStart
                 showStartDate = false
             },
@@ -580,7 +556,7 @@ private fun EventComposerContent(
             initial = LocalTime(startDateTime.hour, startDateTime.minute),
             onConfirm = { time ->
                 val newStart = LocalDateTime(startDateTime.year, startDateTime.month, startDateTime.day, time.hour, time.minute)
-                if (hasEndTime) endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
+                endDateTime = shiftEndPreservingDuration(startDateTime, newStart, endDateTime, systemTz)
                 startDateTime = newStart
                 showStartTime = false
             },
@@ -607,6 +583,22 @@ private fun EventComposerContent(
                 showEndTime = false
             },
             onDismiss = { showEndTime = false },
+        )
+    }
+    if (showDurationPicker) {
+        DurationPickerSheet(
+            start = startDateTime,
+            end = endDateTime,
+            tz = systemTz,
+            onPickDuration = { minutes ->
+                endDateTime = startDateTime.toInstant(systemTz).plus(minutes.minutes).toLocalDateTime(systemTz)
+                showDurationPicker = false
+            },
+            onPickCustomEnd = {
+                showDurationPicker = false
+                showEndDate = true
+            },
+            onDismiss = { showDurationPicker = false },
         )
     }
 }
@@ -673,6 +665,104 @@ private fun formatFriendlyDate(d: LocalDateTime): String {
 /** 24h "HH:mm". */
 private fun formatTime(d: LocalDateTime): String =
     d.hour.toString().padStart(2, '0') + ":" + d.minute.toString().padStart(2, '0')
+
+/**
+ * Pure split of an event's [start]→[end] span: total minutes and whether the two fall on
+ * the same calendar day. Drives the composer's duration label; unit-tested in
+ * EventDurationPartsTest.
+ */
+internal data class EventDurationParts(val totalMinutes: Long, val sameDay: Boolean)
+
+internal fun eventDurationParts(
+    start: LocalDateTime,
+    end: LocalDateTime,
+    tz: TimeZone,
+): EventDurationParts =
+    EventDurationParts(
+        totalMinutes = (end.toInstant(tz) - start.toInstant(tz)).inWholeMinutes,
+        sameDay = start.date == end.date,
+    )
+
+/** Resource label for a same-day minute count: "30m", "1h", "1h 30m". */
+@Composable
+private fun durationMinutesLabel(totalMinutes: Long): String {
+    val h = (totalMinutes / 60).toInt()
+    val m = (totalMinutes % 60).toInt()
+    return when {
+        h > 0 && m > 0 -> stringResource(MR.string.chat_event_duration_hours_minutes, h, m)
+        h > 0 -> stringResource(MR.string.chat_event_duration_hours, h)
+        else -> stringResource(MR.string.chat_event_duration_minutes, m)
+    }
+}
+
+/** Hyperlinked value beneath the start row: same-day → duration; spans days → "Ends <date> <time>". */
+@Composable
+private fun eventDurationLabel(start: LocalDateTime, end: LocalDateTime, tz: TimeZone): String {
+    val parts = eventDurationParts(start, end, tz)
+    return if (parts.sameDay) {
+        durationMinutesLabel(parts.totalMinutes)
+    } else {
+        stringResource(MR.string.chat_event_ends_at, "${formatFriendlyDate(end)} ${formatTime(end)}")
+    }
+}
+
+/** Preset durations offered in the picker, in minutes. */
+private val DURATION_PRESETS_MIN = listOf(15L, 30L, 60L, 90L, 120L, 180L)
+
+/**
+ * Duration chooser: preset duration rows (radio single-select) plus a "Set end date and
+ * time" row for the multi-day / custom case (which hands off to the existing end pickers).
+ */
+@Composable
+private fun DurationPickerSheet(
+    start: LocalDateTime,
+    end: LocalDateTime,
+    tz: TimeZone,
+    onPickDuration: (minutes: Long) -> Unit,
+    onPickCustomEnd: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val current = eventDurationParts(start, end, tz)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(MR.string.chat_event_duration_title)) },
+        text = {
+            Column {
+                DURATION_PRESETS_MIN.forEach { min ->
+                    val selected = current.sameDay && current.totalMinutes == min
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = { onPickDuration(min) })
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selected, onClick = { onPickDuration(min) })
+                        Spacer(Modifier.width(8.dp))
+                        Text(text = durationMinutesLabel(min), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onPickCustomEnd)
+                        .padding(vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(MR.string.chat_event_duration_custom_end),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
+        },
+    )
+}
 
 /**
  * Cover-photo source chooser. A centered, scrimmed [AlertDialog] (the in-sheet
