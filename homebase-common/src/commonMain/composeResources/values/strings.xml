@@ -1456,4 +1456,8 @@
     <string name="contactbook_action_disconnected">Disconnected.</string>
     <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
 
+    <string name="storage_diagnostics_header">Diagnostics (dev)</string>
+    <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>
+    <string name="storage_diagnostics_force_runtime_crash">Force app crash (test)</string>
+
 </resources>

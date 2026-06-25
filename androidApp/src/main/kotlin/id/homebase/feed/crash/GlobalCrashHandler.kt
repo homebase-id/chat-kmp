@@ -42,6 +42,15 @@ object GlobalCrashHandler {
             logDir = Path(app.filesDir.resolve("logs").absolutePath),
         )
 
+        // Capture the handler currently installed so we can chain to it for FATAL recording.
+        // After Firebase init (FirebaseInitProvider runs before Application.onCreate) this is
+        // Crashlytics' uncaught handler, which writes the fatal to disk SYNCHRONOUSLY — it
+        // survives process death and uploads next launch. A bare recordException() is only a
+        // non-fatal and loses the flush race with our killProcess. Touch Crashlytics first so
+        // the captured handler is really its.
+        runCatching { Firebase.crashlytics }
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
                 // Preserve PR #737: a transient network blip that leaked to the global
@@ -73,13 +82,23 @@ object GlobalCrashHandler {
 
                 CrashLogger.logCrash(thread.name, throwable)
                 val reportPath = CrashReporting.writeReport(thread.name, throwable)
-                // Record as a non-fatal: the captured default handler is Crashlytics',
-                // and chaining to it would re-raise the OS dialog we're replacing.
-                runCatching { Firebase.crashlytics.recordException(throwable) }
+                // Crash-safe breadcrumb with readable context, captured alongside the crash
+                // even if the chained fatal below were to lose the race (mirrors the iOS
+                // handler's log() breadcrumb).
+                runCatching {
+                    Firebase.crashlytics.log("FATAL on '${thread.name}': ${throwable.message}")
+                }
 
+                // Show our table-flip recovery screen first (separate :crash process — it
+                // survives our death), then chain to the previously-installed handler
+                // (Crashlytics') so this is recorded as a true FATAL, not a non-fatal that
+                // never flushes. Trade-off: Crashlytics then delegates to the system handler,
+                // which can briefly show the OS "app keeps stopping" dialog — validated on the
+                // Dev build; revisit if it's intrusive.
                 if (shouldLaunchRecoveryScreen(currentProcessName(), reportPath?.toString())) {
                     launchCrashActivity(app, reportPath.toString())
                 }
+                runCatching { previousHandler?.uncaughtException(thread, throwable) }
             } catch (t: Throwable) {
                 runCatching { Logger.e(tag = TAG, throwable = t) { "Crash handler itself failed" } }
             } finally {
