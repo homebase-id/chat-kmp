@@ -164,4 +164,41 @@ class CrashReportingTest {
         CrashReporting.writeReport("main", RuntimeException("new-2"))
         assertNotNull(CrashReporting.beginLaunchCheckRecovery())
     }
+
+    /**
+     * The exact field incident: a report written by the OLD binary carries the OLD
+     * version stamp; after an update it must be physically gone and unrecoverable, so the
+     * new app can never surface it (a 1.4.1731 report appearing on 1.4.1738).
+     */
+    @Test
+    fun old_version_report_cannot_be_surfaced_after_update() {
+        // Written under v1.0 (installed in setup). The report embeds the running version.
+        val oldReport = CrashReporting.writeReport(
+            "Kotlin/Native", RuntimeException("no such column: fileState"),
+        )
+        assertNotNull(oldReport)
+        val oldText = SystemFileSystem.source(oldReport).buffered().use { it.readString() }
+        assertTrue("1.0" in oldText, "old report must carry the old version stamp")
+
+        // Arm the recovery gate as in the field (a startup crash loop on the old version).
+        CrashReporting.beginLaunchCheckRecovery()
+        CrashReporting.beginLaunchCheckRecovery()
+        assertNotNull(
+            CrashReporting.beginLaunchCheckRecovery(),
+            "precondition: the old version would have shown this report",
+        )
+
+        // User updates to v2.0.
+        CrashReporting.install(metaV2, logDir)
+
+        assertNull(CrashReporting.pendingReport(), "no pending report points at the old binary's crash")
+        assertNull(
+            SystemFileSystem.metadataOrNull(oldReport),
+            "the old-version report file itself must be deleted, so it can never be shown",
+        )
+        assertTrue(
+            crashReports().none { it == oldReport.name },
+            "old report must not remain on disk: ${crashReports()}",
+        )
+    }
 }
