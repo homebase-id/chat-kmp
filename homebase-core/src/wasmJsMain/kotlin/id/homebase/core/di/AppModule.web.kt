@@ -13,6 +13,8 @@ import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.audio.getAudioPlayer
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
+import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.AnimatedSkiaDecoder
@@ -38,6 +40,7 @@ actual fun platformModule(): Module = module {
     single<PlatformGalleryManager> { WebGalleryManager() }
     single { GalleryCache(get<PlatformGalleryManager>()) }
     single<PlatformInfo> { WebPlatformInfo() }
+    single<DiagnosticsCrashTrigger> { NoOpDiagnosticsCrashTrigger }
     single<AudioRecorder> { WebAudioRecorder() }
     single<AudioPlayer> { getAudioPlayer() }
     single<AudioWaveFormGenerator> { WebAudioWaveFormGenerator() }
