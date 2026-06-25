@@ -3,7 +3,6 @@ package id.homebase.chat.services.builder
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.image.ImageUtils
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.chat.services.PayloadBundle
 
@@ -39,25 +38,18 @@ object MessageAttachmentBuilder {
                                 fileOperationsProvider,
                             )
 
-                        // Sticker auto-detect: a transparent cut-out image renders
-                        // without the opaque bubble backdrop. Detect on the ORIGINAL
-                        // source bytes (the generator already read them — no second
-                        // read), gated to alpha-capable formats (PNG/WebP). forceSticker
-                        // (the "Send as sticker" toggle) bypasses detection. We store a tiny
-                        // {"isSticker":true,"format":...} descriptor only when transparent;
-                        // ordinary photos keep the legacy "" so nothing changes for them.
-                        val format = ImageFormatDetector.detectFormat(thumbs.sourceBytes)
-                        val isSticker = attachment.forceSticker ||
-                            ((format == "image/png" || format == "image/webp") &&
-                                ImageUtils.hasNonOpaquePixels(thumbs.sourceBytes))
+                        // Sticker is opt-in only: the "Send as sticker" toggle, the sticker
+                        // tool, and the background-remover all set forceSticker=true. We do
+                        // NOT auto-sticker by transparency — a shared/normal image (or any
+                        // transparent PNG/WebP the user didn't choose to stickerize) must send
+                        // as a normal image (issue #854). When it IS a sticker we detect the
+                        // real format so the download is named "StickerFile.<ext>"; ordinary
+                        // photos keep the legacy "" so nothing changes for them.
                         val descriptorContent =
-                            if (isSticker) {
-                                // Carry the detected format so a downloaded sticker is named
-                                // "StickerFile.<ext>" (see PayloadDescriptor.filename()) rather
-                                // than the sender's original filename (e.g. IMG_1234.png).
+                            if (attachment.forceSticker) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = true,
-                                    format = format,
+                                    format = ImageFormatDetector.detectFormat(thumbs.sourceBytes),
                                 )
                             } else {
                                 ""
