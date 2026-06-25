@@ -56,6 +56,13 @@ class LiveLocationViewModel(
         super.onCleared()
     }
 
+    /**
+     * Called by the screen when location permission is granted. The map's [DemandReason.LiveMapOpen]
+     * hold is already held; this re-evaluates the GPS hold so the now-permitted tracker arms and the
+     * user's own dot appears — without enabling history or leaving the screen.
+     */
+    fun onPermissionGranted() = locationService.refreshGpsHold()
+
     // Re-emits so age labels update and stale dots drop without a new store packet.
     private val ticker = flow {
         while (true) {
