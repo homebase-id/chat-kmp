@@ -731,9 +731,13 @@
     <string name="chat_event_unparseable">Unable to display this event. Please update the app.</string>
     <string name="chat_event_send">Send event</string>
     <string name="chat_event_scheduled_in_zone">Scheduled: %1$s %2$s</string>
-    <string name="chat_event_add_end_time">Add end time</string>
-    <string name="chat_event_remove_end_time">Remove end time</string>
     <string name="chat_event_error_end_before_start">End time must be after the start time</string>
+    <string name="chat_event_duration_hours_minutes">%1$dh %2$dm</string>
+    <string name="chat_event_duration_hours">%1$dh</string>
+    <string name="chat_event_duration_minutes">%1$dm</string>
+    <string name="chat_event_ends_at">Ends %1$s</string>
+    <string name="chat_event_duration_title">Duration</string>
+    <string name="chat_event_duration_custom_end">Set end date and time</string>
     <string name="chat_event_title_hint">Add title</string>
     <string name="chat_event_location_hint">Add location</string>
     <string name="chat_event_meeting_url_hint">Add meeting link</string>

@@ -13,6 +13,12 @@ data class VaultUiState(
     val isSyncing: Boolean = false,
     val sections: List<VaultSection> = emptyList(),
     val fullScreenOverlay: VaultOverlay? = null,
+    /**
+     * Payload keys currently downloading/decrypting for a share or save. Drives the
+     * gallery's per-page spinner and re-entrancy guard so the share button isn't a dead,
+     * tappable-forever control while the payload preps (#850).
+     */
+    val preparingShareKeys: Set<String> = emptySet(),
 )
 
 sealed interface VaultOverlay {
