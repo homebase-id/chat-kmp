@@ -66,6 +66,11 @@ object GlobalCrashHandler {
                     return@setDefaultUncaughtExceptionHandler
                 }
 
+                // Mark this run's death as a JVM crash we handled, so the next launch's
+                // NativeCrashRecovery doesn't misclassify it as native. A native signal
+                // crash never reaches this handler, so it never sets this marker.
+                NativeCrashRecovery.markJvmCrashHandled(app)
+
                 CrashLogger.logCrash(thread.name, throwable)
                 val reportPath = CrashReporting.writeReport(thread.name, throwable)
                 // Record as a non-fatal: the captured default handler is Crashlytics',

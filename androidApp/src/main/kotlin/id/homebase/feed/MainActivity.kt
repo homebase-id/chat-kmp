@@ -31,6 +31,7 @@ import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
+import id.homebase.feed.crash.NativeCrashRecovery
 import id.homebase.feed.share.ShareShortcutPublisher
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
@@ -52,6 +53,15 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // If the previous run died in a *native* crash (an NDK signal — e.g. a SQLCipher
+        // SIGSEGV — that the JVM GlobalCrashHandler can never see), surface the recovery
+        // screen now instead of starting normally. Returns false on a clean previous run.
+        if (NativeCrashRecovery.checkAndMaybeLaunch(this)) {
+            finish()
+            return
+        }
+
         // The gap from MainApplication's "onCreate end" to here is process-idle /
         // background→foreground (a background-woken process sits here until the user
         // opens it). The gap from here to "App() first composition" is the real
