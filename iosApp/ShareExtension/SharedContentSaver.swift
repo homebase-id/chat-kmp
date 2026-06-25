@@ -118,11 +118,14 @@ struct SharedContentSaver {
                                 mimeTypes.append(result.mimeType)
                             }
                         } else if let imageData = item as? Data {
-                            let name = "share_\(Int(Date().timeIntervalSince1970 * 1000)).jpg"
+                            // Sniff the real type from the bytes — never blanket-label as JPEG
+                            // (a shared PNG with alpha must keep image/png, etc.). #854.
+                            let ext = imageExtensionForData(imageData)
+                            let name = "share_\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
                             let destURL = filesDir.appendingPathComponent(name)
                             try? imageData.write(to: destURL)
                             fileNames.append(name)
-                            mimeTypes.append("image/jpeg")
+                            mimeTypes.append(mimeTypeForExtension(ext))
                         }
                         group.leave()
                     }
@@ -228,5 +231,21 @@ struct SharedContentSaver {
             return utType.preferredMIMEType ?? "application/octet-stream"
         }
         return "application/octet-stream"
+    }
+
+    /// Sniff an image file extension from magic bytes. Shared image `Data` carries no
+    /// extension or reliable MIME, so we read the signature rather than assume JPEG (#854).
+    private static func imageExtensionForData(_ data: Data) -> String {
+        let b = [UInt8](data.prefix(16))
+        func match(_ sig: [UInt8], at offset: Int = 0) -> Bool {
+            guard b.count >= offset + sig.count else { return false }
+            for (i, v) in sig.enumerated() where b[offset + i] != v { return false }
+            return true
+        }
+        if match([0x89, 0x50, 0x4E, 0x47]) { return "png" }                       // PNG
+        if match([0x47, 0x49, 0x46, 0x38]) { return "gif" }                       // GIF8
+        if match([0x52, 0x49, 0x46, 0x46]) && match([0x57, 0x45, 0x42, 0x50], at: 8) { return "webp" } // RIFF…WEBP
+        if match([0x66, 0x74, 0x79, 0x70], at: 4) { return "heic" }               // ftyp (HEIF/HEIC family)
+        return "jpg"                                                              // FFD8 JPEG / default
     }
 }

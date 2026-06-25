@@ -17,10 +17,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 
 /**
- * Pins the sticker auto-detection in MessageAttachmentBuilder's image branch:
- * a transparent PNG produces a {"isSticker":true} descriptor, an opaque JPEG keeps
- * the legacy "" descriptor, and forceSticker overrides detection. This is the
- * send-side half of the sticker feature (the render-side reads descriptorInfo()).
+ * Pins MessageAttachmentBuilder's image branch: a sticker is produced ONLY when
+ * forceSticker is set. Transparency does NOT auto-sticker — a shared/normal transparent
+ * PNG sends as a normal image (issue #854). This is the send-side half of the sticker
+ * feature (the render-side reads descriptorInfo()).
  */
 class MessageAttachmentBuilderStickerTest {
 
@@ -99,7 +99,9 @@ class MessageAttachmentBuilderStickerTest {
         ).filename()
 
     @Test
-    fun transparentPng_setsStickerDescriptor() = runTest {
+    fun transparentPng_withoutForceSticker_isNotASticker() = runTest {
+        // #854: transparency alone must NOT auto-sticker. A shared/normal transparent PNG
+        // keeps the legacy "" descriptor and sends as a normal image.
         val path = "/tmp/cutout.png"
         val bundle = MessageAttachmentBuilder.buildSingle(
             attachment = AttachmentInput(filePath = path, contentType = "image/png"),
@@ -107,7 +109,8 @@ class MessageAttachmentBuilderStickerTest {
             payloadKey = "chat_web0",
         )
         val payload = bundle.payloads.single()
-        assertEquals(true, stickerOf(payload.descriptorContent))
+        assertEquals("", payload.descriptorContent)
+        assertEquals(false, stickerOf(payload.descriptorContent))
     }
 
     @Test
@@ -125,7 +128,7 @@ class MessageAttachmentBuilderStickerTest {
     }
 
     @Test
-    fun forceSticker_overridesDetection_onOpaqueImage() = runTest {
+    fun forceSticker_producesSticker_onOpaqueImage() = runTest {
         val path = "/tmp/opaque.png"
         val bundle = MessageAttachmentBuilder.buildSingle(
             attachment = AttachmentInput(
@@ -144,11 +147,11 @@ class MessageAttachmentBuilderStickerTest {
     }
 
     @Test
-    fun transparentPng_descriptorParsesAsStickerImageFile() = runTest {
-        // End-to-end: the descriptor written at send must round-trip to ImageFile(isSticker=true).
+    fun forceStickerPng_descriptorParsesAsStickerImageFile() = runTest {
+        // End-to-end: a forceSticker send's descriptor must round-trip to ImageFile(isSticker=true).
         val path = "/tmp/cutout2.png"
         val bundle = MessageAttachmentBuilder.buildSingle(
-            attachment = AttachmentInput(filePath = path, contentType = "image/png"),
+            attachment = AttachmentInput(filePath = path, contentType = "image/png", forceSticker = true),
             fileOperationsProvider = fakeFsServing(path, transparentPng()),
             payloadKey = "chat_web0",
         )
@@ -162,12 +165,12 @@ class MessageAttachmentBuilderStickerTest {
     }
 
     @Test
-    fun transparentPng_downloadNameIsStickerFilePng() = runTest {
-        // An auto-detected transparent PNG sticker downloads as StickerFile.png, not the
-        // sender's original camera-roll name.
+    fun forceStickerPng_downloadNameIsStickerFilePng() = runTest {
+        // A forceSticker PNG downloads as StickerFile.png, not the sender's original
+        // camera-roll name. The real detected extension is preserved.
         val path = "/tmp/IMG_1234.png"
         val bundle = MessageAttachmentBuilder.buildSingle(
-            attachment = AttachmentInput(filePath = path, contentType = "image/png"),
+            attachment = AttachmentInput(filePath = path, contentType = "image/png", forceSticker = true),
             fileOperationsProvider = fakeFsServing(path, transparentPng()),
             payloadKey = "chat_web0",
         )
