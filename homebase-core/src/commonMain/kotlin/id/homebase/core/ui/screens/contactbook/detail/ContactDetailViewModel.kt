@@ -11,6 +11,7 @@ import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.collectConversationOverview
@@ -21,6 +22,9 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.contactbook.clearICanLocate
+import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
@@ -55,9 +59,13 @@ class ContactDetailViewModel(
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val credentialsManager: CredentialsManager,
+    private val temporalDriveReadProvider: TemporalDriveReadProvider,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<Route.ContactBookDetail>()
+
+    /** The drive whose temporal grant gates "can I locate this contact in an emergency?". */
+    private val locationDrive = locationLabeledDrive.drive.alias
 
     private val _uiState = MutableStateFlow(ContactDetailUiState())
     val uiState: StateFlow<ContactDetailUiState> = _uiState.asStateFlow()
@@ -205,8 +213,51 @@ class ContactDetailViewModel(
      */
     private fun handleSync() {
         val domain = odinId ?: return
+        val peer = OdinId(domain)
         _events.tryEmit(ContactDetailEvent.SyncStarted)
-        viewModelScope.launch { contactRepository.sync(OdinId(domain)) }
+        viewModelScope.launch {
+            contactRepository.sync(peer)
+            verifyLocateAccess(peer)
+        }
+    }
+
+    /**
+     * Preflight whether we currently hold temporal read access to [peer]'s location drive (reads no
+     * data, fires no notification on the peer) and reconcile the cached `iCanLocate` "emergency
+     * contact" flag against that authoritative answer:
+     * - access → set the flag (add them to the emergency list) and surface the newest-data timestamp.
+     * - definitively no access → clear a stale flag.
+     * - network/parse failure → inconclusive; leave the flag and the timestamp untouched.
+     *
+     * The flag write needs the contact's [ContactBookEntry.versionTag]; a synthetic entry (deep-link
+     * with no stored contact) has none, so we can still show freshness but can't persist the flag.
+     */
+    private suspend fun verifyLocateAccess(peer: OdinId) {
+        val status = runCatching { temporalDriveReadProvider.verifyTemporalAccess(peer, locationDrive) }
+            .onFailure { Logger.w(it, TAG) { "verifyTemporalAccess failed for ${peer.domainName}" } }
+            .getOrNull() ?: return
+
+        val entry = _uiState.value.entry
+        val versionTag = entry?.versionTag
+
+        if (status.hasAccess) {
+            // newestFileModified is only a real timestamp when we have access; 0 (ZeroTime) means the
+            // drive has no files yet — render "no data", not the epoch.
+            val newest = status.newestFileModified.takeIf { it.milliseconds > 0 }
+            _uiState.update { it.copy(locateNewestDataAt = newest) }
+            if (entry != null && versionTag != null && !entry.iCanLocate) {
+                runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
+                    .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
+            }
+        } else {
+            _uiState.update { it.copy(locateNewestDataAt = null) }
+            // A successful verify with hasAccess=false is authoritative: clear a stale flag, mirroring
+            // EmergencyContactReconciler. Skip the write when the flag isn't set (nothing to clear).
+            if (entry != null && versionTag != null && entry.iCanLocate) {
+                runCatching { contactRepository.clearICanLocate(entry.uniqueId, versionTag) }
+                    .onFailure { Logger.w(it, TAG) { "clearICanLocate failed for ${peer.domainName}" } }
+            }
+        }
     }
 
     private fun handleSave(action: ContactDetailAction.SaveContact) {

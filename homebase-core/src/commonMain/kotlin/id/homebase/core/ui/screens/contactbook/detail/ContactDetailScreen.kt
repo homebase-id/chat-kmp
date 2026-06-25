@@ -58,12 +58,14 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
+import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_action_blocked
 import id.homebase.resources.contactbook_action_sync_started
 import id.homebase.resources.contactbook_action_disconnected
 import id.homebase.resources.contactbook_detail_emergency_badge
+import id.homebase.resources.contactbook_detail_location_data_as_of
 import id.homebase.resources.contactbook_action_unblocked
 import id.homebase.resources.contactbook_connected
 import id.homebase.resources.contactbook_detail_block
@@ -90,6 +92,7 @@ import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Composable
@@ -369,6 +372,16 @@ private fun DetailHeader(
                     text = stringResource(MR.string.contactbook_detail_emergency_badge),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error,
+                )
+            }
+            // Freshness of the data we can see, from the last Sync-time temporal-access preflight.
+            uiState.locateNewestDataAt?.let { newest ->
+                val asOf = formatTimestamp(Instant.fromEpochMilliseconds(newest.milliseconds))
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(MR.string.contactbook_detail_location_data_as_of, asOf),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

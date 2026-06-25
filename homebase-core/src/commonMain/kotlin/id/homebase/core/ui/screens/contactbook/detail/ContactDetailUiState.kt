@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
@@ -35,6 +36,13 @@ data class ContactDetailUiState(
     val actionInProgress: Boolean = false,
     /** True when this contact is the logged-in identity's own (self) contact. */
     val isSelf: Boolean = false,
+    /**
+     * `modified` timestamp of the newest file on this contact's location drive, captured by the last
+     * temporal-access preflight (run on Sync). Non-null only after a successful verify that returned
+     * access AND real data — it's how the user judges "how fresh is the data I can see?". Null when we
+     * haven't verified, have no access, or the drive is empty.
+     */
+    val locateNewestDataAt: UnixTimeUtc? = null,
 ) {
     val hasOdinId: Boolean get() = !entry?.odinId.isNullOrBlank()
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected
