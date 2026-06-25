@@ -523,8 +523,29 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
+            // The note-to-self bootstrap needs *credentials*, not just a renderable
+            // list. `dataReady` can fire from cached conversations + a synthesized
+            // session (see the leading-edge debounce note above) before
+            // CredentialsManager has its active credentials — and the first thing
+            // ensureNoteToSelfExists() does is requireActiveDomain(), which throws
+            // "No active credentials set" in that window. An empty/just-wiped DB (e.g.
+            // a legacy install landing on a fresh odin-2.db, or the stale-schema
+            // self-heal) makes the cached list resolve faster, widening that window.
+            //
+            // This launch runs on the bare viewModelScope (no CoroutineExceptionHandler),
+            // so an uncaught throw here reaches the global crash handler and kills the
+            // app right as the overview appears. Gate on credentials so we don't run too
+            // early, and contain any residual failure — this is a best-effort bootstrap
+            // that is retried on every launch, never worth crashing over.
             conversationStream.conversations.first { it.dataReady }
-            conversationService.ensureNoteToSelfExists()
+            credentialsManager.credentialsFlow.first { it != null }
+            try {
+                conversationService.ensureNoteToSelfExists()
+            } catch (e: Throwable) {
+                Logger.w(tag = TAG, throwable = e) {
+                    "ensureNoteToSelfExists failed; will retry on next launch"
+                }
+            }
         }
 
         // Listen for search query changes

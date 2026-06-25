@@ -1,7 +1,6 @@
 package id.homebase.feed.crash
 
 import android.app.Application
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.os.Build
@@ -24,9 +23,10 @@ import kotlin.system.exitProcess
  */
 object GlobalCrashHandler {
     private const val TAG = "GlobalCrashHandler"
-    private const val CRASH_LOOP_PREFS = "crash_loop_guard"
-    private const val KEY_LAST_CRASH_MS = "last_crash_ms"
-    private const val CRASH_LOOP_WINDOW_MS = 10_000L
+
+    // CrashActivity runs in this dedicated process (see AndroidManifest android:process).
+    // A crash *inside* it is the only real "loop" we must not relaunch the screen for.
+    private const val CRASH_PROCESS_SUFFIX = ":crash"
 
     fun install(app: Application) {
         CrashReporting.install(
@@ -66,13 +66,18 @@ object GlobalCrashHandler {
                     return@setDefaultUncaughtExceptionHandler
                 }
 
+                // Mark this run's death as a JVM crash we handled, so the next launch's
+                // NativeCrashRecovery doesn't misclassify it as native. A native signal
+                // crash never reaches this handler, so it never sets this marker.
+                NativeCrashRecovery.markJvmCrashHandled(app)
+
                 CrashLogger.logCrash(thread.name, throwable)
                 val reportPath = CrashReporting.writeReport(thread.name, throwable)
                 // Record as a non-fatal: the captured default handler is Crashlytics',
                 // and chaining to it would re-raise the OS dialog we're replacing.
                 runCatching { Firebase.crashlytics.recordException(throwable) }
 
-                if (!isCrashLooping(app) && reportPath != null) {
+                if (shouldLaunchRecoveryScreen(currentProcessName(), reportPath?.toString())) {
                     launchCrashActivity(app, reportPath.toString())
                 }
             } catch (t: Throwable) {
@@ -85,14 +90,40 @@ object GlobalCrashHandler {
         }
     }
 
-    /** True if another crash happened < 10s ago (likely CrashActivity itself crashed). */
-    private fun isCrashLooping(app: Application): Boolean {
-        val prefs = app.getSharedPreferences(CRASH_LOOP_PREFS, Context.MODE_PRIVATE)
-        val now = System.currentTimeMillis()
-        val last = prefs.getLong(KEY_LAST_CRASH_MS, 0L)
-        prefs.edit().putLong(KEY_LAST_CRASH_MS, now).apply()
-        return now - last < CRASH_LOOP_WINDOW_MS
+    /**
+     * Whether to launch the [CrashActivity] recovery screen for this crash. Pure so it
+     * is unit-testable.
+     *
+     * We show the screen for **every main-process crash** — including a fast,
+     * deterministic, repeatable one. The previous heuristic suppressed any crash that
+     * happened < 10s after the last one, which silently swallowed exactly the worst
+     * case: a reproducible launch crash (e.g. the note-to-self bootstrap firing before
+     * credentials are ready) that crashes a few seconds into every relaunch. The user
+     * saw a bare death with no recovery screen and no Share button.
+     *
+     * The only crash we must NOT relaunch the screen for is one happening *inside* the
+     * `:crash` process itself — that means [CrashActivity] crashed, and relaunching it
+     * would loop. A null [processName] can't prove we're that process, so we default to
+     * showing (better a possible extra screen than a silent death). No [reportPath] →
+     * nothing to show.
+     */
+    internal fun shouldLaunchRecoveryScreen(processName: String?, reportPath: String?): Boolean {
+        if (reportPath == null) return false
+        return processName?.endsWith(CRASH_PROCESS_SUFFIX) != true
     }
+
+    /**
+     * Name of the current process. [Application.getProcessName] is API 28+; below that we
+     * read `/proc/self/cmdline` (the process name, NUL-padded). Returns null if unknown.
+     */
+    private fun currentProcessName(): String? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            runCatching { Application.getProcessName() }.getOrNull()
+        } else {
+            runCatching {
+                java.io.File("/proc/self/cmdline").readText().substringBefore('\u0000').trim()
+            }.getOrNull()
+        }
 
     private fun launchCrashActivity(app: Application, reportPath: String) {
         val intent = Intent(app, CrashActivity::class.java).apply {
