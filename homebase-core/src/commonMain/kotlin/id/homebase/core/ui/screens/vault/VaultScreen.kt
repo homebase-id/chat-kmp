@@ -364,6 +364,7 @@ fun VaultScreen(
                                     VaultUiAction.MoveEntryToSection(overlay.file, targetSectionId),
                                 )
                             },
+                            preparingShareKeys = uiState.preparingShareKeys,
                             sharedTransitionScope = this@SharedTransitionLayout,
                             animatedVisibilityScope = this@AnimatedContent,
                         )
