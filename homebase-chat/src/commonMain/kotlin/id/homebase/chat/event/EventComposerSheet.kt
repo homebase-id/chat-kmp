@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -26,6 +28,8 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
@@ -431,14 +435,17 @@ private fun EventComposerContent(
                         onPickDate = { showStartDate = true },
                         onPickTime = { showStartTime = true },
                     )
-                    Text(
-                        text = eventDurationLabel(startDateTime, endDateTime, systemTz),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable(onClick = { showDurationPicker = true })
-                            .padding(vertical = 6.dp),
+                    AssistChip(
+                        onClick = { showDurationPicker = true },
+                        label = { Text(eventDurationLabel(startDateTime, endDateTime, systemTz)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.HourglassEmpty,
+                                contentDescription = null,
+                                modifier = Modifier.size(AssistChipDefaults.IconSize),
+                            )
+                        },
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }
@@ -570,6 +577,9 @@ private fun EventComposerContent(
                 val newEnd = LocalDateTime(date.year, date.month, date.day, endDateTime.hour, endDateTime.minute)
                 endDateTime = clampEndAfterStart(startDateTime, newEnd, systemTz)
                 showEndDate = false
+                // "Set end date and time" is a single flow — chain straight into the time
+                // picker once the date is chosen, so the user can set both.
+                showEndTime = true
             },
             onDismiss = { showEndDate = false },
         )
