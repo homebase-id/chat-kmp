@@ -273,7 +273,12 @@ fun AppNavHost(
     )
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
-    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen
+    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a
+    // nav destination, so it doesn't hide the bottom nav on its own — fold it into the same
+    // gate the gallery uses.
+    val isVaultEditorOpen = vaultUiState.pendingEditor != null
+    val showBottomNavigationBar =
+        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -333,6 +338,8 @@ fun AppNavHost(
                 is VaultUiEvent.OpenNoteEditor,
                 is VaultUiEvent.ShareFileReady,
                 is VaultUiEvent.SaveFileReady,
+                is VaultUiEvent.NavigateToCropper,
+                is VaultUiEvent.NavigateToDrawer,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
             }
         }
@@ -1405,6 +1412,12 @@ fun AppNavHost(
                                             },
                                             onNavigateToNoteEditor = { sectionId, entryId ->
                                                 navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
+                                            },
+                                            onNavigateToCropper = { requestId ->
+                                                navController.navigate(Route.Crop(requestId.toString()))
+                                            },
+                                            onNavigateToDrawer = { requestId ->
+                                                navController.navigate(Route.Draw(requestId.toString()))
                                             },
                                         )
                                     }

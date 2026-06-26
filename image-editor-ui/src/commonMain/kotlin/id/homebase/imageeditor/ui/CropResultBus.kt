@@ -34,6 +34,11 @@ class CropResultBus {
     suspend fun postResult(requestId: Uuid, result: ImageResult) {
         val channel = results.getOrPut(requestId) { Channel(capacity = Channel.BUFFERED) }
         channel.send(result)
+        // Single-shot: close so resultsFor(requestId) completes after this one result.
+        // Without it the caller's collect{} suspends forever — a leaked coroutine +
+        // Channel per crop, for the lifetime of the long-lived ViewModel. The editor
+        // VM's onCleared() also cancel()s for the abort (no-result) path.
+        channel.close()
     }
 
     fun cancel(requestId: Uuid) {
