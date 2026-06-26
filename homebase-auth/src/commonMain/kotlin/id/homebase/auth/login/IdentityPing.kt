@@ -26,6 +26,36 @@ sealed interface IdentityPingResult {
      * a Homebase ID?" case. [statusCode] is the HTTP status it answered with.
      */
     data class NotHomebase(val statusCode: Int) : IdentityPingResult
+
+    /**
+     * The TLS handshake itself failed — most often because a VPN, ad blocker, or antivirus
+     * is intercepting HTTPS and presenting a certificate the device doesn't trust ("Trust
+     * anchor for certification path not found"), or a missing/mismatched cert. Split out from
+     * [Unreachable] so the UI can name the likely cause (turn off the interceptor), which is
+     * far more actionable than a generic "check your connection". [detail] is the raw cause.
+     */
+    data class TlsError(val detail: String) : IdentityPingResult
+}
+
+/**
+ * Heuristic: does this throwable (or its cause chain) look like a TLS/certificate failure?
+ * The concrete types are platform-specific (`SSLHandshakeException`/`CertPathValidatorException`
+ * on Android/JVM, Darwin TLS errors on iOS), so we match on class name + message rather than
+ * referencing `javax.net.ssl.*` from common code.
+ */
+private val TLS_MARKERS = listOf(
+    "SSL", "TLS", "certificate", "CertPath", "cert path", "trust anchor", "handshake", "X509",
+)
+
+private fun Throwable.looksLikeTlsFailure(): Boolean {
+    val seen = HashSet<Throwable>()
+    var cur: Throwable? = this
+    while (cur != null && seen.add(cur)) {
+        val haystack = "${cur::class.simpleName ?: ""} ${cur.message ?: ""}"
+        if (TLS_MARKERS.any { haystack.contains(it, ignoreCase = true) }) return true
+        cur = cur.cause
+    }
+    return false
 }
 
 /**
@@ -62,6 +92,10 @@ internal suspend fun pingIdentity(httpClient: HttpClient, identity: OdinId): Ide
     } catch (t: Throwable) {
         val detail = "${t::class.simpleName ?: "Error"}: ${t.message ?: "(no message)"}"
         Logger.e(tag = "IdentityPing") { "Ping failed for $identity: $detail" }
-        IdentityPingResult.Unreachable(detail)
+        if (t.looksLikeTlsFailure()) {
+            IdentityPingResult.TlsError(detail)
+        } else {
+            IdentityPingResult.Unreachable(detail)
+        }
     }
 }

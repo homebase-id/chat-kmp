@@ -25,6 +25,7 @@ import id.homebase.resources.error_unknown
 import id.homebase.resources.login_error_generic
 import id.homebase.resources.login_error_invalid_id
 import id.homebase.resources.login_error_not_homebase
+import id.homebase.resources.login_error_tls
 import id.homebase.resources.login_error_unreachable
 import io.ktor.client.HttpClient
 import kotlinx.collections.immutable.toImmutableList
@@ -124,10 +125,12 @@ class LoginViewModel(
             if (ping != IdentityPingResult.Ok) {
                 Logger.w(tag = "LoginViewModel", messageString = "Identity $homebaseId ping=$ping, aborting login")
                 val errorRes = when (ping) {
+                    is IdentityPingResult.TlsError -> MR.string.login_error_tls
                     is IdentityPingResult.Unreachable -> MR.string.login_error_unreachable
                     else -> MR.string.login_error_not_homebase
                 }
                 val details = when (ping) {
+                    is IdentityPingResult.TlsError -> ping.detail
                     is IdentityPingResult.Unreachable -> ping.detail
                     is IdentityPingResult.NotHomebase ->
                         "HTTP ${ping.statusCode} from https://${homebaseId.domainName}/api/v2/health/ping"

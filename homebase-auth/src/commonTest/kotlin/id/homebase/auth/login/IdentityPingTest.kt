@@ -28,6 +28,21 @@ class IdentityPingTest {
         MockEngine { throw RuntimeException("simulated network failure") }
     ) { install(HttpTimeout) }
 
+    /**
+     * Simulates a TLS-intercepting network (VPN/ad-blocker/AV). commonTest can't reference
+     * `javax.net.ssl.SSLHandshakeException`, so we throw the real-world message — the
+     * classifier matches on class name + message, and on JVM/Android the real type's name
+     * ("SSLHandshakeException") matches too.
+     */
+    private fun clientThrowingTls() = HttpClient(
+        MockEngine {
+            throw RuntimeException(
+                "javax.net.ssl.SSLHandshakeException: java.security.cert.CertPathValidatorException: " +
+                    "Trust anchor for certification path not found."
+            )
+        }
+    ) { install(HttpTimeout) }
+
     @Test
     fun http200_isOk() = runTest {
         assertEquals(
@@ -61,11 +76,20 @@ class IdentityPingTest {
 
     @Test
     fun requestThrows_isUnreachable_withDetail() = runTest {
-        // Offline / DNS / timeout / TLS / connection refused — a connectivity problem, NOT
-        // a verdict on the ID. The old code wrongly called this "are you sure it's a Homebase ID?".
+        // Offline / DNS / timeout / connection refused — a connectivity problem, NOT a verdict
+        // on the ID. The old code wrongly called this "are you sure it's a Homebase ID?".
         val result = pingIdentity(clientThrowing(), identity)
         assertIs<IdentityPingResult.Unreachable>(result)
         // The raw cause is carried for the "Show error details" toggle.
         assertTrue(result.detail.contains("simulated network failure"), "detail was: ${result.detail}")
+    }
+
+    @Test
+    fun tlsHandshakeFailure_isTlsError_withRawCause() = runTest {
+        // A VPN/ad-blocker/AV intercepting HTTPS → its own untrusted cert → handshake fails.
+        // This must be its own bucket so the UI can name the likely cause, not just "try again".
+        val result = pingIdentity(clientThrowingTls(), identity)
+        assertIs<IdentityPingResult.TlsError>(result)
+        assertTrue(result.detail.contains("Trust anchor"), "detail was: ${result.detail}")
     }
 }
