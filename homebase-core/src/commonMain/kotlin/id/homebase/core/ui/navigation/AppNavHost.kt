@@ -273,7 +273,12 @@ fun AppNavHost(
     )
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
-    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen
+    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a
+    // nav destination, so it doesn't hide the bottom nav on its own — fold it into the same
+    // gate the gallery uses.
+    val isVaultEditorOpen = vaultUiState.pendingEditor != null
+    val showBottomNavigationBar =
+        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
