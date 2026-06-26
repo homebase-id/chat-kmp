@@ -66,11 +66,19 @@ private fun Throwable.looksLikeTlsFailure(): Boolean {
  *
  * [httpClient] must have the `HttpTimeout` plugin installed (the production client does);
  * the timeouts mirror the previous inline values.
+ *
+ * [certProbe] is injected so tests don't open a real socket; production uses the platform
+ * [probeCertificateInfo] to read the presented cert's issuer on a TLS failure.
  */
-internal suspend fun pingIdentity(httpClient: HttpClient, identity: OdinId): IdentityPingResult {
+internal suspend fun pingIdentity(
+    httpClient: HttpClient,
+    identity: OdinId,
+    certProbe: suspend (host: String) -> String? = { probeCertificateInfo(it) },
+): IdentityPingResult {
+    val url = "https://$identity/api/v2/health/ping"
     return try {
-        Logger.i(tag = "IdentityPing") { "Pinging https://$identity/api/v2/health/ping ..." }
-        val response = httpClient.get("https://$identity/api/v2/health/ping") {
+        Logger.i(tag = "IdentityPing") { "Pinging $url ..." }
+        val response = httpClient.get(url) {
             timeout {
                 requestTimeoutMillis = 15_000
                 connectTimeoutMillis = 10_000
@@ -84,18 +92,24 @@ internal suspend fun pingIdentity(httpClient: HttpClient, identity: OdinId): Ide
             // erroring, usually transiently (a real Homebase backend mid-restart, overloaded,
             // or a 502/503/504 from a proxy in front of it). That's "try again", not a verdict
             // that the ID isn't Homebase. Only a non-5xx non-200 (404/403/…) earns NotHomebase.
-            code in 500..599 -> IdentityPingResult.Unreachable(
-                "HTTP $code (server error) from https://$identity/api/v2/health/ping"
-            )
+            code in 500..599 -> IdentityPingResult.Unreachable("HTTP $code (server error) from $url")
             else -> IdentityPingResult.NotHomebase(code)
         }
     } catch (t: Throwable) {
-        val detail = "${t::class.simpleName ?: "Error"}: ${t.message ?: "(no message)"}"
-        Logger.e(tag = "IdentityPing") { "Ping failed for $identity: $detail" }
+        // Echo the exact host we tried (rules out any field/typo mangling) + the raw cause.
+        val cause = "${t::class.simpleName ?: "Error"}: ${t.message ?: "(no message)"}"
+        Logger.e(tag = "IdentityPing") { "Ping failed for $url: $cause" }
         if (t.looksLikeTlsFailure()) {
-            IdentityPingResult.TlsError(detail)
+            // Read who actually signed the presented cert — names an interceptor (e.g. AdGuard).
+            val cert = runCatching { certProbe(identity.toString()) }.getOrNull()
+            IdentityPingResult.TlsError(
+                buildString {
+                    append("Tried ").append(url).append(" — ").append(cause)
+                    if (!cert.isNullOrBlank()) append(" — ").append(cert)
+                }
+            )
         } else {
-            IdentityPingResult.Unreachable(detail)
+            IdentityPingResult.Unreachable("Tried $url — $cause")
         }
     }
 }
