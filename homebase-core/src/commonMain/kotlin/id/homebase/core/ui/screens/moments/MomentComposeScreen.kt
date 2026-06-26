@@ -47,9 +47,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.core.ui.screens.moments.widget.MomentDateChip
 import id.homebase.core.ui.screens.moments.widget.MomentDescriptionField
-import id.homebase.core.ui.screens.moments.widget.MomentFullScreenEditor
+import id.homebase.core.ui.screens.moments.widget.MomentImageInfoChip
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
@@ -61,7 +62,6 @@ import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.mimeType
-import kotlinx.coroutines.flow.distinctUntilChanged
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -151,6 +151,10 @@ fun MomentComposeScreen(
         }
     }
 
+    // Hoisted from the editor: collapses attachment-strip and tool-row when the
+    // description field has focus so the keyboard doesn't push the field off-screen.
+    var descriptionFocused by remember { mutableStateOf(false) }
+
     Scaffold(
         // Lift the whole compose screen (topBar + content + Continue bar) above
         // the keyboard. Putting imePadding on the description field alone
@@ -212,9 +216,8 @@ fun MomentComposeScreen(
                         },
                     )
                     Box(modifier = Modifier.weight(1f)) {
-                        MomentFullScreenEditor(
+                        MediaAttachmentEditor(
                             attachments = uiState.attachments,
-                            textFieldState = textFieldState,
                             currentPage = uiState.currentPage,
                             onPageChanged = {
                                 viewModel.onAction(MomentComposeUiAction.PageChanged(it))
@@ -237,8 +240,33 @@ fun MomentComposeScreen(
                             onTrimChange = { id, startMs, endMs ->
                                 viewModel.onAction(MomentComposeUiAction.ApplyTrim(id, startMs, endMs))
                             },
-                            onToggleIncludeLocation = { id ->
-                                viewModel.onAction(MomentComposeUiAction.ToggleIncludeLocation(id))
+                            imageOverlay = { attachment ->
+                                if (attachment is AttachmentPendingFile.FileImage) {
+                                    MomentImageInfoChip(
+                                        metadata = attachment.metadata,
+                                        includeLocation = attachment.includeLocation,
+                                        onToggleLocation = {
+                                            viewModel.onAction(
+                                                MomentComposeUiAction.ToggleIncludeLocation(
+                                                    attachment.attachmentId
+                                                )
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = 12.dp),
+                                    )
+                                }
+                            },
+                            collapseSecondaryChrome = descriptionFocused,
+                            bottomBar = {
+                                MomentDescriptionField(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    state = textFieldState,
+                                    onFocusChanged = { descriptionFocused = it },
+                                )
                             },
                         )
                     }
