@@ -333,6 +333,8 @@ fun AppNavHost(
                 is VaultUiEvent.OpenNoteEditor,
                 is VaultUiEvent.ShareFileReady,
                 is VaultUiEvent.SaveFileReady,
+                is VaultUiEvent.NavigateToCropper,
+                is VaultUiEvent.NavigateToDrawer,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
             }
         }
@@ -1400,6 +1402,12 @@ fun AppNavHost(
                                             },
                                             onNavigateToNoteEditor = { sectionId, entryId ->
                                                 navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
+                                            },
+                                            onNavigateToCropper = { requestId ->
+                                                navController.navigate(Route.Crop(requestId.toString()))
+                                            },
+                                            onNavigateToDrawer = { requestId ->
+                                                navController.navigate(Route.Draw(requestId.toString()))
                                             },
                                         )
                                     }
