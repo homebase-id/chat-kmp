@@ -19,7 +19,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -449,27 +456,46 @@ fun VaultScreen(
                         viewModel.onAction(VaultUiAction.DismissAddEditor)
                     },
                     bottomBar = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                                .imePadding(),
-                        ) {
-                            if (editor.appendTo == null) {
+                        if (editor.appendTo == null) {
+                            // M3 Expressive input bar: pill name field + filled circular confirm.
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .imePadding(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
                                 OutlinedTextField(
                                     value = editor.name,
                                     onValueChange = { viewModel.onAction(VaultUiAction.SetEditorName(it)) },
                                     singleLine = true,
-                                    label = { Text(stringResource(MR.string.vault_editor_name_hint)) },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text(stringResource(MR.string.vault_editor_name_hint)) },
+                                    shape = RoundedCornerShape(28.dp),
+                                    modifier = Modifier.weight(1f),
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
+                                FilledIconButton(
+                                    onClick = {
+                                        viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
+                                    },
+                                    modifier = Modifier.size(56.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = stringResource(MR.string.vault_editor_add),
+                                    )
+                                }
                             }
+                        } else {
+                            // Append to an existing entry — no name, just confirm.
                             Button(
                                 onClick = {
                                     viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
                                 },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .imePadding(),
                             ) {
                                 Text(stringResource(MR.string.vault_editor_add))
                             }
