@@ -13,16 +13,17 @@ sealed interface IdentityPingResult {
 
     /**
      * The request never completed (offline, captive portal, DNS failure, connect/request
-     * timeout, TLS error, connection refused). A connectivity problem — it says nothing
-     * about whether the ID is a valid Homebase identity, so the UI must not blame the ID.
-     * [detail] is the technical cause (exception type + message) for the details toggle.
+     * timeout, TLS error, connection refused) OR the server answered a 5xx. Either way it's
+     * a "try again" condition that says nothing about whether the ID is a valid Homebase
+     * identity, so the UI must not blame the ID. [detail] is the technical cause (exception
+     * type + message, or the HTTP status) for the details toggle.
      */
     data class Unreachable(val detail: String) : IdentityPingResult
 
     /**
-     * We reached a server over HTTPS but it did not answer 200 — a typo'd/wrong domain or
-     * a non-Homebase site. This is the genuine "are you sure it's a Homebase ID?" case.
-     * [statusCode] is the HTTP status it answered with.
+     * We reached a server over HTTPS and it answered a non-200, non-5xx status (404/403/…)
+     * — a typo'd/wrong domain or a non-Homebase site. This is the genuine "are you sure it's
+     * a Homebase ID?" case. [statusCode] is the HTTP status it answered with.
      */
     data class NotHomebase(val statusCode: Int) : IdentityPingResult
 }
@@ -47,7 +48,17 @@ internal suspend fun pingIdentity(httpClient: HttpClient, identity: OdinId): Ide
         }
         val code = response.status.value
         Logger.i(tag = "IdentityPing") { "Ping $identity -> $code" }
-        if (code == 200) IdentityPingResult.Ok else IdentityPingResult.NotHomebase(code)
+        when {
+            code == 200 -> IdentityPingResult.Ok
+            // 5xx means we DID reach the host (DNS + TLS + a server answered) — it's just
+            // erroring, usually transiently (a real Homebase backend mid-restart, overloaded,
+            // or a 502/503/504 from a proxy in front of it). That's "try again", not a verdict
+            // that the ID isn't Homebase. Only a non-5xx non-200 (404/403/…) earns NotHomebase.
+            code in 500..599 -> IdentityPingResult.Unreachable(
+                "HTTP $code (server error) from https://$identity/api/v2/health/ping"
+            )
+            else -> IdentityPingResult.NotHomebase(code)
+        }
     } catch (t: Throwable) {
         val detail = "${t::class.simpleName ?: "Error"}: ${t.message ?: "(no message)"}"
         Logger.e(tag = "IdentityPing") { "Ping failed for $identity: $detail" }

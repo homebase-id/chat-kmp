@@ -45,10 +45,18 @@ class IdentityPingTest {
     }
 
     @Test
-    fun http503_isNotHomebase_withStatus() = runTest {
+    fun http503_isUnreachable_serverError() = runTest {
+        // A 5xx means we reached the host but it's erroring — "try again", not "wrong ID".
         val result = pingIdentity(clientReturning(HttpStatusCode.ServiceUnavailable), identity)
-        assertIs<IdentityPingResult.NotHomebase>(result)
-        assertEquals(503, result.statusCode)
+        assertIs<IdentityPingResult.Unreachable>(result)
+        assertTrue(result.detail.contains("503"), "detail was: ${result.detail}")
+    }
+
+    @Test
+    fun http500_isUnreachable() = runTest {
+        // Lower boundary of the 5xx range.
+        val result = pingIdentity(clientReturning(HttpStatusCode.InternalServerError), identity)
+        assertIs<IdentityPingResult.Unreachable>(result)
     }
 
     @Test
