@@ -605,7 +605,7 @@ internal class AttachmentHandler(
     /**
      * Toggle the editor's per-attachment "background removal in progress" marker, which
      * drives the wand-button spinner in
-     * [id.homebase.chat.widget.FullScreenAttachmentEditor]. No-ops if the attachment
+     * [id.homebase.chat.widget.MediaAttachmentEditor]. No-ops if the attachment
      * overlay is no longer open (e.g. the user dismissed it mid-run).
      */
     private fun setBackgroundRemovalInProgress(attachmentId: Uuid, inProgress: Boolean) {

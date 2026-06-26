@@ -239,7 +239,7 @@ fun AttachmentGallery(
                                     // thumbnail path (ContentResolver / PHImageManager) instead
                                     // of routing through PlatformFileFetcher, which would
                                     // readBytes() the whole video and paint a black frame.
-                                    // Mirrors FullScreenAttachmentEditor.kt:266,439.
+                                    // Mirrors MediaAttachmentEditor.kt.
                                     model = galleryImage.thumbnailUri ?: galleryImage.file,
                                     contentDescription = stringResource(MR.string.cd_gallery_thumbnail),
                                     modifier = Modifier
