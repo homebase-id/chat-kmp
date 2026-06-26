@@ -316,6 +316,7 @@ class ContactDetailViewModel(
         val confirm = _uiState.value.confirm ?: return
         val entry = _uiState.value.entry
         val domain = odinId
+        val wasConnected = _uiState.value.isConnected
         _uiState.update { it.copy(confirm = null, actionInProgress = true) }
         viewModelScope.launch {
             try {
@@ -324,6 +325,19 @@ class ContactDetailViewModel(
                         if (entry == null) {
                             _events.tryEmit(ContactDetailEvent.Back)
                             return@launch
+                        }
+                        // A connected contact must be disconnected before its record is removed —
+                        // otherwise deleting the address-book entry leaves the connection (and the
+                        // access it granted) live. Tear that down first; abort the delete if it
+                        // fails so we don't silently drop the contact while the connection lingers.
+                        if (wasConnected && domain != null) {
+                            val disconnected = runCatching {
+                                connectionNetworkProvider.disconnect(OdinId(domain))
+                            }
+                                .onSuccess { connectionService.refresh() }
+                                .onFailure { emitConnectionError(it) }
+                                .isSuccess
+                            if (!disconnected) return@launch
                         }
                         // repo.delete does the optimistic remove and restores on failure.
                         val event = try {
