@@ -12,6 +12,11 @@ data class LoginUiState(
     val isPinging: Boolean = false,
     val isAuthenticated: Boolean = false,
     val error: LoginError? = null,
+    // Raw technical detail for the current [error] (exception type + message, or HTTP
+    // status), surfaced behind a "Show error details" toggle so a user can read/copy the
+    // exact cause for support instead of only the friendly message. Null when there's
+    // nothing extra to show.
+    val errorDetails: String? = null,
     val driveProgresses: ImmutableList<DriveProgress> = persistentListOf(),
     val uiEvent: LoginUiEvent? = null
 )

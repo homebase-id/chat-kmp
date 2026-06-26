@@ -32,6 +32,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -56,6 +59,9 @@ import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.core.widget.SquircleIcon
 import id.homebase.resources.MR
+import id.homebase.resources.login_error_details_copy
+import id.homebase.resources.login_error_details_hide
+import id.homebase.resources.login_error_details_show
 import id.homebase.resources.done
 import id.homebase.resources.failed
 import id.homebase.resources.homebase_logo
@@ -199,6 +205,7 @@ fun LoginUi(
                 else ->
                     LoginForm(
                         errorMessage = errorText,
+                        errorDetails = uiState.errorDetails,
                         homebaseId = uiState.homebaseId,
                         onLoginClick = {
                             onAction(LoginUiAction.LoginClicked(it))
@@ -207,6 +214,54 @@ fun LoginUi(
                             onAction(LoginUiAction.CreateAccount)
                         },
                     )
+            }
+        }
+    }
+}
+
+/**
+ * A press-to-reveal block under a login error showing the raw technical cause (exception
+ * type + message, or HTTP status) so a user can read and copy the exact error for support,
+ * instead of only the friendly message. Collapsed by default.
+ */
+@Composable
+private fun ErrorDetails(details: String) {
+    var expanded by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+
+    Spacer(modifier = Modifier.height(4.dp))
+    TextButton(
+        onClick = { expanded = !expanded },
+        modifier = Modifier.testTag("error_details_toggle"),
+    ) {
+        Text(
+            text = stringResource(
+                if (expanded) MR.string.login_error_details_hide else MR.string.login_error_details_show
+            ),
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+    if (expanded) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                SelectionContainer {
+                    Text(
+                        text = details,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("error_details_text"),
+                    )
+                }
+                TextButton(
+                    onClick = { clipboard.setText(AnnotatedString(details)) },
+                    modifier = Modifier.align(Alignment.End).testTag("error_details_copy"),
+                ) {
+                    Text(stringResource(MR.string.login_error_details_copy))
+                }
             }
         }
     }
@@ -387,6 +442,7 @@ private fun LoginSuccess() {
 @Composable
 private fun LoginForm(
     errorMessage: String? = null,
+    errorDetails: String? = null,
     homebaseId: String,
     onLoginClick: (homebaseId: String) -> Unit,
     onCreateAccountClick: () -> Unit,
@@ -422,6 +478,9 @@ private fun LoginForm(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.testTag("error_message"),
             )
+            if (errorDetails != null) {
+                ErrorDetails(details = errorDetails)
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
         HomebaseIdField(

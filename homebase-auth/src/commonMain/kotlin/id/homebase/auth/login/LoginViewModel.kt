@@ -112,24 +112,33 @@ class LoginViewModel(
                     homebaseId = homebaseId.domainName,
                     isLoading = true,
                     isPinging = true,
-                    error = null
+                    error = null,
+                    errorDetails = null,
                 )
             }
 
+            // Be honest about the cause: a connectivity failure must not be reported as
+            // "that isn't a Homebase ID". Only a server that answered non-200 earns that.
+            // Either way carry a raw detail (exception/status) for the details toggle.
             val ping = pingIdentity(httpClient, homebaseId)
             if (ping != IdentityPingResult.Ok) {
                 Logger.w(tag = "LoginViewModel", messageString = "Identity $homebaseId ping=$ping, aborting login")
-                // Be honest about the cause: a connectivity failure must not be reported as
-                // "that isn't a Homebase ID". Only a server that answered non-200 earns that.
                 val errorRes = when (ping) {
-                    IdentityPingResult.Unreachable -> MR.string.login_error_unreachable
+                    is IdentityPingResult.Unreachable -> MR.string.login_error_unreachable
                     else -> MR.string.login_error_not_homebase
+                }
+                val details = when (ping) {
+                    is IdentityPingResult.Unreachable -> ping.detail
+                    is IdentityPingResult.NotHomebase ->
+                        "HTTP ${ping.statusCode} from https://${homebaseId.domainName}/api/v2/health/ping"
+                    IdentityPingResult.Ok -> null
                 }
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         isPinging = false,
-                        error = LoginError.Res(errorRes, homebaseId.domainName)
+                        error = LoginError.Res(errorRes, homebaseId.domainName),
+                        errorDetails = details,
                     )
                 }
 
@@ -160,7 +169,8 @@ class LoginViewModel(
                     it.copy(
                         isLoading = false,
                         error = e.message?.let { msg -> LoginError.Message(msg) }
-                            ?: LoginError.Res(MR.string.login_error_generic)
+                            ?: LoginError.Res(MR.string.login_error_generic),
+                        errorDetails = "${e::class.simpleName ?: "Error"}: ${e.message ?: "(no message)"}",
                     )
                 }
             }

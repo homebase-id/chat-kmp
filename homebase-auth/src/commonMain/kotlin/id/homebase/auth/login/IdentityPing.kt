@@ -7,22 +7,24 @@ import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 
 /** Classification of the pre-login health ping against a candidate identity. */
-enum class IdentityPingResult {
+sealed interface IdentityPingResult {
     /** HTTP 200 — a reachable Homebase identity; proceed with auth. */
-    Ok,
+    data object Ok : IdentityPingResult
 
     /**
      * The request never completed (offline, captive portal, DNS failure, connect/request
      * timeout, TLS error, connection refused). A connectivity problem — it says nothing
      * about whether the ID is a valid Homebase identity, so the UI must not blame the ID.
+     * [detail] is the technical cause (exception type + message) for the details toggle.
      */
-    Unreachable,
+    data class Unreachable(val detail: String) : IdentityPingResult
 
     /**
      * We reached a server over HTTPS but it did not answer 200 — a typo'd/wrong domain or
      * a non-Homebase site. This is the genuine "are you sure it's a Homebase ID?" case.
+     * [statusCode] is the HTTP status it answered with.
      */
-    NotHomebase,
+    data class NotHomebase(val statusCode: Int) : IdentityPingResult
 }
 
 /**
@@ -43,10 +45,12 @@ internal suspend fun pingIdentity(httpClient: HttpClient, identity: OdinId): Ide
                 connectTimeoutMillis = 10_000
             }
         }
-        Logger.i(tag = "IdentityPing") { "Ping $identity -> ${response.status.value}" }
-        if (response.status.value == 200) IdentityPingResult.Ok else IdentityPingResult.NotHomebase
+        val code = response.status.value
+        Logger.i(tag = "IdentityPing") { "Ping $identity -> $code" }
+        if (code == 200) IdentityPingResult.Ok else IdentityPingResult.NotHomebase(code)
     } catch (t: Throwable) {
-        Logger.e(tag = "IdentityPing") { "Ping failed for $identity: ${t::class.simpleName}: ${t.message}" }
-        IdentityPingResult.Unreachable
+        val detail = "${t::class.simpleName ?: "Error"}: ${t.message ?: "(no message)"}"
+        Logger.e(tag = "IdentityPing") { "Ping failed for $identity: $detail" }
+        IdentityPingResult.Unreachable(detail)
     }
 }

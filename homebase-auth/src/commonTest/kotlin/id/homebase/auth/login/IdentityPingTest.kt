@@ -9,6 +9,8 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * The login pre-check must tell "couldn't reach you" apart from "that isn't a Homebase
@@ -35,29 +37,27 @@ class IdentityPingTest {
     }
 
     @Test
-    fun http404_isNotHomebase() = runTest {
+    fun http404_isNotHomebase_withStatus() = runTest {
         // Reached a server, but it isn't answering as a Homebase identity.
-        assertEquals(
-            IdentityPingResult.NotHomebase,
-            pingIdentity(clientReturning(HttpStatusCode.NotFound), identity),
-        )
+        val result = pingIdentity(clientReturning(HttpStatusCode.NotFound), identity)
+        assertIs<IdentityPingResult.NotHomebase>(result)
+        assertEquals(404, result.statusCode)
     }
 
     @Test
-    fun http503_isNotHomebase() = runTest {
-        assertEquals(
-            IdentityPingResult.NotHomebase,
-            pingIdentity(clientReturning(HttpStatusCode.ServiceUnavailable), identity),
-        )
+    fun http503_isNotHomebase_withStatus() = runTest {
+        val result = pingIdentity(clientReturning(HttpStatusCode.ServiceUnavailable), identity)
+        assertIs<IdentityPingResult.NotHomebase>(result)
+        assertEquals(503, result.statusCode)
     }
 
     @Test
-    fun requestThrows_isUnreachable() = runTest {
+    fun requestThrows_isUnreachable_withDetail() = runTest {
         // Offline / DNS / timeout / TLS / connection refused — a connectivity problem, NOT
         // a verdict on the ID. The old code wrongly called this "are you sure it's a Homebase ID?".
-        assertEquals(
-            IdentityPingResult.Unreachable,
-            pingIdentity(clientThrowing(), identity),
-        )
+        val result = pingIdentity(clientThrowing(), identity)
+        assertIs<IdentityPingResult.Unreachable>(result)
+        // The raw cause is carried for the "Show error details" toggle.
+        assertTrue(result.detail.contains("simulated network failure"), "detail was: ${result.detail}")
     }
 }
