@@ -6,9 +6,22 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,6 +30,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import associateNotNull
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
@@ -39,6 +56,8 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.rememberCameraManager
+import id.homebase.resources.MR
+import id.homebase.resources.cd_send_to
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -47,6 +66,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
@@ -328,46 +348,71 @@ fun ConversationMessagesPane(
                     }
 
                     is FullScreenOverlay.AttachmentData -> {
-                        FullScreenAttachmentEditor(
-                            data = data,
-                            textFieldState = textFieldState,
+                        MediaAttachmentEditor(
+                            attachments = data.attachments,
                             currentPage = currentGalleryPage,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },
-                            onRemoveFile = { conversationId, attachmentId ->
-                                onUiAction(UnAttachFile(conversationId, attachmentId))
-                            },
-                            onSendMessage = { conversationId, message, files ->
-                                onUiAction(SendFile(conversationId, message, files))
+                            onRemoveFile = { attachmentId ->
+                                onUiAction(UnAttachFile(data.conversationId, attachmentId))
                             },
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
-                            onCropImage = { conversationId, attachmentId ->
+                            onCropImage = { attachmentId ->
                                 onUiAction(
                                     id.homebase.chat.conversationlist.ConversationListUiAction.RequestCropAttachment(
-                                        conversationId,
-                                        attachmentId,
+                                        data.conversationId, attachmentId,
                                     )
                                 )
                             },
-                            onDrawImage = { conversationId, attachmentId ->
+                            onDrawImage = { attachmentId ->
                                 onUiAction(
                                     id.homebase.chat.conversationlist.ConversationListUiAction.RequestDrawAttachment(
-                                        conversationId,
-                                        attachmentId,
+                                        data.conversationId, attachmentId,
                                     )
                                 )
                             },
-                            onTrimChange = { conversationId, attachmentId, startMs, endMs ->
+                            onTrimChange = { attachmentId, startMs, endMs ->
                                 onUiAction(
                                     id.homebase.chat.conversationlist.ConversationListUiAction.ApplyTrimResult(
-                                        conversationId,
-                                        attachmentId,
-                                        startMs,
-                                        endMs,
+                                        data.conversationId, attachmentId, startMs, endMs,
                                     )
+                                )
+                            },
+                            pagerTopEndSlot = {
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(16.dp)
+                                        .fillMaxWidth(0.6f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = stringResource(MR.string.cd_send_to, data.conversationTitle),
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = data.conversationTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
+                            },
+                            bottomBar = {
+                                MessageTextFieldForAttachment(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
+                                    state = textFieldState,
+                                    onSmileyClick = {},
+                                    onSendMessage = {
+                                        onUiAction(SendFile(data.conversationId, textFieldState.toMarkdown().trimEnd(), data.attachments))
+                                    },
                                 )
                             },
                         )
