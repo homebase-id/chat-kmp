@@ -120,6 +120,7 @@ fun MediaAttachmentEditor(
     onRemoveFile: ((attachmentId: Uuid) -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
+    centerImageInPage: Boolean = false,
     imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
@@ -206,7 +207,7 @@ fun MediaAttachmentEditor(
                                 model = attachment.file,
                                 contentDescription = stringResource(MR.string.cd_image_attachment),
                                 modifier = Modifier
-                                    .align(Alignment.Center)
+                                    .then(if (centerImageInPage) Modifier.align(Alignment.Center) else Modifier)
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(16.dp)),
                                 contentScale = ContentScale.Fit

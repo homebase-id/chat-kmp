@@ -222,6 +222,7 @@ fun MomentComposeScreen(
                             onPageChanged = {
                                 viewModel.onAction(MomentComposeUiAction.PageChanged(it))
                             },
+                            centerImageInPage = true,
                             onSaveFile = {
                                 viewModel.onAction(MomentComposeUiAction.SaveFile(it))
                             },
@@ -282,13 +283,13 @@ private fun EmptyComposeState(
     onAddImage: () -> Unit,
     onCameraClick: () -> Unit,
 ) {
-    // Skeleton mirrors `MomentFullScreenEditor`: hero placeholder where the
+    // Skeleton mirrors `MediaAttachmentEditor`: hero placeholder where the
     // pager would render, the same camera + add strip row, and the same
     // composer at the bottom. The composer stays usable while empty so the
     // user can pre-write a description before picking media — its state
     // survives the empty → populated transition because it lives in the
     // screen, not in either branch.
-    // Mirrors MomentFullScreenEditor: collapse the secondary chrome (add
+    // Mirrors MediaAttachmentEditor: collapse the secondary chrome (add
     // strip + the reserved edit-tools spacer) while the description field is
     // focused so the keyboard doesn't push the field off-screen.
     var descriptionFocused by remember { mutableStateOf(false) }
