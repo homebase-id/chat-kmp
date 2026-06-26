@@ -68,6 +68,7 @@ class VaultUploaderService(
         groupId: Uuid? = null,
         notes: String? = null,
         notePreview: String? = null,
+        label: String? = null,
         uniqueId: Uuid = Uuid.random(),
     ): Uuid? =
     // Resolve the picked files (Android copies content:// picks into cacheDir
@@ -82,6 +83,7 @@ class VaultUploaderService(
                 groupId = groupId,
                 notes = notes,
                 notePreview = notePreview,
+                label = label,
                 uniqueId = uniqueId,
             )
         }
@@ -93,6 +95,7 @@ class VaultUploaderService(
         groupId: Uuid?,
         notes: String?,
         notePreview: String?,
+        label: String?,
         uniqueId: Uuid,
     ): Uuid? {
         // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
@@ -117,7 +120,7 @@ class VaultUploaderService(
             )
 
             val content = OdinSystemSerializer.serialize(
-                VaultFileContent(name = entryName, notes = notes, pdfPageCount = pdfPageCount)
+                VaultFileContent(name = entryName, label = label, notes = notes, pdfPageCount = pdfPageCount)
             )
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,

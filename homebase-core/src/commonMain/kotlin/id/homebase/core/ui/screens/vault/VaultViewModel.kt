@@ -446,7 +446,8 @@ class VaultViewModel(
         if (files.isEmpty()) return
 
         val firstName = files.first().name
-        val entryName = action.entryName?.ifBlank { null } ?: firstName
+        // The user-typed value is the entry's editable label, NOT its file name.
+        val label = action.entryName?.ifBlank { null }
         val firstContentType = resolveContentType(firstName, files.first().mimeType()?.toString())
         val pendingId = Uuid.random()
 
@@ -476,7 +477,8 @@ class VaultViewModel(
             fileId = pendingId,
             uniqueId = pendingId,
             driveId = Uuid.NIL,
-            fileName = entryName,
+            fileName = firstName,
+            label = label,
             contentType = firstContentType,
             sizeBytes = 0L,
             createdAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
@@ -527,7 +529,8 @@ class VaultViewModel(
                 }
 
                 val uniqueId = vaultUploaderService.uploadFile(
-                    entryName = entryName,
+                    entryName = firstName,
+                    label = label,
                     files = fileData,
                     scope = viewModelScope,
                     groupId = action.sectionId,
