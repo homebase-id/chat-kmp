@@ -131,6 +131,15 @@ suspend fun mapToMessageData(
         val isDeleted = header.isSoftDeleted()
 
         if (isDeleted) {
+            // A consumed status (system) message leaves no trace: unlike a deleted user
+            // message — where the "This message was deleted" tombstone is the point — a status
+            // message such as an emergency-contact designation is soft-deleted by the receiver
+            // purely to neutralise re-delivery (EmergencyContactReceiveService.consume). The user
+            // never authored or saw it, so render nothing rather than a "Deleted File" tombstone.
+            // appData survives the local soft-delete (the branch below reads groupId/uniqueId/
+            // userDate from it), so isStatusMessage (appData.dataType) is reliable here.
+            if (isStatusMessage) return null
+
             val deletedUserDate = if (appData.userDate == null)
                 metadata.created
             else
