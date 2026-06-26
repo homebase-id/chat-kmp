@@ -166,6 +166,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
+    // Native (NDK) crash capture: installs Google's async-signal-safe signal handler so
+    // native crashes (e.g. a SQLCipher SIGSEGV/SIGABRT) — which the JVM uncaught handler
+    // in GlobalCrashHandler can never see — are recorded and reflected by
+    // didCrashOnPreviousExecution(). Prebuilt artifact; no NDK/CMake build on our side.
+    implementation(libs.firebase.crashlytics.ndk)
 
     debugImplementation(libs.androidx.ui.tooling)
 

@@ -52,7 +52,10 @@ class DrawEditorViewModel(
     private val resultBus: DrawResultBus,
 ) : ViewModel() {
 
-    val requestId: Uuid = Uuid.parse(savedStateHandle.toRoute<Route.Draw>().requestId)
+    // Arrives as a nav arg (main app, via Route.Draw) or a directly-seeded handle key
+    // (the share editor mounts this screen without a NavHost). Raw key first, then route.
+    val requestId: Uuid = (savedStateHandle.get<String>("requestId")
+        ?: savedStateHandle.toRoute<Route.Draw>().requestId).let(Uuid::parse)
 
     private val _uiState = MutableStateFlow(DrawEditorUiState())
     val uiState: StateFlow<DrawEditorUiState> = _uiState.asStateFlow()

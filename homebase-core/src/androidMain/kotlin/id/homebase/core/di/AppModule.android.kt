@@ -36,6 +36,8 @@ import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.AndroidUpdateAppManager
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.AndroidPlatformInfo
+import id.homebase.core.diagnostics.AndroidDiagnosticsCrashTrigger
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.util.PlatformInfo
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
@@ -67,6 +69,7 @@ actual fun platformModule(): Module = module {
         cache
     }
     single<PlatformInfo> { AndroidPlatformInfo(androidContext()) }
+    single<DiagnosticsCrashTrigger> { AndroidDiagnosticsCrashTrigger(androidContext()) }
     single<AudioRecorder> { AndroidAudioRecorder(androidContext()) }
     single<AudioPlayer> { AndroidAudioPlayer() }
     single<AudioWaveFormGenerator> { AndroidWaveFormGenerator() }

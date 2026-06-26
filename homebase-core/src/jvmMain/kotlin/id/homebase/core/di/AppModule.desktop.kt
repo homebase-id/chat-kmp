@@ -34,6 +34,8 @@ import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.JvmUpdateAppManager
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.JvmPlatformInfo
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
+import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.util.PlatformInfo
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -45,6 +47,7 @@ actual fun platformModule(): Module = module {
     single<PlatformGalleryManager> { JvmGalleryManager() }
     single { GalleryCache(get<PlatformGalleryManager>()) }
     single<PlatformInfo> { JvmPlatformInfo() }
+    single<DiagnosticsCrashTrigger> { NoOpDiagnosticsCrashTrigger }
     single<AudioRecorder> { JvmAudioRecorder() }
     single<AudioPlayer> { JvmAudioPlayer() }
     single<AudioWaveFormGenerator> { JvmWaveFormGenerator() }
