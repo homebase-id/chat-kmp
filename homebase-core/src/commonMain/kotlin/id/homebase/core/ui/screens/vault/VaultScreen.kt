@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -29,10 +30,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.Surface
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -432,6 +434,18 @@ fun VaultScreen(
             // and back. The Scaffold body places all content at the origin, so this
             // opaque, fillMaxSize editor draws on top of the grid/gallery beneath it.
             uiState.pendingEditor?.let { editor ->
+                // Springs up from the bottom when the editor opens.
+                var editorVisible by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { editorVisible = true }
+                AnimatedVisibility(
+                    visible = editorVisible,
+                    enter = slideInVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ) { it } + fadeIn(),
+                ) {
                 MediaAttachmentEditor(
                     attachments = editor.attachments,
                     currentPage = editor.currentPage,
@@ -463,52 +477,43 @@ fun VaultScreen(
                     },
                     bottomBar = {
                         if (editor.appendTo == null) {
-                            // M3 Expressive input bar: a tonal surface that springs up,
-                            // holding a pill name/label field + a filled circular confirm.
-                            var barVisible by remember { mutableStateOf(false) }
-                            LaunchedEffect(Unit) { barVisible = true }
-                            AnimatedVisibility(
-                                visible = barVisible,
-                                enter = fadeIn() + slideInVertically(
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                                        stiffness = Spring.StiffnessLow,
-                                    ),
-                                ) { it / 2 },
+                            // Mirror the chat composer input bar: a rounded filled field on
+                            // surfaceContainerHighest + a circular send button.
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .imePadding(),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    tonalElevation = 3.dp,
-                                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                                OutlinedTextField(
+                                    value = editor.name,
+                                    onValueChange = { viewModel.onAction(VaultUiAction.SetEditorName(it)) },
+                                    singleLine = true,
+                                    placeholder = { Text(stringResource(MR.string.vault_editor_name_hint)) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent,
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                IconButton(
+                                    onClick = {
+                                        viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
+                                    },
+                                    colors = IconButtonDefaults.iconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    ),
                                 ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp)
-                                            .imePadding(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    ) {
-                                        OutlinedTextField(
-                                            value = editor.name,
-                                            onValueChange = { viewModel.onAction(VaultUiAction.SetEditorName(it)) },
-                                            singleLine = true,
-                                            placeholder = { Text(stringResource(MR.string.vault_editor_name_hint)) },
-                                            shape = RoundedCornerShape(28.dp),
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        FilledIconButton(
-                                            onClick = {
-                                                viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
-                                            },
-                                            modifier = Modifier.size(56.dp),
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = stringResource(MR.string.vault_editor_add),
-                                            )
-                                        }
-                                    }
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = stringResource(MR.string.vault_editor_add),
+                                    )
                                 }
                             }
                         } else {
@@ -527,6 +532,7 @@ fun VaultScreen(
                         }
                     },
                 )
+                }
             }
         }
     }
