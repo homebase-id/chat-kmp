@@ -28,6 +28,21 @@ class IdentityPingTest {
         MockEngine { throw RuntimeException("simulated network failure") }
     ) { install(HttpTimeout) }
 
+    /**
+     * Simulates a TLS-intercepting network (VPN/ad-blocker/AV). commonTest can't reference
+     * `javax.net.ssl.SSLHandshakeException`, so we throw the real-world message — the
+     * classifier matches on class name + message, and on JVM/Android the real type's name
+     * ("SSLHandshakeException") matches too.
+     */
+    private fun clientThrowingTls() = HttpClient(
+        MockEngine {
+            throw RuntimeException(
+                "javax.net.ssl.SSLHandshakeException: java.security.cert.CertPathValidatorException: " +
+                    "Trust anchor for certification path not found."
+            )
+        }
+    ) { install(HttpTimeout) }
+
     @Test
     fun http200_isOk() = runTest {
         assertEquals(
@@ -61,11 +76,34 @@ class IdentityPingTest {
 
     @Test
     fun requestThrows_isUnreachable_withDetail() = runTest {
-        // Offline / DNS / timeout / TLS / connection refused — a connectivity problem, NOT
-        // a verdict on the ID. The old code wrongly called this "are you sure it's a Homebase ID?".
-        val result = pingIdentity(clientThrowing(), identity)
+        // Offline / DNS / timeout / connection refused — a connectivity problem, NOT a verdict
+        // on the ID. The old code wrongly called this "are you sure it's a Homebase ID?".
+        val result = pingIdentity(clientThrowing(), identity) { null }
         assertIs<IdentityPingResult.Unreachable>(result)
-        // The raw cause is carried for the "Show error details" toggle.
+        // The raw cause + the exact host we tried are carried for the "Show error details" toggle.
         assertTrue(result.detail.contains("simulated network failure"), "detail was: ${result.detail}")
+        assertTrue(result.detail.contains("sam.homebase.id"), "host must be echoed; was: ${result.detail}")
+    }
+
+    @Test
+    fun tlsHandshakeFailure_isTlsError_withHostAndIssuer() = runTest {
+        // A VPN/ad-blocker/AV intercepting HTTPS → its own untrusted cert → handshake fails.
+        // Its own bucket, AND the injected probe names who signed the presented cert.
+        val fakeProbe: suspend (String) -> String? = { host ->
+            "certificate presented by $host was issued by [CN=AdGuard Personal CA, O=AdGuard]"
+        }
+        val result = pingIdentity(clientThrowingTls(), identity, fakeProbe)
+        assertIs<IdentityPingResult.TlsError>(result)
+        assertTrue(result.detail.contains("Trust anchor"), "raw cause; was: ${result.detail}")
+        assertTrue(result.detail.contains("sam.homebase.id"), "host must be echoed; was: ${result.detail}")
+        assertTrue(result.detail.contains("AdGuard"), "issuer must be named; was: ${result.detail}")
+    }
+
+    @Test
+    fun tlsHandshakeFailure_probeUnavailable_stillTlsErrorWithHost() = runTest {
+        // iOS/web (or a probe error) returns null — we still get TlsError with host + cause.
+        val result = pingIdentity(clientThrowingTls(), identity) { null }
+        assertIs<IdentityPingResult.TlsError>(result)
+        assertTrue(result.detail.contains("sam.homebase.id"), "host must be echoed; was: ${result.detail}")
     }
 }
