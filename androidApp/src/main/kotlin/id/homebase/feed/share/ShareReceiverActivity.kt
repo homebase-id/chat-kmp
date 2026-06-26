@@ -49,7 +49,6 @@ import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
-import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
