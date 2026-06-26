@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -118,6 +119,9 @@ fun MediaAttachmentEditor(
     onCameraClick: (() -> Unit)? = null,
     onRemoveFile: ((attachmentId: Uuid) -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
+    collapseSecondaryChrome: Boolean = false,
+    centerImageInPage: Boolean = false,
+    imageOverlay: @Composable BoxScope.(AttachmentPendingFile) -> Unit = {},
     pagerTopEndSlot: @Composable BoxScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
 ) {
@@ -197,15 +201,19 @@ fun MediaAttachmentEditor(
                         }
                     }
                     is AttachmentPendingFile.FileImage -> {
-                        AsyncImage(
-                            imageLoader = imageLoader,
-                            model = attachment.file,
-                            contentDescription = stringResource(MR.string.cd_image_attachment),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp)),
-                            contentScale = ContentScale.Fit
-                        )
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AsyncImage(
+                                imageLoader = imageLoader,
+                                model = attachment.file,
+                                contentDescription = stringResource(MR.string.cd_image_attachment),
+                                modifier = Modifier
+                                    .then(if (centerImageInPage) Modifier.align(Alignment.Center) else Modifier)
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp)),
+                                contentScale = ContentScale.Fit
+                            )
+                            imageOverlay(attachment)
+                        }
                     }
                     is AttachmentPendingFile.FileVideo -> {
                         val attId = attachment.attachmentId
@@ -363,6 +371,7 @@ fun MediaAttachmentEditor(
         // Attachment-strip row: thumbnails for every queued attachment with a
         // trailing "+" to add another. This row is just about managing the
         // collection of attachments — actions on the current one live below.
+        AnimatedVisibility(visible = !collapseSecondaryChrome) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -495,6 +504,7 @@ fun MediaAttachmentEditor(
                 }
             }
         }
+        } // end AnimatedVisibility (attachment strip)
 
         // Edit-tools row (Signal convention): actions on the current
         // attachment — crop (image only), download. Future tools (filters,
@@ -506,6 +516,7 @@ fun MediaAttachmentEditor(
             canDraw = onDrawImage != null,
             canSave = onSaveFile != null,
         )
+        AnimatedVisibility(visible = !collapseSecondaryChrome) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -544,6 +555,7 @@ fun MediaAttachmentEditor(
                 }
             }
         }
+        } // end AnimatedVisibility (tool row)
 
         bottomBar()
     }

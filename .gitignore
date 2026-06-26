@@ -48,3 +48,4 @@ gradle/local-repo/id/homebase/libs/ffmpeg-kit/1.0/ffmpeg-kit-1.0.aar.*.bak
 # Locally-installed agent skills (argent, kotlin, etc.) — installed per-machine, not part of the repo
 /.agents/
 /skills-lock.json
+.pr3-report.md
