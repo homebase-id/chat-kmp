@@ -375,6 +375,16 @@ class LocationViewModel(
         pendingTrackingAutoEnable = true
     }
 
+    /**
+     * Latch that the user has tried the background ("always") grant. Set when the Grant button is
+     * tapped — not when the result arrives — so a passive launch-time recheck (which also reports
+     * "not granted") never pre-empts the first real attempt. Once latched, the Setup row routes to
+     * Settings until the grant lands (see [LocationUiState.alwaysRequestAttempted]).
+     */
+    fun markAlwaysRequested() {
+        _uiState.update { it.copy(alwaysRequestAttempted = true) }
+    }
+
     fun updateWhileInUseStatus(granted: Boolean, permanentlyDenied: Boolean) {
         _uiState.update {
             it.copy(whileInUseGranted = granted, whileInUsePermanentlyDenied = permanentlyDenied)
@@ -384,7 +394,12 @@ class LocationViewModel(
 
     fun updateAlwaysStatus(granted: Boolean, permanentlyDenied: Boolean) {
         _uiState.update {
-            it.copy(alwaysGranted = granted, alwaysPermanentlyDenied = permanentlyDenied)
+            it.copy(
+                alwaysGranted = granted,
+                alwaysPermanentlyDenied = permanentlyDenied,
+                // A successful grant clears the attempt latch so a future revoke starts fresh.
+                alwaysRequestAttempted = if (granted) false else it.alwaysRequestAttempted,
+            )
         }
         maybeAutoEnableTracking(granted)
     }

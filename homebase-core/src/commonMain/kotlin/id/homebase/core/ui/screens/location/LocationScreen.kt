@@ -137,6 +137,9 @@ fun LocationScreen(
 
             LocationUiAction.RequestAlwaysClicked -> {
                 viewModel.armTrackingAutoEnableOnGrant()
+                // Latch the attempt so that, if this request is silently denied (Android 11+ never
+                // re-shows the background dialog), the row routes to Settings instead of looping.
+                viewModel.markAlwaysRequested()
                 permissionsManager.askPermission(PermissionType.LOCATION_ALWAYS)
             }
 

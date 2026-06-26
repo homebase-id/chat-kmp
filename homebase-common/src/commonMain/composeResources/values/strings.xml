@@ -1277,11 +1277,12 @@
     <string name="location_tracking_unavailable">Tracking isn't available on this device. Enable it on your phone to record location history.</string>
     <string name="location_perm_section">Permissions</string>
     <string name="location_perm_while_in_use">Location while using the app</string>
-    <string name="location_perm_always">Location all the time (background)</string>
+    <string name="location_perm_always">Allow all the time</string>
     <string name="location_perm_granted">Granted</string>
     <string name="location_perm_grant">Grant</string>
     <string name="location_perm_open_settings">Open settings</string>
-    <string name="location_perm_always_hint">Without this, locations are only recorded while the app is open.</string>
+    <string name="location_perm_always_hint">Needed to record your location when the app is in the background or closed.</string>
+    <string name="location_perm_always_settings_hint">Android won't ask again — tap Open settings, then choose "Allow all the time" for Location.</string>
     <string name="location_status_section">Status</string>
     <string name="location_status_last_fix">Last fix</string>
     <string name="location_status_points_today">Points today</string>

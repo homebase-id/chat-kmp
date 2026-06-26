@@ -20,6 +20,14 @@ data class LocationUiState(
     val whileInUsePermanentlyDenied: Boolean = false,
     val alwaysGranted: Boolean = false,
     val alwaysPermanentlyDenied: Boolean = false,
+    /**
+     * True once the user has tapped Grant on the background ("always") permission at least once this
+     * session without it being granted. On Android 11+ background location can't be granted by
+     * re-firing the runtime dialog — the OS silently denies repeat requests (the "flash") — so after
+     * the first attempt the Setup row routes to system Settings ("Allow all the time") instead of
+     * re-offering Grant. Cleared when the grant lands so a later revoke starts a fresh attempt.
+     */
+    val alwaysRequestAttempted: Boolean = false,
     val lastFixEpochMs: Long? = null,
     val lastFixLat: Double? = null,
     val lastFixLon: Double? = null,
