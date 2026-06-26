@@ -23,9 +23,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
@@ -457,33 +463,52 @@ fun VaultScreen(
                     },
                     bottomBar = {
                         if (editor.appendTo == null) {
-                            // M3 Expressive input bar: pill name field + filled circular confirm.
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .imePadding(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            // M3 Expressive input bar: a tonal surface that springs up,
+                            // holding a pill name/label field + a filled circular confirm.
+                            var barVisible by remember { mutableStateOf(false) }
+                            LaunchedEffect(Unit) { barVisible = true }
+                            AnimatedVisibility(
+                                visible = barVisible,
+                                enter = fadeIn() + slideInVertically(
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessLow,
+                                    ),
+                                ) { it / 2 },
                             ) {
-                                OutlinedTextField(
-                                    value = editor.name,
-                                    onValueChange = { viewModel.onAction(VaultUiAction.SetEditorName(it)) },
-                                    singleLine = true,
-                                    placeholder = { Text(stringResource(MR.string.vault_editor_name_hint)) },
-                                    shape = RoundedCornerShape(28.dp),
-                                    modifier = Modifier.weight(1f),
-                                )
-                                FilledIconButton(
-                                    onClick = {
-                                        viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
-                                    },
-                                    modifier = Modifier.size(56.dp),
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    tonalElevation = 3.dp,
+                                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                                 ) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = stringResource(MR.string.vault_editor_add),
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp)
+                                            .imePadding(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        OutlinedTextField(
+                                            value = editor.name,
+                                            onValueChange = { viewModel.onAction(VaultUiAction.SetEditorName(it)) },
+                                            singleLine = true,
+                                            placeholder = { Text(stringResource(MR.string.vault_editor_name_hint)) },
+                                            shape = RoundedCornerShape(28.dp),
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        FilledIconButton(
+                                            onClick = {
+                                                viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
+                                            },
+                                            modifier = Modifier.size(56.dp),
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = stringResource(MR.string.vault_editor_add),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         } else {
