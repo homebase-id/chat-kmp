@@ -40,6 +40,17 @@ data class VaultPendingEditor(
     val attachments: List<AttachmentPendingFile>,
     val sectionId: Uuid?,
     val appendTo: VaultEntry?,
+    /**
+     * Batch name typed in the editor footer (new-entry adds only). Carried here — not in a
+     * screen-local `remember` — so it survives the crop/draw forward-navigation that disposes
+     * VaultScreen and pops back.
+     */
+    val name: String = "",
+    /**
+     * The pager page the user is editing (image N of the batch). Carried in state for the same
+     * reason, so the pager re-mounts on the previously-current page after a crop/draw round-trip.
+     */
+    val currentPage: Int = 0,
 )
 
 sealed interface VaultOverlay {
@@ -82,6 +93,12 @@ sealed interface VaultUiAction {
 
     /** Remove a staged attachment from the open editor. */
     data class RemoveFromEditor(val attachmentId: Uuid) : VaultUiAction
+
+    /** Update the batch name typed in the editor footer (kept in VM state across nav). */
+    data class SetEditorName(val name: String) : VaultUiAction
+
+    /** Update the editor pager's current page (kept in VM state across nav). */
+    data class SetEditorPage(val page: Int) : VaultUiAction
 
     /** Route a staged image through the crop/draw editor; the result replaces it in place. */
     data class EditStagedImage(val attachmentId: Uuid, val tool: VaultEditorTool) : VaultUiAction

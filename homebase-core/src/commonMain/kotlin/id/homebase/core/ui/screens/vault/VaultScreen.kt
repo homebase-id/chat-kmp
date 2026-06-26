@@ -198,10 +198,8 @@ fun VaultScreen(
         viewModel.onAction(VaultUiAction.DismissAddEditor)
     }
 
-    // Page index for the editor's pager (the user is editing image N of the batch).
-    var editorPage by remember { mutableIntStateOf(0) }
-    // Optional batch name typed in the editor footer (new-entry adds only).
-    var editorName by remember { mutableStateOf("") }
+    // Editor pager page and batch name live in VM state (VaultPendingEditor), not screen-local
+    // remember{}, so they survive the crop/draw forward-navigation that disposes VaultScreen.
 
     // Section dialog state
     var showNewSectionSheet by remember { mutableStateOf(false) }
@@ -423,8 +421,8 @@ fun VaultScreen(
             uiState.pendingEditor?.let { editor ->
                 MediaAttachmentEditor(
                     attachments = editor.attachments,
-                    currentPage = editorPage,
-                    onPageChanged = { editorPage = it },
+                    currentPage = editor.currentPage,
+                    onPageChanged = { viewModel.onAction(VaultUiAction.SetEditorPage(it)) },
                     modifier = Modifier.fillMaxSize(),
                     onCropImage = { id ->
                         viewModel.onAction(VaultUiAction.EditStagedImage(id, VaultEditorTool.Crop))
@@ -448,7 +446,6 @@ fun VaultScreen(
                         viewModel.onAction(VaultUiAction.RemoveFromEditor(id))
                     },
                     onDismiss = {
-                        editorName = ""
                         viewModel.onAction(VaultUiAction.DismissAddEditor)
                     },
                     bottomBar = {
@@ -460,8 +457,8 @@ fun VaultScreen(
                         ) {
                             if (editor.appendTo == null) {
                                 OutlinedTextField(
-                                    value = editorName,
-                                    onValueChange = { editorName = it },
+                                    value = editor.name,
+                                    onValueChange = { viewModel.onAction(VaultUiAction.SetEditorName(it)) },
                                     singleLine = true,
                                     label = { Text(stringResource(MR.string.vault_editor_name_hint)) },
                                     modifier = Modifier.fillMaxWidth(),
@@ -470,8 +467,7 @@ fun VaultScreen(
                             }
                             Button(
                                 onClick = {
-                                    viewModel.onAction(VaultUiAction.ConfirmAddEditor(editorName))
-                                    editorName = ""
+                                    viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {

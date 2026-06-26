@@ -74,6 +74,17 @@ class VaultViewModel(
     private val _preparingShareKeys = MutableStateFlow<Set<String>>(emptySet())
     private val _pendingEditor = MutableStateFlow<VaultPendingEditor?>(null)
 
+    /**
+     * True while a crop/draw screen is navigated to on top of Vault. That forward-navigation
+     * disposes VaultScreen, firing its `onDispose` -> [VaultUiAction.CloseOverlay]; this flag
+     * tells the CloseOverlay handler to KEEP the gallery overlay in state across the round-trip
+     * so the user lands back where they were (page refreshing in place) instead of on the grid.
+     * It guards only the crop/draw round-trip: set right before the nav event, consumed by the
+     * one dispose-driven CloseOverlay it is meant to swallow, and cleared again when the edit
+     * result returns — so a genuine back-out of Vault still closes the overlay.
+     */
+    private var imageEditNavInFlight = false
+
     val uiState: StateFlow<VaultUiState> = combine(
         combine(vaultStream.sections, vaultStream.entriesBySection, vaultStream.isLoaded) { s, e, l ->
             Triple(s, e, l)
@@ -294,9 +305,14 @@ class VaultViewModel(
             is VaultUiAction.OpenAddEditor -> handleOpenAddEditor(action)
             is VaultUiAction.AddToEditor -> handleAddToEditor(action)
             is VaultUiAction.RemoveFromEditor -> handleRemoveFromEditor(action)
+            is VaultUiAction.SetEditorName -> _pendingEditor.update { it?.copy(name = action.name) }
+            is VaultUiAction.SetEditorPage -> _pendingEditor.update { it?.copy(currentPage = action.page) }
             is VaultUiAction.EditStagedImage -> handleEditStagedImage(action)
             is VaultUiAction.ConfirmAddEditor -> handleConfirmAddEditor(action)
-            VaultUiAction.DismissAddEditor -> _pendingEditor.update { null }
+            VaultUiAction.DismissAddEditor -> {
+                imageEditNavInFlight = false
+                _pendingEditor.update { null }
+            }
             is VaultUiAction.EditExistingPage -> handleEditExistingPage(action)
             is VaultUiAction.DeletePage -> handleDeletePage(action)
             is VaultUiAction.UpdateNotes -> handleUpdateNotes(action)
@@ -308,7 +324,18 @@ class VaultViewModel(
             is VaultUiAction.ShareFile -> handleShareFile(action)
             is VaultUiAction.RenameFile -> handleRenameFile(action)
             is VaultUiAction.DeleteFile -> handleDeleteFile(action)
-            VaultUiAction.CloseOverlay -> _overlayState.update { null }
+            VaultUiAction.CloseOverlay -> {
+                // While a crop/draw nav is in flight, the forward-navigation has disposed
+                // VaultScreen, firing its onDispose -> CloseOverlay. That is NOT a real close,
+                // so keep the gallery overlay in state across the round-trip. Consume the flag
+                // (one-shot) so this only swallows that single dispose-driven close — a genuine
+                // back-out of Vault afterwards still closes the overlay.
+                if (imageEditNavInFlight) {
+                    imageEditNavInFlight = false
+                } else {
+                    _overlayState.update { null }
+                }
+            }
             VaultUiAction.RefreshFiles -> { /* handled by VaultStream event observation */
             }
         }
@@ -701,6 +728,7 @@ class VaultViewModel(
 
     private fun handleConfirmAddEditor(action: VaultUiAction.ConfirmAddEditor) {
         val editor = _pendingEditor.value ?: return
+        imageEditNavInFlight = false
         _pendingEditor.update { null }
         val files = editor.attachments.mapNotNull { att ->
             when (att) {
@@ -770,15 +798,23 @@ class VaultViewModel(
                     VaultEditorTool.Crop -> {
                         cropResultBus.postSource(requestId, bytes)
                         viewModelScope.launch {
-                            cropResultBus.resultsFor(requestId).collect { onResult(it.bytes) }
+                            cropResultBus.resultsFor(requestId).collect {
+                                imageEditNavInFlight = false
+                                onResult(it.bytes)
+                            }
                         }
+                        imageEditNavInFlight = true
                         _events.tryEmit(VaultUiEvent.NavigateToCropper(requestId))
                     }
                     VaultEditorTool.Draw -> {
                         drawResultBus.postSource(requestId, bytes)
                         viewModelScope.launch {
-                            drawResultBus.resultsFor(requestId).collect { onResult(it.bytes) }
+                            drawResultBus.resultsFor(requestId).collect {
+                                imageEditNavInFlight = false
+                                onResult(it.bytes)
+                            }
                         }
+                        imageEditNavInFlight = true
                         _events.tryEmit(VaultUiEvent.NavigateToDrawer(requestId))
                     }
                 }
