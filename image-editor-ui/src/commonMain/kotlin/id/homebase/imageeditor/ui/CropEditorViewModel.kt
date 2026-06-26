@@ -43,6 +43,14 @@ class CropEditorViewModel(
     val requestId: Uuid = (savedStateHandle.get<String>("requestId")
         ?: savedStateHandle.toRoute<Route.Crop>().requestId).let(Uuid::parse)
 
+    /** Free the bus entry when the cropper screen goes away — confirmed or aborted.
+     *  postResult() closes the channel on the confirm path; this covers the back-out
+     *  path so the caller's resultsFor(requestId) collector can't suspend forever. */
+    override fun onCleared() {
+        resultBus.cancel(requestId)
+        super.onCleared()
+    }
+
     private val _uiState = MutableStateFlow(CropEditorUiState())
     val uiState: StateFlow<CropEditorUiState> = _uiState.asStateFlow()
 
