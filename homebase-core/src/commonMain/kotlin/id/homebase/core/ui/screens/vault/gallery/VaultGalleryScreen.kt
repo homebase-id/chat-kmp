@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -95,6 +96,8 @@ fun VaultGalleryScreen(
     onDeleteEntry: () -> Unit,
     sections: List<VaultSection>,
     onMoveToSection: (Uuid) -> Unit,
+    /** Payload keys whose share/save download is in flight — drives the spinner + disabled state. */
+    preparingShareKeys: Set<String> = emptySet(),
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -281,13 +284,27 @@ fun VaultGalleryScreen(
                         },
                         actions = {
                             if (currentDescriptor != null) {
-                                IconButton(onClick = { onSharePage(currentDescriptor.key) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Share,
-                                        contentDescription = stringResource(MR.string.vault_gallery_share_page),
-                                    )
+                                val isPreparing = currentDescriptor.key in preparingShareKeys
+                                IconButton(
+                                    onClick = { onSharePage(currentDescriptor.key) },
+                                    enabled = !isPreparing,
+                                ) {
+                                    if (isPreparing) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = stringResource(MR.string.vault_gallery_share_page),
+                                        )
+                                    }
                                 }
-                                IconButton(onClick = { onSavePage(currentDescriptor.key) }) {
+                                IconButton(
+                                    onClick = { onSavePage(currentDescriptor.key) },
+                                    enabled = !isPreparing,
+                                ) {
                                     Icon(
                                         imageVector = Icons.Outlined.Download,
                                         contentDescription = stringResource(MR.string.vault_gallery_save_page),

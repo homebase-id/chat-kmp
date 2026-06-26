@@ -10,7 +10,8 @@ import coil3.memory.MemoryCache
 import coil3.video.VideoFrameDecoder
 import id.homebase.api.file.AndroidFileOperationsProvider
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.sync.database.AndroidDatabaseSizeProbe
+import id.homebase.api.sync.database.DatabaseDriverFactory
+import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
 import id.homebase.chat.dice.AndroidShakeDetector
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
@@ -35,6 +36,8 @@ import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.AndroidUpdateAppManager
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.AndroidPlatformInfo
+import id.homebase.core.diagnostics.AndroidDiagnosticsCrashTrigger
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.util.PlatformInfo
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
@@ -66,10 +69,11 @@ actual fun platformModule(): Module = module {
         cache
     }
     single<PlatformInfo> { AndroidPlatformInfo(androidContext()) }
+    single<DiagnosticsCrashTrigger> { AndroidDiagnosticsCrashTrigger(androidContext()) }
     single<AudioRecorder> { AndroidAudioRecorder(androidContext()) }
     single<AudioPlayer> { AndroidAudioPlayer() }
     single<AudioWaveFormGenerator> { AndroidWaveFormGenerator() }
-    single<DatabaseSizeProbe> { AndroidDatabaseSizeProbe(androidContext()) }
+    single<DatabaseSizeProbe> { DefaultDatabaseSizeProbe(DatabaseDriverFactory(androidContext())) }
     single<UpdateAppManager> { AndroidUpdateAppManager(androidContext()) }
     single<ShakeDetector> { AndroidShakeDetector(androidContext()) }
     // Warm pool of ExoPlayer instances reused across moments inline-video

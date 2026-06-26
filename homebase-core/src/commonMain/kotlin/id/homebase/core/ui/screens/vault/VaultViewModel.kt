@@ -65,6 +65,7 @@ class VaultViewModel(
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
     private val _syncingState = MutableStateFlow(false)
     private val _checkingPermissions = MutableStateFlow(false)
+    private val _preparingShareKeys = MutableStateFlow<Set<String>>(emptySet())
 
     val uiState: StateFlow<VaultUiState> = combine(
         combine(vaultStream.sections, vaultStream.entriesBySection, vaultStream.isLoaded) { s, e, l ->
@@ -73,8 +74,9 @@ class VaultViewModel(
         _overlayState,
         _syncingState,
         _checkingPermissions,
-    ) { (sections, entriesBySection, isLoaded), overlay, syncing, checkingPermissions ->
-        buildUiState(sections, entriesBySection, isLoaded, overlay, syncing, checkingPermissions)
+        _preparingShareKeys,
+    ) { (sections, entriesBySection, isLoaded), overlay, syncing, checkingPermissions, preparing ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, syncing, checkingPermissions, preparing)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -93,6 +95,7 @@ class VaultViewModel(
             overlay = _overlayState.value,
             syncing = _syncingState.value,
             checkingPermissions = _checkingPermissions.value,
+            preparingShareKeys = _preparingShareKeys.value,
         ),
     )
 
@@ -107,6 +110,7 @@ class VaultViewModel(
         overlay: VaultOverlay?,
         syncing: Boolean,
         checkingPermissions: Boolean,
+        preparingShareKeys: Set<String>,
     ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
@@ -125,6 +129,7 @@ class VaultViewModel(
             isSyncing = syncing,
             isCheckingPermissions = checkingPermissions,
             fullScreenOverlay = refreshedOverlay ?: overlay,
+            preparingShareKeys = preparingShareKeys,
         )
     }
 
@@ -678,29 +683,44 @@ class VaultViewModel(
     }
 
     private fun handleSharePage(action: VaultUiAction.SharePage) {
+        // Re-entrancy guard: a tap while this page is already downloading is a no-op, so
+        // repeated taps don't queue duplicate downloads / multiple share sheets (#850).
+        // onAction runs on the UI thread, so this check-then-add is effectively atomic.
+        if (action.payloadKey in _preparingShareKeys.value) return
+        _preparingShareKeys.update { it + action.payloadKey }
         viewModelScope.launch {
-            val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
-            if (tempPath != null) {
-                val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
-                val contentType = descriptor?.contentType ?: action.file.contentType
-                _events.tryEmit(
-                    VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
-                )
-            } else {
-                _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+            try {
+                val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                if (tempPath != null) {
+                    val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
+                    val contentType = descriptor?.contentType ?: action.file.contentType
+                    _events.tryEmit(
+                        VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
+                    )
+                } else {
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+                }
+            } finally {
+                _preparingShareKeys.update { it - action.payloadKey }
             }
         }
     }
 
     private fun handleSavePage(action: VaultUiAction.SavePage) {
+        if (action.payloadKey in _preparingShareKeys.value) return
+        _preparingShareKeys.update { it + action.payloadKey }
         viewModelScope.launch {
-            val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
-            if (tempPath != null) {
-                _events.tryEmit(
-                    VaultUiEvent.SaveFileReady(tempPath, action.file.fileName),
-                )
-            } else {
-                _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+            try {
+                val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                if (tempPath != null) {
+                    _events.tryEmit(
+                        VaultUiEvent.SaveFileReady(tempPath, action.file.fileName),
+                    )
+                } else {
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+                }
+            } finally {
+                _preparingShareKeys.update { it - action.payloadKey }
             }
         }
     }

@@ -1,13 +1,28 @@
 package id.homebase.core.location.tracking
 
 /**
- * Capture profile for the platform tracker.
+ * Acquisition profile for the platform tracker — chosen by [LocationTrackingCoordinator] from BOTH
+ * the app's foreground state AND *why* GPS is running (resolved by [GpsDemand.resolveProfile]). A
+ * **live** consumer (an active share or the live-map view) wants frequent, fresh, high-accuracy
+ * fixes; **history**-only wants battery-friendly, displacement-based sampling.
  *
- * - [Foreground] — the app is visible: high accuracy, tight interval/displacement.
- * - [Background] — the app is backgrounded: low power, batched/OS-throttled
- *   delivery. No foreground service on Android; the OS decides the cadence.
+ * Today only the two FOREGROUND profiles differ in their parameters; both background profiles map to
+ * the same OS-throttled low-power cadence — the background / cold-wake path is intentionally left
+ * untouched (changing it is higher risk, lower value, and OS-capped anyway).
  */
-enum class TrackingMode { Foreground, Background }
+enum class TrackingProfile {
+    /** App foreground + a live consumer: high accuracy, tight interval/displacement. */
+    LiveForeground,
+
+    /** App background + a live consumer: low power, batched/OS-throttled. */
+    LiveBackground,
+
+    /** App foreground, history only: balanced power, larger displacement (battery-friendly). */
+    HistoryForeground,
+
+    /** App background, history only (and the default at cold start): low power, batched. */
+    HistoryBackground,
+}
 
 /**
  * One captured GPS fix, platform-agnostic. Optional fields are null when the
@@ -55,7 +70,7 @@ interface LocationPointSink {
  *
  * Battery contract (see plan): Android uses FusedLocationProvider — a
  * balanced-power batched PendingIntent registration that survives the app
- * process, plus a high-accuracy callback overlay only while [TrackingMode.Foreground];
+ * process, plus a high-accuracy callback overlay only while a foreground profile is active;
  * no foreground service. iOS uses CLLocationManager with auto-pause and
  * significant-location-change as the relaunch vector.
  */
@@ -64,13 +79,13 @@ interface LocationTracker {
     val isAvailable: Boolean
 
     /**
-     * Idempotent. Registers OS location updates with the profile for [mode].
+     * Idempotent. Registers OS location updates for [profile].
      * On platforms with [isAvailable] = false this is a no-op.
      */
-    fun start(mode: TrackingMode)
+    fun start(profile: TrackingProfile)
 
-    /** Switch capture profile on app foreground/background transitions while running. */
-    fun setMode(mode: TrackingMode)
+    /** Switch the acquisition profile while running (foreground/background or live/history change). */
+    fun setProfile(profile: TrackingProfile)
 
     /** Unregister all OS location updates. */
     fun stop()

@@ -14,97 +14,105 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * The single funnel for captured GPS fixes: dedups against the last accepted
- * point and buffers survivors into the LocationPoint table, from which
- * `LocationTrackUploaderService` drains them into hour files on the drive.
+ * Thin state + history primitives for captured GPS fixes. It no longer decides what a fix *does* —
+ * that routing (persist-as-history vs relay-as-live) lives in [LocationFixRouter], the single seam
+ * every capture path submits to. This class only provides the pieces the router orchestrates:
  *
- * Both capture paths land here — the in-process tracker callbacks and the
- * Android background `LocationUpdatesReceiver` woken in a cold process.
+ *  - [dedup] — drop fixes older than the last accepted one + a stationary-noise filter (pure read).
+ *  - [lastPoint] / [publishLastKnown] — the latest known position, updated for EVERY accepted fix
+ *    (history on or off) so the live map and `getCurrentGps` always see a current dot.
+ *  - [persistHistory] — stamp battery/steps and insert into the LocationPoint table (history only),
+ *    from which `LocationTrackUploaderService` drains them into hour files on the drive.
+ *
+ * ### Pipeline cadences (one place, see #846)
+ * Five independent knobs shape the foreground capture→submit→route flow; documented here so they're
+ * greppable and don't silently drift:
+ *  - OS acquisition: ~15 s / 10 m foreground (Android Fused), distance-filtered (iOS) — platform trackers.
+ *  - Store stationary-noise filter: [MIN_DISPLACEMENT_M] (8 m) AND [MIN_INTERVAL_MS] (20 s) — here.
+ *  - Foreground flush ticker: 120 s — `LocationTrackingCoordinator.startTicker`.
+ *  - History flush rate-gate: 60 s — `LocationTrackUploaderService`.
+ *  - Live relay throttle: 3 s, last-value-wins — `LiveLocationShareService`.
  */
 class LocationPointStore(
     private val databaseManager: DatabaseManager,
     private val deviceSensors: DeviceSensors,
-    /**
-     * Read at submit() time to decide whether to PERSIST a fix as history. A live share holds
-     * GPS on even with tracking off (the coordinator's wantsGps()), so fixes still arrive here —
-     * but with tracking off they must only be relayed, never recorded as the user's history
-     * (bug #823). Relay (onPointsBuffered + lastPoint) stays unconditional. Defaults to true so
-     * tests and any non-tracking caller persist as before; AppModule wires the live preference.
-     */
-    private val isTrackingEnabled: () -> Boolean = { true },
-    /**
-     * Invoked after a non-empty batch lands in the buffer, on submit()'s
-     * coroutine. Wired in AppModule to the uploader's rate-gated flushIfDue so
-     * EVERY capture path triggers a drain — the Android background receiver AND
-     * the iOS CLLocationManager delegate, which previously had no background
-     * flush trigger and let points pile up unsent. Default no-op for tests.
-     */
-    private val onPointsBuffered: suspend () -> Unit = {},
-) : LocationPointSink {
+) {
 
     private val logger = Logger.withTag("LocationPointStore")
 
     private val _lastPoint = MutableStateFlow<RawLocationPoint?>(null)
     val lastPoint: StateFlow<RawLocationPoint?> = _lastPoint.asStateFlow()
 
-    override suspend fun submit(points: List<RawLocationPoint>) {
-        if (points.isEmpty()) return
+    /**
+     * Filter a freshly-captured batch against the last accepted fix: drop out-of-order points
+     * (`p.t <= last.t`) and stationary noise ([isStationaryNoise]). Pure read — no writes, no
+     * `lastPoint` mutation, no sensor reads. Baseline is the in-memory [lastPoint] or, on a cold
+     * process, the latest persisted row. Returns the accepted points in time order (possibly empty).
+     */
+    suspend fun dedup(points: List<RawLocationPoint>): List<RawLocationPoint> {
+        if (points.isEmpty()) return emptyList()
         val accepted = mutableListOf<RawLocationPoint>()
-        val prevPoint = _lastPoint.value ?: databaseManager.locationPoint.selectLatest()?.toRaw()
-        var last = prevPoint
+        var last = _lastPoint.value ?: databaseManager.locationPoint.selectLatest()?.toRaw()
         for (p in points.sortedBy { it.t }) {
             if (last != null && p.t <= last.t) continue
-            // Thin stationary noise: skip fixes that moved < MIN_DISPLACEMENT_M
-            // AND arrived < MIN_INTERVAL_MS after the last accepted one.
-            if (last != null &&
-                p.t - last.t < MIN_INTERVAL_MS &&
-                haversineMeters(last.lat, last.lon, p.lat, p.lon) < MIN_DISPLACEMENT_M
-            ) continue
+            if (last != null && isStationaryNoise(last, p)) continue
             accepted += p
             last = p
         }
-        if (accepted.isEmpty()) return
+        return accepted
+    }
 
-        // Device readings. Battery (free, permission-less) is stamped on every
-        // point — the encoder surfaces only the hour's first, but any point may
-        // be it. The step delta covers the window since the previous accepted
-        // point and is attributed to the newest point of this batch (exact
-        // per-point in foreground; a batch window's steps in background).
+    /**
+     * A fix closer than [MIN_DISPLACEMENT_M] in space AND [MIN_INTERVAL_MS] in time to the previous
+     * accepted fix is stationary noise — drop it before it costs DB and upload bytes.
+     *
+     * Deliberately defensive over the OS-level displacement filter (#846 Q3): it is the **single**
+     * gate every capture path funnels through — the Android foreground overlay (10 m), the iOS
+     * distance filter (which drifts and re-fires near the threshold), the background PendingIntent
+     * (25 m), **and** one-shot `getCurrentGps` fixes (no OS displacement filter at all). Enforcing the
+     * 8 m∧20 s rule here guarantees consistent thinning regardless of which source produced the fix.
+     */
+    private fun isStationaryNoise(prev: RawLocationPoint, p: RawLocationPoint): Boolean =
+        p.t - prev.t < MIN_INTERVAL_MS &&
+            haversineMeters(prev.lat, prev.lon, p.lat, p.lon) < MIN_DISPLACEMENT_M
+
+    /** Update the latest-known position. Called for every accepted fix, regardless of history/relay. */
+    fun publishLastKnown(point: RawLocationPoint) {
+        _lastPoint.value = point
+    }
+
+    /**
+     * Persist [points] as the user's location history: stamp device readings and insert into the
+     * LocationPoint table. Called by [LocationFixRouter] only when history is allowed.
+     *
+     * Battery (free, permission-less) is stamped on every point — the encoder surfaces only the
+     * hour's first, but any point may be it. The step delta covers the window since the previous
+     * persisted point and is attributed to the newest point of this batch.
+     */
+    suspend fun persistHistory(points: List<RawLocationPoint>) {
+        if (points.isEmpty()) return
+        // Steps baseline = last PERSISTED point's time. Reads before the insert below, so it is the
+        // pre-batch row (best-effort across a history-off gap; steps are non-critical).
+        val prevPersistedT = databaseManager.locationPoint.selectLatest()?.toRaw()?.t
         val battery = runCatching { deviceSensors.batteryPercent() }
             .onFailure { logger.d(it) { "battery read failed" } }.getOrNull()
-        val sample = runCatching { deviceSensors.stepsSince(prevPoint?.t, loadCumulative()) }
+        val sample = runCatching { deviceSensors.stepsSince(prevPersistedT, loadCumulative()) }
             .onFailure { logger.d(it) { "step read failed" } }.getOrNull()
         sample?.cumulative?.let { saveCumulative(it) }
 
-        val lastIndex = accepted.lastIndex
-        val buffered = accepted.mapIndexed { i, p ->
+        val lastIndex = points.lastIndex
+        val buffered = points.mapIndexed { i, p ->
             p.toBuffered().copy(
                 bat = battery,
                 steps = if (i == lastIndex) sample?.deltaSteps else null,
             )
         }
-        // Persist as history ONLY when tracking is on. With tracking off (fixes arriving solely
-        // because a live share holds GPS on), skip the DB insert so no history/trace/point-count
-        // is recorded — but still update _lastPoint and fire onPointsBuffered below so the live
-        // share keeps relaying (bug #823).
-        val persist = isTrackingEnabled()
-        if (persist) {
-            databaseManager.locationPoint.insertPoints(buffered)
-        }
-        _lastPoint.value = last
-        // Info (not debug) so the background capture/upload pipeline is auditable
-        // in homebase.log — pending is the not-yet-uploaded backlog that the
-        // iPhone stall would have shown climbing without a flush.
+        databaseManager.locationPoint.insertPoints(buffered)
         val pending = runCatching { databaseManager.locationPoint.countUnmarked() }.getOrDefault(-1L)
         logger.i {
-            val verb = if (persist) "Buffered" else "Relayed-only (tracking off)"
-            "$verb ${accepted.size}/${points.size} points pending=$pending " +
-                "(last src=${last?.src} bat=$battery steps=${sample?.deltaSteps})"
+            "Persisted ${points.size} history points pending=$pending " +
+                "(bat=$battery steps=${sample?.deltaSteps})"
         }
-        // Trigger a drain from common code so iOS gets the same background flush
-        // as Android. flushIfDue is rate-gated, so calling it per batch is cheap.
-        runCatching { onPointsBuffered() }
-            .onFailure { logger.e(it) { "onPointsBuffered (flush trigger) failed" } }
     }
 
     private fun loadCumulative(): Long? = runCatching {

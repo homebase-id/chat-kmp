@@ -6,8 +6,9 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
+import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
-import id.homebase.api.sync.database.JvmDatabaseSizeProbe
+import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
 import id.homebase.chat.dice.JvmShakeDetector
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
@@ -33,6 +34,8 @@ import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.JvmUpdateAppManager
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.JvmPlatformInfo
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
+import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.util.PlatformInfo
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -44,10 +47,11 @@ actual fun platformModule(): Module = module {
     single<PlatformGalleryManager> { JvmGalleryManager() }
     single { GalleryCache(get<PlatformGalleryManager>()) }
     single<PlatformInfo> { JvmPlatformInfo() }
+    single<DiagnosticsCrashTrigger> { NoOpDiagnosticsCrashTrigger }
     single<AudioRecorder> { JvmAudioRecorder() }
     single<AudioPlayer> { JvmAudioPlayer() }
     single<AudioWaveFormGenerator> { JvmWaveFormGenerator() }
-    single<DatabaseSizeProbe> { JvmDatabaseSizeProbe() }
+    single<DatabaseSizeProbe> { DefaultDatabaseSizeProbe(DatabaseDriverFactory()) }
     single<UpdateAppManager> { JvmUpdateAppManager(
         httpClient = get(),
         platformInfo = get(),

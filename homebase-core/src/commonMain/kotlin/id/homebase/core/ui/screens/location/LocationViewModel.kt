@@ -78,7 +78,7 @@ class LocationViewModel(
     private val _uiState = MutableStateFlow(
         LocationUiState(
             trackingAvailable = tracker.isAvailable,
-            trackingEnabled = locationPreferences.trackingEnabled.value,
+            allowLocationHistory = locationPreferences.allowLocationHistory.value,
             activated = isActivated.value,
             iconVisible = locationPreferences.iconVisible.value,
             mapProvider = locationPreferences.mapProvider.value,
@@ -131,8 +131,8 @@ class LocationViewModel(
         }
 
         viewModelScope.launch {
-            locationPreferences.trackingEnabled.collect { enabled ->
-                _uiState.update { it.copy(trackingEnabled = enabled) }
+            locationPreferences.allowLocationHistory.collect { enabled ->
+                _uiState.update { it.copy(allowLocationHistory = enabled) }
             }
         }
         viewModelScope.launch {
@@ -272,9 +272,9 @@ class LocationViewModel(
                 }
             }
 
-            is LocationUiAction.SetTrackingEnabled -> {
+            is LocationUiAction.SetAllowLocationHistory -> {
                 viewModelScope.launch {
-                    trackingCoordinator.setTrackingEnabled(action.enabled)
+                    trackingCoordinator.setAllowLocationHistory(action.enabled)
                 }
             }
 
@@ -337,9 +337,9 @@ class LocationViewModel(
     private fun maybeAutoEnableTracking(granted: Boolean) {
         if (!granted || !pendingTrackingAutoEnable) return
         val state = _uiState.value
-        if (!state.trackingAvailable || state.trackingEnabled) return
+        if (!state.trackingAvailable || state.allowLocationHistory) return
         pendingTrackingAutoEnable = false
-        viewModelScope.launch { trackingCoordinator.setTrackingEnabled(true) }
+        viewModelScope.launch { trackingCoordinator.setAllowLocationHistory(true) }
     }
 
     /** Called on screen entry / resume to refresh DB-backed status numbers. */

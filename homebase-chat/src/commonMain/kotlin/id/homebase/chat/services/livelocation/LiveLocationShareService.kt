@@ -4,13 +4,13 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.liverelay.LIVE_LOCATION_CHANNEL_KEY
 import id.homebase.api.client.liverelay.LiveLocationCodec
 import id.homebase.api.client.liverelay.LiveLocationPoint
-import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.client.liverelay.LiveShareRoster
 import id.homebase.api.client.liverelay.TimedRecipient
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.location.tracking.LocationPointStore
+import id.homebase.core.location.tracking.RawLocationPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,18 +44,20 @@ import kotlin.uuid.Uuid
  * (Foreground/Background) and the cold-start re-arm in one place — including the iOS
  * significant-location-change relaunch, so a share survives a full process kill.
  *
- * **Where the send fires:** [onGpsBuffered] is invoked from the `onPointsBuffered` seam in
- * `LocationPointStore.submit()` (wired in `AppModule`) — the only hook that runs on OS-delivered
- * points while the app is **backgrounded or cold-woken** (Android `LocationUpdatesReceiver`, iOS
- * `CLLocationManager` delegate). It deliberately does NOT collect `lastPoint` as a Flow: that
- * StateFlow is only observed by UI, so a collector would silently stop sending once backgrounded.
+ * **Where the send fires:** [relayLatest] is invoked by `LocationFixRouter` for every accepted fix —
+ * the routing seam that runs on OS-delivered points while the app is **backgrounded or cold-woken**
+ * (Android `LocationUpdatesReceiver`, iOS `CLLocationManager` delegate). The router hands it the point
+ * directly, so it deliberately does NOT collect `lastPoint` as a Flow: that StateFlow is only observed
+ * by UI, so a collector would silently stop sending once backgrounded.
  *
  * **Persisted state:** the roster (with absolute end-times) is stored in keyValue so a cold process
  * (rebuilt from scratch) still knows to relay, and a share lives until its end-time / explicit [stop]
  * / logout — never cleared by a mere app open. Ephemeral by design — no drive writes, no outbox.
  */
 class LiveLocationShareService(
-    private val liveRelayProvider: LiveRelayProvider,
+    /** Relay seam: app→server live-relay POST. Wired to `LiveRelayProvider::relay`; a plain function
+     *  so the share logic is testable without an HttpClient. Returns true on a 2xx. */
+    private val relay: suspend (channelKey: String, recipients: List<String>, blob: String) -> Boolean,
     private val locationPointStore: LocationPointStore,
     private val databaseManager: DatabaseManager,
     /** Wired in AppModule to LocationTrackingCoordinator.refreshGpsHold(). */
@@ -170,18 +172,19 @@ class LiveLocationShareService(
             val blob = LiveLocationCodec.encode(
                 LiveLocationPoint(lat = p.lat, lon = p.lon, acc = p.acc, spd = p.spd, hdg = p.hdg, ts = p.t)
             )
-            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds.distinct(), blob) }
+            runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds.distinct(), blob) }
                 .onFailure { logger.w(it) { "immediate push failed" } }
             lastSentMs = nowMs()
         }
     }
 
     /**
-     * Called from the GPS sink (`onPointsBuffered`) after each accepted batch — background-capable.
-     * Prunes expired recipients, relays the just-accepted latest point to the live set if the
-     * throttle window has elapsed. Never throws into the sink chain.
+     * Called by `LocationFixRouter` for each accepted fix [point] — background-capable. Self-gating:
+     * prunes expired recipients (dropping the coordinator's GPS hold when the last share ends), then
+     * relays [point] to the live set if the throttle window has elapsed. No-op when nothing is live.
+     * Never throws into the routing chain.
      */
-    suspend fun onGpsBuffered() {
+    suspend fun relayLatest(point: RawLocationPoint) {
         val now = nowMs()
         val cur = state.value
         val live = LiveShareRoster.live(cur.recipients, now)
@@ -202,14 +205,13 @@ class LiveLocationShareService(
             // if several share entries name them.
             val recipientIds = LiveShareRoster.liveRecipientIds(state.value.recipients, t)
             if (recipientIds.isEmpty()) return
-            // Read the just-set latest point synchronously (valid in background — submit() sets
-            // _lastPoint.value on the line before it calls onPointsBuffered; we read .value, we do
-            // NOT collect the Flow).
-            val p = locationPointStore.lastPoint.value ?: return
             val blob = LiveLocationCodec.encode(
-                LiveLocationPoint(lat = p.lat, lon = p.lon, acc = p.acc, spd = p.spd, hdg = p.hdg, ts = p.t)
+                LiveLocationPoint(
+                    lat = point.lat, lon = point.lon, acc = point.acc,
+                    spd = point.spd, hdg = point.hdg, ts = point.t,
+                )
             )
-            runCatching { liveRelayProvider.relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds, blob) }
+            runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds, blob) }
                 .onFailure { logger.w(it) { "relay failed" } }
             lastSentMs = t
         } finally {
@@ -227,7 +229,7 @@ class LiveLocationShareService(
      * a 2-week share just keeps going. After a logout the keyValue DB is wiped, so the read returns an
      * empty roster and [onLiveShareChanged] lets the coordinator drop the hold.
      *
-     * Also **prunes expired entries off disk**. The only other pruning happens in [onGpsBuffered],
+     * Also **prunes expired entries off disk**. The only other pruning happens in [relayLatest],
      * which runs solely while GPS is delivering points (i.e. while a share is live). So a share that
      * expired (or was stopped) while the process wasn't running leaves dead `{recipient, end-time}`
      * entries in the persisted roster — harmless to behaviour ([live]/[hasLiveShare] filter by now —

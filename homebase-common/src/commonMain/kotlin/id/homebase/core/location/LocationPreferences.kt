@@ -21,10 +21,13 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
     private val _iconVisible = MutableStateFlow(readBoolean(ICON_VISIBLE_KEY, default = false))
     val iconVisible: StateFlow<Boolean> = _iconVisible.asStateFlow()
 
-    // Master tracking switch. Lives in keyValue, so it is wiped on logout —
-    // tracking deliberately stops when the identity signs out.
-    private val _trackingEnabled = MutableStateFlow(readBoolean(TRACKING_ENABLED_KEY, default = false))
-    val trackingEnabled: StateFlow<Boolean> = _trackingEnabled.asStateFlow()
+    // Master location-HISTORY switch: when on, captured fixes are persisted as the user's
+    // location history (DB → hour files → dashboard/history). It does NOT gate whether GPS can
+    // run — a live share or a transient consumer (e.g. the live map) can acquire GPS without it
+    // (see LocationTrackingCoordinator/GpsDemand). Lives in keyValue, so it is wiped on logout —
+    // history deliberately stops when the identity signs out.
+    private val _allowLocationHistory = MutableStateFlow(readBoolean(ALLOW_LOCATION_HISTORY_KEY, default = false))
+    val allowLocationHistory: StateFlow<Boolean> = _allowLocationHistory.asStateFlow()
 
     // Basemap selection. Default OpenStreetMap: traces render over OSM tiles,
     // revealing the viewed area to the tile server (disclosed next to the
@@ -45,10 +48,10 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         _iconVisible.value = value
     }
 
-    suspend fun setTrackingEnabled(value: Boolean) {
-        if (_trackingEnabled.value == value) return
-        keyValue.upsertValue(TRACKING_ENABLED_KEY, encode(value))
-        _trackingEnabled.value = value
+    suspend fun setAllowLocationHistory(value: Boolean) {
+        if (_allowLocationHistory.value == value) return
+        keyValue.upsertValue(ALLOW_LOCATION_HISTORY_KEY, encode(value))
+        _allowLocationHistory.value = value
     }
 
     suspend fun setMapProvider(value: LocationMapProvider) {
@@ -70,7 +73,7 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
      */
     fun reset() {
         _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = false)
-        _trackingEnabled.value = readBoolean(TRACKING_ENABLED_KEY, default = false)
+        _allowLocationHistory.value = readBoolean(ALLOW_LOCATION_HISTORY_KEY, default = false)
         _mapProvider.value = readMapProvider()
         _disclosureAccepted.value = readBoolean(DISCLOSURE_ACCEPTED_KEY, default = false)
     }
@@ -100,7 +103,9 @@ class LocationPreferences(private val databaseManager: DatabaseManager) {
         // Location is the next free slot. 0a0301 (former ACTIVATED_KEY) is retired —
         // activation now derives from the drive.
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0302")
-        val TRACKING_ENABLED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0303")
+        // 0a0303 (formerly TRACKING_ENABLED_KEY) — same slot, renamed to match
+        // allowLocationHistory; persisted values carry over, no migration.
+        val ALLOW_LOCATION_HISTORY_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0303")
         // 0a0304 (former SHOW_MAP_TILES_KEY, a boolean) is retired — the map
         // choice is now an enum under 0a0306 (default OpenStreetMap). No migration.
         val DISCLOSURE_ACCEPTED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0305")

@@ -176,6 +176,10 @@ private fun SingleImageLayout(
         isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
         messageId = messageId,
         isUploading = isUploading,
+        // Inline pinch-zoom for the timeline photo. No pager here (single
+        // image), so no page-swipe to coordinate; at base scale taps still
+        // reach the card's click handler via [onClick]/onTap.
+        enableZoom = true,
     )
 }
 

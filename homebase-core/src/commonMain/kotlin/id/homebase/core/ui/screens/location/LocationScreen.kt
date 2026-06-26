@@ -151,7 +151,7 @@ fun LocationScreen(
         if (uiState.disclosureAccepted) return false
         return action == LocationUiAction.RequestWhileInUseClicked ||
             action == LocationUiAction.RequestAlwaysClicked ||
-            (action as? LocationUiAction.SetTrackingEnabled)?.enabled == true
+            (action as? LocationUiAction.SetAllowLocationHistory)?.enabled == true
     }
 
     // Body switcher. The default is grant-gated: Setup until the add-on is activated

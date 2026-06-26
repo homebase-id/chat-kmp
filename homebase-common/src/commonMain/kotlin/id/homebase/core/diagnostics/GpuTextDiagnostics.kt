@@ -4,34 +4,25 @@ import co.touchlab.kermit.Logger
 import kotlin.concurrent.Volatile
 
 /**
- * Field instrumentation for the intermittent **iOS "all text blank, frames fine"** bug.
+ * Slim validation logging for the (now-fixed) iOS "all text blank, frames fine" bug.
  *
- * Background: on iOS (Metal/Skia) the app occasionally comes up with every text label blank while
- * frames, icons and images render normally — the signature of a stale GPU glyph atlas (already-drawn
- * text samples evicted/never-populated atlas slots; freshly-drawn glyphs rasterise fine). It is
- * intermittent and triggers on **cold start** or **after the app has been idle/backgrounded a long
- * time** (the system reclaims the app's GPU resources), and we have not been able to reproduce it on
- * demand. The full investigation — and why the *web* blank-text bug was a separate, server-side cause
- * (Compose's `.cvr` string table served as `index.html`) that does NOT implicate iOS — is recorded in
- * `BLANK_TEXT_INVESTIGATION.md`.
+ * Root cause (see `BLANK_TEXT_INVESTIGATION.md`): iOS could launch the app process into the
+ * background, where Compose rendered its first frame while `applicationState == .background`; iOS
+ * rejects background Metal submissions, so the GPU glyph atlas was born dead and all text was blank
+ * at the first real foreground. The fix is the prevention in `ContentView` — `ComposeView` is not
+ * built until the scene is first `.active`, so Compose can never render while backgrounded.
  *
- * Since we can't catch it live, we instrument instead (per the project's debugging rule: if you can't
- * capture evidence, install the thing that will). We log the lifecycle + font-cache CONTEXT around the
- * moments it strikes, so that when a user reports a recurrence we can read `homebase.log` and tell
- * which trigger it was (cold-start race vs. idle GPU eviction vs. memory pressure).
- *
- * Honest about limits: the GPU glyph-atlas residency itself lives on the skiko `DirectContext` that
- * Compose owns internally — there is no public handle to it, so we cannot read it directly. What we
- * CAN read is the global skiko `Graphics` font-cache counters plus iOS lifecycle / memory-pressure
- * signals, which together strongly discriminate the trigger. That gathering is platform-specific and
- * supplied by a [Probe]; platforms without one (Android/Desktop/Web) make every call here a cheap
- * no-op, since this bug is iOS-only.
+ * This logs a font-cache snapshot at the lifecycle moments that confirm the fix keeps holding in the
+ * fleet: a background-launched session (a `ColdStart` with no immediate `Foreground`) must now show
+ * `fontCacheUsed=0 count=0` at its first `Foreground`, not the poisoned `6889/4` fingerprint that
+ * meant Compose had already drawn while backgrounded. The platform reading is supplied by a [Probe]
+ * (iOS only); platforms without one make every call here a cheap no-op.
  */
 object GpuTextDiagnostics {
     const val TAG = "GpuTextDiag"
 
     /** Why a snapshot was taken — the discriminating dimension when reading the log back. */
-    enum class Event { ColdStart, Foreground, MemoryWarning, ManualCapture }
+    enum class Event { ColdStart, Foreground }
 
     /** A point-in-time reading of everything we can actually observe at one of the [Event] moments. */
     data class Snapshot(
@@ -72,12 +63,6 @@ object GpuTextDiagnostics {
         val snapshot = p.snapshot(event, note, backgroundDurationMs)
         Logger.i(tag = TAG) { format(snapshot) }
     }
-
-    /**
-     * Manual marker — call this the instant blank text is observed (e.g. from an iOS shake handler),
-     * so the log carries a snapshot taken AT the failure, not just at the surrounding lifecycle events.
-     */
-    fun capture(reason: String) = log(Event.ManualCapture, note = reason)
 
     /** Pure, deterministic one-line formatter — unit-tested without any platform. */
     fun format(s: Snapshot): String = buildString {

@@ -81,6 +81,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -123,8 +124,8 @@ import id.homebase.chat.groodle.GroodleComposerSheet
 import id.homebase.chat.poll.PollComposerSheet
 import id.homebase.chat.event.EventDetailDialog
 import id.homebase.chat.event.EventRsvp
-import id.homebase.chat.location.LocationResult
-import id.homebase.chat.location.rememberCurrentLocationLauncher
+import id.homebase.core.location.rememberCurrentGps
+import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.resources.chat_location_map_preview_unavailable
 import id.homebase.resources.chat_location_permission_denied
 import id.homebase.resources.chat_location_unavailable
@@ -274,18 +275,18 @@ fun ConversationContent(
     val locationPermissionDeniedMsg = stringResource(MR.string.chat_location_permission_denied)
     val locationUnavailableMsg = stringResource(MR.string.chat_location_unavailable)
     val locationMapPreviewUnavailableMsg = stringResource(MR.string.chat_location_map_preview_unavailable)
-    val currentLocationLauncher = rememberCurrentLocationLauncher { result ->
+    val currentLocationLauncher = rememberCurrentGps { result ->
         isFetchingLocation = false
         when (result) {
-            is LocationResult.Success -> {
+            is GpsFixResult.Success -> {
                 Logger.d(tag = "LocationShare") {
-                    "fix received lat=${result.fix.latitude} lon=${result.fix.longitude} → fetching preview"
+                    "fix received lat=${result.point.lat} lon=${result.point.lon} → fetching preview"
                 }
                 coroutineScope.launch {
                     isFetchingLocation = true
                     try {
                         val preview = locationPreviewProvider.getLocationPreview(
-                            result.fix.latitude, result.fix.longitude,
+                            result.point.lat, result.point.lon,
                         )
                         // Always stage — coordinates alone are useful even without a map image.
                         payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
@@ -301,11 +302,12 @@ fun ConversationContent(
                     }
                 }
             }
-            is LocationResult.PermissionDenied -> {
+            is GpsFixResult.PermissionDenied -> {
                 Logger.d(tag = "LocationShare") { "permission denied" }
                 coroutineScope.launch { snackbarHostState.showSnackbar(locationPermissionDeniedMsg) }
             }
-            is LocationResult.Unavailable -> {
+            is GpsFixResult.Unavailable,
+            is GpsFixResult.Timeout -> {
                 Logger.d(tag = "LocationShare") { "fix unavailable" }
                 coroutineScope.launch { snackbarHostState.showSnackbar(locationUnavailableMsg) }
             }
@@ -1015,10 +1017,19 @@ fun ConversationContent(
                     animationsEnabled = true
                 }
 
+                // Per-message "Read more" expanded state, owned here (above the LazyColumn)
+                // so an expanded long body survives item recomposition/recycling and does
+                // NOT collapse when a new message arrives. Keyed on conversation id so the
+                // set clears when switching chats. See LocalExpandedMessages.
+                val expandedMessages = remember(conversation.conversation.id) {
+                    mutableStateMapOf<Uuid, Boolean>()
+                }
+
                 Box(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) {
                     if (!uiState.isLoadingMessages) {
+                        CompositionLocalProvider(LocalExpandedMessages provides expandedMessages) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize().dismissKeyboardOnTap(),
                             state = listState,
@@ -1187,6 +1198,7 @@ fun ConversationContent(
                             if (uiState.messages.size == 1 && pendingForConvo.isEmpty()) {
                                 item { EmptyListItem(stringResource(MR.string.chat_no_messages)) }
                             }
+                        }
                         }
                         HomebaseVerticalScrollbar(
                             modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
