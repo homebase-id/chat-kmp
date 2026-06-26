@@ -69,7 +69,7 @@ import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
-import id.homebase.chat.contactinfo.ContactInfoScreen
+import id.homebase.api.crypto.Md5
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
@@ -891,7 +891,14 @@ fun AppNavHost(
                                     // permission) — covers both "not set up" gate-fail cases.
                                     onNavigateToLocationSetup = openLocation,
                                     onNavigateToContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                        // 1:1 contact info is the full contact-detail screen
+                                        // (keyed by the contact uniqueId = md5(odinId)).
+                                        navController.navigate(
+                                            Route.ContactBookDetail(
+                                                uniqueId = Md5.toGuidId(it.lowercase()).toString(),
+                                                odinId = it,
+                                            )
+                                        )
                                     },
                                     onNavigateToConversationSettings = {
                                         navController.navigate(Route.ConversationSettings(it))
@@ -1002,15 +1009,6 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ContactInfo> {
-                            if (isAuthenticated) {
-                                ContactInfoScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
-                            }
-                        }
-
                         composable<Route.MessageInfo> {
                             if (isAuthenticated) {
                                 MessageInfoScreen(
@@ -1086,7 +1084,14 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                        // 1:1 contact info is the full contact-detail screen
+                                        // (keyed by the contact uniqueId = md5(odinId)).
+                                        navController.navigate(
+                                            Route.ContactBookDetail(
+                                                uniqueId = Md5.toGuidId(it.lowercase()).toString(),
+                                                odinId = it,
+                                            )
+                                        )
                                     },
                                     onAddMembers = {
                                         navController.navigate(Route.GroupAddMembers(it))

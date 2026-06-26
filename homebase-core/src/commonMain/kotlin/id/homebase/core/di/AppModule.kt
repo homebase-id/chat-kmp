@@ -18,7 +18,6 @@ import okio.Path.Companion.toPath
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
-import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationmedia.ConversationMediaViewModel
@@ -66,7 +65,6 @@ import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
@@ -74,8 +72,9 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
-import id.homebase.core.ui.screens.contactbook.ContactBookService
-import id.homebase.core.ui.screens.contactbook.ContactBookStream
+import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.EmergencyContactReceiveService
+import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -149,6 +148,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
@@ -220,8 +220,8 @@ val appModule = module {
     // drive; writes through the api-layer ContactsProvider. No optional-drive
     // activation — the drive is always mounted.
     single { ContactBookPreferences(get()) }
-    singleOf(::ContactBookStream)
-    single { ContactBookService(get()) }
+    // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
+    // book consumes it directly. No core-side stream/service wrapper.
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -462,6 +462,8 @@ val appModule = module {
                 get<MomentsRecipientLookupService>().start()
                 get<MomentsFeedService>().start()
                 get<MomentGroupService>().start()
+                // Notify peers when our emergency-location circle membership changes (grant/revoke).
+                get<EmergencyCircleNotifier>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -483,6 +485,19 @@ val appModule = module {
                 }
                 // endregion
 
+                // region Emergency contact: incoming designation / revocation status messages.
+                // A peer adding us to (designation) or removing us from (revocation) their emergency
+                // circle posts us a status; the receive service records/clears our can-locate flag for
+                // them and consumes the message so a re-delivery can't re-apply stale state.
+                val emergencyContactReceive = get<EmergencyContactReceiveService>()
+                conversationStream.onEmergencyContactDesignated = { sender, file ->
+                    emergencyContactReceive.onDesignated(sender, file)
+                }
+                conversationStream.onEmergencyContactRevoked = { sender, file ->
+                    emergencyContactReceive.onRevoked(sender, file)
+                }
+                // endregion
+
                 // region Auto-unarchive: incoming message for archived conversation
                 conversationStream.onUnarchiveConversation = { conversationId ->
                     conversationService.unarchiveConversation(conversationId)
@@ -494,7 +509,7 @@ val appModule = module {
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
-                get<ContactBookStream>().apply { reset(); start() }
+                get<ContactRepository>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
 
@@ -537,7 +552,9 @@ val appModule = module {
 
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
-    singleOf(::DriveContactService)
+    singleOf(::EmergencyCircleNotifier)
+    singleOf(::EmergencyContactReceiveService)
+    singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
@@ -731,7 +748,6 @@ val appModule = module {
     viewModelOf(::CreateConversationGroupViewModel)
     viewModelOf(::SelectMembersViewModel)
     viewModelOf(::MessageInfoViewModel)
-    viewModelOf(::ContactInfoViewModel)
     viewModelOf(::ConversationSettingsViewModel)
     viewModelOf(::ConversationMediaViewModel)
     viewModelOf(::GroupSettingsViewModel)
@@ -767,8 +783,10 @@ val appModule = module {
             pointStore = get(),
             uploaderService = get(),
             deviceDirectory = get(),
-            connectionNetworkProvider = get(),
+            contactRepository = get(),
+            connectionService = get(),
             contactService = get(),
+            emergencyContactReconciler = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),

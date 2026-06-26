@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material3.AlertDialog
@@ -57,11 +58,14 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
+import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_action_blocked
 import id.homebase.resources.contactbook_action_sync_started
 import id.homebase.resources.contactbook_action_disconnected
+import id.homebase.resources.contactbook_detail_emergency_badge
+import id.homebase.resources.contactbook_detail_location_data_as_of
 import id.homebase.resources.contactbook_action_unblocked
 import id.homebase.resources.contactbook_connected
 import id.homebase.resources.contactbook_detail_block
@@ -71,6 +75,7 @@ import id.homebase.resources.contactbook_detail_blocked
 import id.homebase.resources.contactbook_detail_connect
 import id.homebase.resources.contactbook_detail_delete
 import id.homebase.resources.contactbook_detail_delete_message
+import id.homebase.resources.contactbook_detail_delete_message_connected
 import id.homebase.resources.contactbook_detail_delete_title
 import id.homebase.resources.contactbook_detail_disconnect
 import id.homebase.resources.contactbook_detail_disconnect_message
@@ -83,10 +88,12 @@ import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_delete_forbidden
 import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.stringResource
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 @Composable
@@ -102,6 +109,7 @@ fun ContactDetailScreen(
 
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
+    val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
     val errDelete = stringResource(MR.string.contactbook_error_delete)
     val errDeleteForbidden = stringResource(MR.string.contactbook_error_delete_forbidden)
@@ -125,6 +133,8 @@ fun ContactDetailScreen(
                 ContactDetailEvent.ConnectionForbidden ->
                     snackbarHostState.showSnackbar(errConnectionForbidden)
                 ContactDetailEvent.PhotoError -> snackbarHostState.showSnackbar(errPhoto)
+                ContactDetailEvent.ClearUnsupported ->
+                    snackbarHostState.showSnackbar(errClearUnsupported)
                 ContactDetailEvent.Blocked -> snackbarHostState.showSnackbar(msgBlocked)
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
@@ -192,6 +202,9 @@ fun ContactDetailScreen(
                             expanded = detailsExpanded,
                             onToggleMore = { detailsExpanded = !detailsExpanded },
                         )
+
+                        BioSection(entry.shortBio)
+                        SocialSection(entry.socialHandles)
 
                         Spacer(modifier = Modifier.height(28.dp))
                         RecentMediaSection(
@@ -273,6 +286,7 @@ fun ContactDetailScreen(
     uiState.confirm?.let { confirm ->
         ConfirmDialog(
             confirm = confirm,
+            isConnected = uiState.isConnected,
             onConfirm = { viewModel.onAction(ContactDetailAction.ConfirmYes) },
             onDismiss = { viewModel.onAction(ContactDetailAction.ConfirmDismiss) },
         )
@@ -312,6 +326,17 @@ private fun DetailHeader(
             )
         }
 
+        // Free-text status/tagline the contact set, under the odinId.
+        entry.status?.takeIf { it.isNotBlank() }?.let {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+        }
+
         // Connection status line (only for Homebase contacts).
         if (uiState.hasOdinId) {
             val statusColor = when {
@@ -331,6 +356,36 @@ private fun DetailHeader(
                 style = MaterialTheme.typography.labelMedium,
                 color = statusColor,
             )
+        }
+
+        // Emergency-contact indicator — visible whenever this contact is one of our emergency
+        // contacts (independent of connection state).
+        if (entry.iCanLocate) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.ContactEmergency,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = stringResource(MR.string.contactbook_detail_emergency_badge),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            // Freshness of the data we can see, from the last Sync-time temporal-access preflight.
+            uiState.locateNewestDataAt?.let { newest ->
+                val asOf = formatTimestamp(Instant.fromEpochMilliseconds(newest.milliseconds))
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(MR.string.contactbook_detail_location_data_as_of, asOf),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         when {
@@ -363,6 +418,7 @@ private fun DetailHeader(
 @Composable
 private fun ConfirmDialog(
     confirm: ContactDetailConfirm,
+    isConnected: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -379,7 +435,9 @@ private fun ConfirmDialog(
         )
         ContactDetailConfirm.DELETE -> Triple(
             MR.string.contactbook_detail_delete_title,
-            MR.string.contactbook_detail_delete_message,
+            // Deleting a connected contact also tears down the connection — warn about that.
+            if (isConnected) MR.string.contactbook_detail_delete_message_connected
+            else MR.string.contactbook_detail_delete_message,
             MR.string.contactbook_detail_delete,
         )
     }

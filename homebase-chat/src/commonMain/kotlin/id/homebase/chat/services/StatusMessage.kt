@@ -36,4 +36,15 @@ enum class StatusMessage() {
      *  Carries [StatusMessageData.pollQuestion] and [StatusMessageData.pollMessageId] so
      *  the system line can reference the question. */
     PollEnded,
+
+    /** Sent by a user (the message's `originalAuthor`) when they designate the recipient as one of
+     *  their emergency contacts. Renders a system line ("X added you as an emergency contact") AND
+     *  drives a receive-side side-effect (wired in AppModule) that records — in the recipient's own
+     *  contact app-data — that the recipient can now locate the SENDER (core `setICanLocate`). */
+    EmergencyContactDesignated,
+
+    /** Mirror of [EmergencyContactDesignated], sent when the author removes the recipient from their
+     *  emergency circle. Renders "X removed you as an emergency contact" AND drives a receive-side
+     *  side-effect that clears the recipient's can-locate flag for the SENDER (core `clearICanLocate`). */
+    EmergencyContactRevoked,
 }

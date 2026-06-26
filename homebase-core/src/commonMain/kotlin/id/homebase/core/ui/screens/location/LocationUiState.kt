@@ -20,6 +20,14 @@ data class LocationUiState(
     val whileInUsePermanentlyDenied: Boolean = false,
     val alwaysGranted: Boolean = false,
     val alwaysPermanentlyDenied: Boolean = false,
+    /**
+     * True once the user has tapped Grant on the background ("always") permission at least once this
+     * session without it being granted. On Android 11+ background location can't be granted by
+     * re-firing the runtime dialog — the OS silently denies repeat requests (the "flash") — so after
+     * the first attempt the Setup row routes to system Settings ("Allow all the time") instead of
+     * re-offering Grant. Cleared when the grant lands so a later revoke starts a fresh attempt.
+     */
+    val alwaysRequestAttempted: Boolean = false,
     val lastFixEpochMs: Long? = null,
     val lastFixLat: Double? = null,
     val lastFixLon: Double? = null,
@@ -29,11 +37,17 @@ data class LocationUiState(
     // Dashboard state
     val devices: List<LocationDeviceInfo> = emptyList(),
     val todayTraces: List<DeviceTrace> = emptyList(),
-    /** Resolved members of the "Emergency Location Access" circle (avatars on the dashboard). */
-    val emergencyContacts: List<ContactUiModel> = emptyList(),
-    /** null = still loading / couldn't load; true = circle present; false = circle doesn't exist. */
-    val emergencyCircleFound: Boolean? = null,
-    /** Owner-console deep link to manage the circle's members; null until the identity is known. */
+    /** Members of our emergency-location-access circle (the "who can locate you" list on the
+     *  dashboard) — read from circle membership, the source of truth, not an app-data flag. */
+    val whoCanLocateMe: List<ContactUiModel> = emptyList(),
+    /** False until circle membership has loaded at least once (drives the loading spinner). */
+    val whoCanLocateMeLoaded: Boolean = false,
+    /** Contacts we can locate (the `iCanLocate` app-data flag) — the "who you can locate" list. */
+    val whoICanLocate: List<ContactUiModel> = emptyList(),
+    /** False until the locatable-contacts list has loaded at least once (drives the spinner). */
+    val whoICanLocateLoaded: Boolean = false,
+    /** Owner-console deep link to manage the Emergency Location Access circle (the actual location
+     *  drive grant); null until the identity is known. */
     val emergencyManageUrl: String? = null,
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */

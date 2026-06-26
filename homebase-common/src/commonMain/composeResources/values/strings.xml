@@ -486,6 +486,12 @@
     <string name="system_group_conversation_member_declined_rejoin_you">You declined to rejoin the conversation</string>
     <string name="system_group_heal_requested">%1$s requested a group heal</string>
     <string name="system_group_heal_requested_you">You requested a group heal</string>
+    <string name="system_emergency_contact_designated">%1$s added you as an emergency contact</string>
+    <string name="system_emergency_contact_designated_you">You added %1$s as an emergency contact</string>
+    <string name="system_emergency_contact_designated_you_unknown">You added an emergency contact</string>
+    <string name="system_emergency_contact_revoked">%1$s removed you as an emergency contact</string>
+    <string name="system_emergency_contact_revoked_you">You removed %1$s as an emergency contact</string>
+    <string name="system_emergency_contact_revoked_you_unknown">You removed an emergency contact</string>
     <string name="system_group_heal_local_cleanup_both">Removed broken local copies (group + admins) as part of heal</string>
     <string name="system_group_heal_local_cleanup_main">Removed broken local copy (group) as part of heal</string>
     <string name="system_group_heal_local_cleanup_admin">Removed broken local copy (admins) as part of heal</string>
@@ -1284,11 +1290,12 @@
     <string name="location_tracking_unavailable">Tracking isn't available on this device. Enable it on your phone to record location history.</string>
     <string name="location_perm_section">Permissions</string>
     <string name="location_perm_while_in_use">Location while using the app</string>
-    <string name="location_perm_always">Location all the time (background)</string>
+    <string name="location_perm_always">Allow all the time</string>
     <string name="location_perm_granted">Granted</string>
     <string name="location_perm_grant">Grant</string>
     <string name="location_perm_open_settings">Open settings</string>
-    <string name="location_perm_always_hint">Without this, locations are only recorded while the app is open.</string>
+    <string name="location_perm_always_hint">Needed to record your location when the app is in the background or closed.</string>
+    <string name="location_perm_always_settings_hint">Android won't ask again — tap Open settings, then choose "Allow all the time" for Location.</string>
     <string name="location_status_section">Status</string>
     <string name="location_status_last_fix">Last fix</string>
     <string name="location_status_points_today">Points today</string>
@@ -1302,7 +1309,7 @@
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>
     <string name="location_locatable_section">Who you can locate</string>
-    <string name="location_locatable_coming_soon">Coming soon…</string>
+    <string name="location_locatable_none">You can't locate anyone yet. People appear here when they add you to their emergency circle.</string>
     <string name="location_emergency_access_section">Who can locate you</string>
     <string name="location_emergency_access_manage">Add emergency contacts</string>
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
@@ -1417,6 +1424,11 @@
     <string name="contactbook_detail_recent_media">Recent media</string>
     <string name="contactbook_detail_no_recent_media">No recent media yet</string>
     <string name="contactbook_detail_contact_details">Contact details</string>
+    <string name="contactbook_detail_emergency_badge">Emergency contact</string>
+    <string name="contactbook_detail_location_data_as_of">Location data as of %1$s</string>
+    <string name="contactbook_detail_bio">Bio</string>
+    <string name="contactbook_detail_social">Social</string>
+    <string name="contactbook_detail_location">Location</string>
     <string name="contactbook_detail_circles">Circles</string>
     <string name="contactbook_detail_circles_empty">Not in any of your circles yet.</string>
     <string name="contactbook_detail_circles_connect">Connect with this person to add them to your circles.</string>
@@ -1431,6 +1443,7 @@
     <string name="contactbook_detail_disconnect_message">This permanently removes your connection and the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
     <string name="contactbook_detail_delete_title">Delete contact?</string>
     <string name="contactbook_detail_delete_message">This removes the contact from your address book.</string>
+    <string name="contactbook_detail_delete_message_connected">This removes the contact from your address book and disconnects your connection, removing the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
     <string name="contactbook_detail_danger_zone">Danger zone</string>
 
     <string name="contactbook_edit_title_new">New contact</string>
@@ -1463,6 +1476,7 @@
     <string name="contactbook_error_delete_forbidden">Couldn't delete — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
     <string name="contactbook_error_message">Couldn't open the chat.</string>
+    <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
 
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>

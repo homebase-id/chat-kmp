@@ -8,8 +8,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.collectConversationOverview
@@ -17,17 +19,20 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.config.contactTargetDrive
+import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.contactbook.clearICanLocate
+import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
-import id.homebase.core.ui.screens.contactbook.ContactBookService
-import id.homebase.core.ui.screens.contactbook.ContactBookStream
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
+import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -46,17 +51,21 @@ private const val OVERVIEW_MESSAGE_CAP = 1000
 
 class ContactDetailViewModel(
     savedStateHandle: SavedStateHandle,
-    private val contactBookStream: ContactBookStream,
-    private val contactBookService: ContactBookService,
+    private val contactRepository: ContactRepository,
     private val conversationService: ConversationService,
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val connectionService: ConnectionService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val credentialsManager: CredentialsManager,
+    private val temporalDriveReadProvider: TemporalDriveReadProvider,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<Route.ContactBookDetail>()
+
+    /** The drive whose temporal grant gates "can I locate this contact in an emergency?". */
+    private val locationDrive = locationLabeledDrive.drive.alias
 
     private val _uiState = MutableStateFlow(ContactDetailUiState())
     val uiState: StateFlow<ContactDetailUiState> = _uiState.asStateFlow()
@@ -69,10 +78,13 @@ class ContactDetailViewModel(
         get() = route.odinId?.ifBlank { null } ?: _uiState.value.entry?.odinId?.ifBlank { null }
 
     init {
+        // Self-sufficient on deep-link: ensure the repo has loaded even if the list wasn't opened.
+        viewModelScope.launch { contactRepository.ensureLoaded() }
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
+            val selfDomain = runCatching { credentialsManager.getActiveDomain()?.domainName }.getOrNull()
             combine(
-                contactBookStream.contacts,
+                contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
                 connectionService.connections,
                 connectionService.circles,
             ) { contacts, conn, circ ->
@@ -81,6 +93,7 @@ class ContactDetailViewModel(
                 val entry = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
                 val domain = entry?.odinId
+                val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
                 val status = domain?.let { d ->
                     conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }
                         ?.value?.status
@@ -105,6 +118,7 @@ class ContactDetailViewModel(
                         connectionStatus = status,
                         circles = circleNames,
                         isLoading = false,
+                        isSelf = isSelf,
                     )
                 }
             }
@@ -199,8 +213,51 @@ class ContactDetailViewModel(
      */
     private fun handleSync() {
         val domain = odinId ?: return
+        val peer = OdinId(domain)
         _events.tryEmit(ContactDetailEvent.SyncStarted)
-        viewModelScope.launch { contactBookService.syncFromIdentity(domain) }
+        viewModelScope.launch {
+            contactRepository.sync(peer)
+            verifyLocateAccess(peer)
+        }
+    }
+
+    /**
+     * Preflight whether we currently hold temporal read access to [peer]'s location drive (reads no
+     * data, fires no notification on the peer) and reconcile the cached `iCanLocate` "emergency
+     * contact" flag against that authoritative answer:
+     * - access → set the flag (add them to the emergency list) and surface the newest-data timestamp.
+     * - definitively no access → clear a stale flag.
+     * - network/parse failure → inconclusive; leave the flag and the timestamp untouched.
+     *
+     * The flag write needs the contact's [ContactBookEntry.versionTag]; a synthetic entry (deep-link
+     * with no stored contact) has none, so we can still show freshness but can't persist the flag.
+     */
+    private suspend fun verifyLocateAccess(peer: OdinId) {
+        val status = runCatching { temporalDriveReadProvider.verifyTemporalAccess(peer, locationDrive) }
+            .onFailure { Logger.w(it, TAG) { "verifyTemporalAccess failed for ${peer.domainName}" } }
+            .getOrNull() ?: return
+
+        val entry = _uiState.value.entry
+        val versionTag = entry?.versionTag
+
+        if (status.hasAccess) {
+            // newestFileModified is only a real timestamp when we have access; 0 (ZeroTime) means the
+            // drive has no files yet — render "no data", not the epoch.
+            val newest = status.newestFileModified.takeIf { it.milliseconds > 0 }
+            _uiState.update { it.copy(locateNewestDataAt = newest) }
+            if (entry != null && versionTag != null && !entry.iCanLocate) {
+                runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
+                    .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
+            }
+        } else {
+            _uiState.update { it.copy(locateNewestDataAt = null) }
+            // A successful verify with hasAccess=false is authoritative: clear a stale flag, mirroring
+            // EmergencyContactReconciler. Skip the write when the flag isn't set (nothing to clear).
+            if (entry != null && versionTag != null && entry.iCanLocate) {
+                runCatching { contactRepository.clearICanLocate(entry.uniqueId, versionTag) }
+                    .onFailure { Logger.w(it, TAG) { "clearICanLocate failed for ${peer.domainName}" } }
+            }
+        }
     }
 
     private fun handleSave(action: ContactDetailAction.SaveContact) {
@@ -208,15 +265,17 @@ class ContactDetailViewModel(
         _uiState.update { it.copy(editOpen = false) }
         viewModelScope.launch {
             when (val result = saveContactDraft(
-                service = contactBookService,
+                repo = contactRepository,
                 draft = action.draft,
                 editing = editing,
                 photo = action.photo,
-                contactDriveId = contactTargetDrive.alias,
             )) {
                 is ContactSaveResult.Success -> {
-                    contactBookStream.insertOrUpdateOptimistic(result.entry)
+                    // repo.save already applied the optimistic update.
                     if (result.photoFailed) _events.tryEmit(ContactDetailEvent.PhotoError)
+                    if (result.clearedFieldsIgnored) {
+                        _events.tryEmit(ContactDetailEvent.ClearUnsupported)
+                    }
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)
                 ContactSaveResult.Failed -> _events.tryEmit(ContactDetailEvent.Error)
@@ -257,6 +316,7 @@ class ContactDetailViewModel(
         val confirm = _uiState.value.confirm ?: return
         val entry = _uiState.value.entry
         val domain = odinId
+        val wasConnected = _uiState.value.isConnected
         _uiState.update { it.copy(confirm = null, actionInProgress = true) }
         viewModelScope.launch {
             try {
@@ -266,18 +326,24 @@ class ContactDetailViewModel(
                             _events.tryEmit(ContactDetailEvent.Back)
                             return@launch
                         }
-                        contactBookStream.removeOptimistic(entry.uniqueId)
-                        val event = try {
-                            if (contactBookService.delete(entry.uniqueId)) {
-                                ContactDetailEvent.Back
-                            } else {
-                                // Generic/transient failure — restore the contact and stay put.
-                                contactBookStream.insertOrUpdateOptimistic(entry)
-                                ContactDetailEvent.DeleteError
+                        // A connected contact must be disconnected before its record is removed —
+                        // otherwise deleting the address-book entry leaves the connection (and the
+                        // access it granted) live. Tear that down first; abort the delete if it
+                        // fails so we don't silently drop the contact while the connection lingers.
+                        if (wasConnected && domain != null) {
+                            val disconnected = runCatching {
+                                connectionNetworkProvider.disconnect(OdinId(domain))
                             }
+                                .onSuccess { connectionService.refresh() }
+                                .onFailure { emitConnectionError(it) }
+                                .isSuccess
+                            if (!disconnected) return@launch
+                        }
+                        // repo.delete does the optimistic remove and restores on failure.
+                        val event = try {
+                            if (contactRepository.delete(entry.uniqueId)) ContactDetailEvent.Back
+                            else ContactDetailEvent.DeleteError
                         } catch (e: ForbiddenException) {
-                            // 403 — app lacks manage-contacts permission. Restore and explain.
-                            contactBookStream.insertOrUpdateOptimistic(entry)
                             ContactDetailEvent.DeleteForbidden
                         }
                         _events.tryEmit(event)

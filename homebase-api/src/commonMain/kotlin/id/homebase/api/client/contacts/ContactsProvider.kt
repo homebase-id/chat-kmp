@@ -54,6 +54,12 @@ class ContactsProvider(
 
         /** Server payload key the contact image (and its thumbnails) are stored under. */
         const val CONTACT_IMAGE_PAYLOAD_KEY: String = "prfl_pic"
+
+        /** On-demand payload key the contact's large rich-text fields ([ContactExtData]) ride on. */
+        const val CONTACT_EXT_DATA_PAYLOAD_KEY: String = "ext_data"
+
+        /** On-demand payload key the bulk-tier per-app data ([ContactAppExtData]) rides on. */
+        const val CONTACT_APP_EXT_DATA_PAYLOAD_KEY: String = "appextdata"
     }
 
     // Caches the contact file's AES key by uniqueId. The key is stable across content/image updates,
@@ -127,6 +133,12 @@ class ContactsProvider(
             token = creds.accessToken,
             secret = creds.secret,
         )
+
+        // Drop any cached AES key for this contact. The key is cached by uniqueId (= md5(odinId),
+        // stable across delete+recreate), but a recreated contact is a NEW file with a NEW key — a
+        // surviving entry would encrypt the recreated contact's image under the dead file's key.
+        // Safe to evict even on a failed delete: the cache simply repopulates on next image use.
+        aesKeyCacheMutex.withLock { aesKeyCache.remove(uniqueId) }
 
         if (response.status == 404) return false
         throwForFailure(response)
@@ -234,6 +246,94 @@ class ContactsProvider(
     }
 
     // ------------------------------------------------------------
+    // PER-APP APP-DATA (two tiers — inline header vs bulk payload)
+    // ------------------------------------------------------------
+    //
+    // Both tiers share the same write contract: PUT a { content, versionTag } body and DELETE with a
+    // ?versionTag= query, returning the standard [ContactWriteResponse]. The appId is NOT sent — the
+    // server stamps it from the auth token. [content] is plaintext (server-encrypted at rest), opaque,
+    // and capped server-side (200 bytes inline / 256 KB bulk); a too-large blob comes back as 400
+    // `MaxContentLengthExceeded` via [throwForFailure]'s [ClientException] — callers map that to "use
+    // the bulk tier" (see [ContactRepository.setAppData]). Writes are version-gated and self-retrying
+    // server-side, so the bounded [retryVersionGated] (which re-sends with the authoritative
+    // `conflict.versionTag`) is all the conflict handling needed.
+
+    /**
+     * PUT /api/v2/contacts/{uniqueId}/app-data — sets this app's **inline-tier** slot (≤ 200 bytes).
+     * Returns [ContactWriteResult.NotFound] on 404 (no such contact).
+     */
+    suspend fun setContactAppData(
+        uniqueId: Uuid,
+        content: String,
+        versionTag: Uuid,
+        maxAttempts: Int = 3,
+    ): ContactWriteResult = putAppData("app-data", uniqueId, content, versionTag, maxAttempts)
+
+    /** DELETE /api/v2/contacts/{uniqueId}/app-data — clears this app's inline-tier slot. */
+    suspend fun deleteContactAppData(
+        uniqueId: Uuid,
+        versionTag: Uuid,
+        maxAttempts: Int = 3,
+    ): ContactWriteResult = deleteAppData("app-data", uniqueId, versionTag, maxAttempts)
+
+    /**
+     * PUT /api/v2/contacts/{uniqueId}/app-ext-data — sets this app's **bulk-tier** slot (≤ 256 KB),
+     * stored as the [CONTACT_APP_EXT_DATA_PAYLOAD_KEY] payload. Returns [ContactWriteResult.NotFound]
+     * on 404.
+     */
+    suspend fun setContactAppExtData(
+        uniqueId: Uuid,
+        content: String,
+        versionTag: Uuid,
+        maxAttempts: Int = 3,
+    ): ContactWriteResult = putAppData("app-ext-data", uniqueId, content, versionTag, maxAttempts)
+
+    /** DELETE /api/v2/contacts/{uniqueId}/app-ext-data — clears this app's bulk-tier slot. */
+    suspend fun deleteContactAppExtData(
+        uniqueId: Uuid,
+        versionTag: Uuid,
+        maxAttempts: Int = 3,
+    ): ContactWriteResult = deleteAppData("app-ext-data", uniqueId, versionTag, maxAttempts)
+
+    private suspend fun putAppData(
+        pathSuffix: String,
+        uniqueId: Uuid,
+        content: String,
+        versionTag: Uuid,
+        maxAttempts: Int,
+    ): ContactWriteResult {
+        require(maxAttempts >= 1) { "maxAttempts must be >= 1" }
+        return retryVersionGated(versionTag, maxAttempts) { tag ->
+            val creds = requireCreds()
+            val response = encryptedPutJson(
+                url = apiUrl(creds.domain, "$BASE/$uniqueId/$pathSuffix"),
+                token = creds.accessToken,
+                jsonBody = OdinSystemSerializer.serialize(SetContactAppDataRequest(content, tag)),
+                secret = creds.secret,
+            )
+            toWriteResult(response, allowNotFound = true)
+        }
+    }
+
+    private suspend fun deleteAppData(
+        pathSuffix: String,
+        uniqueId: Uuid,
+        versionTag: Uuid,
+        maxAttempts: Int,
+    ): ContactWriteResult {
+        require(maxAttempts >= 1) { "maxAttempts must be >= 1" }
+        return retryVersionGated(versionTag, maxAttempts) { tag ->
+            val creds = requireCreds()
+            val response = encryptedDelete(
+                url = apiUrl(creds.domain, "$BASE/$uniqueId/$pathSuffix?versionTag=$tag"),
+                token = creds.accessToken,
+                secret = creds.secret,
+            )
+            toWriteResult(response, allowNotFound = true)
+        }
+    }
+
+    // ------------------------------------------------------------
     // MERGE-AND-RETRY
     // ------------------------------------------------------------
 
@@ -292,10 +392,10 @@ class ContactsProvider(
     }
 
     /**
-     * Drops the cached contact AES keys. MUST be called on session end / logout before the image
-     * path goes live: keys are cached by `uniqueId` (= md5(odinId)), which collides across
-     * identities, so a stale entry would encrypt a new identity's image under the previous
-     * identity's key. (Wired into the SessionEnded path when [setContactImage] gets a real caller.)
+     * Drops the cached contact AES keys. Called on session end / logout (from
+     * [ContactRepository.reset]): keys are cached by `uniqueId` (= md5(odinId)), which collides
+     * across identities, so a stale entry would encrypt a new identity's image under the previous
+     * identity's key.
      */
     @OptIn(ExperimentalUuidApi::class)
     suspend fun clearKeyCache() {

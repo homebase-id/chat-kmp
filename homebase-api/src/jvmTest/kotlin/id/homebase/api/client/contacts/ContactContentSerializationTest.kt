@@ -54,6 +54,31 @@ class ContactContentSerializationTest {
     }
 
     @Test
+    fun fullAddress_usesCamelCaseWireKeysAndRoundTrips() {
+        val original = ContactContent(
+            location = ContactLocation(
+                label = "Home",
+                addressLine1 = "123 Main St",
+                addressLine2 = "Apt 4",
+                postcode = "12345",
+                city = "Springfield",
+                country = "US",
+            ),
+            phone = ContactPhone(label = "Mobile", number = "+1-555-0100"),
+            email = ContactEmail(label = "Personal", email = "sam@dotyou.cloud"),
+        )
+
+        val json = OdinSystemSerializer.serialize(original)
+        // Wire keys must be the server's camelCase form (odin-js calls these address1/address2).
+        assertTrue(json.contains("\"addressLine1\""), json)
+        assertTrue(json.contains("\"addressLine2\""), json)
+        assertTrue(json.contains("\"postcode\""), json)
+        assertTrue(json.contains("\"label\""), json)
+
+        assertEquals(original, OdinSystemSerializer.deserialize<ContactContent>(json))
+    }
+
+    @Test
     fun sourceRoundTripsAndIsOmittedWhenNull() {
         assertEquals(
             """{"source":"public"}""",

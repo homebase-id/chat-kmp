@@ -56,6 +56,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
@@ -82,6 +83,7 @@ fun ContactBookScreen(
     val errDelete = stringResource(MR.string.contactbook_error_delete)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errMessage = stringResource(MR.string.contactbook_error_message)
+    val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
 
     LaunchedEffect(Unit) {
@@ -96,6 +98,7 @@ fun ContactBookScreen(
                         ContactBookError.DeleteFailed -> errDelete
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
+                        ContactBookError.ClearUnsupported -> errClearUnsupported
                     }
                     snackbarHostState.showSnackbar(msg)
                 }
