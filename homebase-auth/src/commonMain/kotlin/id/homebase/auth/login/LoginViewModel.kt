@@ -24,10 +24,9 @@ import id.homebase.resources.MR
 import id.homebase.resources.error_unknown
 import id.homebase.resources.login_error_generic
 import id.homebase.resources.login_error_invalid_id
-import id.homebase.resources.login_error_ping_failed
+import id.homebase.resources.login_error_not_homebase
+import id.homebase.resources.login_error_unreachable
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.timeout
-import io.ktor.client.request.get
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -94,26 +93,6 @@ class LoginViewModel(
 
     /* ---------------- PRIVATE ---------------- */
 
-    suspend fun isValidHomebaseId(identity: OdinId): Boolean {
-        try {
-            Logger.i(tag = "LoginViewModel", messageString = "Pinging https://$identity/api/v2/health/ping ...")
-            val response = httpClient.get("https://$identity/api/v2/health/ping") {
-                timeout {
-                    requestTimeoutMillis = 15_000
-                    connectTimeoutMillis = 10_000
-                }
-            }
-            Logger.i(tag = "LoginViewModel", messageString = "Ping response: ${response.status.value}")
-            return when (response.status.value) {
-                200 -> true
-                else -> false
-            }
-        } catch (t: Throwable) {
-            Logger.e(tag = "LoginViewModel", messageString = "Ping failed for $identity: ${t::class.simpleName}: ${t.message}")
-            return false
-        }
-    }
-
     private fun startLogin(homebaseIdValue: String) {
         Logger.i(tag = "LoginViewModel", messageString = "startLogin($homebaseIdValue)")
 
@@ -137,13 +116,20 @@ class LoginViewModel(
                 )
             }
 
-            if (!isValidHomebaseId(homebaseId)) {
-                Logger.w(tag = "LoginViewModel", messageString = "Identity $homebaseId failed ping check, aborting login")
+            val ping = pingIdentity(httpClient, homebaseId)
+            if (ping != IdentityPingResult.Ok) {
+                Logger.w(tag = "LoginViewModel", messageString = "Identity $homebaseId ping=$ping, aborting login")
+                // Be honest about the cause: a connectivity failure must not be reported as
+                // "that isn't a Homebase ID". Only a server that answered non-200 earns that.
+                val errorRes = when (ping) {
+                    IdentityPingResult.Unreachable -> MR.string.login_error_unreachable
+                    else -> MR.string.login_error_not_homebase
+                }
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         isPinging = false,
-                        error = LoginError.Res(MR.string.login_error_ping_failed, homebaseId.domainName)
+                        error = LoginError.Res(errorRes, homebaseId.domainName)
                     )
                 }
 
