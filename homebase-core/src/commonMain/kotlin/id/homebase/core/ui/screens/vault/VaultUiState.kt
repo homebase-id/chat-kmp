@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.vault
 
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import io.github.vinceglb.filekit.PlatformFile
@@ -19,6 +20,37 @@ data class VaultUiState(
      * tappable-forever control while the payload preps (#850).
      */
     val preparingShareKeys: Set<String> = emptySet(),
+    /**
+     * Staged attachments shown in the full-screen [id.homebase.chat.widget.MediaAttachmentEditor]
+     * before they're committed to the vault. Lives in state (not a one-time event) so it
+     * survives navigating out to the crop/draw screen and back. Null when the editor is closed.
+     */
+    val pendingEditor: VaultPendingEditor? = null,
+)
+
+/** Which editor screen a crop/draw request routes to. */
+enum class VaultEditorTool { Crop, Draw }
+
+/**
+ * The staging buffer for the add-pictures editor. [appendTo] non-null appends the
+ * confirmed attachments to that existing entry; otherwise a new entry is created in
+ * [sectionId].
+ */
+data class VaultPendingEditor(
+    val attachments: List<AttachmentPendingFile>,
+    val sectionId: Uuid?,
+    val appendTo: VaultEntry?,
+    /**
+     * Batch name typed in the editor footer (new-entry adds only). Carried here — not in a
+     * screen-local `remember` — so it survives the crop/draw forward-navigation that disposes
+     * VaultScreen and pops back.
+     */
+    val name: String = "",
+    /**
+     * The pager page the user is editing (image N of the batch). Carried in state for the same
+     * reason, so the pager re-mounts on the previously-current page after a crop/draw round-trip.
+     */
+    val currentPage: Int = 0,
 )
 
 sealed interface VaultOverlay {
@@ -38,12 +70,53 @@ sealed interface VaultUiAction {
     data class AddEntryToSection(
         val sectionId: Uuid,
         val files: List<PlatformFile>,
+        /** Optional user-supplied entry name; falls back to the first file's name when blank/null. */
+        val entryName: String? = null,
     ) : VaultUiAction
 
     data class AppendPages(
         val file: VaultEntry,
         val newFiles: List<PlatformFile>,
     ) : VaultUiAction
+
+    // region Add-pictures editor
+
+    /** Stage freshly-picked images in the editor (instead of adding them directly). */
+    data class OpenAddEditor(
+        val files: List<PlatformFile>,
+        val sectionId: Uuid?,
+        val appendTo: VaultEntry?,
+    ) : VaultUiAction
+
+    /** Add more files to the already-open editor (the in-editor add/camera buttons). */
+    data class AddToEditor(val files: List<PlatformFile>) : VaultUiAction
+
+    /** Remove a staged attachment from the open editor. */
+    data class RemoveFromEditor(val attachmentId: Uuid) : VaultUiAction
+
+    /** Update the batch name typed in the editor footer (kept in VM state across nav). */
+    data class SetEditorName(val name: String) : VaultUiAction
+
+    /** Update the editor pager's current page (kept in VM state across nav). */
+    data class SetEditorPage(val page: Int) : VaultUiAction
+
+    /** Route a staged image through the crop/draw editor; the result replaces it in place. */
+    data class EditStagedImage(val attachmentId: Uuid, val tool: VaultEditorTool) : VaultUiAction
+
+    /** Commit the staged attachments to the vault (add new entry or append). */
+    data class ConfirmAddEditor(val entryName: String?) : VaultUiAction
+
+    /** Close the editor, discarding the staged attachments. */
+    data object DismissAddEditor : VaultUiAction
+
+    /** Re-edit an already-stored image page; the edited bytes replace the payload in place. */
+    data class EditExistingPage(
+        val file: VaultEntry,
+        val payloadKey: String,
+        val tool: VaultEditorTool,
+    ) : VaultUiAction
+
+    // endregion
 
     data class DeletePage(
         val file: VaultEntry,
@@ -89,6 +162,8 @@ sealed interface VaultUiEvent {
     ) : VaultUiEvent
     data class Error(val error: VaultError) : VaultUiEvent
     data class OpenNoteEditor(val sectionId: Uuid, val entryId: Uuid? = null) : VaultUiEvent
+    data class NavigateToCropper(val requestId: Uuid) : VaultUiEvent
+    data class NavigateToDrawer(val requestId: Uuid) : VaultUiEvent
 }
 
 sealed interface VaultError {
@@ -106,4 +181,6 @@ sealed interface VaultError {
     data class UpdateLabelFailed(val fileName: String) : VaultError
     data object DownloadPageFailed : VaultError
     data object OutboxUploadFailed : VaultError
+    data object EditPageFailed : VaultError
+    data object OpenEditorFailed : VaultError
 }
