@@ -188,6 +188,7 @@
     <string name="login_error_invalid_id">Please enter a valid Homebase ID</string>
     <string name="login_error_unreachable">Couldn't reach %1$s — check your connection and try again.</string>
     <string name="login_error_not_homebase">%1$s doesn't look like a Homebase identity.</string>
+    <string name="login_error_tls">Couldn't establish a secure connection to %1$s. A VPN, ad blocker, or antivirus may be intercepting HTTPS — try turning it off, then retry. Tap "Show error details" for the exact error.</string>
     <string name="login_error_details_show">Show error details</string>
     <string name="login_error_details_hide">Hide error details</string>
     <string name="login_error_details_copy">Copy</string>
