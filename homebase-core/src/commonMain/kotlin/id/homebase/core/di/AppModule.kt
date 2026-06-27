@@ -496,6 +496,11 @@ val appModule = module {
                 conversationStream.onEmergencyContactRevoked = { sender, file ->
                     emergencyContactReceive.onRevoked(sender, file)
                 }
+                // Background backstop: the live status-message handlers above only fire on the
+                // WS-push path, so a designation/revocation that arrived during cold sync (or a
+                // dropped event) is never applied. Reconcile both directions against the
+                // authoritative temporal-access grant in the background — no screen required.
+                get<EmergencyContactReconciler>().start()
                 // endregion
 
                 // region Auto-unarchive: incoming message for archived conversation

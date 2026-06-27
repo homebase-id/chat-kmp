@@ -240,7 +240,9 @@ class ContactDetailViewModel(
         val entry = _uiState.value.entry
         val versionTag = entry?.versionTag
 
-        if (status.hasAccess) {
+        // "Emergency contact" means a time-clamped (ConditionalTemporalRead) grant specifically —
+        // NOT plain full read, which also reports hasAccess=true (see TemporalAccessStatus).
+        if (status.isTimeWindowed) {
             // newestFileModified is only a real timestamp when we have access; 0 (ZeroTime) means the
             // drive has no files yet — render "no data", not the epoch.
             val newest = status.newestFileModified.takeIf { it.milliseconds > 0 }
@@ -251,8 +253,8 @@ class ContactDetailViewModel(
             }
         } else {
             _uiState.update { it.copy(locateNewestDataAt = null) }
-            // A successful verify with hasAccess=false is authoritative: clear a stale flag, mirroring
-            // EmergencyContactReconciler. Skip the write when the flag isn't set (nothing to clear).
+            // A successful verify without a temporal grant is authoritative: clear a stale flag,
+            // mirroring EmergencyContactReconciler. Skip the write when the flag isn't set.
             if (entry != null && versionTag != null && entry.iCanLocate) {
                 runCatching { contactRepository.clearICanLocate(entry.uniqueId, versionTag) }
                     .onFailure { Logger.w(it, TAG) { "clearICanLocate failed for ${peer.domainName}" } }
