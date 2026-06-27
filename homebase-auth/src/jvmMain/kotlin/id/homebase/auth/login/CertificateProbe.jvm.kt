@@ -50,9 +50,32 @@ internal actual suspend fun probeCertificateInfo(host: String): String? =
                     runCatching { socket.startHandshake() }
                 }
 
-                presented?.firstOrNull()?.let { leaf ->
-                    "certificate presented by $host was issued by [${leaf.issuerX500Principal.name}]" +
-                        " (subject [${leaf.subjectX500Principal.name}])"
+                val chain = presented
+                if (chain.isNullOrEmpty()) {
+                    null
+                } else {
+                    val leaf = chain.first()
+                    // The roots THIS device trusts (the system store the app uses) — a local
+                    // query, no network. The chain anchors on the issuer of its top cert (or the
+                    // top cert itself, if the server sent the self-signed root). "MISSING" means
+                    // the device's trust store lacks the needed root — and we name it: e.g.
+                    // [ISRG Root X2] for a genuine Let's Encrypt cert an old/OEM Android doesn't
+                    // trust (fix is ours: broaden the chain / bundle the root), vs an
+                    // interceptor's own CA like [AdGuard Personal CA] (fix is theirs: turn it off).
+                    val trustedSubjects = defaultTm.acceptedIssuers.asSequence()
+                        .map { it.subjectX500Principal.name }
+                        .toSet()
+                    val top = chain.last()
+                    val anchorDN = top.issuerX500Principal.name
+                    val anchored = anchorDN in trustedSubjects ||
+                        top.subjectX500Principal.name in trustedSubjects
+                    buildString {
+                        append("certificate presented by ").append(host)
+                        append(" was issued by [").append(leaf.issuerX500Principal.name).append("]")
+                        append("; chain anchors to [").append(anchorDN).append("] — ")
+                        append(if (anchored) "present" else "MISSING")
+                        append(" in this device's ").append(trustedSubjects.size).append(" trusted roots")
+                    }
                 }
             }.onFailure {
                 Logger.w(tag = "CertificateProbe") { "probe failed for $host: ${it.message}" }
