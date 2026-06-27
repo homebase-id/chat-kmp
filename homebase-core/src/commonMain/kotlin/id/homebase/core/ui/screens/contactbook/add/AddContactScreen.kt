@@ -24,12 +24,14 @@ import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PersonAddAlt1
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -52,8 +54,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.identity.initials
+import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
+import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.connections.ConnectRequestBottomSheet
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.resources.MR
@@ -67,6 +73,8 @@ import id.homebase.resources.add_contact_not_found
 import id.homebase.resources.add_contact_odinid_hint
 import id.homebase.resources.add_contact_odinid_label
 import id.homebase.resources.add_contact_resolving
+import id.homebase.resources.add_contact_send_request
+import id.homebase.resources.add_contact_send_request_help
 import id.homebase.resources.add_contact_title
 import id.homebase.resources.contactbook_edit_change_photo
 import id.homebase.resources.contactbook_edit_city
@@ -86,11 +94,14 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.readBytes
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @Composable
 fun AddContactScreen(
     viewModel: AddContactViewModel,
+    connectRequestViewModel: ConnectRequestViewModel,
     onBack: () -> Unit,
+    onOpenConversation: (Uuid) -> Unit,
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -153,7 +164,16 @@ fun AddContactScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             when (uiState.mode) {
-                AddContactMode.BY_IDENTITY -> ByIdentitySection(uiState, viewModel::onAction)
+                AddContactMode.BY_IDENTITY -> ByIdentitySection(
+                    uiState = uiState,
+                    onAction = viewModel::onAction,
+                    onSendConnectionRequest = { odinId ->
+                        connectRequestViewModel.onAction(
+                            ConnectRequestAction.OpenDialogWithRecipient(odinId),
+                        )
+                    },
+                )
+
                 AddContactMode.MANUAL -> ManualSection(uiState, viewModel::onAction)
             }
 
@@ -166,6 +186,12 @@ fun AddContactScreen(
                 Text(stringResource(MR.string.contactbook_edit_save))
             }
         }
+
+        ConnectRequestBottomSheet(
+            viewModel = connectRequestViewModel,
+            snackbarHostState = snackbarHostState,
+            onNavigateToConversation = onOpenConversation,
+        )
     }
 }
 
@@ -206,6 +232,7 @@ private fun AddContactAvatar(uiState: AddContactUiState, photoBytes: ByteArray?)
 private fun ByIdentitySection(
     uiState: AddContactUiState,
     onAction: (AddContactAction) -> Unit,
+    onSendConnectionRequest: (OdinId) -> Unit,
 ) {
     val resolution = uiState.resolution
     AddField(
@@ -224,6 +251,13 @@ private fun ByIdentitySection(
 
     ResolutionIndicator(resolution)
 
+    // A resolved identity is someone you can actually connect with — offer to send a request
+    // (reuses the same autoConnect pipeline as the rest of the app) right alongside saving them
+    // to the contact book.
+    if (resolution is RecipientResolution.Resolved) {
+        ConnectRequestOffer(onClick = { onSendConnectionRequest(resolution.identity.odinId) })
+    }
+
     // Once the user has committed to an identity (resolved or "add anyway"), let them refine
     // the name and add optional details before saving.
     if (resolution is RecipientResolution.Resolved || resolution is RecipientResolution.NotFound) {
@@ -235,6 +269,22 @@ private fun ByIdentitySection(
     Spacer(modifier = Modifier.height(8.dp))
     TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
         Text(stringResource(MR.string.add_contact_manual_link))
+    }
+}
+
+@Composable
+private fun ConnectRequestOffer(onClick: () -> Unit) {
+    Spacer(modifier = Modifier.height(8.dp))
+    Text(
+        text = stringResource(MR.string.add_contact_send_request_help),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+    )
+    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null)
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(stringResource(MR.string.add_contact_send_request))
     }
 }
 

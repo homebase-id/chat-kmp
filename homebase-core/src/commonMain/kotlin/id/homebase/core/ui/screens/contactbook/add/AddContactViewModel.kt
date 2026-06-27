@@ -49,6 +49,13 @@ class AddContactViewModel(
 
     private var resolveJob: Job? = null
 
+    /**
+     * The (given, surname) we last auto-filled from a resolved identity. Lets a *re-resolution*
+     * (the user corrected the Homebase ID) replace the prefilled name, while a name the user has
+     * since typed by hand is left untouched.
+     */
+    private var autoFilledName: Pair<String, String>? = null
+
     fun onAction(action: AddContactAction) {
         when (action) {
             is AddContactAction.OdinIdChanged -> {
@@ -100,21 +107,30 @@ class AddContactViewModel(
             // The field changed while we were resolving — drop this stale result.
             if (_state.value.draft.odinId.trim() != trimmed) return@launch
 
+            if (identity == null) {
+                _state.update { it.copy(resolution = RecipientResolution.NotFound) }
+                return@launch
+            }
+
+            val resolvedGiven =
+                identity.firstName?.ifBlank { null } ?: identity.displayNameOrDomain()
+            val resolvedSurname = identity.surName.orEmpty()
+            // Refresh the prefilled name when it's still blank or still holds what we last
+            // auto-filled (the user re-typed the ID). Leave a hand-edited name alone.
+            val current = _state.value.draft
+            val nameUntouched = (current.givenName.isBlank() && current.surname.isBlank()) ||
+                (current.givenName to current.surname) == autoFilledName
+            if (nameUntouched) autoFilledName = resolvedGiven to resolvedSurname
+
             _state.update { state ->
-                if (identity == null) {
-                    return@update state.copy(resolution = RecipientResolution.NotFound)
-                }
-                // Pre-fill the name from the profile, but never clobber what the user already typed.
-                val draft = if (state.draft.givenName.isBlank() && state.draft.surname.isBlank()) {
-                    state.draft.copy(
-                        givenName = identity.firstName?.ifBlank { null }
-                            ?: identity.displayNameOrDomain(),
-                        surname = identity.surName.orEmpty(),
-                    )
-                } else {
-                    state.draft
-                }
-                state.copy(resolution = RecipientResolution.Resolved(identity), draft = draft)
+                state.copy(
+                    resolution = RecipientResolution.Resolved(identity),
+                    draft = if (nameUntouched) {
+                        state.draft.copy(givenName = resolvedGiven, surname = resolvedSurname)
+                    } else {
+                        state.draft
+                    },
+                )
             }
         }
     }

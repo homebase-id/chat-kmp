@@ -818,7 +818,12 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 AddContactScreen(
                                     viewModel = koinViewModel(),
+                                    connectRequestViewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
+                                    onOpenConversation = { conversationId ->
+                                        navController.selectConversationOnChatList(conversationId)
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
                                 )
                             }
                         }
