@@ -63,6 +63,7 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.resources.MR
+import id.homebase.resources.add_contact_already_connected
 import id.homebase.resources.add_contact_byid_link
 import id.homebase.resources.add_contact_details_optional
 import id.homebase.resources.add_contact_identity_found
@@ -253,9 +254,13 @@ private fun ByIdentitySection(
 
     // A resolved identity is someone you can actually connect with — offer to send a request
     // (reuses the same autoConnect pipeline as the rest of the app) right alongside saving them
-    // to the contact book.
+    // to the contact book. If you're already connected, say so instead of offering to connect.
     if (resolution is RecipientResolution.Resolved) {
-        ConnectRequestOffer(onClick = { onSendConnectionRequest(resolution.identity.odinId) })
+        if (uiState.alreadyConnected) {
+            AlreadyConnectedNote()
+        } else {
+            ConnectRequestOffer(onClick = { onSendConnectionRequest(resolution.identity.odinId) })
+        }
     }
 
     // Once the user has committed to an identity (resolved or "add anyway"), let them refine
@@ -270,6 +275,23 @@ private fun ByIdentitySection(
     TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
         Text(stringResource(MR.string.add_contact_manual_link))
     }
+}
+
+@Composable
+private fun AlreadyConnectedNote() {
+    Spacer(modifier = Modifier.height(8.dp))
+    IndicatorRow(
+        content = {
+            Icon(
+                Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        },
+        text = stringResource(MR.string.add_contact_already_connected),
+        tint = MaterialTheme.colorScheme.primary,
+    )
 }
 
 @Composable

@@ -218,7 +218,15 @@ class ContactBookViewModel(
                     (contactsByOdin[introducer.lowercase()]?.displayName ?: introducer)
             }
 
-        val filtered = contactsData.contacts.filter { it.matches(ui.query) }
+        // ALL = saved contacts plus every other connection. Auto-connections that were neither
+        // introduced (origin != Introduction) nor confirmed (not in the Confirmed circle) would
+        // otherwise fall through every pill. Connections already in the book show via their saved
+        // entry; the rest get a synthetic display-only entry, the same projection Introduced /
+        // Confirmed use.
+        val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
+        val all = (contactsData.contacts + unsavedConnectionDomains.map { syntheticContact(it) })
+            .filter { it.matches(ui.query) }
+            .sortedBy { it.sortKey }
 
         val introduced = entriesForDomains(introducedDomains, contactsData.contacts)
             .filter { it.matches(ui.query) }
@@ -252,8 +260,8 @@ class ContactBookViewModel(
 
         ContactBookUiState(
             selectedTab = ui.tab,
-            contacts = filtered,
-            totalCount = contactsData.contacts.size,
+            contacts = all,
+            totalCount = all.size,
             connectedOdinIds = connectedDomains,
             introduced = introduced,
             confirmed = confirmed,

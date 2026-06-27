@@ -13,6 +13,8 @@ data class AddContactUiState(
     val mode: AddContactMode = AddContactMode.BY_IDENTITY,
     /** Live lookup status for the entered Homebase ID (BY_IDENTITY mode). */
     val resolution: RecipientResolution = RecipientResolution.Idle,
+    /** True when the resolved identity is already a connection — suppresses the request offer. */
+    val alreadyConnected: Boolean = false,
     val draft: ContactDraft = ContactDraft(),
     val photo: PlatformFile? = null,
     val isSaving: Boolean = false,

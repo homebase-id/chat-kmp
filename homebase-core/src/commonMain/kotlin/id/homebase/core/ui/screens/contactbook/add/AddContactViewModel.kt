@@ -5,10 +5,12 @@ package id.homebase.core.ui.screens.contactbook.add
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
@@ -19,9 +21,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -39,13 +43,34 @@ import kotlin.uuid.ExperimentalUuidApi
 class AddContactViewModel(
     private val repo: ContactRepository,
     private val publicIdentityRepository: PublicIdentityRepository,
+    private val connectionService: ConnectionService,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddContactUiState())
-    val state: StateFlow<AddContactUiState> = _state.asStateFlow()
+
+    /**
+     * Public state, with [AddContactUiState.alreadyConnected] folded in live from the connection
+     * list so the "Send connection request" offer never tells you to connect with someone you're
+     * already connected to.
+     */
+    val state: StateFlow<AddContactUiState> =
+        combine(_state, connectionService.connections) { s, conn ->
+            val resolved = (s.resolution as? RecipientResolution.Resolved)
+                ?.identity?.odinId?.domainName?.lowercase()
+            val connectedDomains = conn.map
+                .filterValues { it.status == ConnectionStatus.Connected }
+                .keys.map { it.domainName.lowercase() }.toSet()
+            s.copy(alreadyConnected = resolved != null && resolved in connectedDomains)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddContactUiState())
 
     private val _events = MutableSharedFlow<AddContactEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<AddContactEvent> = _events.asSharedFlow()
+
+    init {
+        // Idempotent — already started by app bootstrap; ensures the connection map is hydrated
+        // so `alreadyConnected` is accurate even if Add Contact is reached very early.
+        connectionService.start()
+    }
 
     private var resolveJob: Job? = null
 
