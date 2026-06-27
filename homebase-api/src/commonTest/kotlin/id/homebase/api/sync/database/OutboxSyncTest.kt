@@ -395,7 +395,7 @@ class OutboxSyncTest {
             // ConnectionRequestService / AuthConnectionCoordinator / DriveContactService
             // subscribers do when they call a suspending network fetch on partial
             // connectivity: the first event is picked up, the collect body never returns,
-            // and further emissions pile up in the 11-slot buffer.
+            // and further emissions pile up in the 65-slot buffer (replay 1 + extraBufferCapacity 64).
             val blocker = CompletableDeferred<Unit>()
             val collectorJob = backgroundScope.launch {
                 eventBus.events.collect {
@@ -406,8 +406,9 @@ class OutboxSyncTest {
 
             // Saturate the bus buffer. We launch each emit so emits that can't fit don't
             // suspend the test body itself — they stay parked inside their own launched
-            // coroutine, leaving the bus in a "next emit will suspend" state.
-            repeat(20) { i ->
+            // coroutine, leaving the bus in a "next emit will suspend" state. The count must
+            // exceed the 65-slot buffer with margin; the overflow emits simply park harmlessly.
+            repeat(128) { i ->
                 backgroundScope.launch {
                     eventBus.emit(BackendEvent.OutboxEvent.Failed("saturate-$i"))
                 }

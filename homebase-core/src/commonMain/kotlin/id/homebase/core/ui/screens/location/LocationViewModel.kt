@@ -3,13 +3,19 @@ package id.homebase.core.ui.screens.location
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
+import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.toContactUiModel
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
@@ -32,17 +38,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
-
-/**
- * Well-known GUID (N-format) of the circle whose members may see this identity's location
- * in an emergency. Matching by id rather than name survives a rename; the owner-console
- * "manage" deep link uses the same id.
- */
-private const val EMERGENCY_CIRCLE_ID = "8b5383a5927246f8a666f4f3fcb7392b"
 
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
@@ -52,8 +52,10 @@ class LocationViewModel(
     private val pointStore: LocationPointStore,
     private val uploaderService: LocationTrackUploaderService,
     private val deviceDirectory: LocationDeviceDirectory,
-    private val connectionNetworkProvider: ConnectionNetworkProvider,
+    private val contactRepository: ContactRepository,
+    private val connectionService: ConnectionService,
     private val contactService: ContactService,
+    private val emergencyContactReconciler: EmergencyContactReconciler,
     private val credentialsManager: CredentialsManager,
     private val receiveStore: LiveLocationReceiveStore,
     private val liveShareService: LiveLocationShareService,
@@ -96,6 +98,50 @@ class LocationViewModel(
     private var activationKicked = false
 
     init {
+        // "Who can locate you" = the members of our emergency-location-access circle. We host this
+        // circle on our OWN identity, so its membership is the source of truth — no app-data flag.
+        // Reactive: ConnectionService refreshes circle membership on the ConnectionChanged websocket
+        // event, so the dashboard updates live when the owner-console grants/revokes the circle.
+        viewModelScope.launch {
+            // Exclude the logged-in identity: you are never your own emergency contact.
+            val self = runCatching { credentialsManager.getActiveDomain() }
+                .getOrNull()?.domainName?.lowercase()
+            connectionService.circles.collect { circleState ->
+                val members = circleState.membersOf(EMERGENCY_LOCATION_CIRCLE_ID)
+                    .asSequence()
+                    .filterNot { it == self }
+                    .mapNotNull { contactService.resolveByOdinId(OdinId(it)) }
+                    .sortedBy { it.name.lowercase() }
+                    .toList()
+                _uiState.update {
+                    it.copy(whoCanLocateMe = members, whoCanLocateMeLoaded = circleState.isLoaded)
+                }
+            }
+        }
+
+        // "Who you can locate" = the contacts carrying our `iCanLocate` app-data flag (set when they
+        // designated us via their emergency circle). The flag is a reactive cache; step 8 reconciles
+        // it against a temporal-access preflight. Reactive so a new designation appears live.
+        viewModelScope.launch {
+            val self = runCatching { credentialsManager.getActiveDomain() }
+                .getOrNull()?.domainName?.lowercase()
+            contactRepository.locatableContacts
+                .map { list ->
+                    list.mapNotNull { it.toContactUiModel() }
+                        .filterNot { it.odinId.domainName.lowercase() == self }
+                        .sortedBy { it.name.lowercase() }
+                }
+                .collect { members ->
+                    _uiState.update {
+                        it.copy(whoICanLocate = members, whoICanLocateLoaded = true)
+                    }
+                }
+        }
+
+        // On dashboard open, reconcile the iCanLocate cache against the authoritative temporal-access
+        // grant so a lost revocation (stale flag) self-corrects. Best-effort, one-shot per open.
+        viewModelScope.launch { runCatching { emergencyContactReconciler.reconcile() } }
+
         viewModelScope.launch {
             locationPermissionViewModel.permissionsGranted
                 .filter { it }
@@ -190,7 +236,7 @@ class LocationViewModel(
                     .filter { it.endTimeMs > now }
                     .groupBy { it.odinId }
                     .map { (id, entries) ->
-                        val contact = contactService.resolveByOdinId(OdinId(id))
+                        val contact = resolveContact(OdinId(id))
                         OutgoingShareRow(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
@@ -206,7 +252,7 @@ class LocationViewModel(
                     .filter { now - it.receivedAtMs <= LIVE_STALE_MS }
                     .map { lp ->
                         val id = lp.senderOdinId.domainName
-                        val contact = contactService.resolveByOdinId(lp.senderOdinId)
+                        val contact = resolveContact(lp.senderOdinId)
                         IncomingShareRow(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
@@ -229,6 +275,16 @@ class LocationViewModel(
             }
         }
     }
+
+    /**
+     * Resolve a peer odinId to its display model via the contact repository, or null when the
+     * identity isn't a saved contact (the share rows fall back to the raw odinId / initials).
+     * Matching is by [OdinId] equality (normalized hash), mirroring ContactService's by-id map.
+     */
+    private fun resolveContact(odinId: OdinId): ContactUiModel? =
+        contactRepository.contacts.value
+            .firstOrNull { it.content.odinId?.let(::OdinId) == odinId }
+            ?.toContactUiModel()
 
     private fun liveTicker() = flow {
         while (true) {
@@ -319,6 +375,16 @@ class LocationViewModel(
         pendingTrackingAutoEnable = true
     }
 
+    /**
+     * Latch that the user has tried the background ("always") grant. Set when the Grant button is
+     * tapped — not when the result arrives — so a passive launch-time recheck (which also reports
+     * "not granted") never pre-empts the first real attempt. Once latched, the Setup row routes to
+     * Settings until the grant lands (see [LocationUiState.alwaysRequestAttempted]).
+     */
+    fun markAlwaysRequested() {
+        _uiState.update { it.copy(alwaysRequestAttempted = true) }
+    }
+
     fun updateWhileInUseStatus(granted: Boolean, permanentlyDenied: Boolean) {
         _uiState.update {
             it.copy(whileInUseGranted = granted, whileInUsePermanentlyDenied = permanentlyDenied)
@@ -328,7 +394,12 @@ class LocationViewModel(
 
     fun updateAlwaysStatus(granted: Boolean, permanentlyDenied: Boolean) {
         _uiState.update {
-            it.copy(alwaysGranted = granted, alwaysPermanentlyDenied = permanentlyDenied)
+            it.copy(
+                alwaysGranted = granted,
+                alwaysPermanentlyDenied = permanentlyDenied,
+                // A successful grant clears the attempt latch so a future revoke starts fresh.
+                alwaysRequestAttempted = if (granted) false else it.alwaysRequestAttempted,
+            )
         }
         maybeAutoEnableTracking(granted)
     }
@@ -361,29 +432,17 @@ class LocationViewModel(
             val devices = runCatching { deviceDirectory.loadDevices() }
                 .getOrDefault(emptyList())
 
-            // Members of the "Emergency Location Access" circle, resolved to contact
-            // models (the contact service owns avatar URLs + initials fallbacks).
-            val circlesResult = runCatching { connectionNetworkProvider.getCirclesWithMembers() }
-            val circle = circlesResult.getOrNull()
-                ?.firstOrNull { it.circle.id.equals(EMERGENCY_CIRCLE_ID, ignoreCase = true) }
-            val circleFound: Boolean? = when {
-                circlesResult.isFailure -> null   // couldn't load — stay neutral, don't claim "missing"
-                circle != null -> true
-                else -> false                     // loaded, but no such circle
-            }
-            val members = circle?.members.orEmpty()
-                .mapNotNull { contactService.resolveByOdinId(it) }
-
+            // The "who can locate you" list itself comes from the emergency-contact flag (collected
+            // reactively in init). Here we only resolve the owner-console deep link for managing the
+            // Emergency Location Access circle (the actual location-drive grant).
             val domain = runCatching { credentialsManager.getActiveCredentials()?.domain?.domainName }
                 .getOrNull()
-            val manageUrl = domain?.let { "https://$it/owner/circles/$EMERGENCY_CIRCLE_ID" }
+            val manageUrl = domain?.let { "https://$it/owner/circles/$EMERGENCY_LOCATION_CIRCLE_ID" }
 
             _uiState.update {
                 it.copy(
                     todayTraces = traces,
                     devices = devices,
-                    emergencyContacts = members,
-                    emergencyCircleFound = circleFound,
                     emergencyManageUrl = manageUrl,
                 )
             }

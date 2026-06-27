@@ -11,10 +11,25 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import id.homebase.resources.MR
+import id.homebase.resources.cd_send_to
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,14 +49,14 @@ import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
-import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.chat.widget.FullScreenAttachmentEditor
+import id.homebase.chat.widget.MediaAttachmentEditor
+import id.homebase.chat.widget.MessageTextFieldForAttachment
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.imageeditor.ui.CropEditorUiEvent
@@ -270,43 +285,64 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                             // User removed all files — go back to picker
                             screenState = ShareScreenState.Picking
                         } else {
-                            FullScreenAttachmentEditor(
-                                data = FullScreenOverlay.AttachmentData(
-                                    selected = editorAttachments[currentPage.coerceIn(0, editorAttachments.lastIndex)].attachmentId,
-                                    conversationTitle = state.conversationTitle,
-                                    conversationId = state.selectedConversationIds.first(),
-                                    attachments = editorAttachments,
-                                ),
-                                textFieldState = textFieldState,
+                            MediaAttachmentEditor(
+                                attachments = editorAttachments,
                                 currentPage = currentPage,
                                 onPageChanged = { currentPage = it },
-                                onSaveFile = { /* Not needed in share flow */ },
+                                onSaveFile = null,            // not needed in share flow
                                 onAddFile = { fileLauncher.launch() },
                                 onAddImage = { galleryLauncher.launch() },
-                                onCameraClick = { /* Not available in share flow */ },
-                                onRemoveFile = { _, attachmentId ->
+                                onCameraClick = null,         // not available in share flow
+                                onRemoveFile = { attachmentId ->
                                     val updated = editorAttachments.filter { it.attachmentId != attachmentId }
                                     editorAttachments = updated
                                     if (currentPage >= updated.size) {
                                         currentPage = maxOf(0, updated.lastIndex)
                                     }
                                 },
-                                onSendMessage = { _, message, files ->
-                                    sendEditedFiles(
-                                        conversationIds = state.selectedConversationIds,
-                                        caption = message,
-                                        files = files,
-                                    )
-                                },
                                 onDismiss = {
                                     editorAttachments = emptyList()
                                     screenState = ShareScreenState.Picking
                                 },
-                                onCropImage = { _, attachmentId ->
-                                    startImageEdit(attachmentId, draw = false)
+                                onCropImage = { attachmentId -> startImageEdit(attachmentId, draw = false) },
+                                onDrawImage = { attachmentId -> startImageEdit(attachmentId, draw = true) },
+                                pagerTopEndSlot = {
+                                    Row(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(16.dp)
+                                            .fillMaxWidth(0.6f)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = stringResource(MR.string.cd_send_to, state.conversationTitle),
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = state.conversationTitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        )
+                                    }
                                 },
-                                onDrawImage = { _, attachmentId ->
-                                    startImageEdit(attachmentId, draw = true)
+                                bottomBar = {
+                                    MessageTextFieldForAttachment(
+                                        modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
+                                        state = textFieldState,
+                                        onSmileyClick = {},
+                                        onSendMessage = {
+                                            sendEditedFiles(
+                                                conversationIds = state.selectedConversationIds,
+                                                caption = textFieldState.toMarkdown().trimEnd(),
+                                                files = editorAttachments,
+                                            )
+                                        },
+                                    )
                                 },
                             )
                         }

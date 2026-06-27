@@ -7,6 +7,10 @@ internal object ContactFixtures {
     fun okBody(uniqueId: String, versionTag: String): String =
         """{"uniqueId":"$uniqueId","versionTag":"$versionTag"}"""
 
+    /** A 400 ProblemDetails body carrying [errorCode] (e.g. 4167 = MaxContentLengthExceeded). */
+    fun problemBody(errorCode: Int, title: String = "Bad request"): String =
+        """{"status":400,"title":"$title","extensions":{"errorCode":$errorCode}}"""
+
     /**
      * A 409 ContactWriteConflict body whose `current` is a minimal but valid [ServerFile]-shaped
      * file header. `fileMetadata.versionTag` mirrors the top-level [versionTag] (the server keeps

@@ -27,4 +27,13 @@ data class TemporalAccessStatus(
     val targetDrive: TargetDrive? = null,
     val windowSeconds: Long? = null,
     val newestFileModified: UnixTimeUtc = UnixTimeUtc.ZeroTime,
-)
+) {
+    /**
+     * True only for a *time-clamped* grant — [hasAccess] AND a finite [windowSeconds]. This is the
+     * `ConditionalTemporalRead` signature, so it's the correct signal for "this peer designated me an
+     * emergency contact". Plain full/unconstrained read also reports `hasAccess = true` but with
+     * `windowSeconds == null`, so gating on [hasAccess] alone wrongly treats any readable location
+     * drive as an emergency designation.
+     */
+    val isTimeWindowed: Boolean get() = hasAccess && windowSeconds != null
+}

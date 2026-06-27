@@ -68,6 +68,7 @@ class VaultUploaderService(
         groupId: Uuid? = null,
         notes: String? = null,
         notePreview: String? = null,
+        label: String? = null,
         uniqueId: Uuid = Uuid.random(),
     ): Uuid? =
     // Resolve the picked files (Android copies content:// picks into cacheDir
@@ -82,6 +83,7 @@ class VaultUploaderService(
                 groupId = groupId,
                 notes = notes,
                 notePreview = notePreview,
+                label = label,
                 uniqueId = uniqueId,
             )
         }
@@ -93,6 +95,7 @@ class VaultUploaderService(
         groupId: Uuid?,
         notes: String?,
         notePreview: String?,
+        label: String?,
         uniqueId: Uuid,
     ): Uuid? {
         // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
@@ -117,7 +120,7 @@ class VaultUploaderService(
             )
 
             val content = OdinSystemSerializer.serialize(
-                VaultFileContent(name = entryName, notes = notes, pdfPageCount = pdfPageCount)
+                VaultFileContent(name = entryName, label = label, notes = notes, pdfPageCount = pdfPageCount)
             )
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
@@ -283,6 +286,99 @@ class VaultUploaderService(
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
+            false
+        } finally {
+            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
+        }
+    }
+
+    /**
+     * Replaces the image payload at [payloadKey] in place with [newFilePath]
+     * (the edited bytes). Same encryption/thumbnail/outbox path as
+     * [appendResolvedPages] — only the key is reused so the page is updated
+     * rather than appended. HEIC inputs are converted to JPEG just like the
+     * add/append paths.
+     */
+    suspend fun replacePagePayload(
+        file: VaultEntry,
+        payloadKey: String,
+        newFilePath: String,
+        contentType: String,
+        scope: CoroutineScope,
+    ): Boolean =
+        fileOperationsProvider.withResolvedFiles(listOf(newFilePath)) { resolved ->
+            replaceResolvedPagePayload(
+                file = file,
+                payloadKey = payloadKey,
+                newFilePath = resolved.first(),
+                contentType = contentType,
+                scope = scope,
+            )
+        }
+
+    private suspend fun replaceResolvedPagePayload(
+        file: VaultEntry,
+        payloadKey: String,
+        newFilePath: String,
+        contentType: String,
+        scope: CoroutineScope,
+    ): Boolean {
+        val heicTemps = mutableListOf<String>()
+        return try {
+            val (resolvedPath, resolvedType) = convertHeicIfNeeded(newFilePath, contentType)
+            if (resolvedPath != newFilePath) heicTemps += resolvedPath
+
+            var previewThumbnail: EmbeddedThumb? = null
+            var thumbnails = emptyList<ThumbnailFile>()
+            if (resolvedType.startsWith("image/")) {
+                try {
+                    val result = MessageThumbnailGenerator.generate(
+                        resolvedPath, payloadKey, fileOperationsProvider,
+                    )
+                    previewThumbnail = result.preview
+                    thumbnails = result.thumbnails
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "Thumbnail generation failed for replace payload $payloadKey" }
+                }
+            }
+
+            val payload = PayloadFile(
+                key = payloadKey,
+                filePath = resolvedPath,
+                contentType = resolvedType,
+                previewThumbnail = previewThumbnail,
+            )
+
+            val keyHeader = KeyHeader(
+                iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey
+            )
+            val encryptedBundle = payloadEncryptionService.encryptBundle(
+                Uuid.random(), PayloadBundle(listOf(payload), thumbnails, emptyList()),
+                keyHeader.aesKey, scope,
+            )
+
+            vaultService.enqueueFileContentUpdate(
+                uniqueId = file.uniqueId,
+                fileContent = VaultFileContent(
+                    name = file.fileName,
+                    label = file.label,
+                    notes = file.notes,
+                ),
+                groupId = file.groupId,
+                versionTag = file.versionTag,
+                keyHeader = file.keyHeader,
+                manifest = UpdateManifest.build(
+                    payloads = encryptedBundle.payloads,
+                    thumbnails = encryptedBundle.thumbnails,
+                    generatePayloadIv = false,
+                ),
+                payloads = encryptedBundle.payloads,
+                thumbnails = encryptedBundle.thumbnails,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to enqueue replace page $payloadKey on ${file.uniqueId}" }
             false
         } finally {
             for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)

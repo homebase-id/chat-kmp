@@ -44,6 +44,12 @@ import id.homebase.resources.system_group_heal_local_cleanup_both
 import id.homebase.resources.system_group_heal_local_cleanup_main
 import id.homebase.resources.system_group_heal_requested
 import id.homebase.resources.system_group_heal_requested_you
+import id.homebase.resources.system_emergency_contact_designated
+import id.homebase.resources.system_emergency_contact_designated_you
+import id.homebase.resources.system_emergency_contact_designated_you_unknown
+import id.homebase.resources.system_emergency_contact_revoked
+import id.homebase.resources.system_emergency_contact_revoked_you
+import id.homebase.resources.system_emergency_contact_revoked_you_unknown
 import id.homebase.resources.chat_poll_ended_other
 import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
@@ -125,6 +131,15 @@ suspend fun mapToMessageData(
         val isDeleted = header.isSoftDeleted()
 
         if (isDeleted) {
+            // A consumed status (system) message leaves no trace: unlike a deleted user
+            // message — where the "This message was deleted" tombstone is the point — a status
+            // message such as an emergency-contact designation is soft-deleted by the receiver
+            // purely to neutralise re-delivery (EmergencyContactReceiveService.consume). The user
+            // never authored or saw it, so render nothing rather than a "Deleted File" tombstone.
+            // appData survives the local soft-delete (the branch below reads groupId/uniqueId/
+            // userDate from it), so isStatusMessage (appData.dataType) is reliable here.
+            if (isStatusMessage) return null
+
             val deletedUserDate = if (appData.userDate == null)
                 metadata.created
             else
@@ -524,5 +539,25 @@ internal suspend fun renderStatusMessage(
             if (authorIsYou) TranslationUtil.getString(MR.string.chat_poll_ended_self, q)
             else TranslationUtil.getString(MR.string.chat_poll_ended_other, name, q)
         }
+
+        StatusMessage.EmergencyContactDesignated ->
+            when {
+                authorIsYou && subject != null ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated_you, subject)
+                authorIsYou ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated_you_unknown)
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated, name)
+            }
+
+        StatusMessage.EmergencyContactRevoked ->
+            when {
+                authorIsYou && subject != null ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you, subject)
+                authorIsYou ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you_unknown)
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked, name)
+            }
     }
 }

@@ -69,7 +69,7 @@ import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
-import id.homebase.chat.contactinfo.ContactInfoScreen
+import id.homebase.api.crypto.Md5
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
@@ -273,7 +273,12 @@ fun AppNavHost(
     )
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
-    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen
+    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a
+    // nav destination, so it doesn't hide the bottom nav on its own — fold it into the same
+    // gate the gallery uses.
+    val isVaultEditorOpen = vaultUiState.pendingEditor != null
+    val showBottomNavigationBar =
+        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -333,6 +338,8 @@ fun AppNavHost(
                 is VaultUiEvent.OpenNoteEditor,
                 is VaultUiEvent.ShareFileReady,
                 is VaultUiEvent.SaveFileReady,
+                is VaultUiEvent.NavigateToCropper,
+                is VaultUiEvent.NavigateToDrawer,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
             }
         }
@@ -884,7 +891,14 @@ fun AppNavHost(
                                     // permission) — covers both "not set up" gate-fail cases.
                                     onNavigateToLocationSetup = openLocation,
                                     onNavigateToContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                        // 1:1 contact info is the full contact-detail screen
+                                        // (keyed by the contact uniqueId = md5(odinId)).
+                                        navController.navigate(
+                                            Route.ContactBookDetail(
+                                                uniqueId = Md5.toGuidId(it.lowercase()).toString(),
+                                                odinId = it,
+                                            )
+                                        )
                                     },
                                     onNavigateToConversationSettings = {
                                         navController.navigate(Route.ConversationSettings(it))
@@ -995,15 +1009,6 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ContactInfo> {
-                            if (isAuthenticated) {
-                                ContactInfoScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
-                                )
-                            }
-                        }
-
                         composable<Route.MessageInfo> {
                             if (isAuthenticated) {
                                 MessageInfoScreen(
@@ -1079,7 +1084,14 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                        // 1:1 contact info is the full contact-detail screen
+                                        // (keyed by the contact uniqueId = md5(odinId)).
+                                        navController.navigate(
+                                            Route.ContactBookDetail(
+                                                uniqueId = Md5.toGuidId(it.lowercase()).toString(),
+                                                odinId = it,
+                                            )
+                                        )
                                     },
                                     onAddMembers = {
                                         navController.navigate(Route.GroupAddMembers(it))
@@ -1400,6 +1412,12 @@ fun AppNavHost(
                                             },
                                             onNavigateToNoteEditor = { sectionId, entryId ->
                                                 navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
+                                            },
+                                            onNavigateToCropper = { requestId ->
+                                                navController.navigate(Route.Crop(requestId.toString()))
+                                            },
+                                            onNavigateToDrawer = { requestId ->
+                                                navController.navigate(Route.Draw(requestId.toString()))
                                             },
                                         )
                                     }

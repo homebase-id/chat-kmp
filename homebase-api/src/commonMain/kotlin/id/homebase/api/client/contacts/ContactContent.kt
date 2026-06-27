@@ -28,6 +28,30 @@ data class ContactContent(
     val phone: ContactPhone? = null,
     val email: ContactEmail? = null,
     val birthday: ContactBirthday? = null,
+    /** Short header tagline (~<=160 chars). Distinct from the ext_data bios (see [ContactExtData]). */
+    val shortBio: String? = null,
+    val nickname: String? = null,
+    /** Free-text status/tagline — NOT connection state (derive that live from connection/circle APIs). */
+    val status: String? = null,
+    /** Bare URL value; render the link yourself. */
+    val link: String? = null,
+    // social stays nullable (not `emptyMap()`): the serializer encodes defaults, so a non-null empty
+    // default would emit on every write and the server's merge would treat it as "set this",
+    // clobbering stored handles. Null omits.
+    /**
+     * Social handles keyed by attribute-type-id GUID in the dashless 32-hex form (e.g.
+     * `54ecbdc035fd1a44d0524303cd104411`). Values are bare handles, not URLs. Resolve known
+     * networks with [socialHandles] / [ContactSocialNetwork].
+     */
+    val social: Map<String, String>? = null,
+    /**
+     * Inline per-app data (the ≤200-byte tier), keyed by appId as a canonical lowercase hyphenated
+     * UUID string. Populated by the server on read (it rides in the contact content, so the contacts
+     * list query already returns it); absent when nothing has been written. Read it via
+     * [appDataFor]. We never write this through a contact UPDATE — it has its own endpoints
+     * ([ContactsProvider.setContactAppData]) — so it stays nullable to omit on our writes.
+     */
+    val appData: Map<String, String>? = null,
 )
 
 @Serializable
@@ -38,19 +62,32 @@ data class ContactName(
     val surname: String? = null,
 )
 
+/**
+ * A postal address. Mirrors the server's `ContactLocation` (odin-js `AddressFields`): the wire keys
+ * are camelCase — `addressLine1`/`addressLine2` (odin-js calls them `address1`/`address2`). Every
+ * field is optional; [label] is a free-form name for the address such as "Home" / "Work".
+ */
 @Serializable
 data class ContactLocation(
+    val label: String? = null,
+    val addressLine1: String? = null,
+    val addressLine2: String? = null,
+    val postcode: String? = null,
     val city: String? = null,
     val country: String? = null,
 )
 
 @Serializable
 data class ContactPhone(
+    /** Free-form name for this number, e.g. "Mobile" / "Work" (odin-js `PhoneFields.label`). */
+    val label: String? = null,
     val number: String? = null,
 )
 
 @Serializable
 data class ContactEmail(
+    /** Free-form name for this email, e.g. "Personal" / "Work" (odin-js `EmailFields.label`). */
+    val label: String? = null,
     val email: String? = null,
 )
 
