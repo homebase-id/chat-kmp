@@ -52,29 +52,28 @@ object GlobalCrashHandler {
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
 
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            // Containable, non-fatal failures are handled BEFORE the terminating try/finally
+            // below, so they return WITHOUT killing the process. The coroutine machinery
+            // invokes this handler as a plain call — it does NOT unwind the Looper/thread — so
+            // returning here lets the app keep running. This is PR #737's intent; the old
+            // `finally { killProcess }` wrapped these returns and defeated it, so a dropped
+            // connection or a TLS-inspecting VPN/proxy (an SSLHandshakeException on every call,
+            // landing on a scope with no CoroutineExceptionHandler) could still silently kill an
+            // already-authenticated app. See TlsInterceptionTest.
+            if (isContainableNonFatal(throwable)) {
+                runCatching { Firebase.crashlytics.recordException(throwable) }
+                Logger.w(tag = TAG) {
+                    val kind = if (throwable.isMlKitTeardownFailure()) {
+                        "ML Kit/MediaPipe failure (background removal degrades to no cutout)"
+                    } else {
+                        "Transient network failure"
+                    }
+                    "$kind on '${thread.name}'; contained, not crashing: ${throwable.message}"
+                }
+                return@setDefaultUncaughtExceptionHandler
+            }
+
             try {
-                // Preserve PR #737: a transient network blip that leaked to the global
-                // handler must NOT crash the app or show the recovery screen.
-                if (throwable.isTransientNetworkFailure()) {
-                    runCatching { Firebase.crashlytics.recordException(throwable) }
-                    Logger.w(tag = TAG) {
-                        "Transient network failure on '${thread.name}'; not crashing: ${throwable.message}"
-                    }
-                    return@setDefaultUncaughtExceptionHandler
-                }
-
-                // Same class as the network case: ML Kit / MediaPipe background-removal runs on
-                // native threads we don't own, so a teardown/callback failure can leak here that
-                // no local try/catch could reach. Background removal is best-effort — degrade to
-                // "no cutout", record a non-fatal, and keep the app alive.
-                if (throwable.isMlKitTeardownFailure()) {
-                    runCatching { Firebase.crashlytics.recordException(throwable) }
-                    Logger.w(tag = TAG) {
-                        "ML Kit/MediaPipe failure on '${thread.name}'; not crashing (background removal degrades to no cutout): ${throwable.message}"
-                    }
-                    return@setDefaultUncaughtExceptionHandler
-                }
-
                 // Mark this run's death as a JVM crash we handled, so the next launch's
                 // NativeCrashRecovery doesn't misclassify it as native. A native signal
                 // crash never reaches this handler, so it never sets this marker.
@@ -108,6 +107,20 @@ object GlobalCrashHandler {
             }
         }
     }
+
+    /**
+     * A failure we contain (record + keep running) instead of terminating the process for:
+     *  - a transient network blip — dropped socket, DNS, timeout, **or a TLS handshake
+     *    failure**, including a TLS-inspecting VPN/proxy/AV presenting an untrusted cert; and
+     *  - an ML Kit / MediaPipe teardown (best-effort background removal on native threads).
+     *
+     * Both routinely leak from a coroutine launched on a scope without its own
+     * CoroutineExceptionHandler (e.g. a bare `viewModelScope.launch`). Killing the process for
+     * them is the very thing PR #737 set out to avoid — and what the `finally` below used to do
+     * anyway. Pure so it's unit-testable.
+     */
+    internal fun isContainableNonFatal(throwable: Throwable): Boolean =
+        throwable.isTransientNetworkFailure() || throwable.isMlKitTeardownFailure()
 
     /**
      * Whether to launch the [CrashActivity] recovery screen for this crash. Pure so it
