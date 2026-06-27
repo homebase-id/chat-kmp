@@ -1402,6 +1402,11 @@
     <string name="contactbook_filter_all">All</string>
     <string name="contactbook_filter_introduced">Introduced</string>
     <string name="contactbook_filter_confirmed">Confirmed</string>
+    <string name="contactbook_filter_requests">Requests</string>
+    <string name="contactbook_filter_requests_count">Requests (%1$d)</string>
+    <string name="contactbook_requests_empty">No pending connection requests</string>
+    <string name="contactbook_request_incoming">Wants to connect</string>
+    <string name="contactbook_request_outgoing">Request sent</string>
     <string name="contactbook_no_results">No contacts match your search</string>
 
     <string name="contactbook_action_add">Add contact</string>
@@ -1421,6 +1426,11 @@
     <string name="contactbook_detail_connect">Send connection request</string>
     <string name="contactbook_detail_not_connected">Not connected</string>
     <string name="contactbook_detail_pending">Connection request pending</string>
+    <string name="contactbook_detail_request_incoming">Wants to connect with you</string>
+    <string name="contactbook_detail_request_outgoing">Connection request sent</string>
+    <string name="contactbook_detail_accept">Accept</string>
+    <string name="contactbook_detail_reject">Reject</string>
+    <string name="contactbook_detail_cancel_request">Cancel request</string>
     <string name="contactbook_detail_blocked">Blocked</string>
     <string name="contactbook_detail_recent_media">Recent media</string>
     <string name="contactbook_detail_no_recent_media">No recent media yet</string>
@@ -1483,6 +1493,21 @@
     <string name="contactbook_action_unblocked">Contact unblocked.</string>
     <string name="contactbook_action_disconnected">Disconnected.</string>
     <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
+    <string name="contactbook_action_request_accepted">Connection request accepted.</string>
+    <string name="contactbook_action_request_rejected">Connection request declined.</string>
+    <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
+
+    <string name="add_contact_title">Add contact</string>
+    <string name="add_contact_odinid_label">Homebase ID</string>
+    <string name="add_contact_odinid_hint">name.homebase.id</string>
+    <string name="add_contact_lead_help">Enter their Homebase ID and we'll look up their profile.</string>
+    <string name="add_contact_resolving">Looking up identity…</string>
+    <string name="add_contact_invalid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+    <string name="add_contact_not_found">We couldn't find that Homebase ID. You can still add them as a contact.</string>
+    <string name="add_contact_identity_found">Found %1$s</string>
+    <string name="add_contact_manual_link">Don't know their Homebase ID? Add manually</string>
+    <string name="add_contact_byid_link">Have their Homebase ID? Look them up</string>
+    <string name="add_contact_details_optional">Details (optional)</string>
 
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>

@@ -19,6 +19,9 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.data.IncomingConnectionRequestUiModel
+import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
@@ -26,6 +29,7 @@ import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.contactbook.clearICanLocate
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
+import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
@@ -56,6 +60,7 @@ class ContactDetailViewModel(
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val connectionService: ConnectionService,
+    private val connectionRequestService: ConnectionRequestService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val credentialsManager: CredentialsManager,
@@ -77,9 +82,19 @@ class ContactDetailViewModel(
     private val odinId: String?
         get() = route.odinId?.ifBlank { null } ?: _uiState.value.entry?.odinId?.ifBlank { null }
 
+    private data class DetailBundle(
+        val contacts: List<ContactBookEntry>,
+        val conn: id.homebase.chat.services.convo.contact.ConnectionState,
+        val circ: id.homebase.chat.services.convo.contact.CircleMembershipState,
+        val incoming: List<IncomingConnectionRequestUiModel>,
+        val outgoing: List<OutgoingConnectionRequestUiModel>,
+    )
+
     init {
         // Self-sufficient on deep-link: ensure the repo has loaded even if the list wasn't opened.
         viewModelScope.launch { contactRepository.ensureLoaded() }
+        // Idempotent — makes pending-request state available even on a deep-link into detail.
+        viewModelScope.launch { connectionRequestService.start() }
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
             val selfDomain = runCatching { credentialsManager.getActiveDomain()?.domainName }.getOrNull()
@@ -87,9 +102,14 @@ class ContactDetailViewModel(
                 contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
                 connectionService.connections,
                 connectionService.circles,
-            ) { contacts, conn, circ ->
-                Triple(contacts, conn, circ)
-            }.collect { (contacts, conn, circ) ->
+                connectionRequestService.incomingRequests,
+                connectionRequestService.outgoingRequests,
+            ) { contacts, conn, circ, incoming, outgoing ->
+                DetailBundle(contacts, conn, circ, incoming, outgoing)
+            }.collect { bundle ->
+                val contacts = bundle.contacts
+                val conn = bundle.conn
+                val circ = bundle.circ
                 val entry = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
                 val domain = entry?.odinId
@@ -97,6 +117,15 @@ class ContactDetailViewModel(
                 val status = domain?.let { d ->
                     conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }
                         ?.value?.status
+                }
+                val requestDirection = domain?.let { d ->
+                    when {
+                        bundle.incoming.any { it.senderOdinId.domainName.equals(d, ignoreCase = true) } ->
+                            RequestDirection.INCOMING
+                        bundle.outgoing.any { it.recipientOdinId.domainName.equals(d, ignoreCase = true) } ->
+                            RequestDirection.OUTGOING
+                        else -> null
+                    }
                 }
                 // User-defined circles only — the Confirmed/Auto system circles are surfaced
                 // through the connection status, not as chips.
@@ -119,6 +148,7 @@ class ContactDetailViewModel(
                         circles = circleNames,
                         isLoading = false,
                         isSelf = isSelf,
+                        requestDirection = requestDirection,
                     )
                 }
             }
@@ -176,6 +206,15 @@ class ContactDetailViewModel(
             ContactDetailAction.BlockClicked -> _uiState.update { it.copy(confirm = ContactDetailConfirm.BLOCK) }
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
+            ContactDetailAction.AcceptRequestClicked -> handleRequestAction(
+                event = ContactDetailEvent.RequestAccepted,
+            ) { connectionRequestService.acceptIncomingRequest(it) }
+            ContactDetailAction.RejectRequestClicked -> handleRequestAction(
+                event = ContactDetailEvent.RequestRejected,
+            ) { connectionRequestService.rejectIncomingRequest(it) }
+            ContactDetailAction.CancelRequestClicked -> handleRequestAction(
+                event = ContactDetailEvent.RequestCancelled,
+            ) { connectionRequestService.cancelOutgoingRequest(it) }
             ContactDetailAction.UnblockClicked -> handleUnblock()
             ContactDetailAction.ConfirmYes -> handleConfirm()
             ContactDetailAction.ConfirmDismiss -> _uiState.update { it.copy(confirm = null) }
@@ -281,6 +320,28 @@ class ContactDetailViewModel(
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)
                 ContactSaveResult.Failed -> _events.tryEmit(ContactDetailEvent.Error)
+            }
+        }
+    }
+
+    /**
+     * Runs a connection-request mutation (accept / reject / cancel) for this contact's odinId,
+     * emitting [event] on success. The services apply the optimistic list update and refresh, so
+     * the detail screen's request/connection status reconciles on the next combine emission.
+     */
+    private fun handleRequestAction(
+        event: ContactDetailEvent,
+        action: suspend (OdinId) -> Unit,
+    ) {
+        val domain = odinId ?: return
+        _uiState.update { it.copy(actionInProgress = true) }
+        viewModelScope.launch {
+            try {
+                runCatching { action(OdinId(domain)) }
+                    .onSuccess { _events.tryEmit(event) }
+                    .onFailure { emitConnectionError(it) }
+            } finally {
+                _uiState.update { it.copy(actionInProgress = false) }
             }
         }
     }

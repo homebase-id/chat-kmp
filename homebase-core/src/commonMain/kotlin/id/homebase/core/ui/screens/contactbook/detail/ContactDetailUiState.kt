@@ -9,6 +9,7 @@ import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.core.ui.screens.contactbook.ContactDraft
+import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -32,8 +33,13 @@ data class ContactDetailUiState(
     val fullScreenMedia: SharedMediaItem? = null,
     val editOpen: Boolean = false,
     val confirm: ContactDetailConfirm? = null,
-    /** A management action (delete/block/disconnect/unblock) is running — show a blocking spinner. */
+    /** A management action (delete/block/disconnect/unblock/request) is running — blocking spinner. */
     val actionInProgress: Boolean = false,
+    /**
+     * Non-null when there's a pending connection request for this contact: INCOMING (they want to
+     * connect — Accept/Reject) or OUTGOING (we asked — Cancel). Drives the request action buttons.
+     */
+    val requestDirection: RequestDirection? = null,
     /** True when this contact is the logged-in identity's own (self) contact. */
     val isSelf: Boolean = false,
     /**
@@ -60,6 +66,12 @@ sealed interface ContactDetailAction {
     data object BlockClicked : ContactDetailAction
     data object UnblockClicked : ContactDetailAction
     data object DisconnectClicked : ContactDetailAction
+    /** Accept an incoming connection request from this contact. */
+    data object AcceptRequestClicked : ContactDetailAction
+    /** Reject (decline) an incoming connection request from this contact. */
+    data object RejectRequestClicked : ContactDetailAction
+    /** Cancel (withdraw) an outgoing connection request to this contact. */
+    data object CancelRequestClicked : ContactDetailAction
     data object ConfirmYes : ContactDetailAction
     data object ConfirmDismiss : ContactDetailAction
     data class OpenMedia(val item: SharedMediaItem) : ContactDetailAction
@@ -91,4 +103,8 @@ sealed interface ContactDetailEvent {
     data object Disconnected : ContactDetailEvent
     /** Best-effort profile sync was requested; the enriched contact lands later via drive sync. */
     data object SyncStarted : ContactDetailEvent
+    /** Connection-request action confirmations. */
+    data object RequestAccepted : ContactDetailEvent
+    data object RequestRejected : ContactDetailEvent
+    data object RequestCancelled : ContactDetailEvent
 }

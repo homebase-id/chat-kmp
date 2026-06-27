@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +20,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAddAlt1
@@ -30,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -56,12 +60,16 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
+import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_action_blocked
+import id.homebase.resources.contactbook_action_request_accepted
+import id.homebase.resources.contactbook_action_request_cancelled
+import id.homebase.resources.contactbook_action_request_rejected
 import id.homebase.resources.contactbook_action_sync_started
 import id.homebase.resources.contactbook_action_disconnected
 import id.homebase.resources.contactbook_detail_emergency_badge
@@ -82,8 +90,13 @@ import id.homebase.resources.contactbook_detail_disconnect_message
 import id.homebase.resources.contactbook_detail_disconnect_title
 import id.homebase.resources.contactbook_detail_edit
 import id.homebase.resources.contactbook_detail_message
+import id.homebase.resources.contactbook_detail_accept
+import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
+import id.homebase.resources.contactbook_detail_reject
+import id.homebase.resources.contactbook_detail_request_incoming
+import id.homebase.resources.contactbook_detail_request_outgoing
 import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_delete_forbidden
@@ -118,6 +131,9 @@ fun ContactDetailScreen(
     val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
     val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
     val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
+    val msgRequestAccepted = stringResource(MR.string.contactbook_action_request_accepted)
+    val msgRequestRejected = stringResource(MR.string.contactbook_action_request_rejected)
+    val msgRequestCancelled = stringResource(MR.string.contactbook_action_request_cancelled)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -139,6 +155,9 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
                 ContactDetailEvent.SyncStarted -> snackbarHostState.showSnackbar(msgSyncStarted)
+                ContactDetailEvent.RequestAccepted -> snackbarHostState.showSnackbar(msgRequestAccepted)
+                ContactDetailEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRequestRejected)
+                ContactDetailEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgRequestCancelled)
             }
         }
     }
@@ -304,8 +323,11 @@ private fun DetailHeader(
     val connected = status == ConnectionStatus.Connected
     val blocked = status == ConnectionStatus.Blocked
     val pending = status == ConnectionStatus.Pending
-    // Has a Homebase identity but no active connection (and isn't blocked/pending).
-    val canConnect = uiState.hasOdinId && !connected && !blocked && !pending
+    val requestIncoming = uiState.requestDirection == RequestDirection.INCOMING
+    val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
+    // Has a Homebase identity but no active connection, pending request, or block.
+    val canConnect = uiState.hasOdinId && !connected && !blocked && !pending &&
+        uiState.requestDirection == null
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -340,7 +362,7 @@ private fun DetailHeader(
         // Connection status line (only for Homebase contacts).
         if (uiState.hasOdinId) {
             val statusColor = when {
-                connected -> MaterialTheme.colorScheme.primary
+                connected || requestIncoming -> MaterialTheme.colorScheme.primary
                 blocked -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
@@ -348,6 +370,8 @@ private fun DetailHeader(
                 text = stringResource(
                     when {
                         connected -> MR.string.contactbook_connected
+                        requestIncoming -> MR.string.contactbook_detail_request_incoming
+                        requestOutgoing -> MR.string.contactbook_detail_request_outgoing
                         pending -> MR.string.contactbook_detail_pending
                         blocked -> MR.string.contactbook_detail_blocked
                         else -> MR.string.contactbook_detail_not_connected
@@ -409,6 +433,36 @@ private fun DetailHeader(
                     Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(MR.string.contactbook_detail_connect))
+                }
+            }
+            requestIncoming -> {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(
+                        onClick = { onAction(ContactDetailAction.AcceptRequestClicked) },
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                    ) {
+                        Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(MR.string.contactbook_detail_accept))
+                    }
+                    OutlinedButton(
+                        onClick = { onAction(ContactDetailAction.RejectRequestClicked) },
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                    ) {
+                        Text(stringResource(MR.string.contactbook_detail_reject))
+                    }
+                }
+            }
+            requestOutgoing -> {
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { onAction(ContactDetailAction.CancelRequestClicked) },
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(MR.string.contactbook_detail_cancel_request))
                 }
             }
         }

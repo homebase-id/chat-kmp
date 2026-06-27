@@ -88,7 +88,6 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
-import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
@@ -129,6 +128,7 @@ import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.ui.screens.contactbook.ContactBookScreen
+import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
@@ -142,7 +142,6 @@ import id.homebase.resources.location_label
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import kotlinx.io.files.Path
 import id.homebase.core.widget.ConnectionRequestHeaderBanner
@@ -357,6 +356,8 @@ fun AppNavHost(
                 }
                 is ContactBookUiEvent.OpenDetail ->
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
+                ContactBookUiEvent.OpenAddContact ->
+                    navController.navigate(Route.AddContact)
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* Error handled by ContactBookScreen */ }
@@ -607,12 +608,11 @@ fun AppNavHost(
                         }
                         if (uiState.incomingRequests.isNotEmpty()) {
                             ConnectionRequestHeaderBanner(
-                                requestCount = uiState.incomingRequests.size, onBannerClick = {
-                                    uiState.currentOdinId?.let {
-                                        val requestsUrl = it.buildNotificationUrl()
-                                        uriHandler.openUrl(requestsUrl)
-                                    }
-                                })
+                                requestCount = uiState.incomingRequests.size,
+                                // Pending requests now live in the Contact Book's Requests pill
+                                // (accept/reject in-app), so land there instead of the owner console.
+                                onBannerClick = openContactBook,
+                            )
                         }
 
                         val pendingUpgrade = uiState.pendingUpgrade
@@ -788,8 +788,13 @@ fun AppNavHost(
                                 } else {
                                     ContactBookScreen(
                                         viewModel = contactBookViewModel,
+                                        connectRequestViewModel = koinViewModel(),
                                         onProfileClick = {
                                             navController.navigate(Route.Settings)
+                                        },
+                                        onOpenConversation = { conversationId ->
+                                            navController.selectConversationOnChatList(conversationId)
+                                            navController.popBackStack(Route.ChatList, inclusive = false)
                                         },
                                     )
                                 }
@@ -805,6 +810,15 @@ fun AppNavHost(
                                     onBackClick = { navController.popBackStack() },
                                     onOpenContacts = openContactBook,
                                     showOpenContacts = !fromContacts,
+                                )
+                            }
+                        }
+
+                        composable<Route.AddContact> {
+                            if (isAuthenticated) {
+                                AddContactScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
                                 )
                             }
                         }
@@ -1132,9 +1146,6 @@ fun AppNavHost(
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
-                                    onNavigateToConnections = {
-                                        navController.navigate(Route.Connections)
-                                    },
                                     onNavigateToNotifications = {
                                         navController.navigate(Route.NotificationSettings)
                                     },
@@ -1343,24 +1354,6 @@ fun AppNavHost(
                                     onOpenDevice = { deviceId ->
                                         navController.navigate(
                                             Route.LocationFindDevice(deviceId.toString())
-                                        )
-                                    },
-                                )
-                            }
-                        }
-
-                        composable<Route.Connections> {
-                            if (isAuthenticated) {
-                                ConnectionsScreen(
-                                    viewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(
-                                            conversationId
-                                        )
-                                        navController.popBackStack(
-                                            Route.ChatList, inclusive = false
                                         )
                                     },
                                 )
