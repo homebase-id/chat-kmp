@@ -28,19 +28,28 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
@@ -60,6 +69,8 @@ import id.homebase.resources.contactbook_detail_circles_connect
 import id.homebase.resources.contactbook_detail_circles_empty
 import id.homebase.resources.contactbook_detail_contact_details
 import id.homebase.resources.contactbook_detail_location
+import id.homebase.resources.contactbook_detail_override_none
+import id.homebase.resources.contactbook_detail_override_synced
 import id.homebase.resources.contactbook_edit_birthday
 import id.homebase.resources.contactbook_edit_email
 import id.homebase.resources.contactbook_edit_given_name
@@ -255,20 +266,40 @@ fun ContactFieldsSection(
     val lblLocation = stringResource(MR.string.contactbook_detail_location)
     val lblBirthday = stringResource(MR.string.contactbook_edit_birthday)
 
-    // Each field is (icon, label, value). Name parts come first so an identity contact shows its
-    // real details, not just the Homebase ID; the rest tuck behind "More".
+    // Each field carries its synced original ([DetailFieldRow.synced]) when the user has overridden
+    // it, so a small peek icon can reveal "their profile says …". Name parts come first so an
+    // identity contact shows its real details, not just the Homebase ID; the rest tuck behind "More".
+    val o = entry.syncedOverlay
+    val syncedLocation = o?.let { ov ->
+        if (ov.city != null || ov.country != null) {
+            listOfNotNull(ov.city?.ifBlank { null }, ov.country?.ifBlank { null }).joinToString(", ")
+        } else {
+            null
+        }
+    }
     val fields = buildList {
-        entry.givenName?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Person, lblFirst, it)) }
-        entry.surname?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Person, lblLast, it)) }
-        entry.odinId?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.AlternateEmail, lblId, it)) }
-        entry.phone?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Call, lblPhone, it)) }
-        entry.email?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Email, lblEmail, it)) }
+        entry.givenName?.takeIf { it.isNotBlank() }
+            ?.let { add(DetailFieldRow(Icons.Outlined.Person, lblFirst, it, o?.givenName)) }
+        entry.surname?.takeIf { it.isNotBlank() }
+            ?.let { add(DetailFieldRow(Icons.Outlined.Person, lblLast, it, o?.surname)) }
+        entry.odinId?.takeIf { it.isNotBlank() }
+            ?.let { add(DetailFieldRow(Icons.Outlined.AlternateEmail, lblId, it, null)) }
+        entry.phone?.takeIf { it.isNotBlank() }
+            ?.let { add(DetailFieldRow(Icons.Outlined.Call, lblPhone, it, o?.phone)) }
+        // App-local additional phones (no synced counterpart) render as plain extra rows.
+        entry.additionalPhones.filter { it.isNotBlank() }
+            .forEach { add(DetailFieldRow(Icons.Outlined.Call, lblPhone, it, null)) }
+        entry.email?.takeIf { it.isNotBlank() }
+            ?.let { add(DetailFieldRow(Icons.Outlined.Email, lblEmail, it, o?.email)) }
+        entry.additionalEmails.filter { it.isNotBlank() }
+            .forEach { add(DetailFieldRow(Icons.Outlined.Email, lblEmail, it, null)) }
         entry.location?.takeIf { it.isNotBlank() }?.let {
             // Prefer the address's own label ("Home" / "Work") over the generic "Location".
             val addressLabel = entry.locationLabel?.takeIf { l -> l.isNotBlank() } ?: lblLocation
-            add(Triple(Icons.Outlined.LocationOn, addressLabel, it))
+            add(DetailFieldRow(Icons.Outlined.LocationOn, addressLabel, it, syncedLocation))
         }
-        entry.birthday?.takeIf { it.isNotBlank() }?.let { add(Triple(Icons.Outlined.Cake, lblBirthday, it)) }
+        entry.birthday?.takeIf { it.isNotBlank() }
+            ?.let { add(DetailFieldRow(Icons.Outlined.Cake, lblBirthday, it, o?.birthday)) }
     }
     if (fields.isEmpty()) {
         Text(
@@ -281,7 +312,7 @@ fun ContactFieldsSection(
     }
 
     val visible = if (expanded) fields else fields.take(2)
-    visible.forEach { (icon, label, value) -> DetailField(icon, label, value) }
+    visible.forEach { DetailField(it.icon, it.label, it.value, it.synced) }
 
     if (fields.size > 2) {
         TextButton(
@@ -409,14 +440,53 @@ private fun SharedMediaThumb(item: SharedMediaItem, size: Dp, onClick: () -> Uni
     )
 }
 
+/** One contact-detail row. [synced] is non-null when the user overrode this field — it holds the
+ *  synced (peer-profile) original, surfaced behind a peek icon. */
+private data class DetailFieldRow(
+    val icon: ImageVector,
+    val label: String,
+    val value: String,
+    val synced: String?,
+)
+
 @Composable
-private fun DetailField(icon: ImageVector, label: String, value: String?) {
+private fun DetailField(icon: ImageVector, label: String, value: String?, synced: String?) {
     if (value.isNullOrBlank()) return
     ListItem(
         leadingContent = { Icon(icon, contentDescription = null) },
         overlineContent = { Text(label) },
         headlineContent = { Text(value) },
+        trailingContent = synced?.let { { SyncedValuePeek(it) } },
     )
+}
+
+/**
+ * A small icon beside an overridden field that reveals the synced (peer-profile) value on hover
+ * (desktop) or tap (touch). The value is the user's; this is just the "their profile says …" peek.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SyncedValuePeek(syncedValue: String) {
+    val shown = syncedValue.ifBlank { stringResource(MR.string.contactbook_detail_override_none) }
+    val label = stringResource(MR.string.contactbook_detail_override_synced, shown)
+    val tooltipState = rememberTooltipState(isPersistent = false)
+    val scope = rememberCoroutineScope()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+            TooltipAnchorPosition.Above,
+        ),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = tooltipState,
+    ) {
+        IconButton(onClick = { scope.launch { tooltipState.show() } }) {
+            Icon(
+                Icons.Outlined.Sync,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
 }
 
 @Composable

@@ -15,11 +15,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -41,6 +44,8 @@ import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.toDraft
 import id.homebase.resources.MR
+import id.homebase.resources.contactbook_edit_add_email
+import id.homebase.resources.contactbook_edit_add_phone
 import id.homebase.resources.contactbook_edit_birthday
 import id.homebase.resources.contactbook_edit_cancel
 import id.homebase.resources.contactbook_edit_change_photo
@@ -51,8 +56,7 @@ import id.homebase.resources.contactbook_edit_given_name
 import id.homebase.resources.contactbook_edit_odinid
 import id.homebase.resources.contactbook_edit_odinid_locked
 import id.homebase.resources.contactbook_edit_phone
-import id.homebase.resources.contactbook_edit_profile_locked
-import id.homebase.resources.contactbook_edit_profile_synced_note
+import id.homebase.resources.contactbook_edit_remove
 import id.homebase.resources.contactbook_edit_save
 import id.homebase.resources.contactbook_edit_surname
 import id.homebase.resources.contactbook_edit_title_edit
@@ -68,23 +72,14 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun ContactEditSheet(
     editing: ContactBookEntry?,
-    onSave: (ContactDraft, PlatformFile?) -> Unit,
+    onSave: (ContactDraft, List<String>, List<String>, PlatformFile?) -> Unit,
     onDismiss: () -> Unit,
     odinIdLocked: Boolean = false,
-    /**
-     * Connected contact: the server re-enriches its profile fields from the peer's ProfileDrive on
-     * every sync (per-leaf, the peer's value always wins), so any value the peer already publishes
-     * would be silently overwritten. We lock exactly those already-populated fields read-only;
-     * fields the peer leaves blank stay editable (a value the user adds there survives the merge).
-     */
-    profileLocked: Boolean = false,
 ) {
-    // Snapshot the starting values once: a field is "published by the peer" iff it already has a
-    // value on a connected contact. Lock decisions read this, not the live (mutable) draft.
-    val initial = remember { editing?.toDraft() ?: ContactDraft() }
-    fun locked(value: String) = profileLocked && value.isNotBlank()
-
-    var draft by remember { mutableStateOf(initial) }
+    var draft by remember { mutableStateOf(editing?.toDraft() ?: ContactDraft()) }
+    // Extra phones/emails beyond the single canonical slot — app-local additions (see overlay).
+    var addPhones by remember { mutableStateOf(editing?.additionalPhones.orEmpty()) }
+    var addEmails by remember { mutableStateOf(editing?.additionalEmails.orEmpty()) }
     var photo by remember { mutableStateOf<PlatformFile?>(null) }
     var photoBytes by remember { mutableStateOf<ByteArray?>(null) }
 
@@ -123,34 +118,12 @@ fun ContactEditSheet(
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Shared lock affordance for the profile-synced fields.
-            val lockNote = stringResource(MR.string.contactbook_edit_profile_locked)
-            val lockTrailing: @Composable () -> Unit =
-                { Icon(Icons.Outlined.Lock, contentDescription = lockNote) }
-            val anyProfileLocked = locked(initial.givenName) || locked(initial.surname) ||
-                locked(initial.phone) || locked(initial.email) || locked(initial.city) ||
-                locked(initial.country) || locked(initial.birthday)
-            if (anyProfileLocked) {
-                Text(
-                    text = stringResource(MR.string.contactbook_edit_profile_synced_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                )
+            Field(draft.givenName, stringResource(MR.string.contactbook_edit_given_name)) {
+                draft = draft.copy(givenName = it)
             }
-
-            Field(
-                value = draft.givenName,
-                label = stringResource(MR.string.contactbook_edit_given_name),
-                readOnly = locked(initial.givenName),
-                trailingIcon = if (locked(initial.givenName)) lockTrailing else null,
-            ) { draft = draft.copy(givenName = it) }
-            Field(
-                value = draft.surname,
-                label = stringResource(MR.string.contactbook_edit_surname),
-                readOnly = locked(initial.surname),
-                trailingIcon = if (locked(initial.surname)) lockTrailing else null,
-            ) { draft = draft.copy(surname = it) }
+            Field(draft.surname, stringResource(MR.string.contactbook_edit_surname)) {
+                draft = draft.copy(surname = it)
+            }
             val odinIdLockNote =
                 if (odinIdLocked) stringResource(MR.string.contactbook_edit_odinid_locked) else null
             Field(
@@ -169,37 +142,55 @@ fun ContactEditSheet(
                 e164Value = draft.phone,
                 onValueChange = { draft = draft.copy(phone = it) },
                 label = stringResource(MR.string.contactbook_edit_phone),
-                readOnly = locked(initial.phone),
-                trailingIcon = if (locked(initial.phone)) lockTrailing else null,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             )
+            val removeDesc = stringResource(MR.string.contactbook_edit_remove)
+            addPhones.forEachIndexed { i, value ->
+                Field(
+                    value = value,
+                    label = stringResource(MR.string.contactbook_edit_phone),
+                    keyboardType = KeyboardType.Phone,
+                    trailingIcon = {
+                        IconButton(onClick = { addPhones = addPhones.removeAt(i) }) {
+                            Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                        }
+                    },
+                ) { addPhones = addPhones.replaceAt(i, it) }
+            }
+            AddMoreButton(stringResource(MR.string.contactbook_edit_add_phone)) {
+                addPhones = addPhones + ""
+            }
             Field(
                 value = draft.email,
                 label = stringResource(MR.string.contactbook_edit_email),
                 isError = !draft.emailValid,
                 errorText = stringResource(MR.string.contactbook_error_email),
                 keyboardType = KeyboardType.Email,
-                readOnly = locked(initial.email),
-                trailingIcon = if (locked(initial.email)) lockTrailing else null,
             ) { draft = draft.copy(email = it) }
-            Field(
-                value = draft.city,
-                label = stringResource(MR.string.contactbook_edit_city),
-                readOnly = locked(initial.city),
-                trailingIcon = if (locked(initial.city)) lockTrailing else null,
-            ) { draft = draft.copy(city = it) }
-            Field(
-                value = draft.country,
-                label = stringResource(MR.string.contactbook_edit_country),
-                readOnly = locked(initial.country),
-                trailingIcon = if (locked(initial.country)) lockTrailing else null,
-            ) { draft = draft.copy(country = it) }
-            Field(
-                value = draft.birthday,
-                label = stringResource(MR.string.contactbook_edit_birthday),
-                readOnly = locked(initial.birthday),
-                trailingIcon = if (locked(initial.birthday)) lockTrailing else null,
-            ) { draft = draft.copy(birthday = it) }
+            addEmails.forEachIndexed { i, value ->
+                Field(
+                    value = value,
+                    label = stringResource(MR.string.contactbook_edit_email),
+                    keyboardType = KeyboardType.Email,
+                    trailingIcon = {
+                        IconButton(onClick = { addEmails = addEmails.removeAt(i) }) {
+                            Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                        }
+                    },
+                ) { addEmails = addEmails.replaceAt(i, it) }
+            }
+            AddMoreButton(stringResource(MR.string.contactbook_edit_add_email)) {
+                addEmails = addEmails + ""
+            }
+            Field(draft.city, stringResource(MR.string.contactbook_edit_city)) {
+                draft = draft.copy(city = it)
+            }
+            Field(draft.country, stringResource(MR.string.contactbook_edit_country)) {
+                draft = draft.copy(country = it)
+            }
+            Field(draft.birthday, stringResource(MR.string.contactbook_edit_birthday)) {
+                draft = draft.copy(birthday = it)
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
             Row(
@@ -210,7 +201,7 @@ fun ContactEditSheet(
                     Text(stringResource(MR.string.contactbook_edit_cancel))
                 }
                 Button(
-                    onClick = { onSave(draft, photo) },
+                    onClick = { onSave(draft, addPhones, addEmails, photo) },
                     enabled = draft.isSavable,
                 ) {
                     Text(stringResource(MR.string.contactbook_edit_save))
@@ -249,6 +240,21 @@ private fun EditAvatar(editing: ContactBookEntry?, photoBytes: ByteArray?) {
         }
     }
 }
+
+@Composable
+private fun AddMoreButton(label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Outlined.Add, contentDescription = null)
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(label)
+    }
+}
+
+private fun List<String>.replaceAt(index: Int, value: String): List<String> =
+    toMutableList().also { it[index] = value }
+
+private fun List<String>.removeAt(index: Int): List<String> =
+    filterIndexed { i, _ -> i != index }
 
 @Composable
 private fun Field(

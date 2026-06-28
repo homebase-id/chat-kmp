@@ -289,10 +289,13 @@ fun ContactDetailScreen(
     if (uiState.editOpen) {
         ContactEditSheet(
             editing = uiState.entry,
-            onSave = { draft, photo -> viewModel.onAction(ContactDetailAction.SaveContact(draft, photo)) },
+            onSave = { draft, addPhones, addEmails, photo ->
+                viewModel.onAction(
+                    ContactDetailAction.SaveContact(draft, addPhones, addEmails, photo),
+                )
+            },
             onDismiss = { viewModel.onAction(ContactDetailAction.CloseEdit) },
             odinIdLocked = uiState.isConnected,
-            profileLocked = uiState.isConnected,
         )
     }
 

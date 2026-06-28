@@ -10,8 +10,10 @@ import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
+import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.util.resolveContentType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.mimeType
@@ -128,6 +130,76 @@ suspend fun saveContactDraft(
         !uploadContactPhoto(repo, response.uniqueId, response.versionTag, photo)
 
     return ContactSaveResult.Success(photoFailed, clearedFieldsIgnored)
+}
+
+/**
+ * Persists an edit, routing each piece to the store that survives:
+ *
+ *  - **Primary fields** (name/phone/email/location/birthday): for a connected contact they go into
+ *    this app's enrichment-proof override (the server would overwrite the content on the next sync);
+ *    for a non-connected / manual contact they go to content as normal (nothing overwrites them).
+ *  - **Additional phones / emails** always go into the override — the contact schema has only one
+ *    phone/email slot everywhere, so extras can only live in our app-private blob.
+ *
+ * [synced] is the baseline (no override applied) used to diff primary fields; [editing] is the
+ * displayed entry, used to tell whether an override already exists (so we don't issue a no-op
+ * delete). [useOverride] is the connected-and-stored decision made by the caller.
+ */
+suspend fun saveContactEdit(
+    store: ContactOverrideStore,
+    repo: ContactRepository,
+    useOverride: Boolean,
+    editing: ContactBookEntry,
+    synced: ContactBookEntry,
+    draft: ContactDraft,
+    additionalPhones: List<String>,
+    additionalEmails: List<String>,
+    photo: PlatformFile?,
+): ContactSaveResult {
+    val cleanPhones = additionalPhones
+        .mapNotNull { p -> p.ifBlank { null }?.let { ContactFieldValidation.normalizePhone(it) } }
+        .distinct()
+    val cleanEmails = additionalEmails
+        .map { it.trim() }
+        .filter { it.isNotBlank() && ContactFieldValidation.isValidEmail(it) }
+        .distinct()
+    val hadOverride = editing.syncedOverlay != null ||
+        editing.additionalPhones.isNotEmpty() || editing.additionalEmails.isNotEmpty()
+
+    if (useOverride) {
+        val versionTag = editing.versionTag ?: return ContactSaveResult.Failed
+        val overlay = buildContactOverlay(draft, synced)
+            .copy(additionalPhones = cleanPhones, additionalEmails = cleanEmails)
+        // Nothing to write and no existing override to clear → skip the override write entirely.
+        val newTag = if (overlay.isEmpty && !hadOverride) {
+            versionTag
+        } else {
+            try {
+                store.save(editing.uniqueId, versionTag, overlay)
+            } catch (e: ForbiddenException) {
+                return ContactSaveResult.Forbidden
+            } ?: return ContactSaveResult.Failed
+        }
+        val photoFailed = photo != null && !uploadContactPhoto(repo, editing.uniqueId, newTag, photo)
+        return ContactSaveResult.Success(photoFailed = photoFailed)
+    }
+
+    // Non-connected: primaries are owner-owned content; only the additions need the override layer.
+    val result = saveContactDraft(repo, draft, synced, photo)
+    if (result !is ContactSaveResult.Success) return result
+
+    val addOverlay = ContactFieldOverlay(additionalPhones = cleanPhones, additionalEmails = cleanEmails)
+    if (!addOverlay.isEmpty || hadOverride) {
+        val tag = repo.contacts.value.firstOrNull { it.uniqueId == editing.uniqueId }?.versionTag
+        if (tag != null) {
+            try {
+                store.save(editing.uniqueId, tag, addOverlay)
+            } catch (e: ForbiddenException) {
+                return ContactSaveResult.Forbidden
+            }
+        }
+    }
+    return result
 }
 
 private suspend fun uploadContactPhoto(

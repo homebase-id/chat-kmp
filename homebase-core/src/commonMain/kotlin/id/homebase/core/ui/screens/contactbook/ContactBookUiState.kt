@@ -134,6 +134,8 @@ sealed interface ContactBookUiAction {
     data class SaveContact(
         val draft: ContactDraft,
         val editing: ContactBookEntry?,
+        val additionalPhones: List<String> = emptyList(),
+        val additionalEmails: List<String> = emptyList(),
         val photo: PlatformFile? = null,
     ) : ContactBookUiAction
     data class MessageClicked(val entry: ContactBookEntry) : ContactBookUiAction

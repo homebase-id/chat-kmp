@@ -59,8 +59,12 @@ sealed interface ContactDetailAction {
     data object MessageClicked : ContactDetailAction
     data object SyncClicked : ContactDetailAction
     data object EditClicked : ContactDetailAction
-    data class SaveContact(val draft: ContactDraft, val photo: io.github.vinceglb.filekit.PlatformFile?) :
-        ContactDetailAction
+    data class SaveContact(
+        val draft: ContactDraft,
+        val additionalPhones: List<String>,
+        val additionalEmails: List<String>,
+        val photo: io.github.vinceglb.filekit.PlatformFile?,
+    ) : ContactDetailAction
     data object CloseEdit : ContactDetailAction
     data object DeleteClicked : ContactDetailAction
     data object BlockClicked : ContactDetailAction

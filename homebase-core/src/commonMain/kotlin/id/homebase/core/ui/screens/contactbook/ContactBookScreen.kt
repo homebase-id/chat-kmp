@@ -285,12 +285,13 @@ fun ContactBookScreen(
     when (val overlay = uiState.overlay) {
         is ContactBookOverlay.Edit -> ContactEditSheet(
             editing = overlay.entry,
-            onSave = { draft, photo ->
-                viewModel.onAction(ContactBookUiAction.SaveContact(draft, overlay.entry, photo))
+            onSave = { draft, addPhones, addEmails, photo ->
+                viewModel.onAction(
+                    ContactBookUiAction.SaveContact(draft, overlay.entry, addPhones, addEmails, photo),
+                )
             },
             onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
             odinIdLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
-            profileLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
         )
         null -> {}
     }

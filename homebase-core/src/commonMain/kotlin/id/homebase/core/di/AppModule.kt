@@ -73,6 +73,7 @@ import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
@@ -222,6 +223,8 @@ val appModule = module {
     single { ContactBookPreferences(get()) }
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
+    // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
+    singleOf(::ContactOverrideStore)
 
     // region Location add-on
     single { LocationPreferences(get()) }

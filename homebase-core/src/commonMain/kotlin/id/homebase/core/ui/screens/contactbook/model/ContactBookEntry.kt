@@ -75,6 +75,15 @@ data class ContactBookEntry(
     val isEncrypted: Boolean = false,
     val previewThumbnail: EmbeddedThumb? = null,
     val imagePayload: PayloadDescriptor? = null,
+    /**
+     * Present when a user override has been applied (see [withOverride]): holds the *synced*
+     * (peer-profile) original of each overridden field, so the UI can show "their profile says …".
+     * Null when this entry carries no override.
+     */
+    val syncedOverlay: ContactFieldOverlay? = null,
+    /** Extra, app-local phone numbers / emails the user added beyond the single canonical slot. */
+    val additionalPhones: List<String> = emptyList(),
+    val additionalEmails: List<String> = emptyList(),
 ) {
     /** Has a Homebase identity behind it (vs a plain phone/email contact). */
     val hasOdinId: Boolean get() = !odinId.isNullOrBlank()

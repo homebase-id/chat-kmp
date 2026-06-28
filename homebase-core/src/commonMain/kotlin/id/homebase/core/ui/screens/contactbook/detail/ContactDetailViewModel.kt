@@ -26,6 +26,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.clearICanLocate
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
@@ -35,6 +36,8 @@ import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
+import id.homebase.core.ui.screens.contactbook.saveContactEdit
+import id.homebase.core.ui.screens.contactbook.withOverride
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -65,7 +68,11 @@ class ContactDetailViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val credentialsManager: CredentialsManager,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
+    private val overrideStore: ContactOverrideStore,
 ) : ViewModel() {
+
+    /** The synced (pre-override) entry for the contact in view — the baseline for save diffs. */
+    private var syncedEntry: ContactBookEntry? = null
 
     private val route = savedStateHandle.toRoute<Route.ContactBookDetail>()
 
@@ -99,19 +106,28 @@ class ContactDetailViewModel(
         viewModelScope.launch {
             val selfDomain = runCatching { credentialsManager.getActiveDomain()?.domainName }.getOrNull()
             combine(
-                contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
-                connectionService.connections,
-                connectionService.circles,
-                connectionRequestService.incomingRequests,
-                connectionRequestService.outgoingRequests,
-            ) { contacts, conn, circ, incoming, outgoing ->
-                DetailBundle(contacts, conn, circ, incoming, outgoing)
-            }.collect { bundle ->
+                combine(
+                    contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
+                    connectionService.connections,
+                    connectionService.circles,
+                    connectionRequestService.incomingRequests,
+                    connectionRequestService.outgoingRequests,
+                ) { contacts, conn, circ, incoming, outgoing ->
+                    DetailBundle(contacts, conn, circ, incoming, outgoing)
+                },
+                overrideStore.overrides,
+            ) { bundle, overrides -> bundle to overrides }.collect { (bundle, overrides) ->
                 val contacts = bundle.contacts
                 val conn = bundle.conn
                 val circ = bundle.circ
-                val entry = contacts.find { it.uniqueId.toString() == route.uniqueId }
+                val synced = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
+                syncedEntry = synced
+                // Load this contact's override (bulk app-data tier) on first view; cheap no-op after.
+                contactRepository.contacts.value
+                    .firstOrNull { it.uniqueId.toString() == route.uniqueId }
+                    ?.let { overrideStore.hydrate(it) }
+                val entry = synced?.withOverride(overrides[synced.uniqueId])
                 val domain = entry?.odinId
                 val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
                 val status = domain?.let { d ->
@@ -303,14 +319,33 @@ class ContactDetailViewModel(
 
     private fun handleSave(action: ContactDetailAction.SaveContact) {
         val editing = _uiState.value.entry
+        val synced = syncedEntry
         _uiState.update { it.copy(editOpen = false) }
         viewModelScope.launch {
-            when (val result = saveContactDraft(
-                repo = contactRepository,
-                draft = action.draft,
-                editing = editing,
-                photo = action.photo,
-            )) {
+            // A connected contact's profile fields are re-synced (and overwritten) by the server, so
+            // its edits — and any additional phones/emails for any contact — are stored as an
+            // enrichment-proof override; non-connected primaries write to content as normal.
+            val result = if (editing != null && synced != null) {
+                saveContactEdit(
+                    store = overrideStore,
+                    repo = contactRepository,
+                    useOverride = _uiState.value.isConnected && synced.versionTag != null,
+                    editing = editing,
+                    synced = synced,
+                    draft = action.draft,
+                    additionalPhones = action.additionalPhones,
+                    additionalEmails = action.additionalEmails,
+                    photo = action.photo,
+                )
+            } else {
+                saveContactDraft(
+                    repo = contactRepository,
+                    draft = action.draft,
+                    editing = editing,
+                    photo = action.photo,
+                )
+            }
+            when (result) {
                 is ContactSaveResult.Success -> {
                     // repo.save already applied the optimistic update.
                     if (result.photoFailed) _events.tryEmit(ContactDetailEvent.PhotoError)
