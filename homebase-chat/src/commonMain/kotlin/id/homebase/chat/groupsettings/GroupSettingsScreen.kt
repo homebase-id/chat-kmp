@@ -57,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
@@ -78,6 +79,9 @@ import id.homebase.chat.widget.LoadingListItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -86,6 +90,7 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
+import id.homebase.resources.avatar_conversation
 import id.homebase.resources.cancel
 import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.chat_group_add_members
@@ -252,15 +257,27 @@ fun GroupSettingsScreen(
         onSheetClosed = viewModel::bottomSheetDismissed
     )
 
+    // Group photo opened full-screen (zoomable). Held here in the outer Box so
+    // the viewer covers the whole screen, including the top bar. Null = closed.
+    var fullScreenAvatar by remember { mutableStateOf<HomebaseImageData?>(null) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         GroupSettingsUi(
             snackbarHostState = snackbarHostState,
             uiState = uiState,
-            onUiAction = viewModel::onUiAction
+            onUiAction = viewModel::onUiAction,
+            onAvatarClick = { fullScreenAvatar = it },
         )
 
         if (uiState.isLeaving) {
             LeavingGroupOverlay()
+        }
+
+        fullScreenAvatar?.let { imageData ->
+            GroupAvatarFullScreenViewer(
+                imageData = imageData,
+                onDismiss = { fullScreenAvatar = null },
+            )
         }
     }
 }
@@ -307,12 +324,47 @@ private fun LeavingGroupOverlay() {
     }
 }
 
+/**
+ * Full-screen, pinch-zoomable viewer for the group photo. Reuses
+ * [ZoomableSubSamplingImage] (no message/payload wrapper needed for an avatar).
+ * Drawn over everything by the outer Box in [GroupSettingsScreen] so it covers
+ * the top bar too. Dismiss on tap (at base scale) or system back.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun GroupAvatarFullScreenViewer(
+    imageData: HomebaseImageData,
+    onDismiss: () -> Unit,
+) {
+    @Suppress("DEPRECATION")
+    BackHandler(enabled = true) { onDismiss() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        ZoomableSubSamplingImage(
+            // Load the full payload so pinch-zoom shows real detail, not an
+            // upscaled avatar thumbnail.
+            source = SubSamplingImageSource.Remote(imageData.copy(loadFullPayload = true)),
+            contentDescription = stringResource(MR.string.avatar_conversation),
+            // At base scale the wrapper doesn't consume taps, so this dismisses;
+            // while zoomed it pans instead.
+            onTap = onDismiss,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupSettingsUi(
     snackbarHostState: SnackbarHostState,
     uiState: GroupSettingsUiState,
     onUiAction: (GroupSettingsUiAction) -> Unit,
+    onAvatarClick: (HomebaseImageData) -> Unit = {},
 ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -362,6 +414,13 @@ fun GroupSettingsUi(
                                 .padding(horizontal = 16.dp),
                             displayName = conversation.name,
                             avatarModel = conversation.avatarModel,
+                            // Only a real uploaded group photo opens full screen;
+                            // initials / People-icon fallbacks have no image, so
+                            // onAvatarClick stays null and the avatar isn't tappable.
+                            onAvatarClick = conversation.avatarModel
+                                .takeIf { it.type == ConversationAvatarModel.Type.ConversationImage }
+                                ?.imageData
+                                ?.let { imageData -> { onAvatarClick(imageData) } },
                         )
                         Spacer(modifier = Modifier.height(32.dp))
                     }

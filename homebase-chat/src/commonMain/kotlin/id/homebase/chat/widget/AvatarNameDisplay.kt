@@ -33,6 +33,11 @@ fun AvatarNameDisplay(
     avatarModel: ConversationAvatarModel,
     subtitle: String? = null,
     onClick: (() -> Unit)? = null,
+    // Makes the avatar itself tappable (e.g. open the photo full screen).
+    // Null leaves the avatar non-clickable — pass null for initials/placeholder
+    // avatars so there's nothing to open. Independent of [onClick], which is the
+    // name-row tap.
+    onAvatarClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier,
@@ -45,6 +50,7 @@ fun AvatarNameDisplay(
                 options = AvatarOptions(
                     size = 72.dp,
                     fontSize = 24.sp,
+                    onClick = onAvatarClick,
                 )
             )
             Spacer(modifier = Modifier.height(16.dp))
