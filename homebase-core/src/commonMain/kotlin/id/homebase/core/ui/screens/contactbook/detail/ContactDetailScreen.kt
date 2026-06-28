@@ -292,6 +292,7 @@ fun ContactDetailScreen(
             onSave = { draft, photo -> viewModel.onAction(ContactDetailAction.SaveContact(draft, photo)) },
             onDismiss = { viewModel.onAction(ContactDetailAction.CloseEdit) },
             odinIdLocked = uiState.isConnected,
+            profileLocked = uiState.isConnected,
         )
     }
 

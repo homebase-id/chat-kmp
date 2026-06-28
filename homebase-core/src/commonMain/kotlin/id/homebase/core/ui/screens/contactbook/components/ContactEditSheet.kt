@@ -51,6 +51,8 @@ import id.homebase.resources.contactbook_edit_given_name
 import id.homebase.resources.contactbook_edit_odinid
 import id.homebase.resources.contactbook_edit_odinid_locked
 import id.homebase.resources.contactbook_edit_phone
+import id.homebase.resources.contactbook_edit_profile_locked
+import id.homebase.resources.contactbook_edit_profile_synced_note
 import id.homebase.resources.contactbook_edit_save
 import id.homebase.resources.contactbook_edit_surname
 import id.homebase.resources.contactbook_edit_title_edit
@@ -69,8 +71,20 @@ fun ContactEditSheet(
     onSave: (ContactDraft, PlatformFile?) -> Unit,
     onDismiss: () -> Unit,
     odinIdLocked: Boolean = false,
+    /**
+     * Connected contact: the server re-enriches its profile fields from the peer's ProfileDrive on
+     * every sync (per-leaf, the peer's value always wins), so any value the peer already publishes
+     * would be silently overwritten. We lock exactly those already-populated fields read-only;
+     * fields the peer leaves blank stay editable (a value the user adds there survives the merge).
+     */
+    profileLocked: Boolean = false,
 ) {
-    var draft by remember { mutableStateOf(editing?.toDraft() ?: ContactDraft()) }
+    // Snapshot the starting values once: a field is "published by the peer" iff it already has a
+    // value on a connected contact. Lock decisions read this, not the live (mutable) draft.
+    val initial = remember { editing?.toDraft() ?: ContactDraft() }
+    fun locked(value: String) = profileLocked && value.isNotBlank()
+
+    var draft by remember { mutableStateOf(initial) }
     var photo by remember { mutableStateOf<PlatformFile?>(null) }
     var photoBytes by remember { mutableStateOf<ByteArray?>(null) }
 
@@ -109,12 +123,34 @@ fun ContactEditSheet(
             }
             Spacer(modifier = Modifier.height(8.dp))
 
-            Field(draft.givenName, stringResource(MR.string.contactbook_edit_given_name)) {
-                draft = draft.copy(givenName = it)
+            // Shared lock affordance for the profile-synced fields.
+            val lockNote = stringResource(MR.string.contactbook_edit_profile_locked)
+            val lockTrailing: @Composable () -> Unit =
+                { Icon(Icons.Outlined.Lock, contentDescription = lockNote) }
+            val anyProfileLocked = locked(initial.givenName) || locked(initial.surname) ||
+                locked(initial.phone) || locked(initial.email) || locked(initial.city) ||
+                locked(initial.country) || locked(initial.birthday)
+            if (anyProfileLocked) {
+                Text(
+                    text = stringResource(MR.string.contactbook_edit_profile_synced_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                )
             }
-            Field(draft.surname, stringResource(MR.string.contactbook_edit_surname)) {
-                draft = draft.copy(surname = it)
-            }
+
+            Field(
+                value = draft.givenName,
+                label = stringResource(MR.string.contactbook_edit_given_name),
+                readOnly = locked(initial.givenName),
+                trailingIcon = if (locked(initial.givenName)) lockTrailing else null,
+            ) { draft = draft.copy(givenName = it) }
+            Field(
+                value = draft.surname,
+                label = stringResource(MR.string.contactbook_edit_surname),
+                readOnly = locked(initial.surname),
+                trailingIcon = if (locked(initial.surname)) lockTrailing else null,
+            ) { draft = draft.copy(surname = it) }
             val odinIdLockNote =
                 if (odinIdLocked) stringResource(MR.string.contactbook_edit_odinid_locked) else null
             Field(
@@ -133,6 +169,8 @@ fun ContactEditSheet(
                 e164Value = draft.phone,
                 onValueChange = { draft = draft.copy(phone = it) },
                 label = stringResource(MR.string.contactbook_edit_phone),
+                readOnly = locked(initial.phone),
+                trailingIcon = if (locked(initial.phone)) lockTrailing else null,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             )
             Field(
@@ -141,16 +179,27 @@ fun ContactEditSheet(
                 isError = !draft.emailValid,
                 errorText = stringResource(MR.string.contactbook_error_email),
                 keyboardType = KeyboardType.Email,
+                readOnly = locked(initial.email),
+                trailingIcon = if (locked(initial.email)) lockTrailing else null,
             ) { draft = draft.copy(email = it) }
-            Field(draft.city, stringResource(MR.string.contactbook_edit_city)) {
-                draft = draft.copy(city = it)
-            }
-            Field(draft.country, stringResource(MR.string.contactbook_edit_country)) {
-                draft = draft.copy(country = it)
-            }
-            Field(draft.birthday, stringResource(MR.string.contactbook_edit_birthday)) {
-                draft = draft.copy(birthday = it)
-            }
+            Field(
+                value = draft.city,
+                label = stringResource(MR.string.contactbook_edit_city),
+                readOnly = locked(initial.city),
+                trailingIcon = if (locked(initial.city)) lockTrailing else null,
+            ) { draft = draft.copy(city = it) }
+            Field(
+                value = draft.country,
+                label = stringResource(MR.string.contactbook_edit_country),
+                readOnly = locked(initial.country),
+                trailingIcon = if (locked(initial.country)) lockTrailing else null,
+            ) { draft = draft.copy(country = it) }
+            Field(
+                value = draft.birthday,
+                label = stringResource(MR.string.contactbook_edit_birthday),
+                readOnly = locked(initial.birthday),
+                trailingIcon = if (locked(initial.birthday)) lockTrailing else null,
+            ) { draft = draft.copy(birthday = it) }
 
             Spacer(modifier = Modifier.height(16.dp))
             Row(

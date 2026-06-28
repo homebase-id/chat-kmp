@@ -1463,6 +1463,8 @@
     <string name="contactbook_edit_surname">Last name</string>
     <string name="contactbook_edit_odinid">Homebase ID</string>
     <string name="contactbook_edit_odinid_locked">Homebase ID can't be changed for a connected contact.</string>
+    <string name="contactbook_edit_profile_locked">Synced from their Homebase profile</string>
+    <string name="contactbook_edit_profile_synced_note">Some details are synced from their Homebase profile and would be overwritten, so they can't be edited here.</string>
     <string name="contactbook_edit_phone">Phone</string>
     <string name="contactbook_country_search">Search countries</string>
     <string name="contactbook_edit_email">Email</string>

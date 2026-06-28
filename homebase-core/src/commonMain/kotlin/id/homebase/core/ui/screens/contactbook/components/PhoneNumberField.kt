@@ -42,6 +42,8 @@ fun PhoneNumberField(
     onValueChange: (String) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    readOnly: Boolean = false,
+    trailingIcon: (@Composable () -> Unit)? = null,
 ) {
     val region = Locale.current.region
     // Seed country/national from the incoming value once; the field owns them after.
@@ -63,18 +65,20 @@ fun PhoneNumberField(
         },
         label = { Text(label) },
         singleLine = true,
+        readOnly = readOnly,
         leadingIcon = {
             Row(
                 modifier = Modifier
-                    .clickable { pickerOpen = true }
+                    .then(if (readOnly) Modifier else Modifier.clickable { pickerOpen = true })
                     .padding(start = 12.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 val codeLabel = "${country.flag} +${country.dialCode}"
                 Text(codeLabel)
-                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                if (!readOnly) Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
         },
+        trailingIcon = trailingIcon,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
         modifier = modifier,
     )

@@ -290,6 +290,7 @@ fun ContactBookScreen(
             },
             onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
             odinIdLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
+            profileLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
         )
         null -> {}
     }
