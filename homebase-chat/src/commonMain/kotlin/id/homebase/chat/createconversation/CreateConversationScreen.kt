@@ -55,15 +55,12 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
-import id.homebase.core.connections.ConnectRequestAction
-import id.homebase.core.connections.ConnectRequestBottomSheet
-import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_new_conversation
-import id.homebase.resources.chat_new_conversation_connection_request
+import id.homebase.resources.chat_new_conversation_new_contact
 import id.homebase.resources.chat_new_conversation_new_group
 import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
@@ -81,10 +78,10 @@ import kotlin.uuid.Uuid
 @Composable
 fun CreateConversationScreen(
     viewModel: CreateConversationViewModel,
-    connectRequestViewModel: ConnectRequestViewModel,
     onNavigateBack: () -> Unit,
     onShowConversation: (conversationId: Uuid) -> Unit,
     onShowCreateGroup: () -> Unit,
+    onAddContact: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -120,15 +117,7 @@ fun CreateConversationScreen(
         uiState = uiState,
         searchTextState = viewModel.searchTextState,
         onUiAction = viewModel::onUiAction,
-        onConnectionRequestClicked = {
-            connectRequestViewModel.onAction(ConnectRequestAction.OpenDialog)
-        },
-    )
-
-    ConnectRequestBottomSheet(
-        viewModel = connectRequestViewModel,
-        snackbarHostState = snackbarHostState,
-        onNavigateToConversation = onShowConversation,
+        onNewContactClicked = onAddContact,
     )
 }
 
@@ -139,7 +128,7 @@ fun CreateConversationUi(
     uiState: CreateConversationUiState,
     searchTextState: TextFieldState,
     onUiAction: (CreateConversationUiAction) -> Unit,
-    onConnectionRequestClicked: () -> Unit,
+    onNewContactClicked: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -270,15 +259,15 @@ fun CreateConversationUi(
                             }
                         }
 
-                        is CreateConversationListItem.ConnectionRequest -> {
+                        is CreateConversationListItem.NewContact -> {
                             item {
                                 ListItemAction(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 4.dp),
                                     imageVector = Icons.Default.PersonAdd,
-                                    text = stringResource(MR.string.chat_new_conversation_connection_request),
-                                    onClick = onConnectionRequestClicked,
+                                    text = stringResource(MR.string.chat_new_conversation_new_contact),
+                                    onClick = onNewContactClicked,
                                 )
                             }
                         }

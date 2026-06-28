@@ -953,7 +953,6 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 CreateConversationScreen(
                                     viewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowConversation = { conversationId ->
                                         navController.selectConversationOnChatList(
@@ -965,6 +964,9 @@ fun AppNavHost(
                                     },
                                     onShowCreateGroup = {
                                         navController.navigate(Route.CreateConversationSelectMembers)
+                                    },
+                                    onAddContact = {
+                                        navController.navigate(Route.AddContact)
                                     })
                             }
                         }
