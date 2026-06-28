@@ -1513,6 +1513,7 @@
     <string name="add_contact_manual_link">Don't know their Homebase ID? Add manually</string>
     <string name="add_contact_byid_link">Have their Homebase ID? Look them up</string>
     <string name="add_contact_details_optional">Details (optional)</string>
+    <string name="add_contact_photo_from_profile">Photo from their Homebase profile</string>
     <string name="add_contact_send_request">Send connection request</string>
     <string name="add_contact_send_request_help">Not connected yet. Send a request so you can message each other.</string>
     <string name="add_contact_already_connected">You're already connected</string>

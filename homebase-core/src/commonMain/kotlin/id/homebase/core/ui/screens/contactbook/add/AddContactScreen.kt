@@ -73,6 +73,7 @@ import id.homebase.resources.add_contact_manual_link
 import id.homebase.resources.add_contact_not_found
 import id.homebase.resources.add_contact_odinid_hint
 import id.homebase.resources.add_contact_odinid_label
+import id.homebase.resources.add_contact_photo_from_profile
 import id.homebase.resources.add_contact_resolving
 import id.homebase.resources.add_contact_send_request
 import id.homebase.resources.add_contact_send_request_help
@@ -157,10 +158,22 @@ fun AddContactScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             AddContactAvatar(uiState, photoBytes)
-            TextButton(onClick = { photoPicker.launch() }) {
-                Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(stringResource(MR.string.contactbook_edit_change_photo))
+            // A resolved identity already carries its avatar from the Homebase profile, so prompting
+            // to add one is redundant — say where it comes from instead. Manual mode / unresolved /
+            // a hand-picked photo still gets the picker.
+            if (uiState.resolution is RecipientResolution.Resolved && photoBytes == null) {
+                Text(
+                    text = stringResource(MR.string.add_contact_photo_from_profile),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            } else {
+                TextButton(onClick = { photoPicker.launch() }) {
+                    Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(MR.string.contactbook_edit_change_photo))
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
 
