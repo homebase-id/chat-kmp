@@ -1,5 +1,8 @@
 package id.homebase.core.location.tracking
 
+import id.homebase.core.permissions.isLocationPermissionGranted
+import kotlin.time.Clock
+
 /** Result of a one-shot current-location request. */
 sealed interface GpsFixResult {
     data class Success(val point: RawLocationPoint) : GpsFixResult
@@ -17,28 +20,46 @@ sealed interface GpsFixResult {
 /**
  * A single current-GPS fix, on demand — the consolidated one-shot path (replaces the former
  * Composable `rememberCurrentLocationLauncher` in homebase-chat). Platform-wrapped via
- * [createOneShotLocationProvider]; desktop/web return [GpsFixResult.Unavailable].
+ * [createOneShotLocationProvider]; desktop/web have neither primitive and so always yield
+ * [GpsFixResult.Unavailable].
+ *
+ * Platforms implement only the two **dumb I/O primitives** ([lastKnownFix], [acquireFreshFix]); the
+ * **cache-vs-radio policy** lives once in [getCurrentFix] here in common so it can't drift between
+ * Android and iOS (#886 review):
+ *  - `cacheOnly` (OS battery saver) → serve the OS last-known at any age, never power the radio,
+ *  - else serve the OS last-known when it's within `maxAgeMs`, otherwise acquire a fresh fix.
  *
  * It does **not** request permission (it's callable off the UI) — returns [GpsFixResult.PermissionDenied]
  * when not granted. Callers that need to prompt should request permission first (see `rememberCurrentGps`).
- * The returned fix is fed back through [LocationFixRouter] by `LocationService.getCurrentGps` so it's
+ * The returned fix is fed back through [LocationFixRouter] by `LocationService.requestLatestGps` so it's
  * not wasted — it updates the last-known dot and is persisted/relayed per the usual routing.
  */
 interface OneShotLocationProvider {
+    /** The OS last-known fix (carrying its capture time in [RawLocationPoint.t]), or null if none. No radio. */
+    suspend fun lastKnownFix(): RawLocationPoint?
+
+    /** Power the GPS radio for a fresh fix, capped by [timeoutMs]. */
+    suspend fun acquireFreshFix(timeoutMs: Long): GpsFixResult
+
     /**
-     * Return a current fix. A platform may serve a recent OS last-known fix without powering the GPS
-     * radio, but ONLY if it is no older than [maxAgeMs]; an older cache must fall through to a live
-     * acquisition (capped by [timeoutMs]). The age bound is what makes a force-on-stale capture
-     * actually spend battery on a fresh fix instead of echoing a stale cached one (#878 / #886 review).
-     *
-     * When [cacheOnly] is true (OS battery saver on), return the OS last-known fix at ANY age and
-     * NEVER power the radio — return [GpsFixResult.Unavailable] when there is no cached fix at all.
+     * The cache-vs-radio orchestration, shared across platforms (do not override). See the class doc
+     * for the policy. [nowMs] is injected so the age check is testable.
      */
     suspend fun getCurrentFix(
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
         maxAgeMs: Long = DEFAULT_MAX_AGE_MS,
         cacheOnly: Boolean = false,
-    ): GpsFixResult
+        nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    ): GpsFixResult {
+        if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
+        val cached = lastKnownFix()
+        // Battery saver: serve whatever the OS already has and never power the radio.
+        if (cacheOnly) return cached?.let { GpsFixResult.Success(it) } ?: GpsFixResult.Unavailable
+        // A cache fresher than the staleness tolerance avoids the radio; an older one falls through
+        // so a force-on-stale capture actually acquires a fresh fix instead of echoing stale cache.
+        if (cached != null && nowMs() - cached.t <= maxAgeMs) return GpsFixResult.Success(cached)
+        return acquireFreshFix(timeoutMs)
+    }
 
     companion object {
         const val DEFAULT_TIMEOUT_MS = 15_000L

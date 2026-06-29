@@ -158,6 +158,7 @@ class LocationService(
             timeoutMs = reason.timeoutMs,
             maxAgeMs = reason.staleAfterMs,
             cacheOnly = cacheOnly,
+            nowMs = nowMs,
         )
         if (result is GpsFixResult.Success) {
             router.submit(listOf(result.point)) // route so the fetched fix isn't wasted

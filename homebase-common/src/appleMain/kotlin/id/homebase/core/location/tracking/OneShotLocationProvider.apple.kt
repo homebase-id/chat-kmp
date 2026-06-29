@@ -21,25 +21,24 @@ private const val TAG = "OneShotLocation.ios"
 actual fun createOneShotLocationProvider(): OneShotLocationProvider = AppleOneShotLocationProvider
 
 /**
- * CLLocationManager one-shot via `requestLocation()` (mirrors the former chat `LocationLauncher.native`,
- * but suspend and feeding a [RawLocationPoint]). Runs on the main run loop so delegate callbacks fire;
- * does not request permission (returns [GpsFixResult.PermissionDenied] when not authorized).
+ * CLLocationManager one-shot primitives (mirrors the former chat `LocationLauncher.native`, but
+ * suspend and feeding a [RawLocationPoint]). The fresh fix runs `requestLocation()` on the main run
+ * loop so delegate callbacks fire. The cache-vs-radio policy lives in
+ * [OneShotLocationProvider.getCurrentFix] (common); this file is just the platform I/O. Does not
+ * request permission (returns null / [GpsFixResult.PermissionDenied] when not authorized).
  */
 @OptIn(ExperimentalForeignApi::class)
 private object AppleOneShotLocationProvider : OneShotLocationProvider {
 
-    // maxAgeMs is unused on iOS: requestLocation() always delivers a fresh fix, so there is no stale
-    // OS cache to age-bound (the Android bug #886 found does not apply here).
-    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long, cacheOnly: Boolean): GpsFixResult {
-        if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
-        // Battery saver: serve the manager's cached location and never power the radio.
-        if (cacheOnly) {
-            return withContext(Dispatchers.Main) {
-                val cached = CLLocationManager().location
-                if (cached != null) GpsFixResult.Success(cached.toRawPoint(fg = true))
-                else GpsFixResult.Unavailable
-            }
+    override suspend fun lastKnownFix(): RawLocationPoint? {
+        if (!isLocationPermissionGranted()) return null
+        return withContext(Dispatchers.Main) {
+            CLLocationManager().location?.toRawPoint(fg = true)
         }
+    }
+
+    override suspend fun acquireFreshFix(timeoutMs: Long): GpsFixResult {
+        if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
         return withContext(Dispatchers.Main) {
             withTimeoutOrNull(timeoutMs) {
                 suspendCancellableCoroutine<GpsFixResult> { cont ->

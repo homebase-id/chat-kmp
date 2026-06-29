@@ -19,58 +19,38 @@ private const val TAG = "OneShotLocation.android"
 actual fun createOneShotLocationProvider(): OneShotLocationProvider = AndroidOneShotLocationProvider
 
 /**
- * Stock Android [LocationManager] one-shot (mirrors the former chat `LocationLauncher.android`):
- * try the cached fix from each enabled provider (cheap, no battery drain), else register a one-shot
- * [LocationListener] with a hard timeout. FusedLocationProviderClient returned null for both
+ * Stock Android [LocationManager] one-shot primitives (mirrors the former chat
+ * `LocationLauncher.android`). FusedLocationProviderClient returned null for both
  * lastLocation/getCurrentLocation on real devices + emulators, so LocationManager is used directly.
+ * The cache-vs-radio policy lives in [OneShotLocationProvider.getCurrentFix] (common); this file is
+ * just the platform I/O.
  */
 private object AndroidOneShotLocationProvider : OneShotLocationProvider {
 
     @SuppressLint("MissingPermission")
-    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long, cacheOnly: Boolean): GpsFixResult {
-        if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
-        val context = ActivityProvider.requireApplicationContext()
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-
-        val enabledProviders = buildList {
-            if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
-            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
-        }
-        if (enabledProviders.isEmpty()) {
-            Logger.w(tag = TAG) { "no providers enabled (location off / airplane mode?)" }
-            return GpsFixResult.Unavailable
-        }
-
-        // 1. Freshest cached fix across enabled providers — but only trust it if it's recent enough.
-        // Without this age bound a force-on-stale capture would keep echoing an arbitrarily old OS
-        // last-known fix and never power the radio for a fresh one (#878 / #886 review).
+    override suspend fun lastKnownFix(): RawLocationPoint? {
+        if (!isLocationPermissionGranted()) return null
+        val lm = locationManager()
+        // Freshest cached fix across enabled providers.
         var bestCached: Location? = null
-        for (provider in enabledProviders) {
+        for (provider in enabledProviders(lm)) {
             val cached = lm.getLastKnownLocation(provider)
             if (cached != null && (bestCached == null || cached.time > bestCached.time)) bestCached = cached
         }
-        val cachedAgeMs = bestCached?.let { System.currentTimeMillis() - it.time }
-        // Battery saver: serve whatever the OS already has and never power the radio.
-        if (cacheOnly) {
-            return if (bestCached != null) {
-                Logger.d(tag = TAG) { "cacheOnly: OS last-known from ${bestCached.provider} (age=${cachedAgeMs}ms)" }
-                GpsFixResult.Success(bestCached.toRaw())
-            } else {
-                Logger.d(tag = TAG) { "cacheOnly: no cached fix — skipping radio (power save)" }
-                GpsFixResult.Unavailable
-            }
-        }
-        if (bestCached != null && cachedAgeMs != null && cachedAgeMs <= maxAgeMs) {
-            Logger.d(tag = TAG) { "cached fix from ${bestCached.provider} (age=${cachedAgeMs}ms <= ${maxAgeMs}ms)" }
-            return GpsFixResult.Success(bestCached.toRaw())
-        }
-        Logger.d(tag = TAG) {
-            "cached fix too old (age=${cachedAgeMs}ms > ${maxAgeMs}ms) — acquiring live"
-        }
+        return bestCached?.toRaw()
+    }
 
-        // 2. No cached fix — one-shot live update from the best provider, capped by timeoutMs.
-        val activeProvider = enabledProviders.first()
-        Logger.d(tag = TAG) { "no cached fix; one-shot from $activeProvider (cap ${timeoutMs}ms)" }
+    @SuppressLint("MissingPermission")
+    override suspend fun acquireFreshFix(timeoutMs: Long): GpsFixResult {
+        if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
+        val lm = locationManager()
+        val providers = enabledProviders(lm)
+        if (providers.isEmpty()) {
+            Logger.w(tag = TAG) { "no providers enabled (location off / airplane mode?)" }
+            return GpsFixResult.Unavailable
+        }
+        val activeProvider = providers.first()
+        Logger.d(tag = TAG) { "one-shot from $activeProvider (cap ${timeoutMs}ms)" }
         val fix = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { cont ->
                 val listener = object : LocationListener {
@@ -89,6 +69,15 @@ private object AndroidOneShotLocationProvider : OneShotLocationProvider {
             }
         }
         return if (fix != null) GpsFixResult.Success(fix.toRaw()) else GpsFixResult.Timeout
+    }
+
+    private fun locationManager(): LocationManager =
+        ActivityProvider.requireApplicationContext()
+            .getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+    private fun enabledProviders(lm: LocationManager): List<String> = buildList {
+        if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) add(LocationManager.GPS_PROVIDER)
+        if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) add(LocationManager.NETWORK_PROVIDER)
     }
 
     private fun Location.toRaw(): RawLocationPoint = RawLocationPoint(
