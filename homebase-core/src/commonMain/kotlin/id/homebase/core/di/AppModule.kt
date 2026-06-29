@@ -150,6 +150,7 @@ import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
+import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
@@ -284,6 +285,10 @@ val appModule = module {
             deviceId = get(),
             optionalDriveActivation = get(),
             scope = get(),
+            // Battery saver: defer background uploads (but a foregrounded user, or a >24h
+            // un-uploaded backlog, still uploads). #878 follow-up.
+            powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
+            isAppForeground = { get<LocationTrackingCoordinator>().isForeground },
         )
     }
     single {
@@ -298,6 +303,11 @@ val appModule = module {
             // Lets the coordinator keep GPS armed for an active live-location share (incl. across a
             // cold start / iOS relaunch) without referencing homebase-chat.
             liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
+            // Force a fresh fix on app-open when stale (#878). Goes through the gated
+            // forceCaptureIfTracking() — the single entry for automatic triggers — so the
+            // "only when a persistent consumer wants GPS" decision lives in one place (the
+            // coordinator's own isCaptureWanted() pre-check just avoids launching when not wanted).
+            onForegroundEntry = { get<LocationService>().forceCaptureIfTracking(GpsRequestReason.AppForeground) }
         }
     }
     // The single public entry point for "this device's location" — composes coordinator (acquire) +
@@ -311,6 +321,9 @@ val appModule = module {
             pointStore = get(),
             preferences = get(),
             oneShot = createOneShotLocationProvider(),
+            scope = get(),
+            // Battery saver: on-demand fixes go cache-only (no radio). #878 follow-up.
+            powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
         )
     }
     // endregion

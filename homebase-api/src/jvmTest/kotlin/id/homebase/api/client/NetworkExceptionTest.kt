@@ -37,6 +37,37 @@ class NetworkExceptionTest {
     }
 
     @Test
+    fun `UnknownHostException (OkHttp-Android shape) classifies as transient`() {
+        // Regression guard for Android: OkHttp throws UnknownHostException, an IOException,
+        // on DNS failure — must stay classified after broadening for the CIO shape.
+        assertTrue(java.net.UnknownHostException("no host").isTransientNetworkFailure())
+    }
+
+    @Test
+    fun `UnresolvedAddressException (Ktor CIO-Desktop shape) classifies as transient`() {
+        // Desktop variant: Ktor CIO throws UnresolvedAddressException — an
+        // IllegalArgumentException, NOT an IOException — on DNS failure / offline. It must
+        // classify as a network error so the platform uncaught handlers swallow it, exactly
+        // like the OkHttp UnknownHostException case above.
+        assertTrue(java.nio.channels.UnresolvedAddressException().isTransientNetworkFailure())
+    }
+
+    @Test
+    fun `UnresolvedAddressException nested in a cause chain classifies as transient`() {
+        val wrapped = RuntimeException("security context fetch failed",
+            java.nio.channels.UnresolvedAddressException())
+        assertTrue(wrapped.isTransientNetworkFailure())
+    }
+
+    @Test
+    fun `a plain IllegalArgumentException stays fatal`() {
+        // The CIO match is narrow (the specific class name), NOT its IllegalArgumentException
+        // supertype — a generic IllegalArgumentException is a programming bug, not a transport
+        // failure, and must remain fatal.
+        assertFalse(IllegalArgumentException("bad arg").isTransientNetworkFailure())
+    }
+
+    @Test
     fun `NetworkException nested in a cause chain classifies as transient`() {
         val wrapped = RuntimeException("thumb load failed", NetworkException(IOException("dns")))
         assertTrue(wrapped.isTransientNetworkFailure())
