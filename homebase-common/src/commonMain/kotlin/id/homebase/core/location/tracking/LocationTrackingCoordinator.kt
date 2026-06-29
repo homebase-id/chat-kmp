@@ -65,10 +65,11 @@ class LocationTrackingCoordinator(
     var liveShareActive: () -> Boolean = { false }
 
     /**
-     * Wired in AppModule to LocationService.requestLatestGps(AppForeground). Fired once each time the
-     * app enters the foreground while a persistent consumer wants GPS ([isCaptureWanted]), so a brief
-     * app-open forces an immediate fix instead of waiting on the capture interval (#878). Must be
-     * cheap and self-throttling — LocationService's primitive owns the staleness + battery guard.
+     * Wired in AppModule to LocationService.forceCaptureIfTracking(AppForeground) — the gated entry
+     * for automatic triggers, NOT requestLatestGps directly. Fired once each time the app enters the
+     * foreground while a persistent consumer wants GPS ([isCaptureWanted]), so a brief app-open forces
+     * an immediate fix instead of waiting on the capture interval (#878). Must be cheap and
+     * self-throttling — LocationService's primitive owns the staleness + battery guard.
      */
     var onForegroundEntry: suspend () -> Unit = {}
 

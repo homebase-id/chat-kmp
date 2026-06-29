@@ -52,8 +52,10 @@ enum class GpsRequestReason(
  * It deliberately does NOT contain the routing policy — it exposes it. The persist-vs-relay decision
  * stays in [LocationFixRouter] (#835).
  *
- * **[requestLatestGps] is the one on-demand capture path.** Every on-demand trigger — app-open, push
- * receipt, live map — calls it, so the battery + timing policy lives in one place (#878):
+ * **[requestLatestGps] is the one on-demand capture path** — so the battery + timing policy lives in
+ * one place (#878). Automatic triggers (app-open, push, future activity transitions) MUST go through
+ * the gated [forceCaptureIfTracking] (which delegates here); only interactive/transient consumers
+ * (the live map) call [requestLatestGps] directly. Either way every fix flows through here:
  *  - **single-flight:** concurrent/duplicate calls coalesce onto the in-flight acquisition,
  *  - **battery-aware:** a min interval between real acquisitions + reuse of a recent last-known,
  *  - **timing-aware:** foreground reasons wait longer at high accuracy; background reasons use a short
