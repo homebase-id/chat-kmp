@@ -282,6 +282,10 @@ val appModule = module {
             deviceId = get(),
             optionalDriveActivation = get(),
             scope = get(),
+            // Battery saver: defer background uploads (but a foregrounded user, or a >24h
+            // un-uploaded backlog, still uploads). #878 follow-up.
+            powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
+            isAppForeground = { get<LocationTrackingCoordinator>().isForeground },
         )
     }
     single {
@@ -315,6 +319,8 @@ val appModule = module {
             preferences = get(),
             oneShot = createOneShotLocationProvider(),
             scope = get(),
+            // Battery saver: on-demand fixes go cache-only (no radio). #878 follow-up.
+            powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
         )
     }
     // endregion

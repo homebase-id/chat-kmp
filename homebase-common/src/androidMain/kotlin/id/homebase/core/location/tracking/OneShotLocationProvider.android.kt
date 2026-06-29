@@ -27,7 +27,7 @@ actual fun createOneShotLocationProvider(): OneShotLocationProvider = AndroidOne
 private object AndroidOneShotLocationProvider : OneShotLocationProvider {
 
     @SuppressLint("MissingPermission")
-    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long): GpsFixResult {
+    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long, cacheOnly: Boolean): GpsFixResult {
         if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
         val context = ActivityProvider.requireApplicationContext()
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -50,6 +50,16 @@ private object AndroidOneShotLocationProvider : OneShotLocationProvider {
             if (cached != null && (bestCached == null || cached.time > bestCached.time)) bestCached = cached
         }
         val cachedAgeMs = bestCached?.let { System.currentTimeMillis() - it.time }
+        // Battery saver: serve whatever the OS already has and never power the radio.
+        if (cacheOnly) {
+            return if (bestCached != null) {
+                Logger.d(tag = TAG) { "cacheOnly: OS last-known from ${bestCached.provider} (age=${cachedAgeMs}ms)" }
+                GpsFixResult.Success(bestCached.toRaw())
+            } else {
+                Logger.d(tag = TAG) { "cacheOnly: no cached fix — skipping radio (power save)" }
+                GpsFixResult.Unavailable
+            }
+        }
         if (bestCached != null && cachedAgeMs != null && cachedAgeMs <= maxAgeMs) {
             Logger.d(tag = TAG) { "cached fix from ${bestCached.provider} (age=${cachedAgeMs}ms <= ${maxAgeMs}ms)" }
             return GpsFixResult.Success(bestCached.toRaw())

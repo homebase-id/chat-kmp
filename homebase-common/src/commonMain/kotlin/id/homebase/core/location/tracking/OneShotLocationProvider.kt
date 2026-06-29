@@ -30,10 +30,14 @@ interface OneShotLocationProvider {
      * radio, but ONLY if it is no older than [maxAgeMs]; an older cache must fall through to a live
      * acquisition (capped by [timeoutMs]). The age bound is what makes a force-on-stale capture
      * actually spend battery on a fresh fix instead of echoing a stale cached one (#878 / #886 review).
+     *
+     * When [cacheOnly] is true (OS battery saver on), return the OS last-known fix at ANY age and
+     * NEVER power the radio — return [GpsFixResult.Unavailable] when there is no cached fix at all.
      */
     suspend fun getCurrentFix(
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
         maxAgeMs: Long = DEFAULT_MAX_AGE_MS,
+        cacheOnly: Boolean = false,
     ): GpsFixResult
 
     companion object {

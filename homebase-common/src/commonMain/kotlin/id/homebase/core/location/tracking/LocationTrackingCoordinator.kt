@@ -76,7 +76,16 @@ class LocationTrackingCoordinator(
     private val demand = GpsDemand()
 
     private var processStarted = false
-    private var isForeground = false
+
+    /**
+     * Whether the app is currently foregrounded, as last reported by [observeAppForeground]. Public
+     * so the uploader can decide whether to defer background uploads in battery saver (#878 follow-up:
+     * defer only while backgrounded; a foregrounded user always uploads). False until the first
+     * foreground observation (a headless cold start is correctly treated as background).
+     */
+    var isForeground = false
+        private set
+
     private var tickerJob: Job? = null
 
     // Tracks armed-state + the last-applied profile, so [applyGpsHold] logs only on transitions

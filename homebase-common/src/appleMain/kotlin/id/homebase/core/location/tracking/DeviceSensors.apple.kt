@@ -2,6 +2,7 @@ package id.homebase.core.location.tracking
 
 import platform.CoreMotion.CMPedometer
 import platform.Foundation.NSDate
+import platform.Foundation.NSProcessInfo
 import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.UIKit.UIDevice
 import kotlin.coroutines.resume
@@ -23,6 +24,9 @@ private object AppleDeviceSensors : DeviceSensors {
         if (level < 0f) return null
         return (level * 100f).toInt().coerceIn(0, 100)
     }
+
+    override fun isPowerSaveMode(): Boolean =
+        NSProcessInfo.processInfo.lowPowerModeEnabled
 
     override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample {
         // iOS answers historical intervals directly — no cumulative needed.

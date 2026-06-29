@@ -68,6 +68,8 @@ class LocationService(
     private val scope: CoroutineScope,
     private val permissionGranted: () -> Boolean = ::isLocationPermissionGranted,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** OS battery saver on → acquire cache-only (no radio). Wired in DI to DeviceSensors. */
+    private val powerSaveMode: () -> Boolean = { false },
 ) {
     private val logger = Logger.withTag("LocationService")
 
@@ -147,7 +149,14 @@ class LocationService(
         // Bound the OS last-known cache by the same staleness tolerance: if the cache is fresher than
         // staleAfterMs we reuse it (no radio), otherwise the provider powers the radio for a fresh fix.
         // Without this, a stale OS cache would satisfy the "force" and the radio would never run (#886).
-        val result = oneShot.getCurrentFix(timeoutMs = reason.timeoutMs, maxAgeMs = reason.staleAfterMs)
+        // Under OS battery saver we go cache-only — serve the OS last-known and never power the radio.
+        val cacheOnly = powerSaveMode()
+        if (cacheOnly) logger.d { "requestLatestGps($reason): battery saver on — cache-only (no radio)" }
+        val result = oneShot.getCurrentFix(
+            timeoutMs = reason.timeoutMs,
+            maxAgeMs = reason.staleAfterMs,
+            cacheOnly = cacheOnly,
+        )
         if (result is GpsFixResult.Success) {
             router.submit(listOf(result.point)) // route so the fetched fix isn't wasted
             logger.i { "requestLatestGps($reason): fetched & routed (src=${result.point.src})" }

@@ -41,6 +41,7 @@ class LocationServiceTest {
     private class NoSensors : DeviceSensors {
         override suspend fun batteryPercent(): Int? = null
         override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?) = StepSample(null, null)
+        override fun isPowerSaveMode(): Boolean = false
     }
 
     private open class FakeTracker(override val isAvailable: Boolean) : LocationTracker {
@@ -62,11 +63,13 @@ class LocationServiceTest {
         var calls = 0
         val timeouts = mutableListOf<Long>()
         val maxAges = mutableListOf<Long>()
+        val cacheOnlyCalls = mutableListOf<Boolean>()
 
-        override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long): GpsFixResult {
+        override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long, cacheOnly: Boolean): GpsFixResult {
             calls++
             timeouts += timeoutMs
             maxAges += maxAgeMs
+            cacheOnlyCalls += cacheOnly
             gate?.await() // lets a test hold two callers inside one acquisition (single-flight)
             return result
         }
@@ -78,6 +81,7 @@ class LocationServiceTest {
         tracker: LocationTracker = UnavailableTracker,
         clock: TestClock = TestClock(now),
         allowHistory: Boolean = false,
+        powerSave: Boolean = false,
         body: suspend TestScope.(LocationService, LocationPointStore, TestClock) -> Unit,
     ) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
@@ -106,6 +110,7 @@ class LocationServiceTest {
                 scope = this,
                 permissionGranted = { permission },
                 nowMs = { clock.ms },
+                powerSaveMode = { powerSave },
             )
             this.body(service, store, clock)
         } finally {
@@ -258,6 +263,26 @@ class LocationServiceTest {
         runServiceTest(permission = true, oneShot = oneShot) { service, _, _ ->
             service.requestLatestGps(GpsRequestReason.PushReceived)
             assertEquals(GpsRequestReason.PushReceived.staleAfterMs, oneShot.maxAges.single())
+        }
+    }
+
+    @Test
+    fun batterySaverAcquiresCacheOnly() {
+        // Power save on → acquisition is cache-only (no radio).
+        val oneShot = FakeOneShot(GpsFixResult.Success(point(t = 990_000)))
+        runServiceTest(permission = true, oneShot = oneShot, powerSave = true) { service, _, _ ->
+            service.requestLatestGps(GpsRequestReason.AppForeground)
+            assertEquals(1, oneShot.calls)
+            assertEquals(true, oneShot.cacheOnlyCalls.single())
+        }
+    }
+
+    @Test
+    fun nonSaverAllowsRadio() {
+        val oneShot = FakeOneShot(GpsFixResult.Timeout)
+        runServiceTest(permission = true, oneShot = oneShot, powerSave = false) { service, _, _ ->
+            service.requestLatestGps(GpsRequestReason.AppForeground)
+            assertEquals(false, oneShot.cacheOnlyCalls.single())
         }
     }
 

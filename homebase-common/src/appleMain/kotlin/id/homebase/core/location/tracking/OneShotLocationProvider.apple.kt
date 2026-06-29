@@ -30,8 +30,16 @@ private object AppleOneShotLocationProvider : OneShotLocationProvider {
 
     // maxAgeMs is unused on iOS: requestLocation() always delivers a fresh fix, so there is no stale
     // OS cache to age-bound (the Android bug #886 found does not apply here).
-    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long): GpsFixResult {
+    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long, cacheOnly: Boolean): GpsFixResult {
         if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
+        // Battery saver: serve the manager's cached location and never power the radio.
+        if (cacheOnly) {
+            return withContext(Dispatchers.Main) {
+                val cached = CLLocationManager().location
+                if (cached != null) GpsFixResult.Success(cached.toRawPoint(fg = true))
+                else GpsFixResult.Unavailable
+            }
+        }
         return withContext(Dispatchers.Main) {
             withTimeoutOrNull(timeoutMs) {
                 suspendCancellableCoroutine<GpsFixResult> { cont ->
