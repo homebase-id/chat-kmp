@@ -868,6 +868,12 @@
     <string name="chat_groodle_err_duplicate">Two options have the same date and time.</string>
     <string name="chat_groodle_send">Send Groodle</string>
 
+    <!-- Shared by the Groodle/Event/Poll composer discard-confirmation guard. -->
+    <string name="composer_discard_title">Discard changes?</string>
+    <string name="composer_discard_message">Your entries will be lost if you leave now.</string>
+    <string name="composer_discard_confirm">Discard</string>
+    <string name="composer_discard_keep">Keep editing</string>
+
     <!-- Poll composer -->
     <string name="chat_poll_share">Poll</string>
     <string name="chat_poll_question_hint">Ask a question</string>

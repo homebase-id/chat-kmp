@@ -39,14 +39,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +67,7 @@ import id.homebase.chat.event.TimezonePickerSheet
 import id.homebase.chat.event.friendlyZoneLabel
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.widget.GuardedComposerSheet
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -144,16 +143,14 @@ fun GroodleComposerSheet(
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
+    GuardedComposerSheet(onDismiss = onDismiss) { sheetState, requestClose, reportUnsaved ->
         GroodleComposerContent(
             conversationId = conversationId,
             sheetState = sheetState,
             onDismiss = onDismiss,
             onSent = onSent,
+            onRequestClose = requestClose,
+            onUnsavedContentChange = reportUnsaved,
         )
     }
 }
@@ -165,6 +162,8 @@ private fun GroodleComposerContent(
     sheetState: SheetState,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
+    onRequestClose: () -> Unit = onDismiss,
+    onUnsavedContentChange: (Boolean) -> Unit = {},
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
@@ -201,12 +200,10 @@ private fun GroodleComposerContent(
         }
     }
 
-    val dismiss: () -> Unit = {
-        scope.launch {
-            sheetState.hide()
-            onDismiss()
-        }
-    }
+    // Report unsaved content up so the sheet guards swipe/scrim/back/close
+    // against accidental discard (#891).
+    val hasUnsavedContent = title.isNotBlank() || description.isNotBlank() || slots.isNotEmpty()
+    LaunchedEffect(hasUnsavedContent) { onUnsavedContentChange(hasUnsavedContent) }
 
     val doSend: () -> Unit = {
         if (isValid) {
@@ -252,7 +249,7 @@ private fun GroodleComposerContent(
                 .padding(start = 4.dp, end = 16.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = dismiss) {
+            IconButton(onClick = onRequestClose) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = stringResource(MR.string.cancel),
@@ -455,12 +452,17 @@ private fun GroodleComposerContent(
         DatePickerSheet(
             initialDate = today,
             onConfirm = { date ->
+                showAddDate = false
                 if (slots.size < MAX_SLOTS) {
                     val inheritedDuration = slots.lastOrNull()?.durationMinutes ?: DEFAULT_DURATION_MINUTES
-                    slots.add(SlotDraft(id = nextId, date = date, startTime = null, durationMinutes = inheritedDuration))
+                    val newId = nextId
+                    slots.add(SlotDraft(id = newId, date = date, startTime = null, durationMinutes = inheritedDuration))
                     nextId += 1
+                    // Time is mandatory, so chain straight into the time picker for
+                    // the new option (mirrors the Event composer's date→time chain) —
+                    // no separate "Set time" tap, no date-without-time slot (#890).
+                    timePickerForId = newId
                 }
-                showAddDate = false
             },
             onDismiss = { showAddDate = false },
         )
@@ -475,6 +477,10 @@ private fun GroodleComposerContent(
                     val cur = slots.indexOfFirst { it.id == id }
                     if (cur >= 0) slots[cur] = slots[cur].copy(date = date)
                     datePickerForId = null
+                    // Chain to the time picker after a date change too, so a slot
+                    // can't be left with a date but no time (#890). Opens pre-filled
+                    // with any existing time.
+                    timePickerForId = id
                 },
                 onDismiss = { datePickerForId = null },
             )
