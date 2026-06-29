@@ -40,6 +40,13 @@ data class Contact(
      * optimistic, not-yet-synced row.
      */
     val payloadKeys: Set<String> = emptySet(),
+    /**
+     * Full descriptors for those payloads. Carried because each payload is encrypted under the
+     * file's AES key with its **own** IV ([PayloadDescriptor.iv]); a reader must decrypt with that
+     * per-payload IV, not the file/content IV (see [ContactRepository.loadExtData]). Empty on an
+     * optimistic, not-yet-synced row.
+     */
+    val payloads: List<PayloadDescriptor> = emptyList(),
 )
 
 /** Everything needed to render a contact's stored avatar (`prfl_pic`) without a second drive read. */
@@ -79,7 +86,8 @@ fun HomebaseFile.toContact(): Contact? {
             )
         }
 
-    val payloadKeys = fileMetadata.payloads?.mapTo(HashSet()) { it.key } ?: emptySet()
+    val payloads = fileMetadata.payloads ?: emptyList()
+    val payloadKeys = payloads.mapTo(HashSet()) { it.key }
 
     return Contact(
         uniqueId = uniqueId,
@@ -89,5 +97,6 @@ fun HomebaseFile.toContact(): Contact? {
         fileId = fileId,
         keyHeader = keyHeader,
         payloadKeys = payloadKeys,
+        payloads = payloads,
     )
 }
