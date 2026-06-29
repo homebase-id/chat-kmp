@@ -1363,6 +1363,7 @@
     <string name="live_share_1h">1 hour</string>
     <string name="live_share_2h">2 hours</string>
     <string name="live_share_4h">4 hours</string>
+    <string name="live_share_24h">24 hours</string>
     <string name="live_share_enable_location_title">Turn on location to share</string>
     <string name="live_share_enable_location_body">To share your live location, set up location on this device first so it can send your position.</string>
     <string name="live_share_enable_location_cta">Set up location</string>

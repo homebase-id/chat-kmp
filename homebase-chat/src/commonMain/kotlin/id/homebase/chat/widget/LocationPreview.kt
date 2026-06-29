@@ -61,6 +61,7 @@ import id.homebase.resources.live_share_15m
 import id.homebase.resources.live_share_1h
 import id.homebase.resources.live_share_2h
 import id.homebase.resources.live_share_30m
+import id.homebase.resources.live_share_24h
 import id.homebase.resources.live_share_4h
 import id.homebase.resources.live_share_active
 import id.homebase.resources.live_share_ended
@@ -541,6 +542,10 @@ private val DURATION_OPTIONS = listOf(
     MR.string.live_share_1h to 60 * 60_000L,
     MR.string.live_share_2h to 2 * 60 * 60_000L,
     MR.string.live_share_4h to 4 * 60 * 60_000L,
+    // All-day sharing (festivals etc.) — #889. Window is absolute-endTime
+    // driven, so this is just a larger value; formatRemaining renders it as
+    // "24h"/"23h". Backgrounded GPS freshness is governed separately by #878.
+    MR.string.live_share_24h to 24L * 60 * 60_000L,
 )
 
 /** Compact "time left" label: "42m", "1h", "1h 20m". */
