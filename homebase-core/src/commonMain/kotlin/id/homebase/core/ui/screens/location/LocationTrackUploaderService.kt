@@ -83,6 +83,10 @@ class LocationTrackUploaderService(
     private val scope: CoroutineScope,
     /** Injectable for tests; production reads the wall clock. */
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** OS battery saver on? Wired in DI to DeviceSensors. Defaults false (always upload). */
+    private val powerSaveMode: () -> Boolean = { false },
+    /** App in the foreground? Wired in DI to the coordinator. Defaults true (always upload). */
+    private val isAppForeground: () -> Boolean = { true },
 ) {
     private val logger = Logger.withTag(TAG)
     private val driveId = locationLabeledDrive.drive.alias
@@ -124,6 +128,22 @@ class LocationTrackUploaderService(
     suspend fun flushIfDue() {
         val now = nowMs()
         if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) return
+        val powerSave = powerSaveMode()
+        val foreground = isAppForeground()
+        // Battery saver + backgrounded → defer uploads to save power; local capture still persists
+        // and drains on the next foreground / saver-off flush (#878 follow-up). Override: never let
+        // un-uploaded history sit longer than STALE_BACKLOG_MS — upload at the next chance regardless
+        // of saver, so the user's track can't be stranded on-device (and can't reach the 7-day sweep
+        // un-uploaded). The backlog query runs only in the would-defer case.
+        val hasStaleBacklog = if (powerSave && !foreground) {
+            runCatching { buffer.countUnmarkedOlderThan(now - STALE_BACKLOG_MS) }.getOrDefault(0L) > 0L
+        } else {
+            false
+        }
+        if (shouldDeferBackgroundFlush(powerSave, foreground, hasStaleBacklog)) {
+            logger.d { "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms un-uploaded backlog" }
+            return
+        }
         flush()
     }
 
@@ -475,8 +495,22 @@ class LocationTrackUploaderService(
         const val MIN_FLUSH_INTERVAL_MS = 60_000L
         const val RETENTION_MS = 7L * 24 * HOUR_MS
         const val DAY_MS = 24 * HOUR_MS
+
+        /** Un-uploaded backlog older than this forces an upload even in battery saver (24h). */
+        const val STALE_BACKLOG_MS = 24L * HOUR_MS
     }
 }
+
+/**
+ * Whether a flush should be deferred for battery saver. Deferred only while saver is on AND the app
+ * is backgrounded AND there's no un-uploaded backlog past the stale threshold — a foregrounded user
+ * always uploads, and a >24h backlog always uploads (the safety override). Pure for unit testing.
+ */
+internal fun shouldDeferBackgroundFlush(
+    powerSaveMode: Boolean,
+    appForeground: Boolean,
+    hasStaleUnuploaded: Boolean,
+): Boolean = powerSaveMode && !appForeground && !hasStaleUnuploaded
 
 /** What an outbox event means for the location point buffer. */
 internal enum class BufferAction {

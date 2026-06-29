@@ -23,6 +23,13 @@ interface DeviceSensors {
      * to subtract; iOS ignores it and queries the interval directly).
      */
     suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample
+
+    /**
+     * Whether the OS battery saver / low-power mode is on. Cheap, synchronous, permission-less.
+     * Drives the location power policy (#878 follow-up): on-demand fixes go cache-only (no radio)
+     * and background uploads defer while saver is on. False where the OS has no such concept.
+     */
+    fun isPowerSaveMode(): Boolean
 }
 
 expect fun createDeviceSensors(): DeviceSensors

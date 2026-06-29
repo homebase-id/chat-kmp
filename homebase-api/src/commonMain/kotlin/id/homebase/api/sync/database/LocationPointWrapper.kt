@@ -135,6 +135,12 @@ class LocationPointWrapper(
             delegate.countUnmarkedSince(fromInclusiveMs).executeAsOne()
         }
 
+    /** Un-uploaded rows older than [beforeMs] — the "stale backlog" the upload deferral must not hold. */
+    suspend fun countUnmarkedOlderThan(beforeMs: Long): Long =
+        databaseManager.readValue("locationPoint.countUnmarkedOlderThan") {
+            delegate.countUnmarkedOlderThan(beforeMs).executeAsOne()
+        }
+
     suspend fun selectLatest(): BufferedLocationPoint? {
         val row = databaseManager.readValue("locationPoint.selectLatest") {
             delegate.selectLatest().executeAsOneOrNull()

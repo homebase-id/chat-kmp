@@ -33,8 +33,19 @@ import kotlinx.coroutines.launch
  *   headless cold starts).
  * - App foreground transitions switch the capture profile and run a periodic foreground flush
  *   ticker; backgrounding stops the ticker (background flushes piggyback on batch deliveries).
- * - [onFlushDue] / [liveShareActive] are injected by DI (the uploader and the share service live in
- *   higher modules this one cannot reference). They must be cheap.
+ *   Entering the foreground also fires [onForegroundEntry] — a one-shot "force a fix if stale" so a
+ *   brief app-open records a point instead of waiting on the 30 s interval (#878 root cause A).
+ * - [onFlushDue] / [liveShareActive] / [onForegroundEntry] are injected by DI (the uploader, the
+ *   share service and LocationService live in higher modules / form a cycle this one cannot
+ *   reference directly). They must be cheap.
+ *
+ * **Product expectation (#878).** Without a persistent foreground-service notification (intentionally
+ * out of scope — it draws heavy Play/App Store review scrutiny), Android throttles background
+ * location to a few fixes/hour regardless of speed. So a long backgrounded moving session (sailing,
+ * screen off) is inherently sparse by design. What we *can* do without a notification: a fresh point
+ * on every app-open and push-receipt (via [onForegroundEntry] / the push path → LocationService's
+ * force-on-stale primitive) plus a good track while the app is open — all rate-limited by that
+ * primitive's battery guard.
  */
 class LocationTrackingCoordinator(
     private val preferences: LocationPreferences,
@@ -53,11 +64,29 @@ class LocationTrackingCoordinator(
      */
     var liveShareActive: () -> Boolean = { false }
 
+    /**
+     * Wired in AppModule to LocationService.forceCaptureIfTracking(AppForeground) — the gated entry
+     * for automatic triggers, NOT requestLatestGps directly. Fired once each time the app enters the
+     * foreground while a persistent consumer wants GPS ([isCaptureWanted]), so a brief app-open forces
+     * an immediate fix instead of waiting on the capture interval (#878). Must be cheap and
+     * self-throttling — LocationService's primitive owns the staleness + battery guard.
+     */
+    var onForegroundEntry: suspend () -> Unit = {}
+
     /** Transient GPS demands (live map open, one-shot fix, …). See [acquireTransientDemand]. */
     private val demand = GpsDemand()
 
     private var processStarted = false
-    private var isForeground = false
+
+    /**
+     * Whether the app is currently foregrounded, as last reported by [observeAppForeground]. Public
+     * so the uploader can decide whether to defer background uploads in battery saver (#878 follow-up:
+     * defer only while backgrounded; a foregrounded user always uploads). False until the first
+     * foreground observation (a headless cold start is correctly treated as background).
+     */
+    var isForeground = false
+        private set
+
     private var tickerJob: Job? = null
 
     // Tracks armed-state + the last-applied profile, so [applyGpsHold] logs only on transitions
@@ -71,6 +100,16 @@ class LocationTrackingCoordinator(
 
     /** GPS can only physically run with hardware present AND location permission granted. */
     private fun canRunGps(): Boolean = tracker.isAvailable && isLocationPermissionGranted()
+
+    /**
+     * Whether a *persistent* consumer (location history or an active live share) wants GPS and it can
+     * physically run. This is the gate for the automatic force-on-stale captures (app-open, push): we
+     * only spin up the radio on demand when something is actually recording/relaying. It deliberately
+     * excludes pure transient demands (the live map already acquires its own fix), and is narrower
+     * than [wantsGps], which also arms for transient holds.
+     */
+    fun isCaptureWanted(): Boolean =
+        (preferences.allowLocationHistory.value || liveShareActive()) && canRunGps()
 
     /** The acquisition profile for the current foreground state + consumers (#846). */
     private fun currentProfile(): TrackingProfile =
@@ -145,8 +184,15 @@ class LocationTrackingCoordinator(
         // A foreground/background transition changes both the desired profile (live/history × FG/BG)
         // and the flush ticker; re-applying the hold handles start/stop/profile/ticker + logging.
         observeAppForeground { foreground ->
+            val enteredForeground = foreground && !isForeground
             isForeground = foreground
             applyGpsHold()
+            // Force a fresh fix on app-open when a persistent consumer is recording — a brief open
+            // would otherwise close before the capture interval fires and record nothing (#878). The
+            // primitive self-throttles (staleness + battery guard), so re-firing here is cheap.
+            if (enteredForeground && isCaptureWanted()) {
+                scope.launch { onForegroundEntry() }
+            }
         }
     }
 

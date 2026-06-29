@@ -2,6 +2,8 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.location.GpsRequestReason
+import id.homebase.core.location.LocationService
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.sync.SyncOutcome
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +39,7 @@ class NotificationEntry(
     private val notificationService: NotificationService,
     private val orchestrator: BackgroundSyncOrchestrator,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val locationService: LocationService,
 ) {
 
     /**
@@ -54,7 +57,15 @@ class NotificationEntry(
             "onPushArrived title=$title body=$body data.size=${data.size}"
         }
         notificationService.onFcmMessageReceived(title, body, data)
-        return orchestrator.syncIfAuthenticated()
+        val outcome = orchestrator.syncIfAuthenticated()
+        // A push briefly wakes the process — an opportunistic free moment to record a fresh point if
+        // tracking is on and the last one is stale (#878). Best-effort within the short FCM window
+        // (the primitive uses a short background timeout + last-known fallback); never fail the push
+        // sync over it. Won't help the no-signal case (no cell → no push), but adds samples whenever
+        // the user is reachable.
+        runCatching { locationService.forceCaptureIfTracking(GpsRequestReason.PushReceived) }
+            .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "push force-capture failed" } }
+        return outcome
     }
 
     /**

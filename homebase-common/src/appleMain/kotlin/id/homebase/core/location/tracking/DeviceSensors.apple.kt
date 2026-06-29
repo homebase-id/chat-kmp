@@ -2,7 +2,9 @@ package id.homebase.core.location.tracking
 
 import platform.CoreMotion.CMPedometer
 import platform.Foundation.NSDate
+import platform.Foundation.NSProcessInfo
 import platform.Foundation.dateWithTimeIntervalSince1970
+import platform.Foundation.isLowPowerModeEnabled
 import platform.UIKit.UIDevice
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -23,6 +25,12 @@ private object AppleDeviceSensors : DeviceSensors {
         if (level < 0f) return null
         return (level * 100f).toInt().coerceIn(0, 100)
     }
+
+    // Kotlin/Native exposes this NSProcessInfo category member as an extension function that needs its
+    // own import (`platform.Foundation.isLowPowerModeEnabled`) — without that import neither the call
+    // nor the bare property resolves.
+    override fun isPowerSaveMode(): Boolean =
+        NSProcessInfo.processInfo.isLowPowerModeEnabled()
 
     override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample {
         // iOS answers historical intervals directly — no cumulative needed.

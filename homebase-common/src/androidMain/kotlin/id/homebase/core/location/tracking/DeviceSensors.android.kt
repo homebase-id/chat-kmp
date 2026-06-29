@@ -6,6 +6,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.BatteryManager
+import android.os.PowerManager
 import co.touchlab.kermit.Logger
 import id.homebase.api.ActivityProvider
 import kotlinx.coroutines.withTimeoutOrNull
@@ -22,6 +23,11 @@ private object AndroidDeviceSensors : DeviceSensors {
         val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return null
         val pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return pct.takeIf { it in 0..100 }
+    }
+
+    override fun isPowerSaveMode(): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return false
+        return pm.isPowerSaveMode
     }
 
     override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample {
