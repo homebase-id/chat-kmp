@@ -459,7 +459,9 @@ private fun LiveShareActionArea(
                 Column {
                     if (controls.sentByYou) {
                         Row(
-                            modifier = Modifier.clickable { controls.onStop() },
+                            modifier = Modifier
+                                .clickable { controls.onStop() }
+                                .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
@@ -501,7 +503,9 @@ private fun LiveShareActionArea(
                 var menuExpanded by remember { mutableStateOf(false) }
                 Column {
                     Row(
-                        modifier = Modifier.clickable { menuExpanded = true },
+                        modifier = Modifier
+                            .clickable { menuExpanded = true }
+                            .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
