@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
@@ -195,6 +196,28 @@ public class DriveFileProvider(
         return driveCache.getPayloadBytesDecrypted(
             driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress
         )
+    }
+
+    /**
+     * Fetch + decrypt a payload using the per-payload key header the server returns on the GET
+     * (`SharedSecretEncryptedHeader64`) — the authoritative, race-free (key, IV) for that exact
+     * served byte stream. Required for payloads whose IV the server rotates on rewrite (e.g. a
+     * contact's `ext_data`), where a separately-queried `descriptor.iv` is a stale snapshot and the
+     * file content IV is the wrong IV. Goes to the network because the disk cache doesn't persist
+     * that header. Returns null on 404.
+     */
+    suspend fun getPayloadBytesDecryptedViaResponseHeader(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+    ): ByteArray? {
+        val raw = try {
+            driveCache.getPayloadBytesRawFromNetwork(driveId, fileId, key)
+        } catch (e: NotFoundException) {
+            return null
+        }
+        if (raw.status == 404) return null
+        return decryptBytes(raw.headers, raw.bytes)
     }
 
     /**

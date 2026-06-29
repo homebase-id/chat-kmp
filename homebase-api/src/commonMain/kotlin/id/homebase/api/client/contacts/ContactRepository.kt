@@ -5,7 +5,6 @@ package id.homebase.api.client.contacts
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.QueryBatchSortField
@@ -25,12 +24,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import id.homebase.api.client.drives.files.PayloadDescriptor
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -204,22 +200,10 @@ class ContactRepository(
     suspend fun loadExtData(contact: Contact): ContactExtData? {
         if (ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY !in contact.payloadKeys) return null
         val fileId = contact.fileId ?: return null
-        val keyHeader = payloadKeyHeader(contact, ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY)
-            ?: return null
 
-        val bytes = try {
-            contactPayloadReader.getPayloadBytes(
-                driveId = driveId,
-                fileId = fileId,
-                key = ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY,
-                keyHeader = keyHeader,
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "loadExtData fetch failed for ${contact.uniqueId}" }
-            return null
-        } ?: return null
+        val bytes = contactPayloadReader.fetchPayload(
+            driveId, fileId, ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY,
+        ) ?: return null
 
         return runCatching {
             OdinSystemSerializer.deserialize<ContactExtData>(bytes.decodeToString())
@@ -238,31 +222,7 @@ class ContactRepository(
     suspend fun loadPayloadBytes(contact: Contact, payloadKey: String): ByteArray? {
         if (payloadKey.isBlank() || payloadKey !in contact.payloadKeys) return null
         val fileId = contact.fileId ?: return null
-        val keyHeader = payloadKeyHeader(contact, payloadKey) ?: return null
-        return try {
-            contactPayloadReader.getPayloadBytes(driveId, fileId, payloadKey, keyHeader)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "loadPayloadBytes($payloadKey) failed for ${contact.uniqueId}" }
-            null
-        }
-    }
-
-    /**
-     * The [KeyHeader] for decrypting one of [contact]'s payloads: the file's AES key paired with that
-     * payload's **own** IV ([PayloadDescriptor.iv]) — not the file/content IV. Decrypting an encrypted
-     * payload with the wrong IV corrupts its first 16-byte block (e.g. breaks the leading `{` of the
-     * ext_data JSON). Falls back to the file key header when the payload is unencrypted (no IV), where
-     * the IV is ignored anyway. Null when the file key header is missing (optimistic row).
-     */
-    @OptIn(ExperimentalEncodingApi::class)
-    private fun payloadKeyHeader(contact: Contact, payloadKey: String): KeyHeader? {
-        val fileKey = contact.keyHeader ?: return null
-        val iv = contact.payloads.firstOrNull { it.key == payloadKey }?.iv
-            ?.let { runCatching { Base64.decode(it) }.getOrNull() }
-            ?: return fileKey
-        return KeyHeader(iv = iv, aesKey = fileKey.aesKey)
+        return contactPayloadReader.fetchPayload(driveId, fileId, payloadKey)
     }
 
     // ------------------------------------------------------------
@@ -432,21 +392,10 @@ class ContactRepository(
     suspend fun loadAppExtData(contact: Contact, appId: String): String? {
         if (ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY !in contact.payloadKeys) return null
         val fileId = contact.fileId ?: return null
-        val keyHeader = contact.keyHeader ?: return null
 
-        val bytes = try {
-            contactPayloadReader.getPayloadBytes(
-                driveId = driveId,
-                fileId = fileId,
-                key = ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY,
-                keyHeader = keyHeader,
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "loadAppExtData fetch failed for ${contact.uniqueId}" }
-            return null
-        } ?: return null
+        val bytes = contactPayloadReader.fetchPayload(
+            driveId, fileId, ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY,
+        ) ?: return null
 
         return runCatching {
             OdinSystemSerializer.deserialize<ContactAppExtData>(bytes.decodeToString())

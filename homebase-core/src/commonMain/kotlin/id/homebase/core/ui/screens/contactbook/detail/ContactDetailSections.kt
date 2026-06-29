@@ -45,6 +45,7 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +55,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.ui.material3.RichText
+import id.homebase.api.client.drives.files.RichTextNode
 import kotlinx.coroutines.launch
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
@@ -357,16 +361,17 @@ fun BioSection(shortBio: String?) {
 }
 
 /**
- * The synced "Experience" attribute (from the contact's `ext_data` payload): a plain-text title, a
- * rich-text full bio flattened to plain text, and an optional link. Renders nothing when absent.
+ * The synced "Experience" attribute (from the contact's `ext_data` payload): an optional image, a
+ * short title, the Plate/Slate.js `full_bio` rendered as real rich text, and a link. Renders
+ * nothing when absent.
  */
 @Composable
 fun ExperienceSection(experience: ContactExperience?, image: ByteArray?) {
     val exp = experience ?: return
     val title = exp.title?.takeIf { it.isNotBlank() }
-    val body = exp.fullBioText?.takeIf { it.isNotBlank() }
+    val bio = exp.fullBio?.takeIf { it.isNotEmpty() }
     val link = exp.link?.takeIf { it.isNotBlank() }
-    if (title == null && body == null && link == null && image == null) return
+    if (title == null && bio == null && link == null && image == null) return
 
     Spacer(modifier = Modifier.height(20.dp))
     Text(
@@ -374,32 +379,37 @@ fun ExperienceSection(experience: ContactExperience?, image: ByteArray?) {
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     )
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         image?.let {
             AsyncImage(
                 model = it,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
-                    .padding(top = 8.dp)
                     .fillMaxWidth()
                     .heightIn(max = 200.dp)
                     .clip(RoundedCornerShape(12.dp)),
             )
         }
         title?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+            Text(text = it, style = MaterialTheme.typography.titleSmall)
         }
-        body?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
+        bio?.let { nodes ->
+            val html = remember(nodes) { nodes.toExperienceHtml() }
+            val state = remember(html) {
+                RichTextState().apply {
+                    config.listIndent = 12
+                    setHtml(html)
+                }
+            }
+            RichText(
+                state = state,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         link?.let {
@@ -409,13 +419,38 @@ fun ExperienceSection(experience: ContactExperience?, image: ByteArray?) {
                 text = it,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .padding(top = 4.dp)
-                    .clickable { uriHandler.openUrl(url) },
+                modifier = Modifier.clickable { uriHandler.openUrl(url) },
             )
         }
     }
 }
+
+/** Convert a Plate/Slate.js node tree to the small HTML subset [RichTextState.setHtml] renders. */
+private fun List<RichTextNode>.toExperienceHtml(): String =
+    joinToString("") { it.toExperienceHtml() }
+
+private fun RichTextNode.toExperienceHtml(): String {
+    text?.let { return escapeExperienceHtml(it) }
+    val inner = children?.joinToString("") { it.toExperienceHtml() }
+        ?: value?.let { escapeExperienceHtml(it) }
+        ?: ""
+    return when (type) {
+        "ul" -> "<ul>$inner</ul>"
+        "ol" -> "<ol>$inner</ol>"
+        "li" -> "<li>$inner</li>"
+        "h1" -> "<h1>$inner</h1>"
+        "h2" -> "<h2>$inner</h2>"
+        "h3" -> "<h3>$inner</h3>"
+        "blockquote" -> "<blockquote>$inner</blockquote>"
+        // Slate "a" links carry no href in this data, so render their text inline rather than as a
+        // dead link; the contact's experience_link is shown as a real link separately.
+        "a", null -> inner
+        else -> "<p>$inner</p>"
+    }
+}
+
+private fun escapeExperienceHtml(s: String): String =
+    s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 /**
  * The contact's social/gaming handles (resolved to known networks), in its own section. Each row

@@ -89,10 +89,6 @@ class ContactDetailViewModel(
         extLoadedFor = key
         viewModelScope.launch {
             val experience = contactRepository.loadExtData(contact)?.experience
-            Logger.d(tag = TAG) {
-                "ext_data ${contact.uniqueId}: payloadKeys=${contact.payloadKeys} " +
-                    "experienceFound=${experience != null} imageKey=${experience?.imageKey}"
-            }
             _uiState.update { it.copy(experience = experience, experienceImage = null) }
             // The Experience attribute references its image by payload key; fetch the bytes too.
             val imageKey = experience?.imageKey?.takeIf { it.isNotBlank() }
