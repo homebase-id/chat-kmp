@@ -28,7 +28,9 @@ actual fun createOneShotLocationProvider(): OneShotLocationProvider = AppleOneSh
 @OptIn(ExperimentalForeignApi::class)
 private object AppleOneShotLocationProvider : OneShotLocationProvider {
 
-    override suspend fun getCurrentFix(timeoutMs: Long): GpsFixResult {
+    // maxAgeMs is unused on iOS: requestLocation() always delivers a fresh fix, so there is no stale
+    // OS cache to age-bound (the Android bug #886 found does not apply here).
+    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long): GpsFixResult {
         if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
         return withContext(Dispatchers.Main) {
             withTimeoutOrNull(timeoutMs) {

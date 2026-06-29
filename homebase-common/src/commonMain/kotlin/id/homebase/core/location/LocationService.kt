@@ -88,6 +88,12 @@ class LocationService(
      * [GpsRequestReason.timeoutMs]). Does NOT request permission — returns [GpsFixResult.PermissionDenied]
      * when not granted (the caller prompts first if needed).
      *
+     * **Ungated — for interactive/transient consumers only (e.g. the live map, which holds its own
+     * transient demand and legitimately wants a fix even with history off and no share).** This will
+     * power the radio regardless of whether any persistent consumer is recording. **Automatic
+     * triggers (app-open, push, future activity transitions) must call [forceCaptureIfTracking]
+     * instead**, so the "only when something is recording" gate stays in one place.
+     *
      * Guarantees (so clustered triggers don't each acquire):
      *  - **single-flight:** if an acquisition is already in flight, this awaits and returns *its* result
      *    rather than starting a parallel GPS lock,
@@ -138,7 +144,10 @@ class LocationService(
 
     /** Run the one-shot acquisition and route a successful fix through the pipeline. */
     private suspend fun acquireAndRoute(reason: GpsRequestReason): GpsFixResult {
-        val result = oneShot.getCurrentFix(reason.timeoutMs)
+        // Bound the OS last-known cache by the same staleness tolerance: if the cache is fresher than
+        // staleAfterMs we reuse it (no radio), otherwise the provider powers the radio for a fresh fix.
+        // Without this, a stale OS cache would satisfy the "force" and the radio would never run (#886).
+        val result = oneShot.getCurrentFix(timeoutMs = reason.timeoutMs, maxAgeMs = reason.staleAfterMs)
         if (result is GpsFixResult.Success) {
             router.submit(listOf(result.point)) // route so the fetched fix isn't wasted
             logger.i { "requestLatestGps($reason): fetched & routed (src=${result.point.src})" }

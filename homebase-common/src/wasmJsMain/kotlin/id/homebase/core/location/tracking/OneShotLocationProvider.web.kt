@@ -4,5 +4,5 @@ actual fun createOneShotLocationProvider(): OneShotLocationProvider = Unavailabl
 
 /** Web one-shot GPS is not yet implemented (browser Geolocation API). */
 private object UnavailableOneShotLocationProvider : OneShotLocationProvider {
-    override suspend fun getCurrentFix(timeoutMs: Long): GpsFixResult = GpsFixResult.Unavailable
+    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long): GpsFixResult = GpsFixResult.Unavailable
 }

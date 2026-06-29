@@ -61,10 +61,12 @@ class LocationServiceTest {
     ) : OneShotLocationProvider {
         var calls = 0
         val timeouts = mutableListOf<Long>()
+        val maxAges = mutableListOf<Long>()
 
-        override suspend fun getCurrentFix(timeoutMs: Long): GpsFixResult {
+        override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long): GpsFixResult {
             calls++
             timeouts += timeoutMs
+            maxAges += maxAgeMs
             gate?.await() // lets a test hold two callers inside one acquisition (single-flight)
             return result
         }
@@ -245,6 +247,17 @@ class LocationServiceTest {
         runServiceTest(permission = true, oneShot = oneShot) { service, _, _ ->
             service.requestLatestGps(GpsRequestReason.PushReceived)
             assertEquals(5_000L, oneShot.timeouts.single())
+        }
+    }
+
+    @Test
+    fun passesReasonStalenessAsCacheMaxAge() {
+        // The provider is told to accept an OS last-known cache only within the reason's staleness
+        // tolerance, otherwise power the radio (#886 fix 1).
+        val oneShot = FakeOneShot(GpsFixResult.Timeout)
+        runServiceTest(permission = true, oneShot = oneShot) { service, _, _ ->
+            service.requestLatestGps(GpsRequestReason.PushReceived)
+            assertEquals(GpsRequestReason.PushReceived.staleAfterMs, oneShot.maxAges.single())
         }
     }
 

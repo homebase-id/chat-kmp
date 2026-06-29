@@ -27,7 +27,7 @@ actual fun createOneShotLocationProvider(): OneShotLocationProvider = AndroidOne
 private object AndroidOneShotLocationProvider : OneShotLocationProvider {
 
     @SuppressLint("MissingPermission")
-    override suspend fun getCurrentFix(timeoutMs: Long): GpsFixResult {
+    override suspend fun getCurrentFix(timeoutMs: Long, maxAgeMs: Long): GpsFixResult {
         if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
         val context = ActivityProvider.requireApplicationContext()
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -41,15 +41,21 @@ private object AndroidOneShotLocationProvider : OneShotLocationProvider {
             return GpsFixResult.Unavailable
         }
 
-        // 1. Freshest cached fix across enabled providers.
+        // 1. Freshest cached fix across enabled providers — but only trust it if it's recent enough.
+        // Without this age bound a force-on-stale capture would keep echoing an arbitrarily old OS
+        // last-known fix and never power the radio for a fresh one (#878 / #886 review).
         var bestCached: Location? = null
         for (provider in enabledProviders) {
             val cached = lm.getLastKnownLocation(provider)
             if (cached != null && (bestCached == null || cached.time > bestCached.time)) bestCached = cached
         }
-        if (bestCached != null) {
-            Logger.d(tag = TAG) { "cached fix from ${bestCached.provider}" }
+        val cachedAgeMs = bestCached?.let { System.currentTimeMillis() - it.time }
+        if (bestCached != null && cachedAgeMs != null && cachedAgeMs <= maxAgeMs) {
+            Logger.d(tag = TAG) { "cached fix from ${bestCached.provider} (age=${cachedAgeMs}ms <= ${maxAgeMs}ms)" }
             return GpsFixResult.Success(bestCached.toRaw())
+        }
+        Logger.d(tag = TAG) {
+            "cached fix too old (age=${cachedAgeMs}ms > ${maxAgeMs}ms) — acquiring live"
         }
 
         // 2. No cached fix — one-shot live update from the best provider, capped by timeoutMs.

@@ -25,10 +25,22 @@ sealed interface GpsFixResult {
  * not wasted — it updates the last-known dot and is persisted/relayed per the usual routing.
  */
 interface OneShotLocationProvider {
-    suspend fun getCurrentFix(timeoutMs: Long = DEFAULT_TIMEOUT_MS): GpsFixResult
+    /**
+     * Return a current fix. A platform may serve a recent OS last-known fix without powering the GPS
+     * radio, but ONLY if it is no older than [maxAgeMs]; an older cache must fall through to a live
+     * acquisition (capped by [timeoutMs]). The age bound is what makes a force-on-stale capture
+     * actually spend battery on a fresh fix instead of echoing a stale cached one (#878 / #886 review).
+     */
+    suspend fun getCurrentFix(
+        timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+        maxAgeMs: Long = DEFAULT_MAX_AGE_MS,
+    ): GpsFixResult
 
     companion object {
         const val DEFAULT_TIMEOUT_MS = 15_000L
+
+        /** Default max age for accepting an OS last-known fix before forcing a live acquisition. */
+        const val DEFAULT_MAX_AGE_MS = 15_000L
     }
 }
 

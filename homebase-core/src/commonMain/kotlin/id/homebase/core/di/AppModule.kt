@@ -296,9 +296,11 @@ val appModule = module {
             // Lets the coordinator keep GPS armed for an active live-location share (incl. across a
             // cold start / iOS relaunch) without referencing homebase-chat.
             liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
-            // Force a fresh fix on app-open when stale (#878). The coordinator already gated on
-            // isCaptureWanted() before firing; the primitive owns the staleness + battery guard.
-            onForegroundEntry = { get<LocationService>().requestLatestGps(GpsRequestReason.AppForeground) }
+            // Force a fresh fix on app-open when stale (#878). Goes through the gated
+            // forceCaptureIfTracking() — the single entry for automatic triggers — so the
+            // "only when a persistent consumer wants GPS" decision lives in one place (the
+            // coordinator's own isCaptureWanted() pre-check just avoids launching when not wanted).
+            onForegroundEntry = { get<LocationService>().forceCaptureIfTracking(GpsRequestReason.AppForeground) }
         }
     }
     // The single public entry point for "this device's location" — composes coordinator (acquire) +
