@@ -149,6 +149,7 @@ import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
+import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
@@ -295,6 +296,9 @@ val appModule = module {
             // Lets the coordinator keep GPS armed for an active live-location share (incl. across a
             // cold start / iOS relaunch) without referencing homebase-chat.
             liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
+            // Force a fresh fix on app-open when stale (#878). The coordinator already gated on
+            // isCaptureWanted() before firing; the primitive owns the staleness + battery guard.
+            onForegroundEntry = { get<LocationService>().requestLatestGps(GpsRequestReason.AppForeground) }
         }
     }
     // The single public entry point for "this device's location" — composes coordinator (acquire) +
@@ -308,6 +312,7 @@ val appModule = module {
             pointStore = get(),
             preferences = get(),
             oneShot = createOneShotLocationProvider(),
+            scope = get(),
         )
     }
     // endregion
