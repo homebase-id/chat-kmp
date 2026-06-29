@@ -1,5 +1,7 @@
 package id.homebase.chat.widget
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,8 @@ fun AvatarNameDisplay(
     // avatars so there's nothing to open. Independent of [onClick], which is the
     // name-row tap.
     onAvatarClick: (() -> Unit)? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     Row(
         modifier = modifier,
@@ -51,7 +55,9 @@ fun AvatarNameDisplay(
                     size = 72.dp,
                     fontSize = 24.sp,
                     onClick = onAvatarClick,
-                )
+                ),
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
             Spacer(modifier = Modifier.height(16.dp))
             Row(
