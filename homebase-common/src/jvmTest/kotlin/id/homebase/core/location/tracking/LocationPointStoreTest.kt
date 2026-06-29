@@ -18,6 +18,7 @@ private class FakeSensors(
     override suspend fun batteryPercent(): Int? = battery
     override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample =
         StepSample(delta, cumulative)
+    override fun isPowerSaveMode(): Boolean = false
 }
 
 /**
