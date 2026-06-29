@@ -952,7 +952,9 @@ class ConversationListViewModel(
                 _messagesUiState.update {
                     it.copy(
                         messages = persistentListOf(),
-                        isLoadingMessages = false
+                        isLoadingMessages = false,
+                        pinnedMessages = persistentListOf(),
+                        currentPinIndex = 0,
                     )
                 }
             }
@@ -1097,6 +1099,31 @@ class ConversationListViewModel(
             is ConversationListUiAction.ShowReactionDetails -> messageActionsHandler.handleShowReactionDetails(action)
 
             is ConversationListUiAction.HideReactionDetails -> messageActionsHandler.handleHideReactionDetails()
+
+            // region Pinned messages bar (#887)
+            is ConversationListUiAction.CyclePinnedBar -> {
+                val pinned = _messagesUiState.value.pinnedMessages
+                if (pinned.isNotEmpty()) {
+                    val nextIndex = (_messagesUiState.value.currentPinIndex + 1) % pinned.size
+                    _messagesUiState.update { it.copy(currentPinIndex = nextIndex) }
+                    onAction(ConversationListUiAction.ScrollToMessageId(pinned[nextIndex].id))
+                }
+            }
+
+            is ConversationListUiAction.ShowPinnedMessagesSheet ->
+                _messagesUiState.update { it.copy(uiSheet = MessageListUiSheet.PinnedMessages) }
+
+            is ConversationListUiAction.TogglePinMessage -> viewModelScope.launch {
+                // delete-style: allowed for every kind, independent of ActionPolicy.
+                val isPinned = chatMessageStream.getMessage(action.messageId)?.isPinned ?: false
+                if (isPinned) chatMessageActionService.unpinMessage(action.messageId)
+                else chatMessageActionService.pinMessage(action.messageId)
+            }
+
+            is ConversationListUiAction.UnpinMessage -> viewModelScope.launch {
+                chatMessageActionService.unpinMessage(action.messageId)
+            }
+            // endregion
 
             is ConversationListUiAction.ShowContactInfo -> conversationLifecycleHandler.handleShowContactInfo(action)
 
@@ -1336,6 +1363,34 @@ class ConversationListViewModel(
             }
         }
     }
+    /**
+     * #887: one-shot prune of time-expired auto-pins for [conversationId] on open.
+     * Ended events (now past endUtcMs, or startUtcMs + 1h when open-ended) and
+     * stale live-location shares (now ≥ liveShareUntilMs) leave the pinned bar.
+     * LOCAL-ONLY ([unpinMessage] with localOnly = true): each device recomputes
+     * expiry on its own clock, so we don't fan a clock-relative decision out to
+     * the user's other devices via the outbox.
+     */
+    private fun unpinExpiredPins(conversationId: Uuid) {
+        viewModelScope.launch {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val pinned = chatMessageStream.getPinnedMessages(conversationId)
+            for (msg in pinned) {
+                val expired = when (val content = msg.messageContent) {
+                    is MessageContent.Event -> content.descriptor?.let {
+                        now > (it.endUtcMs ?: (it.startUtcMs + 3_600_000L))
+                    } ?: false
+                    is MessageContent.Location -> {
+                        val until = content.descriptor?.liveShareUntilMs
+                        until != null && now >= until
+                    }
+                    else -> false
+                }
+                if (expired) chatMessageActionService.unpinMessage(msg.id, localOnly = true)
+            }
+        }
+    }
+
     private fun loadMessagesForConversation(
         conversationId: Uuid,
         messageIdForScroll: Uuid?,
@@ -1366,6 +1421,9 @@ class ConversationListViewModel(
             if (convo != null && convo.unreadCount > 0) {
                 frozenUnreadBoundary[conversationId] = convo.lastRead
             }
+            // #887: prune time-expired auto-pins (ended events, stale live shares).
+            // LOCAL-ONLY — each device recomputes on open; not synced via the outbox.
+            unpinExpiredPins(conversationId)
         }
 
         // Always mark loading here, even when hasCachedMessages == true.
@@ -1395,6 +1453,10 @@ class ConversationListViewModel(
                 scrollPosition = null,
                 isLoadingMessages = true,
                 replyToMessage = null,
+                // Drop the previous conversation's pinned bar on a real switch so it
+                // doesn't flash stale pins before the new conversation's collector emits.
+                pinnedMessages = if (isNewSelection) persistentListOf() else it.pinnedMessages,
+                currentPinIndex = if (isNewSelection) 0 else it.currentPinIndex,
             )
         }
 
@@ -1431,6 +1493,22 @@ class ConversationListViewModel(
                     }
                 }
             }
+            // Pinned-messages bar (#887) — collected in parallel with the message
+            // window below. A child of this job, so it's cancelled on conversation
+            // switch. Clamps currentPinIndex when the list shrinks (e.g. unpin).
+            launch {
+                chatMessageStream.observePinnedMessages(conversationId).collect { pinned ->
+                    val list = pinned.toPersistentList()
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            pinnedMessages = list,
+                            currentPinIndex = if (list.isEmpty()) 0
+                            else state.currentPinIndex.coerceIn(0, list.size - 1),
+                        )
+                    }
+                }
+            }
+
             try {
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true

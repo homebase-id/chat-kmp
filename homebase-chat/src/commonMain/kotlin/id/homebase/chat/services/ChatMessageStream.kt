@@ -20,18 +20,22 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
@@ -49,8 +53,31 @@ class ChatMessageStream(
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
+    /**
+     * Auto-pin hook (#887). Wired in DI to [id.homebase.chat.services.ChatMessageActionService.pinMessage];
+     * a settable hook (like [isConversationLeft]) avoids a circular DI dependency
+     * (ActionService → MessageLookup → ChatMessageStream). No-op until wired —
+     * auto-pin simply doesn't run until the session is authenticated.
+     */
+    var autoPinTypedMessage: suspend (messageId: Uuid, dependencyUniqueId: Uuid?) -> Unit =
+        { _, _ -> }
+
+    // Messages whose auto-pin candidacy has already been decided this session.
+    // Guards against re-pinning a manually-unpinned message when an unrelated
+    // update (reaction toggle, edit, delivery-status) re-emits the same file via
+    // BatchReceived. Cleared on logout. Silent cross-restart re-syncs go through
+    // DriveEvent.Stopped (not BatchReceived), so they never reach the auto-pin pass.
+    private val autoPinHandled = mutableSetOf<Uuid>()
+
     private val paginatedState = PaginatedConversationState()
     private val chatDrive = chatTargetDrive.alias
+
+    // Per-conversation pinned-messages bar state (newest-first). Recomputed off the
+    // same signals that refresh message windows: loadConversation, processIncrementalBatch
+    // (covers both peer arrivals and own optimistic pin/unpin writes, which emit
+    // BatchReceived) and DriveEvent.Stopped (silent cross-device sync). Keyed by
+    // conversationId; only conversations the user has opened ever get an entry.
+    private val _pinnedMessages = MutableStateFlow<Map<Uuid, List<MessageUiModel>>>(emptyMap())
 
     // Messages for open conversations are loaded on demand via loadConversation().
     // Two paths converge on paginatedState afterward:
@@ -67,7 +94,11 @@ class ChatMessageStream(
             eventBus.events.collect { event ->
                 when (event) {
                     // Logout: drop cached message windows for the previous identity.
-                    is BackendEvent.SessionEnded -> paginatedState.reset()
+                    is BackendEvent.SessionEnded -> {
+                        paginatedState.reset()
+                        _pinnedMessages.value = emptyMap()
+                        autoPinHandled.clear()
+                    }
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
                         if (event.driveId == chatDrive) {
                             paginatedState.removeMessage(event.uniqueId)
@@ -138,6 +169,41 @@ class ChatMessageStream(
     fun hasCachedMessages(conversationId: Uuid): Boolean =
         paginatedState.hasCachedMessages(conversationId)
 
+    /**
+     * Reactive pinned-messages bar for [conversationId] (newest-first). Updates
+     * whenever a pin/unpin lands (own optimistic write or cross-device sync) for
+     * an open conversation. Empty until [loadConversation] runs.
+     */
+    fun observePinnedMessages(conversationId: Uuid): StateFlow<List<MessageUiModel>> =
+        _pinnedMessages
+            .map { it[conversationId].orEmpty() }
+            .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** One-shot read of the pinned messages for [conversationId] (newest-first). */
+    suspend fun getPinnedMessages(conversationId: Uuid): List<MessageUiModel> {
+        val c = credentialsManager.requireActiveCredentials()
+        val jsonHeaders = dbm.driveLocalTagIndex.selectJsonHeadersByLocalTagInGroup(
+            identityId = c.getIdentityId(),
+            driveId = chatDrive,
+            tagId = ChatProtocol.MessagePinnedTag,
+            groupId = conversationId,
+        )
+        return withContext(Dispatchers.Default) {
+            jsonHeaders.mapNotNull { json ->
+                val header = runCatching {
+                    OdinSystemSerializer.deserialize<HomebaseFile>(json)
+                }.getOrNull() ?: return@mapNotNull null
+                mapToMessageData(header, credentialsManager, ::resolveDisplayName)
+            }
+        }
+    }
+
+    /** Recompute and publish the pinned bar for one conversation. */
+    private suspend fun refreshPinnedFor(conversationId: Uuid) {
+        val pinned = getPinnedMessages(conversationId)
+        _pinnedMessages.update { it + (conversationId to pinned) }
+    }
+
     // Full message load from local DB for a single conversation.
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
@@ -160,6 +226,7 @@ class ChatMessageStream(
             olderCursor = result.cursor,
             hasOlderMessages = result.hasMoreRows,
         )
+        refreshPinnedFor(conversationId)
     }
 
     /**
@@ -352,6 +419,7 @@ class ChatMessageStream(
                 )
                 if (result.records.isEmpty()) continue
                 paginatedState.upsert(conversationId, result.records)
+                refreshPinnedFor(conversationId)
             } catch (t: Throwable) {
                 Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
             }
@@ -387,6 +455,69 @@ class ChatMessageStream(
                 }
             }
             paginatedState.upsert(conversationId, msgs)
+        }
+
+        autoPinNewTypedMessages(messages)
+
+        // Refresh the pinned bar for every affected OPEN conversation. Done off the
+        // window gate above (which defers history-paged windows) because a pin/unpin
+        // must surface in the bar regardless of the scroll window. Covers own
+        // optimistic pin/unpin writes (they emit BatchReceived) and peer arrivals.
+        for (conversationId in grouped.keys) {
+            if (isConversationLeft(conversationId)) continue
+            if (paginatedState.getWindow(conversationId) == null) continue
+            refreshPinnedFor(conversationId)
+        }
+    }
+
+    /**
+     * Auto-pin (#887) freshly arrived/sent typed messages — Poll/Event/Groodle,
+     * and live-location only while its share is active. Runs for ALL conversations
+     * in the batch (not just open ones), so the pin is already present when the
+     * user opens the conversation.
+     *
+     * "Newly written" = first sighting this session ([autoPinHandled]). An already-
+     * pinned message is just remembered and skipped (idempotent); a manually
+     * unpinned message is never re-pinned because later BatchReceived for the same
+     * file are gated by the set, and silent cross-restart re-syncs don't reach here
+     * (they arrive via DriveEvent.Stopped, not BatchReceived).
+     *
+     * For an own optimistic send (`isPendingSend`), the tags update MUST run AFTER
+     * the create (UploadNewFile, uniqueId == messageId) — dependencyUniqueId =
+     * messageId chains it. The sender enqueues that create before emitting the
+     * BatchReceived that triggers this pass, so the dependency row already exists.
+     * Without the chain the tags update would hit the server before the file and
+     * DriveOutboxUploader would drop it as NotFound (versionTag is null pre-create).
+     */
+    private suspend fun autoPinNewTypedMessages(messages: List<MessageUiModel>) {
+        if (messages.isEmpty()) return
+        val now = Clock.System.now().toEpochMilliseconds()
+        for (msg in messages) {
+            if (msg.isDeleted) continue
+            if (msg.isPinned) {
+                autoPinHandled.add(msg.id)
+                continue
+            }
+            if (!autoPinHandled.add(msg.id)) continue
+
+            val shouldPin = when (val content = msg.messageContent) {
+                is MessageContent.Poll,
+                is MessageContent.Event,
+                is MessageContent.Groodle -> true
+                is MessageContent.Location -> {
+                    val until = content.descriptor?.liveShareUntilMs
+                    until != null && now < until
+                }
+                else -> false
+            }
+            if (!shouldPin) continue
+
+            val dependency = if (msg.isPendingSend) msg.id else null
+            try {
+                autoPinTypedMessage(msg.id, dependency)
+            } catch (t: Throwable) {
+                Logger.e(t) { "ChatMessageStream: auto-pin failed for ${msg.id}: ${t.message}" }
+            }
         }
     }
 

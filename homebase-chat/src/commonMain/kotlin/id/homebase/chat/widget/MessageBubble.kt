@@ -168,6 +168,7 @@ fun SentMessageBubble(
     onEdit: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onDelete: () -> Unit,
+    onTogglePin: () -> Unit = {},
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
@@ -292,6 +293,10 @@ fun SentMessageBubble(
                         onDelete = {
                             popupMode = MessagePopupMode.None
                             onDelete()
+                        },
+                        onTogglePin = {
+                            popupMode = MessagePopupMode.None
+                            onTogglePin()
                         },
                         onShare = onShare?.let { orig ->
                             { popupMode = MessagePopupMode.None; orig() }
@@ -466,6 +471,7 @@ fun ReceivedMessageBubble(
     onBattle: (() -> Unit)? = null,
     onForward: (() -> Unit)? = null,
     onDelete: () -> Unit,
+    onTogglePin: () -> Unit = {},
     onMarkAsRead: () -> Unit,
     onAddReaction: ((messageId: Uuid, reaction: String) -> Unit)? = null,
     onShowReactions: (() -> Unit)? = null,
@@ -711,6 +717,10 @@ fun ReceivedMessageBubble(
                         onDelete = {
                             popupMode = MessagePopupMode.None
                             onDelete()
+                        },
+                        onTogglePin = {
+                            popupMode = MessagePopupMode.None
+                            onTogglePin()
                         },
                         onBlock = {
                             popupMode = MessagePopupMode.None

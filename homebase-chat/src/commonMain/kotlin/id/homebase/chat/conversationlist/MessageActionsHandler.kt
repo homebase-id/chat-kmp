@@ -12,6 +12,8 @@ import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.groodle.GroodleVote
+import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -423,6 +425,11 @@ internal class MessageActionsHandler(
                     }
                     userPreferences.preferredUserReactions = promoted.take(6)
                 }
+
+                // Auto-unpin (#887): a vote IS a reaction, so once the user has
+                // answered an auto-pinned Poll/Groodle, drop it from their pinned
+                // bar (synced). Best-effort, after the toggle's optimistic write.
+                maybeUnpinAnsweredVote(action.messageId)
             } catch (e: Exception) {
                 messagesUiState.update { it.copy(messageReactions = previousReactions) }
                 sendEvent(
@@ -432,6 +439,26 @@ internal class MessageActionsHandler(
                 )
             }
         }
+    }
+
+    /**
+     * If [messageId] is an auto-pinned Poll/Groodle the current user has now
+     * answered (any option/slot), unpin it (synced). Reads the post-toggle message
+     * so the just-cast vote is included. Answered = ownVotes/myVotes non-empty.
+     */
+    private suspend fun maybeUnpinAnsweredVote(messageId: Uuid) {
+        val message = chatMessageStream.getMessage(messageId) ?: return
+        if (!message.isPinned) return
+        val answered = when (val content = message.messageContent) {
+            is MessageContent.Poll -> content.descriptor?.let {
+                PollVote.ownVotes(message.ownReactions, it.options.size).isNotEmpty()
+            } ?: false
+            is MessageContent.Groodle -> content.descriptor?.let {
+                GroodleVote.myVotes(message.ownReactions, it.slots.size, it.allowMaybe).isNotEmpty()
+            } ?: false
+            else -> false
+        }
+        if (answered) chatMessageActionService.unpinMessage(messageId)
     }
 
     fun handleSendFile(action: ConversationListUiAction.SendFile) {

@@ -91,6 +91,9 @@ fun MessageItem(
         if (policy.allowShare) remember(message.id) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } } else null
     val onDelete =
         remember(message.id) { { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) } }
+    // Pin/unpin (#887) — delete-style: always available, independent of ActionPolicy.
+    val onTogglePin =
+        remember(message.id) { { onUiAction(ConversationListUiAction.TogglePinMessage(message.id)) } }
     val onShowReactions =
         if (policy.allowReactionDetails) remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } } else null
     val onDecryptFile =
@@ -170,6 +173,7 @@ fun MessageItem(
                 onEdit = onEdit,
                 onShare = onShare,
                 onDelete = onDelete,
+                onTogglePin = onTogglePin,
                 onMediaClick = onMediaClick,
                 onClickMessageId = onClickMessageId,
                 onRequestDecryptedFile = onDecryptFile,
@@ -225,6 +229,7 @@ fun MessageItem(
                 onBattle = onBattle,
                 onForward = onForward,
                 onDelete = onDelete,
+                onTogglePin = onTogglePin,
                 onMarkAsRead = onMarkAsRead,
                 onAddReaction = onAddReaction,
                 onShowReactions = onShowReactions,

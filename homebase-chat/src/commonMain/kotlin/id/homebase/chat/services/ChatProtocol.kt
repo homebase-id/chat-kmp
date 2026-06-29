@@ -100,6 +100,15 @@ object ChatProtocol {
     /** Local metadata tag: conversation has been pinned by the user */
     val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
 
+    /**
+     * Local metadata tag: an individual message has been pinned by the user into
+     * the per-conversation pinned-messages bar. Personal + synced (rides the same
+     * `localAppData.tags` lane as [ConversationPinnedTag], so it propagates to the
+     * user's other devices via the update-local-metadata-tags endpoint) but never
+     * shared with peers.
+     */
+    val MessagePinnedTag = Uuid.parse("2595aec2-0852-4d3d-a20e-d955cb4553b1")
+
     /** Server-side appData tag: conversation was originally created as a group (never removed) */
     val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
 

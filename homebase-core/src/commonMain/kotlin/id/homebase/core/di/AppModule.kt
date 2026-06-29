@@ -484,6 +484,13 @@ val appModule = module {
                         ?.conversationState.let { it == ConversationState.Left || it == ConversationState.Removed }
                 }
 
+                // Auto-pin (#887) freshly arrived/sent typed messages. Settable hook
+                // breaks the ActionService → MessageLookup → ChatMessageStream cycle.
+                val chatMessageActionService = get<ChatMessageActionService>()
+                get<ChatMessageStream>().autoPinTypedMessage = { messageId, dependencyUniqueId ->
+                    chatMessageActionService.pinMessage(messageId, dependencyUniqueId)
+                }
+
                 // region Recovery: missing or deleted conversation file
                 val conversationService = get<ConversationService>()
                 conversationStream.onRecoverConversation = { conversationId, originalAuthor ->

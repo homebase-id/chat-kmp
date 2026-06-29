@@ -92,6 +92,12 @@ data class MessageListUiState(
     val isSendingMessage: Boolean = false,
     val pendingOutgoing: ImmutableList<PendingOutgoingMessage> = persistentListOf(),
     val highlightedMessageId: Uuid? = null,
+    /** Pinned-messages bar for the open conversation, newest-first. Empty hides the bar.
+     *  Populated reactively from [id.homebase.chat.services.ChatMessageStream.observePinnedMessages]. */
+    val pinnedMessages: ImmutableList<MessageUiModel> = persistentListOf(),
+    /** Which pin the collapsed bar currently shows; advances (mod size) on tap.
+     *  Always clamped into [pinnedMessages]. */
+    val currentPinIndex: Int = 0,
     /** True if more messages exist before the loaded window's first message.
      *  Drives the top loading-spinner row and the proximity hook's
      *  loadOlder trigger. */
@@ -179,6 +185,9 @@ sealed interface MessageListUiSheet {
         val selectedRecipients: ImmutableList<RecipientModel> = persistentListOf(),
         val searchTextState: TextFieldState = TextFieldState(),
     ) : MessageListUiSheet
+
+    /** Full list of pinned messages for the open conversation (the "see all" panel). */
+    data object PinnedMessages : MessageListUiSheet
 }
 
 sealed interface AutoConnectRowState {

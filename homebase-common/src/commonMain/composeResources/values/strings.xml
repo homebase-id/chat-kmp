@@ -945,6 +945,16 @@
 
     <string name="chat_message_forward_to">Forward to</string>
 
+    <!-- Pinned messages bar (#887) -->
+    <string name="chat_pin_message">Pin</string>
+    <string name="chat_unpin_message">Unpin</string>
+    <string name="chat_pinned_messages_title">Pinned messages</string>
+    <string name="chat_pinned_messages_empty">No pinned messages</string>
+    <string name="chat_pinned_bar_count">%1$d of %2$d</string>
+    <string name="chat_pinned_icon">Pinned</string>
+    <string name="chat_pinned_bar_cycle">Show next pinned message</string>
+    <string name="chat_pinned_bar_open_list">Show all pinned messages</string>
+
     <!-- Block / Report -->
     <string name="chat_message_block">Block</string>
     <string name="chat_message_report">Report</string>

@@ -186,6 +186,23 @@ sealed interface ConversationListUiAction {
     data class ToggleReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
         ConversationListUiAction
 
+    // region Pinned messages bar (#887)
+
+    /** Long-press menu pin/unpin toggle. Routes to pin or unpin based on the
+     *  message's current [MessageUiModel.isPinned] state. */
+    data class TogglePinMessage(val messageId: Uuid) : ConversationListUiAction
+
+    /** Remove a message from the pinned bar (trailing icon in the bar / panel). */
+    data class UnpinMessage(val messageId: Uuid) : ConversationListUiAction
+
+    /** Open the "all pinned messages" bottom-sheet panel. */
+    data object ShowPinnedMessagesSheet : ConversationListUiAction
+
+    /** Tap the collapsed bar: advance to the next pin and scroll+highlight it. */
+    data object CyclePinnedBar : ConversationListUiAction
+
+    // endregion
+
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class ScrollToMessageId(val messageId: Uuid) : ConversationListUiAction
