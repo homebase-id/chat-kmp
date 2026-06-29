@@ -1438,6 +1438,7 @@
     <string name="contactbook_detail_emergency_badge">Emergency contact</string>
     <string name="contactbook_detail_location_data_as_of">Location data as of %1$s</string>
     <string name="contactbook_detail_bio">Bio</string>
+    <string name="contactbook_detail_experience">Experience</string>
     <string name="contactbook_detail_social">Social</string>
     <string name="contactbook_detail_location">Location</string>
     <string name="contactbook_detail_circles">Circles</string>

@@ -4,8 +4,10 @@ package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,9 +48,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
@@ -58,8 +63,10 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.api.client.contacts.ContactExperience
 import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_detail_bio
 import id.homebase.resources.contactbook_detail_social
@@ -68,6 +75,7 @@ import id.homebase.resources.contactbook_detail_circles
 import id.homebase.resources.contactbook_detail_circles_connect
 import id.homebase.resources.contactbook_detail_circles_empty
 import id.homebase.resources.contactbook_detail_contact_details
+import id.homebase.resources.contactbook_detail_experience
 import id.homebase.resources.contactbook_detail_location
 import id.homebase.resources.contactbook_detail_override_none
 import id.homebase.resources.contactbook_detail_override_synced
@@ -346,6 +354,67 @@ fun BioSection(shortBio: String?) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
     )
+}
+
+/**
+ * The synced "Experience" attribute (from the contact's `ext_data` payload): a plain-text title, a
+ * rich-text full bio flattened to plain text, and an optional link. Renders nothing when absent.
+ */
+@Composable
+fun ExperienceSection(experience: ContactExperience?, image: ByteArray?) {
+    val exp = experience ?: return
+    val title = exp.title?.takeIf { it.isNotBlank() }
+    val body = exp.fullBioText?.takeIf { it.isNotBlank() }
+    val link = exp.link?.takeIf { it.isNotBlank() }
+    if (title == null && body == null && link == null && image == null) return
+
+    Spacer(modifier = Modifier.height(20.dp))
+    Text(
+        text = stringResource(MR.string.contactbook_detail_experience),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        image?.let {
+            AsyncImage(
+                model = it,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = 200.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+        }
+        title?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        body?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        link?.let {
+            val uriHandler = getUriHandler()
+            val url = if (it.startsWith("http", ignoreCase = true)) it else "https://$it"
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clickable { uriHandler.openUrl(url) },
+            )
+        }
+    }
 }
 
 /**

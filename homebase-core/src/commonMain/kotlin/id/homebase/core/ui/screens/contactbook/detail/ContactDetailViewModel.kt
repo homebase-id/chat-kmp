@@ -22,6 +22,7 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
+import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
@@ -74,6 +75,32 @@ class ContactDetailViewModel(
     /** The synced (pre-override) entry for the contact in view — the baseline for save diffs. */
     private var syncedEntry: ContactBookEntry? = null
 
+    /** (uniqueId, versionTag) we last fetched ext_data for, to avoid re-fetching unchanged. */
+    private var extLoadedFor: Pair<Uuid, Uuid?>? = null
+
+    /**
+     * Fetches the on-demand `ext_data` payload (Experience / Bio rich-text) once per contact version
+     * and folds the Experience attribute into state. [ContactRepository.loadExtData] is a cheap no-op
+     * (returns null) when the contact has no such payload.
+     */
+    private fun loadExtData(contact: Contact) {
+        val key = contact.uniqueId to contact.versionTag
+        if (extLoadedFor == key) return
+        extLoadedFor = key
+        viewModelScope.launch {
+            val experience = contactRepository.loadExtData(contact)?.experience
+            _uiState.update { it.copy(experience = experience, experienceImage = null) }
+            // The Experience attribute references its image by payload key; fetch the bytes too.
+            val imageKey = experience?.imageKey?.takeIf { it.isNotBlank() }
+            if (imageKey != null) {
+                val bytes = contactRepository.loadPayloadBytes(contact, imageKey)
+                if (bytes != null && _uiState.value.experience === experience) {
+                    _uiState.update { it.copy(experienceImage = bytes) }
+                }
+            }
+        }
+    }
+
     private val route = savedStateHandle.toRoute<Route.ContactBookDetail>()
 
     /** The drive whose temporal grant gates "can I locate this contact in an emergency?". */
@@ -123,10 +150,14 @@ class ContactDetailViewModel(
                 val synced = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
                 syncedEntry = synced
-                // Load this contact's override (bulk app-data tier) on first view; cheap no-op after.
+                // Load this contact's override (bulk app-data tier) and its on-demand ext_data
+                // (Experience/Bio) on first view; cheap no-ops after.
                 contactRepository.contacts.value
                     .firstOrNull { it.uniqueId.toString() == route.uniqueId }
-                    ?.let { overrideStore.hydrate(it) }
+                    ?.let { rawContact ->
+                        overrideStore.hydrate(rawContact)
+                        loadExtData(rawContact)
+                    }
                 val entry = synced?.withOverride(overrides[synced.uniqueId])
                 val domain = entry?.odinId
                 val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
@@ -322,14 +353,16 @@ class ContactDetailViewModel(
         val synced = syncedEntry
         _uiState.update { it.copy(editOpen = false) }
         viewModelScope.launch {
-            // A connected contact's profile fields are re-synced (and overwritten) by the server, so
-            // its edits — and any additional phones/emails for any contact — are stored as an
-            // enrichment-proof override; non-connected primaries write to content as normal.
+            // Any *identity* contact (has an odinId) is enriched on sync — from the peer's
+            // ProfileDrive when connected, else from their public profile card — and the merge
+            // overwrites content per-leaf, so its edits must go to the enrichment-proof override
+            // (not just connected ones; connection status can also flip later). Only a pure manual
+            // contact (no odinId) is never synced, so its primaries write to content as normal.
             val result = if (editing != null && synced != null) {
                 saveContactEdit(
                     store = overrideStore,
                     repo = contactRepository,
-                    useOverride = _uiState.value.isConnected && synced.versionTag != null,
+                    useOverride = !synced.odinId.isNullOrBlank() && synced.versionTag != null,
                     editing = editing,
                     synced = synced,
                     draft = action.draft,

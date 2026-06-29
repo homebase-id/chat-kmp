@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.contacts.ContactExperience
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
@@ -49,6 +50,13 @@ data class ContactDetailUiState(
      * haven't verified, have no access, or the drive is empty.
      */
     val locateNewestDataAt: UnixTimeUtc? = null,
+    /**
+     * The synced "Experience" attribute from the contact's on-demand `ext_data` payload (title /
+     * full bio / link). Null until loaded, or when the contact has none.
+     */
+    val experience: ContactExperience? = null,
+    /** Decrypted bytes of the Experience image (its `experience_image` payload), if any. */
+    val experienceImage: ByteArray? = null,
 ) {
     val hasOdinId: Boolean get() = !entry?.odinId.isNullOrBlank()
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected

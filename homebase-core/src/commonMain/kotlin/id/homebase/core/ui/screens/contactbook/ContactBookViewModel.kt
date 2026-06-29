@@ -381,7 +381,9 @@ class ContactBookViewModel(
                 saveContactEdit(
                     store = overrideStore,
                     repo = repo,
-                    useOverride = editing.odinId?.lowercase() in uiState.value.connectedOdinIds,
+                    // Any identity contact (has odinId) is enriched on sync and would be overwritten;
+                    // only a pure manual contact writes primaries to content.
+                    useOverride = !editing.odinId.isNullOrBlank() && editing.versionTag != null,
                     editing = editing,
                     synced = editing,
                     draft = draft,

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAddAlt1
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -90,6 +91,7 @@ import id.homebase.resources.contactbook_detail_disconnect_message
 import id.homebase.resources.contactbook_detail_disconnect_title
 import id.homebase.resources.contactbook_detail_edit
 import id.homebase.resources.contactbook_detail_message
+import id.homebase.resources.contactbook_detail_sync
 import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
@@ -223,6 +225,7 @@ fun ContactDetailScreen(
                         )
 
                         BioSection(entry.shortBio)
+                        ExperienceSection(uiState.experience, uiState.experienceImage)
                         SocialSection(entry.socialHandles)
 
                         Spacer(modifier = Modifier.height(28.dp))
@@ -363,27 +366,45 @@ private fun DetailHeader(
             )
         }
 
-        // Connection status line (only for Homebase contacts).
+        // Connection status line (only for Homebase contacts), with a small inline "sync profile"
+        // affordance — identity contacts pull their details from the profile, so a quick re-sync
+        // belongs right next to the status.
         if (uiState.hasOdinId) {
             val statusColor = when {
                 connected || requestIncoming -> MaterialTheme.colorScheme.primary
                 blocked -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
-            Text(
-                text = stringResource(
-                    when {
-                        connected -> MR.string.contactbook_connected
-                        requestIncoming -> MR.string.contactbook_detail_request_incoming
-                        requestOutgoing -> MR.string.contactbook_detail_request_outgoing
-                        pending -> MR.string.contactbook_detail_pending
-                        blocked -> MR.string.contactbook_detail_blocked
-                        else -> MR.string.contactbook_detail_not_connected
-                    }
-                ),
-                style = MaterialTheme.typography.labelMedium,
-                color = statusColor,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        when {
+                            connected -> MR.string.contactbook_connected
+                            requestIncoming -> MR.string.contactbook_detail_request_incoming
+                            requestOutgoing -> MR.string.contactbook_detail_request_outgoing
+                            pending -> MR.string.contactbook_detail_pending
+                            blocked -> MR.string.contactbook_detail_blocked
+                            else -> MR.string.contactbook_detail_not_connected
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = statusColor,
+                )
+                IconButton(
+                    onClick = { onAction(ContactDetailAction.SyncClicked) },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.Sync,
+                        contentDescription = stringResource(MR.string.contactbook_detail_sync),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         }
 
         // Emergency-contact indicator — visible whenever this contact is one of our emergency

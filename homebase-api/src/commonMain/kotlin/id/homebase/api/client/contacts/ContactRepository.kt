@@ -224,6 +224,26 @@ class ContactRepository(
         }
     }
 
+    /**
+     * Fetches and decrypts an arbitrary named payload from a contact file (e.g. the image referenced
+     * by an Experience attribute's `experience_image` key). Returns the raw decrypted bytes, or null
+     * when the [payloadKey] isn't present, the row is optimistic (no [Contact.fileId]), or the
+     * fetch fails. Like [loadExtData], call only on demand.
+     */
+    suspend fun loadPayloadBytes(contact: Contact, payloadKey: String): ByteArray? {
+        if (payloadKey.isBlank() || payloadKey !in contact.payloadKeys) return null
+        val fileId = contact.fileId ?: return null
+        val keyHeader = contact.keyHeader ?: return null
+        return try {
+            contactPayloadReader.getPayloadBytes(driveId, fileId, payloadKey, keyHeader)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e, TAG) { "loadPayloadBytes($payloadKey) failed for ${contact.uniqueId}" }
+            null
+        }
+    }
+
     // ------------------------------------------------------------
     // Write (V2 controller) — each applies an optimistic update
     // ------------------------------------------------------------

@@ -135,9 +135,10 @@ suspend fun saveContactDraft(
 /**
  * Persists an edit, routing each piece to the store that survives:
  *
- *  - **Primary fields** (name/phone/email/location/birthday): for a connected contact they go into
- *    this app's enrichment-proof override (the server would overwrite the content on the next sync);
- *    for a non-connected / manual contact they go to content as normal (nothing overwrites them).
+ *  - **Primary fields** (name/phone/email/location/birthday): for an *identity* contact (has an
+ *    odinId — enriched on every sync, from the peer's ProfileDrive when connected or their public
+ *    profile card otherwise) they go into this app's enrichment-proof override; for a pure manual
+ *    contact (no odinId, never synced) they go to content as normal.
  *  - **Additional phones / emails** always go into the override — the contact schema has only one
  *    phone/email slot everywhere, so extras can only live in our app-private blob.
  *
