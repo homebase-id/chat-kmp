@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -64,6 +65,7 @@ import id.homebase.resources.live_share_30m
 import id.homebase.resources.live_share_24h
 import id.homebase.resources.live_share_4h
 import id.homebase.resources.live_share_active
+import id.homebase.resources.live_share_duration_prompt
 import id.homebase.resources.live_share_ended
 import id.homebase.resources.share_live_location
 import id.homebase.resources.stop_sharing
@@ -516,6 +518,13 @@ private fun LiveShareActionArea(
                         )
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        Text(
+                            text = stringResource(MR.string.live_share_duration_prompt),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                        HorizontalDivider()
                         DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
                             DropdownMenuItem(
                                 text = { Text(stringResource(labelRes)) },
