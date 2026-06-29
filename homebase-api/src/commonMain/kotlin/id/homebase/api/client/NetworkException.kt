@@ -35,8 +35,25 @@ fun Throwable.isTransientNetworkFailure(): Boolean {
     val seen = HashSet<Throwable>()
     var cur: Throwable? = this
     while (cur != null && seen.add(cur)) {
-        if (cur is NetworkException || cur is IOException) return true
+        if (cur is NetworkException || cur is IOException || cur.isConnectTimeNetworkType()) return true
         cur = cur.cause
     }
     return false
+}
+
+/**
+ * True when [this] is an engine connect-time failure that is NOT an [IOException] and thus
+ * bypasses the IOException-shaped catch/classify paths. Ktor CIO (Desktop/JVM) throws
+ * `java.nio.channels.UnresolvedAddressException` (an `IllegalArgumentException`, not an
+ * `IOException`) on DNS failure / no network — the Desktop variant of the OkHttp
+ * `UnknownHostException` already covered above.
+ *
+ * Matched by qualified class name because this code is in `commonMain`, which cannot
+ * reference the JVM-only type. Mirrors [isMlKitTeardownFailure]'s class-name approach. The
+ * match is narrow (the specific class name, not its `IllegalArgumentException` supertype) to
+ * avoid masking unrelated bugs.
+ */
+private fun Throwable.isConnectTimeNetworkType(): Boolean {
+    val name = this::class.qualifiedName?.lowercase() ?: return false
+    return "unresolvedaddressexception" in name
 }

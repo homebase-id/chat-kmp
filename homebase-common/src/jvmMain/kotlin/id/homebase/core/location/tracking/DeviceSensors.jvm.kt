@@ -7,4 +7,6 @@ private object NoDeviceSensors : DeviceSensors {
     override suspend fun batteryPercent(): Int? = null
     override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample =
         StepSample(null, null)
+
+    override fun isPowerSaveMode(): Boolean = false
 }

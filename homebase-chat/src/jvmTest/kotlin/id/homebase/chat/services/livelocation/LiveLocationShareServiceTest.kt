@@ -27,6 +27,7 @@ class LiveLocationShareServiceTest {
     private class NoSensors : DeviceSensors {
         override suspend fun batteryPercent(): Int? = null
         override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?) = StepSample(null, null)
+        override fun isPowerSaveMode(): Boolean = false
     }
 
     private class Harness {

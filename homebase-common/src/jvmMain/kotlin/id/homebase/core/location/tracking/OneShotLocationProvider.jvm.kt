@@ -4,5 +4,6 @@ actual fun createOneShotLocationProvider(): OneShotLocationProvider = Unavailabl
 
 /** Desktop has no GPS. */
 private object UnavailableOneShotLocationProvider : OneShotLocationProvider {
-    override suspend fun getCurrentFix(timeoutMs: Long): GpsFixResult = GpsFixResult.Unavailable
+    override suspend fun lastKnownFix(): RawLocationPoint? = null
+    override suspend fun acquireFreshFix(timeoutMs: Long): GpsFixResult = GpsFixResult.Unavailable
 }
