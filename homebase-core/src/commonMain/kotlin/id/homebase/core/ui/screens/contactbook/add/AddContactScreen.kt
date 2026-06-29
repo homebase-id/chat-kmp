@@ -158,21 +158,25 @@ fun AddContactScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             AddContactAvatar(uiState, photoBytes)
-            // A resolved identity already carries its avatar from the Homebase profile, so prompting
-            // to add one is redundant — say where it comes from instead. Manual mode / unresolved /
-            // a hand-picked photo still gets the picker.
-            if (uiState.resolution is RecipientResolution.Resolved && photoBytes == null) {
-                Text(
-                    text = stringResource(MR.string.add_contact_photo_from_profile),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            } else {
-                TextButton(onClick = { photoPicker.launch() }) {
-                    Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(stringResource(MR.string.contactbook_edit_change_photo))
+            // The photo picker only belongs to manual entry. In identity mode the avatar comes from
+            // the Homebase profile, so we never prompt to add one — we just say where it's from once
+            // the identity resolves.
+            when {
+                uiState.mode == AddContactMode.MANUAL -> {
+                    TextButton(onClick = { photoPicker.launch() }) {
+                        Icon(Icons.Outlined.AddAPhoto, contentDescription = null)
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(stringResource(MR.string.contactbook_edit_change_photo))
+                    }
+                }
+
+                uiState.resolution is RecipientResolution.Resolved -> {
+                    Text(
+                        text = stringResource(MR.string.add_contact_photo_from_profile),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
