@@ -25,8 +25,11 @@ private object AppleDeviceSensors : DeviceSensors {
         return (level * 100f).toInt().coerceIn(0, 100)
     }
 
+    // Kotlin/Native names this boolean ObjC property after its `is`-prefixed getter, as a property:
+    // `isLowPowerModeEnabled` (no parens). The declared name `lowPowerModeEnabled` and the function
+    // form `isLowPowerModeEnabled()` both fail to resolve.
     override fun isPowerSaveMode(): Boolean =
-        NSProcessInfo.processInfo.isLowPowerModeEnabled()
+        NSProcessInfo.processInfo.isLowPowerModeEnabled
 
     override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample {
         // iOS answers historical intervals directly — no cumulative needed.
