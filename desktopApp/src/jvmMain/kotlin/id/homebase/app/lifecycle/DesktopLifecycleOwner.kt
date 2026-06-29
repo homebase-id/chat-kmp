@@ -8,6 +8,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import co.touchlab.kermit.Logger
+import id.homebase.core.logging.StartupLogger
 import java.awt.event.WindowEvent
 import java.awt.event.WindowFocusListener
 
@@ -28,6 +29,10 @@ class DesktopLifecycleOwner : LifecycleOwner {
 
     fun onWindowVisible() {
         Logger.d(tag = "DesktopLifecycleOwner") { "onWindowVisible -> STARTED" }
+        // Startup-timing anchor: the first occurrence marks the window becoming visible
+        // (first-paint proxy) so process-start -> window-visible can be sized from the log
+        // timestamps. See StartupLogger / issue #888.
+        StartupLogger.checkpoint("window visible (DesktopLifecycleOwner STARTED)")
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
     }
 

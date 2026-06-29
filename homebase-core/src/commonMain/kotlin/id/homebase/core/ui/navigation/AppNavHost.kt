@@ -106,6 +106,11 @@ import id.homebase.core.ui.screens.moments.MomentsUiEvent
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.moments.services.MomentsUserStateStore
+import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.moments.services.MomentGroupService
+import id.homebase.core.ui.screens.vault.VaultStream
+import id.homebase.core.ui.screens.location.LocationTrackUploaderService
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.LocationScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
@@ -202,6 +207,44 @@ fun AppNavHost(
     val contactBookIconVisible by contactBookPreferences.iconVisible.collectAsStateWithLifecycle()
     val contactBookOnboardingComplete by contactBookPreferences.onboardingComplete.collectAsStateWithLifecycle()
     val contactBookViewModel: ContactBookViewModel = koinViewModel()
+
+    // region Deferred add-on cold loads (issue #888)
+    //
+    // These singletons used to cold-load (each a QueryBatch DB read + JSON-header
+    // deserialize) eagerly in AppModule.onPostAuthenticated, which fires the moment auth
+    // resolves — racing the conversation-list cold load and the Desktop first frame on the
+    // shared DB read-connection pool. Triggering them from a LaunchedEffect runs them AFTER
+    // the first composition commits, and gating on the add-on's icon visibility means a user
+    // who hasn't activated the add-on never pays for its cold load at all. start() is
+    // idempotent / safe to call once per activation; the streams reset themselves on
+    // SessionEnded. The conversation list (the landing screen) is intentionally NOT deferred.
+    val vaultStream = koinInject<VaultStream>()
+    val momentsUserStateStore = koinInject<MomentsUserStateStore>()
+    val momentsRecipientLookupService = koinInject<MomentsRecipientLookupService>()
+    val momentGroupService = koinInject<MomentGroupService>()
+    val locationTrackUploaderService = koinInject<LocationTrackUploaderService>()
+
+    LaunchedEffect(isAuthenticated, vaultIconVisible) {
+        if (isAuthenticated && vaultIconVisible) vaultStream.start()
+    }
+    LaunchedEffect(isAuthenticated, momentsIconVisible) {
+        if (isAuthenticated && momentsIconVisible) {
+            // Order matches the former onPostAuthenticated ordering: the MRU/user-state store
+            // starts before the recipient lookup whose combine() reads its stableKeys.
+            momentsUserStateStore.start()
+            momentsRecipientLookupService.start()
+            momentsFeedService.start()
+            momentGroupService.start()
+        }
+    }
+    LaunchedEffect(isAuthenticated) {
+        // Location uploader has a background-upload duty independent of any screen, so it is
+        // not icon-gated — only moved off the first-frame path. start() runs the retention
+        // sweep + locationPoint.countUnmarked (the pending-upload badge count).
+        if (isAuthenticated) locationTrackUploaderService.start()
+    }
+    // endregion
+
     val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible, contactBookIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)

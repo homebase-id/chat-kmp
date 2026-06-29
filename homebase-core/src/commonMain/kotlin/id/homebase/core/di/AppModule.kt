@@ -462,19 +462,16 @@ val appModule = module {
                 // never cancelled here; logout clears it in-stream via SessionEnded.
                 get<LiveLocationReceiveStore>().reset()
 
-                // Preload conversations and contacts from local DB while navigation
-                // and Compose composition are still in progress, saving ~800ms.
+                // Preload the conversation list (the landing screen) from local DB while
+                // navigation and Compose composition are still in progress. This MUST stay on
+                // the cold-start path — it's what the user sees first.
                 val conversationStream = get<ConversationStream>()
                 conversationStream.reset()
                 conversationStream.start()
                 get<ContactService>().start()
-                // MRU store before lookup: lookup's combine() reads
-                // mruStore.stableKeys, and started-first means the cold-load
-                // emits before the lookup builds its first list.
-                get<MomentsUserStateStore>().start()
-                get<MomentsRecipientLookupService>().start()
-                get<MomentsFeedService>().start()
-                get<MomentGroupService>().start()
+                // Moments cold loads (feed/groups/recipient-lookup/user-state) are deferred OFF
+                // the cold-start path to AppNavHost, gated on the Moments add-on being active
+                // (issue #888). They each reset themselves on SessionEnded, so no reset() here.
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
 
@@ -523,13 +520,15 @@ val appModule = module {
                 // endregion
 
                 get<VaultPreferences>().reset()
-                get<VaultStream>().apply { reset(); start() }
-                // Contact Book: re-seed prefs + reload the contact list for the new
-                // identity (singletons survive logout — clear stale in-memory state).
+                // VaultStream cold load is deferred OFF the cold-start path — it loads lazily
+                // when the Vault screen is first opened (issue #888). The singleton resets
+                // itself on SessionEnded, so no reset() is needed here.
+                // Contact Book: re-seed prefs for the new identity. The contact list itself
+                // loads lazily via ContactBookViewModel.ensureLoaded() (and resets on
+                // SessionEnded), so no eager ContactRepository start()/reset() here (issue #888).
                 get<ContactBookPreferences>().reset()
-                get<ContactRepository>().apply { reset(); start() }
-                // Hydrate the saved-stickers tray for the new identity (mirror Vault).
-                get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
+                // StickerStream cold load is deferred to the sticker tray opening
+                // (EnsureStickerDriveMounted -> activate() -> start()); it resets on SessionEnded.
 
                 // Location add-on: re-seed prefs from the (possibly wiped) DB,
                 // clear in-memory capture state, restart the flusher's outbox
@@ -537,7 +536,11 @@ val appModule = module {
                 // turned the master switch off. Order matters: prefs first.
                 get<LocationPreferences>().reset()
                 get<LocationPointStore>().reset()
-                get<LocationTrackUploaderService>().apply { reset(); start() }
+                // Clear in-memory counts here, but defer start() (retention sweep +
+                // locationPoint.countUnmarked DB read) OFF the cold-start path to AppNavHost,
+                // after the first frame (issue #888). It has no SessionEnded handler, so the
+                // reset() stays here.
+                get<LocationTrackUploaderService>().reset()
                 // Live Relay debug-flow: re-seed the live-share roster from this identity's DB FIRST
                 // (it must survive app open/kill until expiry), so the coordinator's reset() below sees
                 // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().

@@ -52,6 +52,7 @@ import id.homebase.resources.update_available
 import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
+import java.lang.management.ManagementFactory
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
@@ -90,6 +91,13 @@ fun main() {
     // Set up crash handler
     setupCrashHandler()
     StartupLogger.checkpoint("main() entered, file logger online")
+    // Anchor the startup chain to the JVM process start. RuntimeMXBean.startTime is set
+    // before main() runs, so this lets process-start -> first-frame -> window-visible be sized
+    // purely from the log timestamps (the very top of main() can't log — the file logger is
+    // not online yet). See StartupLogger.
+    StartupLogger.checkpoint(
+        "JVM process started ${System.currentTimeMillis() - ManagementFactory.getRuntimeMXBean().startTime}ms before this line",
+    )
 
     // Detect UI-thread (AWT EDT) stalls and log the EDT stack to homebase.log. Desktop has no
     // OS-level ANR, so without this a freeze leaves no evidence at all.
