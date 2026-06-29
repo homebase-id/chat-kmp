@@ -26,7 +26,7 @@ private object AppleDeviceSensors : DeviceSensors {
     }
 
     override fun isPowerSaveMode(): Boolean =
-        NSProcessInfo.processInfo.lowPowerModeEnabled
+        NSProcessInfo.processInfo.isLowPowerModeEnabled()
 
     override suspend fun stepsSince(prevPointTimeMs: Long?, lastCumulative: Long?): StepSample {
         // iOS answers historical intervals directly — no cumulative needed.
