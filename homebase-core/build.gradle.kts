@@ -66,7 +66,9 @@ kotlin {
             api(project(":homebase-api"))
             api(project(":homebase-common"))
             api(project(":image-editor-ui"))
-            implementation(project(":homebase-upload"))
+            // `api` (not implementation): upload types appear in core's public API (Vault/Moments
+            // senders, etc.) used by the app modules, so they must be transitively visible.
+            api(project(":homebase-upload"))
             implementation(project(":homebase-auth"))
             implementation(project(":homebase-chat"))
 
