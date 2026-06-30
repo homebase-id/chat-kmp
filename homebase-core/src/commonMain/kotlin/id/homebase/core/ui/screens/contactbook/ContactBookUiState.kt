@@ -11,8 +11,31 @@ import kotlin.uuid.Uuid
 /** The two sections of the unified Contacts screen. */
 enum class ContactTab { CONTACTS, CIRCLES }
 
-/** People-list pill: everyone, introduced connections, or confirmed (direct) connections. */
-enum class ContactFilter { ALL, INTRODUCED, CONFIRMED }
+/**
+ * People-list pill: everyone, introduced connections, confirmed (direct) connections, or
+ * pending connection requests (incoming + outgoing, merged).
+ */
+enum class ContactFilter { ALL, INTRODUCED, CONFIRMED, REQUESTS }
+
+/** Which way a pending connection request points relative to the signed-in identity. */
+enum class RequestDirection {
+    /** Someone wants to connect with me (I can Accept / Reject). */
+    INCOMING,
+    /** I asked to connect with them (I can Cancel). */
+    OUTGOING,
+}
+
+/**
+ * A pending connection request projected onto a [ContactBookEntry] for the Requests pill. The
+ * entry resolves to a saved contact when we have one, else a synthetic display-only entry for
+ * the identity. [receivedAtMs] drives the newest-first ordering.
+ */
+@Immutable
+data class PendingRequestEntry(
+    val entry: ContactBookEntry,
+    val direction: RequestDirection,
+    val receivedAtMs: Long,
+)
 
 /** Members of one circle, shown in a sheet/dialog. */
 @Immutable
@@ -76,6 +99,8 @@ data class ContactBookUiState(
     val introduced: List<ContactBookEntry> = emptyList(),
     /** Confirmed filter: direct connections (Connected, not via an introduction). */
     val confirmed: List<ContactBookEntry> = emptyList(),
+    /** Requests filter: pending connection requests (incoming + outgoing), newest first. */
+    val requests: List<PendingRequestEntry> = emptyList(),
     /** Lowercased contact-domain → introducer display name, for the "Introduced by" row line. */
     val introducedByDomain: Map<String, String> = emptyMap(),
     /** Circles tab. */
@@ -109,6 +134,8 @@ sealed interface ContactBookUiAction {
     data class SaveContact(
         val draft: ContactDraft,
         val editing: ContactBookEntry?,
+        val additionalPhones: List<String> = emptyList(),
+        val additionalEmails: List<String> = emptyList(),
         val photo: PlatformFile? = null,
     ) : ContactBookUiAction
     data class MessageClicked(val entry: ContactBookEntry) : ContactBookUiAction
@@ -125,6 +152,8 @@ sealed interface ContactBookUiEvent {
     data class OpenConversation(val conversationId: Uuid) : ContactBookUiEvent
     /** Open the full-screen detail for a contact. */
     data class OpenDetail(val uniqueId: String, val odinId: String?) : ContactBookUiEvent
+    /** Open the full-screen Add Contact flow (lead-with-Homebase-ID). */
+    data object OpenAddContact : ContactBookUiEvent
     data class Error(val error: ContactBookError) : ContactBookUiEvent
     /** User skipped onboarding — pop back out of the contacts tab. */
     data object CloseOnboarding : ContactBookUiEvent

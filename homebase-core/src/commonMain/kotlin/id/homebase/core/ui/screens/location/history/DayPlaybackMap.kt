@@ -58,8 +58,7 @@ private const val DAY_MS = 24L * 60 * 60 * 1000
  * tile provider — so it can show the local History day, or any pulled day from
  * another identity (e.g. a family member during an emergency).
  *
- * [subjectName], when set, is shown as a header so the viewer is sure whose day
- * they're looking at — pass the person's name for pulled data, null for one's own.
+ * Whose day this is lives in the host screen's title (see #894), not here.
  *
  * @param dayStartMs device-local midnight of the shown day (anchors the 24h slider).
  */
@@ -69,7 +68,6 @@ fun DayPlaybackMap(
     dayStartMs: Long,
     showMapTiles: Boolean,
     modifier: Modifier = Modifier,
-    subjectName: String? = null,
     isLoading: Boolean = false,
     /** Whether personal location history is on. Drives the empty-state "turn on tracking" hint. */
     allowLocationHistory: Boolean = true,
@@ -108,17 +106,6 @@ fun DayPlaybackMap(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (subjectName != null) {
-            Text(
-                text = subjectName,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                textAlign = TextAlign.Center,
-            )
-        }
-
         // ── Trace canvas ──
         // Card clips and insets the map so it doesn't run into whatever sits
         // above it or the stats/scrubber below.
@@ -240,7 +227,7 @@ fun DayPlaybackMap(
 /**
  * Convenience overload taking one subject's flat day-point list (as the emergency
  * feature would pull for a family member) — gap-segments it into a single trace and
- * plays it back. [subjectName] is shown as the header. Points keep `steps`/`bat`.
+ * plays it back. Points keep `steps`/`bat`. Whose day it is lives in the host title.
  */
 @Composable
 fun DayPlaybackMap(
@@ -249,7 +236,6 @@ fun DayPlaybackMap(
     dayStartMs: Long,
     showMapTiles: Boolean,
     modifier: Modifier = Modifier,
-    subjectName: String? = null,
     isLoading: Boolean = false,
 ) {
     val traces = remember(points, subjectId) {
@@ -260,7 +246,6 @@ fun DayPlaybackMap(
         dayStartMs = dayStartMs,
         showMapTiles = showMapTiles,
         modifier = modifier,
-        subjectName = subjectName,
         isLoading = isLoading,
     )
 }
