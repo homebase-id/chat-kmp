@@ -49,6 +49,26 @@ fun ContactBookEntry.withOverride(overlay: ContactFieldOverlay?): ContactBookEnt
 }
 
 /**
+ * The synced (pre-override) baseline as a [ContactDraft], reconstructed from an override-applied
+ * entry: for each field, the captured synced original ([ContactBookEntry.syncedOverlay]) when it was
+ * overridden, else the entry's current value (which already equals the synced value). Used by the
+ * editor to show "from their profile" / "you're overriding …" per field.
+ */
+fun ContactBookEntry.syncedDraft(): ContactDraft {
+    val applied = toDraft()
+    val s = syncedOverlay ?: return applied
+    return applied.copy(
+        givenName = s.givenName ?: applied.givenName,
+        surname = s.surname ?: applied.surname,
+        phone = s.phone ?: applied.phone,
+        email = s.email ?: applied.email,
+        city = s.city ?: applied.city,
+        country = s.country ?: applied.country,
+        birthday = s.birthday ?: applied.birthday,
+    )
+}
+
+/**
  * Builds the sparse override to persist from an edit [draft] relative to [synced]'s values: a field
  * is included only when it differs from the synced value (so unchanged fields don't shadow the
  * profile). Baselines on [ContactBookEntry.toDraft] so it matches how the form was seeded.
