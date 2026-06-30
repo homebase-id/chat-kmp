@@ -613,6 +613,7 @@ fun MessageBubbleRaw(
                                 bottom = 4.dp,
                             ),
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     message.messageAppData.replyPreview?.let { reply ->
@@ -710,6 +711,7 @@ fun MessageBubbleRaw(
                                         bottom = 4.dp,
                                     ),
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                             // Inline reply preview if this message is a reply

@@ -1385,6 +1385,7 @@
     <!-- Contact Book (contact manager add-on) -->
     <string name="contactbook_label">Contacts</string>
     <string name="contactbook_home_subtitle">Manage your address book</string>
+    <string name="contactbook_self_you">%1$s (you)</string>
     <string name="contactbook_onboarding_title">Your contacts, in one place</string>
     <string name="contactbook_onboarding_body_1">Keep your contacts on your private Homebase cloud and reach the people you chat with. Import from your phone, or add contacts by hand.</string>
     <string name="contactbook_onboarding_body_2">Your contacts are encrypted on your personal Homebase server and sync across your devices.</string>

@@ -28,7 +28,7 @@ internal val HttpBreadcrumbPlugin = createClientPlugin("HttpBreadcrumb") {
 
 object HttpClientProvider {
     fun create(): HttpClient {
-        return HttpClient {
+        return createPlatformHttpClient {
             install(HttpBreadcrumbPlugin)
 
             install(ContentNegotiation) {

@@ -4,6 +4,9 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.auth.initials
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.data.ContactUiModel
@@ -26,6 +29,7 @@ class CreateConversationViewModel(
     private val conversationWriterService: ConversationService,
     private val connectionService: ConnectionService,
     private val driveSyncManager: DriveSyncManager,
+    private val ownerSessionRepository: OwnerSessionRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -37,10 +41,13 @@ class CreateConversationViewModel(
     init {
         viewModelScope.launch {
             contactService.start()
-            contactService.contacts
-                .combine(snapshotFlow { searchTextState.text.toString() }) { contacts, query ->
-                    filterAndGroup(contacts, query)
-                }
+            combine(
+                contactService.contacts,
+                snapshotFlow { searchTextState.text.toString() },
+                ownerSessionRepository.user,
+            ) { contacts, query, self ->
+                filterAndGroup(contacts, query, self)
+            }
                 .catch {
                     sendEvent(
                         CreateConversationUiEvent.ShowErrorMessage(
@@ -119,41 +126,68 @@ class CreateConversationViewModel(
         _uiState.update { it.copy(uiEvent = event) }
     }
 
-    private fun filterAndGroup(
-        contacts: List<ContactUiModel>,
-        query: String
-    ): List<CreateConversationListItem> {
-        val result = mutableListOf<CreateConversationListItem>()
-
-        // Only display new group and note to self options if not showing search results
-        if (query.isEmpty()) {
-            result.add(CreateConversationListItem.NoteToSelf)
-            result.add(CreateConversationListItem.NewContact)
-            result.add(CreateConversationListItem.NewGroup)
-        }
-
-        val contacts = if (query.isEmpty()) {
-            contacts
-        } else {
-            contacts.filter {
-                it.name.contains(
-                    query,
-                    ignoreCase = true
-                ) || it.odinId.toString().contains(
-                    query,
-                    ignoreCase = true
-                )
-            }
-        }.distinctBy { it.odinId }
-        val groups = contacts.groupBy {
-            it.name.firstOrNull()?.uppercase() ?: "#"
-        }.map { (initial, contacts) ->
-            ContactGroup(
-                initial = initial,
-                contacts = contacts
-            )
-        }.sortedBy { it.initial }
-        result.add(CreateConversationListItem.Contacts(groups))
-        return result
-    }
 }
+
+/**
+ * Builds the new-conversation list for [query]: the standing actions when idle, or — when the query
+ * matches the signed-in user — a self "Name (you)" row backed by [CreateConversationListItem.SelfRef],
+ * followed by the matching contacts. Self is excluded from the contact rows (Note to Self is the
+ * canonical self path). Pure function of its inputs so the self-search seam is unit-testable.
+ */
+internal fun filterAndGroup(
+    contacts: List<ContactUiModel>,
+    query: String,
+    self: OwnerSession?,
+): List<CreateConversationListItem> {
+    val result = mutableListOf<CreateConversationListItem>()
+
+    // Only display new group and note to self options if not showing search results
+    if (query.isEmpty()) {
+        result.add(CreateConversationListItem.NoteToSelf())
+        result.add(CreateConversationListItem.NewContact)
+        result.add(CreateConversationListItem.NewGroup)
+    } else if (self != null && self.matchesQuery(query)) {
+        // Searching your own name/handle would otherwise be a dead end (self isn't a
+        // contact) — surface Note to Self as a contact row (your avatar + "Name (you)")
+        // so the result reads as you, not a generic note.
+        result.add(
+            CreateConversationListItem.NoteToSelf(
+                CreateConversationListItem.SelfRef(
+                    odinId = self.odinId,
+                    name = self.displayLabel(),
+                    initials = self.initials(),
+                )
+            )
+        )
+    }
+
+    val filtered = if (query.isEmpty()) {
+        contacts
+    } else {
+        contacts.filter {
+            it.name.contains(query, ignoreCase = true) ||
+                it.odinId.toString().contains(query, ignoreCase = true)
+        }
+    }
+        .distinctBy { it.odinId }
+        // Never list the signed-in user as a normal contact — self routes to Note to Self above.
+        .filter { it.odinId != self?.odinId }
+    val groups = filtered.groupBy {
+        it.name.firstOrNull()?.uppercase() ?: "#"
+    }.map { (initial, groupContacts) ->
+        ContactGroup(initial = initial, contacts = groupContacts)
+    }.sortedBy { it.initial }
+    result.add(CreateConversationListItem.Contacts(groups))
+    return result
+}
+
+/** True when [query] hits the signed-in user's own display name or handle (case-insensitive). */
+internal fun OwnerSession?.matchesQuery(query: String): Boolean {
+    if (this == null || query.isBlank()) return false
+    return displayName?.contains(query, ignoreCase = true) == true ||
+        odinId.toString().contains(query, ignoreCase = true)
+}
+
+/** Display label for the signed-in user: their name, or their handle when the name isn't loaded. */
+internal fun OwnerSession.displayLabel(): String =
+    displayName?.ifBlank { null } ?: odinId.domainName
