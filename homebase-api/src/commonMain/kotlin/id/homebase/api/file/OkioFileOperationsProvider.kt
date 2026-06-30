@@ -39,6 +39,9 @@ open class OkioFileOperationsProvider(
     override fun getFileSize(path: String): Long =
         fileSystem.metadataOrNull(path.toPath())?.size ?: 0L
 
+    override suspend fun sourceExists(path: String): Boolean =
+        fileSystem.exists(path.toPath())
+
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
