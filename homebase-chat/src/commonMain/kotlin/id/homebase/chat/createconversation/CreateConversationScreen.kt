@@ -69,6 +69,7 @@ import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.connections_refresh
 import id.homebase.resources.cd_not_selected
 import id.homebase.resources.cd_selected
+import id.homebase.resources.contactbook_self_you
 import id.homebase.resources.contacts
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
@@ -247,15 +248,28 @@ fun CreateConversationUi(
                         }
 
                         is CreateConversationListItem.NoteToSelf -> {
+                            val self = item.self
                             item {
-                                ListItemAction(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    imageVector = Icons.AutoMirrored.Filled.StickyNote2,
-                                    text = stringResource(MR.string.chat_note_to_self),
-                                    onClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) }
-                                )
+                                if (self != null) {
+                                    // Self surfaced by a name search: render as a contact row with
+                                    // the user's own avatar + "Name (you)"; tap still opens note-to-self.
+                                    ContactItem(
+                                        name = stringResource(MR.string.contactbook_self_you, self.name),
+                                        subTitle = stringResource(MR.string.chat_note_to_self),
+                                        odinId = self.odinId,
+                                        avatarInitials = self.initials,
+                                        onContactClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) },
+                                    )
+                                } else {
+                                    ListItemAction(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        imageVector = Icons.AutoMirrored.Filled.StickyNote2,
+                                        text = stringResource(MR.string.chat_note_to_self),
+                                        onClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) }
+                                    )
+                                }
                             }
                         }
 
