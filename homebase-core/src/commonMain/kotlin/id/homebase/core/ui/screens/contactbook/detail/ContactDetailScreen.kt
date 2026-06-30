@@ -231,8 +231,8 @@ fun ContactDetailScreen(
                     // nothing, so the contact's layout stays consistent.
                     val tabs = listOf(
                         ContactDetailTab.DETAILS,
-                        ContactDetailTab.ABOUT,
                         ContactDetailTab.ACTIVITY,
+                        ContactDetailTab.ABOUT,
                     )
                     var selectedTab by rememberSaveable(entry.uniqueId) {
                         mutableStateOf(ContactDetailTab.DETAILS)
@@ -301,9 +301,19 @@ fun ContactDetailScreen(
 
                                 ContactDetailTab.ABOUT -> {
                                     if (uiState.hasAboutContent) {
-                                        BioSection(entry.shortBio)
-                                        ExperienceSection(uiState.experience, uiState.experienceImage)
-                                        SocialSection(entry.socialHandles)
+                                        // Bio, then social handles, then experience. All text here
+                                        // is selectable/copyable (one selection scope for the whole
+                                        // tab — it reads like a profile page).
+                                        SelectionContainer {
+                                            Column {
+                                                BioSection(entry.shortBio)
+                                                SocialSection(entry.socialHandles)
+                                                ExperienceSection(
+                                                    uiState.experience,
+                                                    uiState.experienceImage,
+                                                )
+                                            }
+                                        }
                                     } else {
                                         TabEmptyMessage(
                                             stringResource(MR.string.contactbook_detail_about_empty),
