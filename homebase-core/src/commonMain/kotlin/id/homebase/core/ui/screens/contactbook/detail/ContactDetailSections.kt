@@ -65,6 +65,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.contacts.ContactExperience
 import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -314,11 +315,13 @@ fun ContactFieldsSection(
     }
     val fields = buildList {
         fullName?.let { add(DetailFieldRow(Icons.Outlined.Person, lblName, it, syncedName)) }
-        entry.phone?.takeIf { it.isNotBlank() }
-            ?.let { add(DetailFieldRow(Icons.Outlined.Call, lblPhone, it, o?.phone)) }
+        // Phones are stored E.164; format them country-aware for display ("+1 (415) 555-0123").
+        entry.phone?.takeIf { it.isNotBlank() }?.let {
+            add(DetailFieldRow(Icons.Outlined.Call, lblPhone, formatPhoneForDisplay(it), o?.phone?.let(::formatPhoneForDisplay)))
+        }
         // App-local additional phones (no synced counterpart) render as plain extra rows.
         entry.additionalPhones.filter { it.isNotBlank() }
-            .forEach { add(DetailFieldRow(Icons.Outlined.Call, lblPhone, it, null)) }
+            .forEach { add(DetailFieldRow(Icons.Outlined.Call, lblPhone, formatPhoneForDisplay(it), null)) }
         entry.email?.takeIf { it.isNotBlank() }
             ?.let { add(DetailFieldRow(Icons.Outlined.Email, lblEmail, it, o?.email)) }
         entry.additionalEmails.filter { it.isNotBlank() }
