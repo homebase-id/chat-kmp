@@ -4,6 +4,8 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import id.homebase.api.client.auth.OwnerSession
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.data.ContactUiModel
@@ -26,6 +28,7 @@ class CreateConversationViewModel(
     private val conversationWriterService: ConversationService,
     private val connectionService: ConnectionService,
     private val driveSyncManager: DriveSyncManager,
+    private val ownerSessionRepository: OwnerSessionRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -37,10 +40,13 @@ class CreateConversationViewModel(
     init {
         viewModelScope.launch {
             contactService.start()
-            contactService.contacts
-                .combine(snapshotFlow { searchTextState.text.toString() }) { contacts, query ->
-                    filterAndGroup(contacts, query)
-                }
+            combine(
+                contactService.contacts,
+                snapshotFlow { searchTextState.text.toString() },
+                ownerSessionRepository.user,
+            ) { contacts, query, self ->
+                filterAndGroup(contacts, query, self)
+            }
                 .catch {
                     sendEvent(
                         CreateConversationUiEvent.ShowErrorMessage(
@@ -121,7 +127,8 @@ class CreateConversationViewModel(
 
     private fun filterAndGroup(
         contacts: List<ContactUiModel>,
-        query: String
+        query: String,
+        self: OwnerSession?,
     ): List<CreateConversationListItem> {
         val result = mutableListOf<CreateConversationListItem>()
 
@@ -130,6 +137,10 @@ class CreateConversationViewModel(
             result.add(CreateConversationListItem.NoteToSelf)
             result.add(CreateConversationListItem.NewContact)
             result.add(CreateConversationListItem.NewGroup)
+        } else if (self.matchesQuery(query)) {
+            // Searching your own name/handle would otherwise be a dead end (self isn't a
+            // contact) — surface Note to Self so the search resolves to something.
+            result.add(CreateConversationListItem.NoteToSelf)
         }
 
         val contacts = if (query.isEmpty()) {
@@ -156,4 +167,11 @@ class CreateConversationViewModel(
         result.add(CreateConversationListItem.Contacts(groups))
         return result
     }
+}
+
+/** True when [query] hits the signed-in user's own display name or handle (case-insensitive). */
+private fun OwnerSession?.matchesQuery(query: String): Boolean {
+    if (this == null || query.isBlank()) return false
+    return displayName?.contains(query, ignoreCase = true) == true ||
+        odinId.toString().contains(query, ignoreCase = true)
 }
