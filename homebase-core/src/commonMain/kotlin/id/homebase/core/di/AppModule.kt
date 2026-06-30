@@ -46,9 +46,10 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContentParser
-import id.homebase.chat.services.PayloadBundleEncryptionService
-import id.homebase.chat.services.PayloadCacheSeeder
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.VideoEncodePolicy
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.api.client.drives.HomebaseFile
@@ -178,6 +179,14 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    // Adapter so the upload pipeline's encoding policy doesn't couple homebase-common's
+    // UserPreferences to homebase-upload. Reads the live preference value on each access.
+    single<VideoEncodePolicy> {
+        val prefs: UserPreferences = get()
+        object : VideoEncodePolicy {
+            override val allowTenBitVideo: Boolean get() = prefs.allowTenBitVideo
+        }
+    }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for

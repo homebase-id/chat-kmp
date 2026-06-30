@@ -29,11 +29,19 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    compilerOptions {
+        optIn.add("kotlin.uuid.ExperimentalUuidApi")
+    }
+
     sourceSets {
         commonMain.dependencies {
             // `api` because homebase-upload's public types (e.g. PayloadBundle exposing
             // PayloadFile/ThumbnailFile) reference homebase-api types in their signatures.
             api(project(":homebase-api"))
+            // coroutines + kermit are `implementation` (non-transitive) in homebase-api, so
+            // declare them directly here.
+            implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kermit)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

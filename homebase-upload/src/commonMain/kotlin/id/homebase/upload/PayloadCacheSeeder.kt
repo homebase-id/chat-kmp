@@ -1,5 +1,4 @@
-package id.homebase.chat.services
-import id.homebase.upload.PayloadBundle
+package id.homebase.upload
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider

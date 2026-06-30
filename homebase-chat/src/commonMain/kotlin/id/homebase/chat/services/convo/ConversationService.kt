@@ -39,7 +39,7 @@ import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.upload.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.chat.services.GroupHealCleanupInfo
 import id.homebase.chat.services.GroupHealInfo
 import id.homebase.chat.services.StatusMessage

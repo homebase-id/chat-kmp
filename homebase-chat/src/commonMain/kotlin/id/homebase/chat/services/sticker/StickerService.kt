@@ -21,9 +21,9 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.upload.PayloadBundle
-import id.homebase.chat.services.PayloadCacheSeeder
+import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.thumbnailDescriptorsFor
-import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadBundleEncryptionService
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.stickerLabeledDrive

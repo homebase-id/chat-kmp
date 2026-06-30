@@ -23,7 +23,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.upload.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadBundleEncryptionService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.api.serialization.OdinSystemSerializer
