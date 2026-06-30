@@ -258,6 +258,20 @@ class ChatMessageSenderService(
             messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
         )
 
+        // TEMP DIAG (#844 image-vs-file regression): capture each payload's contentType +
+        // thumbnail/preview counts on BOTH the picked bundle and the encrypted bundle, so we can
+        // see whether the image arrives with a non-image contentType (a pick-time issue) or loses
+        // its thumbnails. Remove once root-caused.
+        Logger.d(tag = TAG) {
+            "BUNDLEDIAG message=$messageUniqueId " +
+                "in.payloads=${payloadBundle?.payloads?.map { it.key + ":" + it.contentType }} " +
+                "in.thumbs=${payloadBundle?.thumbnails?.size ?: 0} " +
+                "in.previews=${payloadBundle?.previewThumbs?.size ?: 0} || " +
+                "enc.payloads=${encryptedBundle.payloads.map { it.key + ":" + it.contentType }} " +
+                "enc.thumbs=${encryptedBundle.thumbnails.size} " +
+                "enc.previews=${encryptedBundle.previewThumbs.size}"
+        }
+
         val effectiveUserDate = userDate ?: UnixTimeUtc.now()
         val unecryptedMetadata =
             UploadFileMetadata(

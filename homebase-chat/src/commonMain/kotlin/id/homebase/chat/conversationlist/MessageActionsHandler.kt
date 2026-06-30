@@ -827,6 +827,16 @@ internal class MessageActionsHandler(
 
             scope.launch {
                 try {
+                    // TEMP DIAG (#844 image-vs-file regression): the resolved contentType per
+                    // attachment is what decides image-vs-file. `name` is the string fed to
+                    // resolveContentType (gallery picks derive type from filename only), so a
+                    // missing/odd extension shows up here. Remove once root-caused.
+                    Logger.d(tag = TAG) {
+                        "ATTACHDIAG message=$newMessageId attachments=" +
+                            attachments.map {
+                                "{ct=${it.contentType}, name=${it.displayName}, path=…${it.filePath.takeLast(48)}}"
+                            }
+                    }
                     val bundle = MessageAttachmentBuilder.build(
                         attachments = attachments,
                         fileOperationsProvider = fileOperationsProvider,
