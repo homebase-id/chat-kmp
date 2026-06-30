@@ -20,14 +20,19 @@ import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
+import id.homebase.chat.data.IncomingConnectionRequestUiModel
+import id.homebase.chat.data.OutgoingConnectionRequestUiModel
+import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
+import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -44,6 +49,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Unlike the optional add-ons (Vault, Moments, Location, Stickers), the Contact Book has
@@ -64,7 +70,9 @@ class ContactBookViewModel(
     private val preferences: ContactBookPreferences,
     private val conversationService: ConversationService,
     private val connectionService: ConnectionService,
+    private val connectionRequestService: ConnectionRequestService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
+    private val overrideStore: ContactOverrideStore,
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
     eventBus: EventBus,
@@ -94,6 +102,14 @@ class ContactBookViewModel(
         // skipped by the headless/foreground promotion race and leave the list spinning.
         // Idempotent once loaded.
         viewModelScope.launch { repo.ensureLoaded() }
+        // Idempotent — already started by the conversation list / app bootstrap; calling it here
+        // makes the Requests pill self-sufficient if the Contact Book is the first screen shown.
+        viewModelScope.launch { connectionRequestService.start() }
+        // Load any user overrides (bulk app-data tier) for contacts that advertise the payload, so
+        // the list reflects a renamed connected contact. Cheap no-op for the rest.
+        viewModelScope.launch {
+            repo.contacts.collect { list -> list.forEach { overrideStore.hydrate(it) } }
+        }
         viewModelScope.launch {
             ownerSessionRepository.user.collect { session ->
                 _header.update { it.copy(ownerSession = session) }
@@ -129,6 +145,7 @@ class ContactBookViewModel(
         val loaded: Boolean,
         val connections: ConnectionState,
         val circles: CircleMembershipState,
+        val overrides: Map<Uuid, ContactFieldOverlay>,
     )
 
     private data class UiBits(
@@ -144,6 +161,11 @@ class ContactBookViewModel(
         val members: CircleMembersUi?,
     )
 
+    private data class RequestsBundle(
+        val incoming: List<IncomingConnectionRequestUiModel>,
+        val outgoing: List<OutgoingConnectionRequestUiModel>,
+    )
+
     /** Server-shaped repository contacts projected into the flat UI model. */
     private val entries: StateFlow<List<ContactBookEntry>> = repo.contacts
         .map { list -> list.mapNotNull { it.toContactBookEntry() } }
@@ -155,15 +177,24 @@ class ContactBookViewModel(
             repo.isLoaded,
             connectionService.connections,
             connectionService.circles,
-        ) { c, l, conn, circ ->
-            ContactsBundle(c, l, conn, circ)
+            overrideStore.overrides,
+        ) { c, l, conn, circ, overrides ->
+            ContactsBundle(c, l, conn, circ, overrides)
         },
         combine(_searchQuery, _filter, _selectedTab, _overlay) { q, f, tab, o ->
             UiBits(q, f, tab, o)
         },
         combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
         _header,
-    ) { contactsData, ui, circlesData, header ->
+        combine(
+            connectionRequestService.incomingRequests,
+            connectionRequestService.outgoingRequests,
+        ) { incoming, outgoing -> RequestsBundle(incoming, outgoing) },
+    ) { contactsData, ui, circlesData, header, requestsData ->
+        // Apply user overrides up front so every downstream list (All, Introduced, Confirmed,
+        // Requests, introducer names) shows the user's renamed/edited values, not the synced ones.
+        val overriddenContacts = contactsData.contacts
+            .map { it.withOverride(contactsData.overrides[it.uniqueId]) }
         val connectedRegs = contactsData.connections.map
             .filterValues { it.status == ConnectionStatus.Connected }
         val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
@@ -188,7 +219,7 @@ class ContactBookViewModel(
 
         // contact-domain (lowercase) → introducer display name, resolved to a saved
         // contact's name when we have one, else the raw introducer domain.
-        val contactsByOdin = contactsData.contacts
+        val contactsByOdin = overriddenContacts
             .filter { !it.odinId.isNullOrBlank() }
             .associateBy { it.odinId!!.lowercase() }
         val introducedByDomain = connectedRegs
@@ -202,22 +233,54 @@ class ContactBookViewModel(
                     (contactsByOdin[introducer.lowercase()]?.displayName ?: introducer)
             }
 
-        val filtered = contactsData.contacts.filter { it.matches(ui.query) }
+        // ALL = saved contacts plus every other connection. Auto-connections that were neither
+        // introduced (origin != Introduction) nor confirmed (not in the Confirmed circle) would
+        // otherwise fall through every pill. Connections already in the book show via their saved
+        // entry; the rest get a synthetic display-only entry, the same projection Introduced /
+        // Confirmed use.
+        val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
+        val all = (overriddenContacts + unsavedConnectionDomains.map { syntheticContact(it) })
+            .filter { it.matches(ui.query) }
+            .sortedBy { it.sortKey }
 
-        val introduced = entriesForDomains(introducedDomains, contactsData.contacts)
+        val introduced = entriesForDomains(introducedDomains, overriddenContacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
-        val confirmed = entriesForDomains(confirmedDomains, contactsData.contacts)
+        val confirmed = entriesForDomains(confirmedDomains, overriddenContacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
+
+        // Pending connection requests, projected onto contact entries the same way Introduced /
+        // Confirmed are: reuse the saved contact when we have one, else a synthetic display-only
+        // entry for the identity. The service's UI-model names are placeholders ("TODO …"), so we
+        // deliberately resolve names through the contact book / domain, not those fields.
+        fun pendingEntry(domain: String) = contactsByOdin[domain.lowercase()] ?: syntheticContact(domain)
+        val incomingRequests = requestsData.incoming.map { req ->
+            PendingRequestEntry(
+                entry = pendingEntry(req.senderOdinId.domainName),
+                direction = RequestDirection.INCOMING,
+                receivedAtMs = req.receivedTimestampMilliseconds.milliseconds,
+            )
+        }
+        val outgoingRequests = requestsData.outgoing.map { req ->
+            PendingRequestEntry(
+                entry = pendingEntry(req.recipientOdinId.domainName),
+                direction = RequestDirection.OUTGOING,
+                receivedAtMs = req.receivedTimestampMilliseconds.milliseconds,
+            )
+        }
+        val requests = (incomingRequests + outgoingRequests)
+            .filter { it.entry.matches(ui.query) }
+            .sortedByDescending { it.receivedAtMs }
 
         ContactBookUiState(
             selectedTab = ui.tab,
-            contacts = filtered,
-            totalCount = contactsData.contacts.size,
+            contacts = all,
+            totalCount = all.size,
             connectedOdinIds = connectedDomains,
             introduced = introduced,
             confirmed = confirmed,
+            requests = requests,
             introducedByDomain = introducedByDomain,
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
@@ -280,10 +343,14 @@ class ContactBookViewModel(
                     )
                 )
             }
-            ContactBookUiAction.AddClicked -> _overlay.value = ContactBookOverlay.Edit(null)
+            // Add now leads with the Homebase ID in a full-screen flow; editing an existing
+            // contact still uses the in-place sheet (see EditClicked).
+            ContactBookUiAction.AddClicked -> _events.tryEmit(ContactBookUiEvent.OpenAddContact)
             is ContactBookUiAction.EditClicked -> _overlay.value = ContactBookOverlay.Edit(action.entry)
             is ContactBookUiAction.DeleteClicked -> handleDelete(action.entry)
-            is ContactBookUiAction.SaveContact -> handleSave(action.draft, action.editing, action.photo)
+            is ContactBookUiAction.SaveContact -> handleSave(
+                action.draft, action.editing, action.additionalPhones, action.additionalEmails, action.photo,
+            )
             is ContactBookUiAction.MessageClicked -> handleMessage(action.entry)
             is ContactBookUiAction.SyncClicked -> {
                 val odinId = action.entry.odinId ?: return
@@ -300,11 +367,34 @@ class ContactBookViewModel(
         }
     }
 
-    private fun handleSave(draft: ContactDraft, editing: ContactBookEntry?, photo: PlatformFile?) {
+    private fun handleSave(
+        draft: ContactDraft,
+        editing: ContactBookEntry?,
+        additionalPhones: List<String>,
+        additionalEmails: List<String>,
+        photo: PlatformFile?,
+    ) {
         if (!draft.isSavable) return
         _overlay.value = null
         viewModelScope.launch {
-            when (val result = saveContactDraft(repo, draft, editing, photo)) {
+            val result = if (editing != null) {
+                saveContactEdit(
+                    store = overrideStore,
+                    repo = repo,
+                    // Any identity contact (has odinId) is enriched on sync and would be overwritten;
+                    // only a pure manual contact writes primaries to content.
+                    useOverride = !editing.odinId.isNullOrBlank() && editing.versionTag != null,
+                    editing = editing,
+                    synced = editing,
+                    draft = draft,
+                    additionalPhones = additionalPhones,
+                    additionalEmails = additionalEmails,
+                    photo = photo,
+                )
+            } else {
+                saveContactDraft(repo, draft, null, photo)
+            }
+            when (result) {
                 is ContactSaveResult.Success -> {
                     // repo.save already applied the optimistic update.
                     if (result.photoFailed) {

@@ -32,6 +32,8 @@ fun ContactBookRow(
     connected: Boolean = false,
     /** When non-null, the contact was connected via this introducer (display name). */
     introducedBy: String? = null,
+    /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -71,7 +73,10 @@ fun ContactBookRow(
                 )
             }
         }
-        if (connected) {
+        if (trailing != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            trailing()
+        } else if (connected) {
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
                 imageVector = Icons.Filled.Verified,

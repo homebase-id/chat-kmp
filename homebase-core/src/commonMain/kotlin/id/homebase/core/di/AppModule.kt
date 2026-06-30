@@ -73,9 +73,11 @@ import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
@@ -118,7 +120,6 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
-import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
@@ -223,6 +224,8 @@ val appModule = module {
     single { ContactBookPreferences(get()) }
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
+    // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
+    singleOf(::ContactOverrideStore)
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -826,6 +829,7 @@ val appModule = module {
     }
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
+    viewModelOf(::AddContactViewModel)
     viewModelOf(::ContactBookSettingsViewModel)
     singleOf(::LocationDeviceDirectory)
     viewModel { params ->
@@ -881,7 +885,6 @@ val appModule = module {
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
-    viewModelOf(::ConnectionsViewModel)
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)

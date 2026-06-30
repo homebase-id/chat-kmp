@@ -270,6 +270,27 @@ class ConnectionRequestService(
         connectionService.refresh()
     }
 
+    /**
+     * Rejects (declines) an incoming connection request and drops it from the pending list. The
+     * sender isn't notified; the request simply disappears. Optimistically removes it so the UI
+     * updates without waiting on the round trip, then refreshes to reconcile with the server.
+     */
+    suspend fun rejectIncomingRequest(senderId: OdinId) {
+        connectionRequestProvider.rejectIncomingRequest(senderId)
+        removeFromIncoming(senderId)
+        refresh()
+    }
+
+    /**
+     * Cancels (withdraws) an outgoing connection request we previously sent and drops it from the
+     * pending list. Optimistically removes it, then refreshes to reconcile with the server.
+     */
+    suspend fun cancelOutgoingRequest(recipientId: OdinId) {
+        connectionRequestProvider.cancelOutgoingRequest(recipientId)
+        removeFromOutgoing(recipientId)
+        refresh()
+    }
+
     private suspend fun markIncomingOptimistically(sender: OdinId) {
         _incomingRequests.update { current ->
             if (current.any { it.senderOdinId == sender }) current

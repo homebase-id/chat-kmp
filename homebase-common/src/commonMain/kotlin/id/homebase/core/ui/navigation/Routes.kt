@@ -96,10 +96,6 @@ sealed class Route {
     data object Defragmenter : Route()
 
     @Serializable
-    @SerialName("connections")
-    data object Connections : Route()
-
-    @Serializable
     @SerialName("vault")
     data object Vault : Route()
 
@@ -129,6 +125,10 @@ sealed class Route {
     @Serializable
     @SerialName("contactbook-detail")
     data class ContactBookDetail(val uniqueId: String, val odinId: String? = null) : Route()
+
+    @Serializable
+    @SerialName("contactbook-add")
+    data object AddContact : Route()
 
     @Serializable
     @SerialName("feed")

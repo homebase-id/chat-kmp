@@ -17,7 +17,7 @@ sealed interface CreateConversationListItem {
     data class Contacts(val contactGroups: List<ContactGroup>) : CreateConversationListItem
     data object NewGroup : CreateConversationListItem
     data object NoteToSelf : CreateConversationListItem
-    data object ConnectionRequest : CreateConversationListItem
+    data object NewContact : CreateConversationListItem
 }
 
 data class ContactGroup(

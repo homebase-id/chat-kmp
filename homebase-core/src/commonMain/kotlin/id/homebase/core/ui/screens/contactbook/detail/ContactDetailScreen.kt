@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,23 +17,36 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactEmergency
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAddAlt1
+import androidx.compose.material.icons.outlined.PersonRemove
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -56,12 +70,16 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
+import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_action_blocked
+import id.homebase.resources.contactbook_action_request_accepted
+import id.homebase.resources.contactbook_action_request_cancelled
+import id.homebase.resources.contactbook_action_request_rejected
 import id.homebase.resources.contactbook_action_sync_started
 import id.homebase.resources.contactbook_action_disconnected
 import id.homebase.resources.contactbook_detail_emergency_badge
@@ -81,9 +99,20 @@ import id.homebase.resources.contactbook_detail_disconnect
 import id.homebase.resources.contactbook_detail_disconnect_message
 import id.homebase.resources.contactbook_detail_disconnect_title
 import id.homebase.resources.contactbook_detail_edit
+import id.homebase.resources.contactbook_detail_manage
 import id.homebase.resources.contactbook_detail_message
+import id.homebase.resources.contactbook_detail_sync
+import id.homebase.resources.contactbook_detail_tab_about
+import id.homebase.resources.contactbook_detail_tab_activity
+import id.homebase.resources.contactbook_detail_tab_details
+import id.homebase.resources.contactbook_detail_unblock
+import id.homebase.resources.contactbook_detail_accept
+import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
+import id.homebase.resources.contactbook_detail_reject
+import id.homebase.resources.contactbook_detail_request_incoming
+import id.homebase.resources.contactbook_detail_request_outgoing
 import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_delete_forbidden
@@ -92,6 +121,7 @@ import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -118,6 +148,9 @@ fun ContactDetailScreen(
     val msgUnblocked = stringResource(MR.string.contactbook_action_unblocked)
     val msgDisconnected = stringResource(MR.string.contactbook_action_disconnected)
     val msgSyncStarted = stringResource(MR.string.contactbook_action_sync_started)
+    val msgRequestAccepted = stringResource(MR.string.contactbook_action_request_accepted)
+    val msgRequestRejected = stringResource(MR.string.contactbook_action_request_rejected)
+    val msgRequestCancelled = stringResource(MR.string.contactbook_action_request_cancelled)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -139,6 +172,9 @@ fun ContactDetailScreen(
                 ContactDetailEvent.Unblocked -> snackbarHostState.showSnackbar(msgUnblocked)
                 ContactDetailEvent.Disconnected -> snackbarHostState.showSnackbar(msgDisconnected)
                 ContactDetailEvent.SyncStarted -> snackbarHostState.showSnackbar(msgSyncStarted)
+                ContactDetailEvent.RequestAccepted -> snackbarHostState.showSnackbar(msgRequestAccepted)
+                ContactDetailEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRequestRejected)
+                ContactDetailEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgRequestCancelled)
             }
         }
     }
@@ -162,6 +198,9 @@ fun ContactDetailScreen(
                             contentDescription = stringResource(MR.string.contactbook_detail_edit),
                         )
                     }
+                    if (uiState.entry != null) {
+                        ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                    }
                 },
             )
         },
@@ -179,9 +218,18 @@ fun ContactDetailScreen(
 
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }
-                    Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                    ) {
+                    // Only show tabs that have content; a plain contact stays a single list.
+                    val tabs = buildList {
+                        add(ContactDetailTab.DETAILS)
+                        if (uiState.hasAboutContent) add(ContactDetailTab.ABOUT)
+                        if (uiState.hasActivityContent) add(ContactDetailTab.ACTIVITY)
+                    }
+                    var selectedTab by rememberSaveable(entry.uniqueId) {
+                        mutableStateOf(ContactDetailTab.DETAILS)
+                    }
+                    val current = if (selectedTab in tabs) selectedTab else ContactDetailTab.DETAILS
+
+                    Column(modifier = Modifier.fillMaxSize()) {
                         DetailHeader(
                             uiState = uiState,
                             onAction = viewModel::onAction,
@@ -196,44 +244,71 @@ fun ContactDetailScreen(
                             },
                         )
 
-                        Spacer(modifier = Modifier.height(20.dp))
-                        ContactFieldsSection(
-                            entry = entry,
-                            expanded = detailsExpanded,
-                            onToggleMore = { detailsExpanded = !detailsExpanded },
-                        )
-
-                        BioSection(entry.shortBio)
-                        SocialSection(entry.socialHandles)
-
-                        Spacer(modifier = Modifier.height(28.dp))
-                        RecentMediaSection(
-                            overview = uiState.overview,
-                            onMediaClick = { viewModel.onAction(ContactDetailAction.OpenMedia(it)) },
-                            onSeeAll = { viewModel.onAction(ContactDetailAction.SeeAllMediaClicked) },
-                        )
-
-                        // Circles + groups-in-common only apply to Homebase identities;
-                        // for those they always show (with empty / not-connected hints).
-                        if (uiState.hasOdinId) {
-                            GroupsInCommonSection(
-                                groups = uiState.groupsInCommon,
-                                isConnected = uiState.isConnected,
-                                onOpenGroup = { viewModel.onAction(ContactDetailAction.OpenGroup(it)) },
-                            )
-
-                            CirclesSection(
-                                circles = uiState.circles,
-                                isConnected = uiState.isConnected,
-                            )
+                        if (tabs.size > 1) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TabRow(selectedTabIndex = tabs.indexOf(current)) {
+                                tabs.forEach { tab ->
+                                    Tab(
+                                        selected = tab == current,
+                                        onClick = { selectedTab = tab },
+                                        text = { Text(stringResource(tab.labelRes)) },
+                                    )
+                                }
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(28.dp))
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        ManagementSection(uiState, viewModel::onAction)
+                        // Fresh scroll position per tab.
+                        val scroll = remember(current) { ScrollState(0) }
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(scroll),
+                        ) {
+                            Spacer(modifier = Modifier.height(if (tabs.size > 1) 12.dp else 20.dp))
+                            when (current) {
+                                ContactDetailTab.DETAILS -> {
+                                    ContactFieldsSection(
+                                        entry = entry,
+                                        expanded = detailsExpanded,
+                                        onToggleMore = { detailsExpanded = !detailsExpanded },
+                                    )
+                                    // Circles + groups-in-common only apply to Homebase identities.
+                                    if (uiState.hasOdinId) {
+                                        GroupsInCommonSection(
+                                            groups = uiState.groupsInCommon,
+                                            isConnected = uiState.isConnected,
+                                            onOpenGroup = {
+                                                viewModel.onAction(ContactDetailAction.OpenGroup(it))
+                                            },
+                                        )
+                                        CirclesSection(
+                                            circles = uiState.circles,
+                                            isConnected = uiState.isConnected,
+                                        )
+                                    }
+                                }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                                ContactDetailTab.ABOUT -> {
+                                    BioSection(entry.shortBio)
+                                    ExperienceSection(uiState.experience, uiState.experienceImage)
+                                    SocialSection(entry.socialHandles)
+                                }
+
+                                ContactDetailTab.ACTIVITY -> {
+                                    RecentMediaSection(
+                                        overview = uiState.overview,
+                                        onMediaClick = {
+                                            viewModel.onAction(ContactDetailAction.OpenMedia(it))
+                                        },
+                                        onSeeAll = {
+                                            viewModel.onAction(ContactDetailAction.SeeAllMediaClicked)
+                                        },
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
                     }
                 }
             }
@@ -270,7 +345,11 @@ fun ContactDetailScreen(
     if (uiState.editOpen) {
         ContactEditSheet(
             editing = uiState.entry,
-            onSave = { draft, photo -> viewModel.onAction(ContactDetailAction.SaveContact(draft, photo)) },
+            onSave = { draft, addPhones, addEmails, photo ->
+                viewModel.onAction(
+                    ContactDetailAction.SaveContact(draft, addPhones, addEmails, photo),
+                )
+            },
             onDismiss = { viewModel.onAction(ContactDetailAction.CloseEdit) },
             odinIdLocked = uiState.isConnected,
         )
@@ -293,6 +372,72 @@ fun ContactDetailScreen(
     }
 }
 
+/** Tabs on the contact detail screen; shown only when they have content. */
+private enum class ContactDetailTab(val labelRes: StringResource) {
+    DETAILS(MR.string.contactbook_detail_tab_details),
+    ABOUT(MR.string.contactbook_detail_tab_about),
+    ACTIVITY(MR.string.contactbook_detail_tab_activity),
+}
+
+/**
+ * Overflow (⋮) menu of management actions — sync, disconnect, block/unblock, delete — kept out of
+ * the browsing flow. Destructive items are tinted error.
+ */
+@Composable
+private fun ManagementMenu(
+    uiState: ContactDetailUiState,
+    onAction: (ContactDetailAction) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val error = MaterialTheme.colorScheme.error
+    IconButton(onClick = { open = true }) {
+        Icon(
+            Icons.Default.MoreVert,
+            contentDescription = stringResource(MR.string.contactbook_detail_manage),
+        )
+    }
+    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        if (uiState.hasOdinId) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.contactbook_detail_sync)) },
+                leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
+                onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
+            )
+            if (uiState.isConnected) {
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(MR.string.contactbook_detail_disconnect), color = error)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.PersonRemove, contentDescription = null, tint = error)
+                    },
+                    onClick = { open = false; onAction(ContactDetailAction.DisconnectClicked) },
+                )
+            }
+            if (uiState.isBlocked) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contactbook_detail_unblock)) },
+                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                    onClick = { open = false; onAction(ContactDetailAction.UnblockClicked) },
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contactbook_detail_block), color = error) },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Block, contentDescription = null, tint = error)
+                    },
+                    onClick = { open = false; onAction(ContactDetailAction.BlockClicked) },
+                )
+            }
+        }
+        DropdownMenuItem(
+            text = { Text(stringResource(MR.string.contactbook_detail_delete), color = error) },
+            leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = error) },
+            onClick = { open = false; onAction(ContactDetailAction.DeleteClicked) },
+        )
+    }
+}
+
 @Composable
 private fun DetailHeader(
     uiState: ContactDetailUiState,
@@ -304,8 +449,11 @@ private fun DetailHeader(
     val connected = status == ConnectionStatus.Connected
     val blocked = status == ConnectionStatus.Blocked
     val pending = status == ConnectionStatus.Pending
-    // Has a Homebase identity but no active connection (and isn't blocked/pending).
-    val canConnect = uiState.hasOdinId && !connected && !blocked && !pending
+    val requestIncoming = uiState.requestDirection == RequestDirection.INCOMING
+    val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
+    // Has a Homebase identity but no active connection, pending request, or block.
+    val canConnect = uiState.hasOdinId && !connected && !blocked && !pending &&
+        uiState.requestDirection == null
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -337,25 +485,45 @@ private fun DetailHeader(
             )
         }
 
-        // Connection status line (only for Homebase contacts).
+        // Connection status line (only for Homebase contacts), with a small inline "sync profile"
+        // affordance — identity contacts pull their details from the profile, so a quick re-sync
+        // belongs right next to the status.
         if (uiState.hasOdinId) {
             val statusColor = when {
-                connected -> MaterialTheme.colorScheme.primary
+                connected || requestIncoming -> MaterialTheme.colorScheme.primary
                 blocked -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
-            Text(
-                text = stringResource(
-                    when {
-                        connected -> MR.string.contactbook_connected
-                        pending -> MR.string.contactbook_detail_pending
-                        blocked -> MR.string.contactbook_detail_blocked
-                        else -> MR.string.contactbook_detail_not_connected
-                    }
-                ),
-                style = MaterialTheme.typography.labelMedium,
-                color = statusColor,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = stringResource(
+                        when {
+                            connected -> MR.string.contactbook_connected
+                            requestIncoming -> MR.string.contactbook_detail_request_incoming
+                            requestOutgoing -> MR.string.contactbook_detail_request_outgoing
+                            pending -> MR.string.contactbook_detail_pending
+                            blocked -> MR.string.contactbook_detail_blocked
+                            else -> MR.string.contactbook_detail_not_connected
+                        }
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = statusColor,
+                )
+                IconButton(
+                    onClick = { onAction(ContactDetailAction.SyncClicked) },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.Sync,
+                        contentDescription = stringResource(MR.string.contactbook_detail_sync),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         }
 
         // Emergency-contact indicator — visible whenever this contact is one of our emergency
@@ -409,6 +577,36 @@ private fun DetailHeader(
                     Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(MR.string.contactbook_detail_connect))
+                }
+            }
+            requestIncoming -> {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(
+                        onClick = { onAction(ContactDetailAction.AcceptRequestClicked) },
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                    ) {
+                        Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(MR.string.contactbook_detail_accept))
+                    }
+                    OutlinedButton(
+                        onClick = { onAction(ContactDetailAction.RejectRequestClicked) },
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                    ) {
+                        Text(stringResource(MR.string.contactbook_detail_reject))
+                    }
+                }
+            }
+            requestOutgoing -> {
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { onAction(ContactDetailAction.CancelRequestClicked) },
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(MR.string.contactbook_detail_cancel_request))
                 }
             }
         }

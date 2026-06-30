@@ -190,7 +190,7 @@ class ContactAppDataTest {
 
     private suspend fun TestScope.repo(
         engine: MockEngine,
-        payloadReader: ContactPayloadReader = ContactPayloadReader { _, _, _, _ -> null },
+        payloadReader: ContactPayloadReader = ContactPayloadReader { _, _, _ -> null },
     ): ContactRepository {
         val cm = CredentialsManager()
         val creds = ApiCredentials.create(
@@ -221,7 +221,7 @@ class ContactAppDataTest {
 
     @Test
     fun loadAppExtData_fetchesAppExtDataKey_decodesAppIdValue() = runTest {
-        val reader = ContactPayloadReader { _, _, key, _ ->
+        val reader = ContactPayloadReader { _, _, key ->
             assertEquals(ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY, key)
             """{"appData":{"$appIdHyphenated":"bulk"}}""".encodeToByteArray()
         }
@@ -232,7 +232,7 @@ class ContactAppDataTest {
     @Test
     fun loadAppExtData_skipsFetch_whenPayloadAbsent() = runTest {
         var fetched = false
-        val reader = ContactPayloadReader { _, _, _, _ -> fetched = true; null }
+        val reader = ContactPayloadReader { _, _, _ -> fetched = true; null }
         assertNull(repo(okEngine, reader).loadAppExtData(bulkContact(false), appIdHyphenated))
         assertFalse(fetched, "no payload key → no fetch")
     }
