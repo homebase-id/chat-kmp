@@ -68,6 +68,8 @@ data class ContactBookEntry(
     val source: String? = null,
     /** Pending (optimistic, not yet confirmed by the drive). */
     val isPending: Boolean = false,
+    /** Synthetic entry representing the signed-in user; rendered with a "(you)" suffix. */
+    val isSelf: Boolean = false,
     // Image-display fields (carried so a stored avatar can render without a
     // second drive read). Null when the contact has no uploaded photo.
     val driveId: Uuid? = null,
