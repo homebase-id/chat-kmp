@@ -52,6 +52,7 @@ import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.upload.VideoEncodePolicy
 import id.homebase.upload.OptimisticLocalWriter
 import id.homebase.upload.UploadService
+import id.homebase.chat.services.outbox.OptimisticWriterPort
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.api.client.drives.HomebaseFile
@@ -574,36 +575,9 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)
-    // Adapter so the shared UploadService (homebase-upload) reaches OptimisticWriter's generic
-    // writes without homebase-upload depending on the chat module. OptimisticWriter's richer
-    // conversation/reaction methods stay in chat and aren't part of the port.
-    single<OptimisticLocalWriter> {
-        val writer = get<OptimisticWriter>()
-        object : OptimisticLocalWriter {
-            override suspend fun writeNewFile(
-                driveId: Uuid,
-                keyHeader: id.homebase.api.client.KeyHeader,
-                unecryptedMetadata: id.homebase.api.client.drives.upload.UploadFileMetadata,
-                originalRecipientCount: Int,
-                fileSystemType: id.homebase.api.client.drives.FileSystemType,
-                payloadDescriptors: List<id.homebase.api.client.drives.files.PayloadDescriptor>?,
-                fileId: Uuid,
-            ): Uuid = writer.writeNewFile(
-                driveId, keyHeader, unecryptedMetadata, originalRecipientCount,
-                fileSystemType, payloadDescriptors, fileId,
-            )
-
-            override suspend fun writeUpdate(
-                driveId: Uuid,
-                keyHeader: id.homebase.api.client.KeyHeader,
-                unecryptedMetadata: id.homebase.api.client.drives.upload.UploadFileMetadata,
-                payloadDescriptors: List<id.homebase.api.client.drives.files.PayloadDescriptor>?,
-            ) = writer.writeUpdate(driveId, keyHeader, unecryptedMetadata, payloadDescriptors)
-
-            override suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid): Boolean =
-                writer.removeOptimisticFile(driveId, uniqueId)
-        }
-    }
+    // Adapts chat's OptimisticWriter onto the upload pipeline's OptimisticLocalWriter port, so
+    // the shared UploadService writes optimistic rows without homebase-upload depending on chat.
+    single<OptimisticLocalWriter> { OptimisticWriterPort(get()) }
     // The one shared, feature-agnostic upload pipeline (#844 Deliverable B).
     singleOf(::UploadService)
     // Shared optimistic-send cache seeder — used by Chat, Moments, Vault, Stickers
