@@ -1534,4 +1534,38 @@
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>
     <string name="storage_diagnostics_force_runtime_crash">Force app crash (test)</string>
 
+    <!-- Profile editor -->
+    <string name="profile_edit_title">Edit profile</string>
+    <string name="profile_edit_save">Save</string>
+    <string name="profile_edit_load_failed">Couldn't load your profile.</string>
+    <string name="profile_edit_retry">Retry</string>
+    <string name="profile_edit_error_forbidden">This app doesn't have permission to edit your profile. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="profile_edit_error_save">Couldn't save your profile. Please try again.</string>
+    <string name="profile_edit_section_name">Name</string>
+    <string name="profile_edit_given_name">First name</string>
+    <string name="profile_edit_surname">Last name</string>
+    <string name="profile_edit_additional_name">Middle name</string>
+    <string name="profile_edit_nickname">Nickname</string>
+    <string name="profile_edit_status">Status</string>
+    <string name="profile_edit_birthday">Birthday</string>
+    <string name="profile_edit_birthday_hint">YYYY-MM-DD</string>
+    <string name="profile_edit_section_contact">Contact</string>
+    <string name="profile_edit_email">Email</string>
+    <string name="profile_edit_email_label">Email label</string>
+    <string name="profile_edit_phone">Phone</string>
+    <string name="profile_edit_phone_label">Phone label</string>
+    <string name="profile_edit_section_address">Address</string>
+    <string name="profile_edit_address_label">Address label</string>
+    <string name="profile_edit_address1">Address line 1</string>
+    <string name="profile_edit_address2">Address line 2</string>
+    <string name="profile_edit_postcode">Postcode</string>
+    <string name="profile_edit_city">City</string>
+    <string name="profile_edit_country">Country</string>
+    <string name="profile_edit_section_social">Social</string>
+    <string name="profile_edit_twitter">Twitter</string>
+    <string name="profile_edit_facebook">Facebook</string>
+    <string name="profile_edit_instagram">Instagram</string>
+    <string name="profile_edit_tiktok">TikTok</string>
+    <string name="profile_edit_linkedin">LinkedIn</string>
+
 </resources>

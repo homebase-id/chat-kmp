@@ -67,9 +67,7 @@ class SettingsViewModel(
             }
 
             SettingsUiAction.ProfileInfoClicked -> {
-                uiState.value.ownerSession?.let {
-                    sendEvent(SettingsUiEvent.OpenUrl("https://${it.odinId.domainName}/owner/profile/standard-info"))
-                }
+                sendEvent(SettingsUiEvent.NavigateToProfileEdit)
             }
 
             SettingsUiAction.SecuritySetupClicked -> {

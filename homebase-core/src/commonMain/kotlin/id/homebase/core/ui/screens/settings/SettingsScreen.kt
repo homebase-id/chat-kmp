@@ -108,6 +108,7 @@ fun SettingsScreen(
     onNavigateToVaultSettings: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToContactBookSettings: () -> Unit,
+    onNavigateToProfileEdit: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -123,6 +124,11 @@ fun SettingsScreen(
             is SettingsUiEvent.OpenUrl -> {
                 viewModel.eventConsumed()
                 uriHandler.openUrl(event.url)
+            }
+
+            SettingsUiEvent.NavigateToProfileEdit -> {
+                viewModel.eventConsumed()
+                onNavigateToProfileEdit()
             }
         }
     }

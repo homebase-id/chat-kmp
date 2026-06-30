@@ -27,6 +27,8 @@ sealed interface SettingsUiAction {
 sealed interface SettingsUiEvent {
     data object LoggedOut : SettingsUiEvent
     data class OpenUrl(val url: String): SettingsUiEvent
+    /** Open the in-app standard-profile editor. */
+    data object NavigateToProfileEdit : SettingsUiEvent
 }
 
 sealed interface SettingsUiDialog {
