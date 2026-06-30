@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -88,6 +89,7 @@ import id.homebase.resources.contactbook_action_request_cancelled
 import id.homebase.resources.contactbook_action_request_rejected
 import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_cancel_request
+import id.homebase.resources.contactbook_detail_message
 import id.homebase.resources.contactbook_detail_request_incoming
 import id.homebase.resources.contactbook_detail_request_outgoing
 import id.homebase.resources.contactbook_detail_reject
@@ -118,6 +120,10 @@ fun AddContactScreen(
     connectRequestViewModel: ConnectRequestViewModel,
     onBack: () -> Unit,
     onOpenConversation: (Uuid) -> Unit,
+    // Launched from a chat flow: a contact is only useful with a Homebase ID (you can't message
+    // someone without one), so manual entry and "save as new contact" are hidden — a resolved
+    // identity is actionable only as connect/accept/cancel, or Message once connected.
+    identityOnly: Boolean = false,
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -143,6 +149,7 @@ fun AddContactScreen(
                 AddContactEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRejected)
                 AddContactEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgCancelled)
                 AddContactEvent.RequestActionFailed -> snackbarHostState.showSnackbar(msgActionFailed)
+                is AddContactEvent.OpenConversation -> onOpenConversation(event.conversationId)
             }
         }
     }
@@ -209,6 +216,7 @@ fun AddContactScreen(
                 AddContactMode.BY_IDENTITY -> ByIdentitySection(
                     uiState = uiState,
                     onAction = viewModel::onAction,
+                    identityOnly = identityOnly,
                     onSendConnectionRequest = { odinId ->
                         connectRequestViewModel.onAction(
                             ConnectRequestAction.OpenDialogWithRecipient(odinId),
@@ -265,6 +273,7 @@ private fun AddContactAvatar(uiState: AddContactUiState, photoBytes: ByteArray?)
 private fun ByIdentitySection(
     uiState: AddContactUiState,
     onAction: (AddContactAction) -> Unit,
+    identityOnly: Boolean,
     onSendConnectionRequest: (OdinId) -> Unit,
 ) {
     val resolution = uiState.resolution
@@ -295,29 +304,39 @@ private fun ByIdentitySection(
                 relation = uiState.relation,
                 odinId = resolution.identity.odinId,
                 actionInProgress = uiState.actionInProgress,
+                identityOnly = identityOnly,
                 onSendConnectionRequest = onSendConnectionRequest,
                 onAction = onAction,
             )
-            SaveAsNewRow(uiState, onAction)
+            // In identity-only (chat) mode a contact can't be "saved as new" — the only useful
+            // outcomes are connect or message-once-connected, both handled by RelationActions.
+            if (!identityOnly) SaveAsNewRow(uiState, onAction)
         }
 
-        // Couldn't resolve the ID, but the user can still add them by hand ("add anyway").
+        // Couldn't resolve the ID. Outside chat the user can still add them by hand ("add anyway");
+        // in identity-only mode there's nothing to do without a Homebase ID, so we stop here.
         RecipientResolution.NotFound -> {
-            NameFields(uiState, onAction)
-            Spacer(modifier = Modifier.height(8.dp))
-            OptionalDetails(uiState, onAction)
-            SaveButton(
-                enabled = uiState.canSave,
-                onClick = { onAction(AddContactAction.SaveClicked) },
-            )
+            if (!identityOnly) {
+                NameFields(uiState, onAction)
+                Spacer(modifier = Modifier.height(8.dp))
+                OptionalDetails(uiState, onAction)
+                SaveButton(
+                    enabled = uiState.canSave,
+                    onClick = { onAction(AddContactAction.SaveClicked) },
+                )
+            }
         }
 
         else -> {}
     }
 
-    Spacer(modifier = Modifier.height(8.dp))
-    TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
-        Text(stringResource(MR.string.add_contact_manual_link))
+    // The "Add manually" escape hatch is only offered when a manual contact is useful — never
+    // from a chat flow, where a contact without a Homebase ID can't be messaged.
+    if (!identityOnly) {
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
+            Text(stringResource(MR.string.add_contact_manual_link))
+        }
     }
 }
 
@@ -356,6 +375,7 @@ private fun RelationActions(
     relation: IdentityRelation,
     odinId: OdinId,
     actionInProgress: Boolean,
+    identityOnly: Boolean,
     onSendConnectionRequest: (OdinId) -> Unit,
     onAction: (AddContactAction) -> Unit,
 ) {
@@ -419,7 +439,17 @@ private fun RelationActions(
             }
         }
 
-        IdentityRelation.CONNECTED -> AlreadyConnectedNote()
+        // Already connected: in a chat flow, offer to jump straight into the conversation;
+        // otherwise just note the connection (the contact-book add has nothing to message from).
+        IdentityRelation.CONNECTED ->
+            if (identityOnly) {
+                MessageConnectedButton(
+                    enabled = !actionInProgress,
+                    onClick = { onAction(AddContactAction.MessageClicked) },
+                )
+            } else {
+                AlreadyConnectedNote()
+            }
 
         IdentityRelation.BLOCKED -> {
             Spacer(modifier = Modifier.height(12.dp))
@@ -495,6 +525,21 @@ private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(stringResource(MR.string.contactbook_edit_save))
+    }
+}
+
+/** Primary "Message" CTA shown for an already-connected identity in the chat (identity-only) flow. */
+@Composable
+private fun MessageConnectedButton(enabled: Boolean, onClick: () -> Unit) {
+    Spacer(modifier = Modifier.height(8.dp))
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.AutoMirrored.Outlined.Message, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(stringResource(MR.string.contactbook_detail_message))
     }
 }
 

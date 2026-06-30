@@ -10,6 +10,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.connections.RecipientResolution
@@ -46,6 +47,7 @@ class AddContactViewModel(
     private val publicIdentityRepository: PublicIdentityRepository,
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
+    private val conversationService: ConversationService,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddContactUiState())
@@ -124,6 +126,7 @@ class AddContactViewModel(
             AddContactAction.SwitchToByIdentity ->
                 _state.update { it.copy(mode = AddContactMode.BY_IDENTITY) }
             AddContactAction.SaveClicked -> save()
+            AddContactAction.MessageClicked -> openConversation()
             AddContactAction.AcceptRequestClicked -> handleRequestAction(
                 AddContactEvent.RequestAccepted,
             ) { connectionRequestService.acceptIncomingRequest(it) }
@@ -220,6 +223,28 @@ class AddContactViewModel(
                     },
                 )
             }
+        }
+    }
+
+    /**
+     * Opens (or reuses) the 1:1 conversation with the resolved, already-connected identity, then
+     * navigates into it. Used by the identity-only (chat) entry where a connected contact is
+     * actionable as "Message" rather than "Save as new contact".
+     */
+    private fun openConversation() {
+        val odinId = (_state.value.resolution as? RecipientResolution.Resolved)?.identity?.odinId
+            ?: return
+        viewModelScope.launch {
+            val id = try {
+                conversationService.createConversation(listOf(odinId), "", null).conversationId
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to open conversation with $odinId" }
+                _events.tryEmit(AddContactEvent.Error)
+                return@launch
+            }
+            _events.tryEmit(AddContactEvent.OpenConversation(id))
         }
     }
 

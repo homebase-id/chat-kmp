@@ -1,9 +1,13 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package id.homebase.core.ui.screens.contactbook.add
 
 import androidx.compose.runtime.Immutable
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import io.github.vinceglb.filekit.PlatformFile
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /** Whether the Add Contact flow leads with a Homebase ID lookup or a plain manual form. */
 enum class AddContactMode { BY_IDENTITY, MANUAL }
@@ -52,6 +56,8 @@ sealed interface AddContactAction {
     data object SwitchToManual : AddContactAction
     data object SwitchToByIdentity : AddContactAction
     data object SaveClicked : AddContactAction
+    /** Open (or reuse) the 1:1 conversation with the resolved, already-connected identity. */
+    data object MessageClicked : AddContactAction
     /** Accept the incoming request from the resolved identity. */
     data object AcceptRequestClicked : AddContactAction
     /** Reject the incoming request from the resolved identity. */
@@ -78,5 +84,7 @@ sealed interface AddContactEvent {
     data object RequestCancelled : AddContactEvent
     /** An accept/reject/cancel action failed. */
     data object RequestActionFailed : AddContactEvent
+    /** Open the 1:1 conversation with an already-connected identity. */
+    data class OpenConversation(val conversationId: Uuid) : AddContactEvent
     data object Back : AddContactEvent
 }
