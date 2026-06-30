@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -528,7 +529,9 @@ private fun DetailField(icon: ImageVector, label: String, value: String?, synced
     ListItem(
         leadingContent = { Icon(icon, contentDescription = null) },
         overlineContent = { Text(label) },
-        headlineContent = { Text(value) },
+        // Wrap the value so it can be long-pressed/drag-selected and copied (phone, email,
+        // address, …). Per-row scope keeps selection inside one value at a time.
+        headlineContent = { SelectionContainer { Text(value) } },
         trailingContent = synced?.let { { SyncedValuePeek(it) } },
     )
 }

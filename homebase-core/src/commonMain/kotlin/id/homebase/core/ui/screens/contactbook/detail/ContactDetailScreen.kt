@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -183,28 +184,34 @@ fun ContactDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = { viewModel.onAction(ContactDetailAction.BackClicked) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
-                        Icon(
-                            Icons.Outlined.Edit,
-                            contentDescription = stringResource(MR.string.contactbook_detail_edit),
-                        )
-                    }
-                    if (uiState.entry != null) {
-                        ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
-                    }
-                },
-            )
+            // While the full-screen media viewer is open it draws its own top bar
+            // (contact name + date + back/menu). Suppress this screen's app bar so
+            // the two don't stack — the viewer's opaque surface already covers the
+            // content beneath it. Mirrors ConversationMediaScreen.
+            if (uiState.fullScreenMedia == null) {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = { viewModel.onAction(ContactDetailAction.BackClicked) }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
+                            Icon(
+                                Icons.Outlined.Edit,
+                                contentDescription = stringResource(MR.string.contactbook_detail_edit),
+                            )
+                        }
+                        if (uiState.entry != null) {
+                            ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
@@ -476,17 +483,22 @@ private fun DetailHeader(
     ) {
         ContactBookAvatar(entry = entry, size = 88.dp)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = entry.displayName,
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-        )
-        entry.odinId?.let {
+        // Name and Homebase ID are selectable so they can be copied (the ID especially).
+        SelectionContainer {
             Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = entry.displayName,
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
             )
+        }
+        entry.odinId?.let {
+            SelectionContainer {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         // Free-text status/tagline the contact set, under the odinId.
