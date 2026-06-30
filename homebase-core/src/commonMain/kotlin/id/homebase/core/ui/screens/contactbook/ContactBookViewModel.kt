@@ -239,7 +239,17 @@ class ContactBookViewModel(
         // entry; the rest get a synthetic display-only entry, the same projection Introduced /
         // Confirmed use.
         val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
-        val all = (overriddenContacts + unsavedConnectionDomains.map { syntheticContact(it) })
+        val selfEntry = header.ownerSession?.let { selfContact(it) }
+        val all = buildList {
+            addAll(overriddenContacts)
+            addAll(unsavedConnectionDomains.map { syntheticContact(it) })
+            // The contact store never holds the signed-in user, so a self-search finds nothing.
+            // Surface "Name (you)" when the user searches for their own name/handle — only on an
+            // active query, and only if self isn't already a saved contact (no duplicate).
+            if (selfEntry != null && ui.query.isNotBlank() &&
+                none { it.odinId?.lowercase() == selfEntry.odinId?.lowercase() }
+            ) add(selfEntry)
+        }
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
@@ -304,6 +314,21 @@ class ContactBookViewModel(
         val byOdin = contacts.filter { !it.odinId.isNullOrBlank() }
             .associateBy { it.odinId!!.lowercase() }
         return domains.map { domain -> byOdin[domain] ?: syntheticContact(domain) }
+    }
+
+    /** A display-only "(you)" entry for the signed-in user, matched by their own name/handle. */
+    private fun selfContact(session: OwnerSession): ContactBookEntry {
+        val domain = session.odinId.domainName
+        val uid = Md5.toGuidId(domain.lowercase())
+        return ContactBookEntry(
+            uniqueId = uid,
+            fileId = uid,
+            versionTag = null,
+            odinId = domain,
+            displayName = session.displayName?.ifBlank { null } ?: domain,
+            source = ContactBookSource.CONNECTION,
+            isSelf = true,
+        )
     }
 
     /** A display-only entry for a connection/member that isn't in the contact book. */

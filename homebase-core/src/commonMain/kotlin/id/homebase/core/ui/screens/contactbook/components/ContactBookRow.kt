@@ -23,6 +23,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.connections_introduced_by
 import id.homebase.resources.contactbook_connected
+import id.homebase.resources.contactbook_self_you
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -45,8 +46,13 @@ fun ContactBookRow(
         ContactBookAvatar(entry = entry)
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
+            val name = if (entry.isSelf) {
+                stringResource(MR.string.contactbook_self_you, entry.displayName)
+            } else {
+                entry.displayName
+            }
             Text(
-                text = entry.displayName,
+                text = name,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
