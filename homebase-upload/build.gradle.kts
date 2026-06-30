@@ -31,6 +31,7 @@ kotlin {
 
     compilerOptions {
         optIn.add("kotlin.uuid.ExperimentalUuidApi")
+        optIn.add("kotlin.io.encoding.ExperimentalEncodingApi")
     }
 
     sourceSets {
@@ -38,10 +39,13 @@ kotlin {
             // `api` because homebase-upload's public types (e.g. PayloadBundle exposing
             // PayloadFile/ThumbnailFile) reference homebase-api types in their signatures.
             api(project(":homebase-api"))
-            // coroutines + kermit are `implementation` (non-transitive) in homebase-api, so
-            // declare them directly here.
+            // coroutines + kermit + serialization are `implementation` (non-transitive) in
+            // homebase-api, so declare them directly here. serialization is needed because
+            // homebase-api's @Serializable types (e.g. FileSystemType) expose a Companion whose
+            // supertype lives in kotlinx-serialization.
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kermit)
+            implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
