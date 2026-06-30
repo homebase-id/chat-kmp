@@ -17,17 +17,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactEmergency
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.PersonAddAlt1
+import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -38,6 +45,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -90,8 +99,13 @@ import id.homebase.resources.contactbook_detail_disconnect
 import id.homebase.resources.contactbook_detail_disconnect_message
 import id.homebase.resources.contactbook_detail_disconnect_title
 import id.homebase.resources.contactbook_detail_edit
+import id.homebase.resources.contactbook_detail_manage
 import id.homebase.resources.contactbook_detail_message
 import id.homebase.resources.contactbook_detail_sync
+import id.homebase.resources.contactbook_detail_tab_about
+import id.homebase.resources.contactbook_detail_tab_activity
+import id.homebase.resources.contactbook_detail_tab_details
+import id.homebase.resources.contactbook_detail_unblock
 import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
@@ -107,6 +121,7 @@ import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -183,6 +198,9 @@ fun ContactDetailScreen(
                             contentDescription = stringResource(MR.string.contactbook_detail_edit),
                         )
                     }
+                    if (uiState.entry != null) {
+                        ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                    }
                 },
             )
         },
@@ -200,9 +218,18 @@ fun ContactDetailScreen(
 
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }
-                    Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                    ) {
+                    // Only show tabs that have content; a plain contact stays a single list.
+                    val tabs = buildList {
+                        add(ContactDetailTab.DETAILS)
+                        if (uiState.hasAboutContent) add(ContactDetailTab.ABOUT)
+                        if (uiState.hasActivityContent) add(ContactDetailTab.ACTIVITY)
+                    }
+                    var selectedTab by rememberSaveable(entry.uniqueId) {
+                        mutableStateOf(ContactDetailTab.DETAILS)
+                    }
+                    val current = if (selectedTab in tabs) selectedTab else ContactDetailTab.DETAILS
+
+                    Column(modifier = Modifier.fillMaxSize()) {
                         DetailHeader(
                             uiState = uiState,
                             onAction = viewModel::onAction,
@@ -217,45 +244,71 @@ fun ContactDetailScreen(
                             },
                         )
 
-                        Spacer(modifier = Modifier.height(20.dp))
-                        ContactFieldsSection(
-                            entry = entry,
-                            expanded = detailsExpanded,
-                            onToggleMore = { detailsExpanded = !detailsExpanded },
-                        )
-
-                        BioSection(entry.shortBio)
-                        ExperienceSection(uiState.experience, uiState.experienceImage)
-                        SocialSection(entry.socialHandles)
-
-                        Spacer(modifier = Modifier.height(28.dp))
-                        RecentMediaSection(
-                            overview = uiState.overview,
-                            onMediaClick = { viewModel.onAction(ContactDetailAction.OpenMedia(it)) },
-                            onSeeAll = { viewModel.onAction(ContactDetailAction.SeeAllMediaClicked) },
-                        )
-
-                        // Circles + groups-in-common only apply to Homebase identities;
-                        // for those they always show (with empty / not-connected hints).
-                        if (uiState.hasOdinId) {
-                            GroupsInCommonSection(
-                                groups = uiState.groupsInCommon,
-                                isConnected = uiState.isConnected,
-                                onOpenGroup = { viewModel.onAction(ContactDetailAction.OpenGroup(it)) },
-                            )
-
-                            CirclesSection(
-                                circles = uiState.circles,
-                                isConnected = uiState.isConnected,
-                            )
+                        if (tabs.size > 1) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TabRow(selectedTabIndex = tabs.indexOf(current)) {
+                                tabs.forEach { tab ->
+                                    Tab(
+                                        selected = tab == current,
+                                        onClick = { selectedTab = tab },
+                                        text = { Text(stringResource(tab.labelRes)) },
+                                    )
+                                }
+                            }
                         }
 
-                        Spacer(modifier = Modifier.height(28.dp))
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        ManagementSection(uiState, viewModel::onAction)
+                        // Fresh scroll position per tab.
+                        val scroll = remember(current) { ScrollState(0) }
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(scroll),
+                        ) {
+                            Spacer(modifier = Modifier.height(if (tabs.size > 1) 12.dp else 20.dp))
+                            when (current) {
+                                ContactDetailTab.DETAILS -> {
+                                    ContactFieldsSection(
+                                        entry = entry,
+                                        expanded = detailsExpanded,
+                                        onToggleMore = { detailsExpanded = !detailsExpanded },
+                                    )
+                                    // Circles + groups-in-common only apply to Homebase identities.
+                                    if (uiState.hasOdinId) {
+                                        GroupsInCommonSection(
+                                            groups = uiState.groupsInCommon,
+                                            isConnected = uiState.isConnected,
+                                            onOpenGroup = {
+                                                viewModel.onAction(ContactDetailAction.OpenGroup(it))
+                                            },
+                                        )
+                                        CirclesSection(
+                                            circles = uiState.circles,
+                                            isConnected = uiState.isConnected,
+                                        )
+                                    }
+                                }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                                ContactDetailTab.ABOUT -> {
+                                    BioSection(entry.shortBio)
+                                    ExperienceSection(uiState.experience, uiState.experienceImage)
+                                    SocialSection(entry.socialHandles)
+                                }
+
+                                ContactDetailTab.ACTIVITY -> {
+                                    RecentMediaSection(
+                                        overview = uiState.overview,
+                                        onMediaClick = {
+                                            viewModel.onAction(ContactDetailAction.OpenMedia(it))
+                                        },
+                                        onSeeAll = {
+                                            viewModel.onAction(ContactDetailAction.SeeAllMediaClicked)
+                                        },
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
                     }
                 }
             }
@@ -315,6 +368,72 @@ fun ContactDetailScreen(
             isConnected = uiState.isConnected,
             onConfirm = { viewModel.onAction(ContactDetailAction.ConfirmYes) },
             onDismiss = { viewModel.onAction(ContactDetailAction.ConfirmDismiss) },
+        )
+    }
+}
+
+/** Tabs on the contact detail screen; shown only when they have content. */
+private enum class ContactDetailTab(val labelRes: StringResource) {
+    DETAILS(MR.string.contactbook_detail_tab_details),
+    ABOUT(MR.string.contactbook_detail_tab_about),
+    ACTIVITY(MR.string.contactbook_detail_tab_activity),
+}
+
+/**
+ * Overflow (⋮) menu of management actions — sync, disconnect, block/unblock, delete — kept out of
+ * the browsing flow. Destructive items are tinted error.
+ */
+@Composable
+private fun ManagementMenu(
+    uiState: ContactDetailUiState,
+    onAction: (ContactDetailAction) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val error = MaterialTheme.colorScheme.error
+    IconButton(onClick = { open = true }) {
+        Icon(
+            Icons.Default.MoreVert,
+            contentDescription = stringResource(MR.string.contactbook_detail_manage),
+        )
+    }
+    DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        if (uiState.hasOdinId) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.contactbook_detail_sync)) },
+                leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
+                onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
+            )
+            if (uiState.isConnected) {
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(MR.string.contactbook_detail_disconnect), color = error)
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.PersonRemove, contentDescription = null, tint = error)
+                    },
+                    onClick = { open = false; onAction(ContactDetailAction.DisconnectClicked) },
+                )
+            }
+            if (uiState.isBlocked) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contactbook_detail_unblock)) },
+                    leadingIcon = { Icon(Icons.Outlined.Block, contentDescription = null) },
+                    onClick = { open = false; onAction(ContactDetailAction.UnblockClicked) },
+                )
+            } else {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.contactbook_detail_block), color = error) },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Block, contentDescription = null, tint = error)
+                    },
+                    onClick = { open = false; onAction(ContactDetailAction.BlockClicked) },
+                )
+            }
+        }
+        DropdownMenuItem(
+            text = { Text(stringResource(MR.string.contactbook_detail_delete), color = error) },
+            leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = error) },
+            onClick = { open = false; onAction(ContactDetailAction.DeleteClicked) },
         )
     }
 }

@@ -21,17 +21,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AlternateEmail
-import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Call
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -74,7 +70,6 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_detail_bio
 import id.homebase.resources.contactbook_detail_social
-import id.homebase.resources.contactbook_detail_block
 import id.homebase.resources.contactbook_detail_circles
 import id.homebase.resources.contactbook_detail_circles_connect
 import id.homebase.resources.contactbook_detail_circles_empty
@@ -89,18 +84,13 @@ import id.homebase.resources.contactbook_edit_given_name
 import id.homebase.resources.contactbook_edit_odinid
 import id.homebase.resources.contactbook_edit_phone
 import id.homebase.resources.contactbook_edit_surname
-import id.homebase.resources.contactbook_detail_danger_zone
 import id.homebase.resources.contactbook_detail_groups_connect
 import id.homebase.resources.contactbook_detail_groups_empty
-import id.homebase.resources.contactbook_detail_delete
-import id.homebase.resources.contactbook_detail_disconnect
 import id.homebase.resources.contactbook_detail_less
 import id.homebase.resources.contactbook_detail_more
 import id.homebase.resources.contactbook_detail_none
 import id.homebase.resources.contactbook_detail_no_recent_media
 import id.homebase.resources.contactbook_detail_recent_media
-import id.homebase.resources.contactbook_detail_sync
-import id.homebase.resources.contactbook_detail_unblock
 import id.homebase.resources.conversation_groups_in_common
 import id.homebase.resources.conversation_media_see_all
 import org.jetbrains.compose.resources.stringResource
@@ -474,58 +464,6 @@ fun SocialSection(handles: List<Pair<ContactSocialNetwork, String>>) {
     }
 }
 
-/** Management actions (gated by contact type / connection status). */
-@Composable
-fun ManagementSection(
-    uiState: ContactDetailUiState,
-    onAction: (ContactDetailAction) -> Unit,
-) {
-    // Pull the latest public profile into this contact — only meaningful for Homebase identities.
-    if (uiState.hasOdinId) {
-        ManagementAction(
-            Icons.Outlined.Sync,
-            stringResource(MR.string.contactbook_detail_sync),
-        ) { onAction(ContactDetailAction.SyncClicked) }
-    }
-
-    // Danger zone — set apart with a divider so it's clearly separated from the rest.
-    Spacer(modifier = Modifier.height(16.dp))
-    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-    Spacer(modifier = Modifier.height(12.dp))
-    Text(
-        text = stringResource(MR.string.contactbook_detail_danger_zone),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.error,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-    )
-    if (uiState.hasOdinId) {
-        if (uiState.isConnected) {
-            ManagementAction(
-                Icons.Outlined.PersonRemove,
-                stringResource(MR.string.contactbook_detail_disconnect),
-                destructive = true,
-            ) { onAction(ContactDetailAction.DisconnectClicked) }
-        }
-        if (uiState.isBlocked) {
-            ManagementAction(
-                Icons.Outlined.Block,
-                stringResource(MR.string.contactbook_detail_unblock),
-            ) { onAction(ContactDetailAction.UnblockClicked) }
-        } else {
-            ManagementAction(
-                Icons.Outlined.Block,
-                stringResource(MR.string.contactbook_detail_block),
-                destructive = true,
-            ) { onAction(ContactDetailAction.BlockClicked) }
-        }
-    }
-    ManagementAction(
-        Icons.Outlined.Delete,
-        stringResource(MR.string.contactbook_detail_delete),
-        destructive = true,
-    ) { onAction(ContactDetailAction.DeleteClicked) }
-}
-
 @Composable
 private fun SharedMediaThumb(item: SharedMediaItem, size: Dp, onClick: () -> Unit) {
     MediaItem(
@@ -593,17 +531,3 @@ private fun SyncedValuePeek(syncedValue: String) {
     }
 }
 
-@Composable
-private fun ManagementAction(
-    icon: ImageVector,
-    label: String,
-    destructive: Boolean = false,
-    onClick: () -> Unit,
-) {
-    val tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-    ListItem(
-        modifier = Modifier.clickable(onClick = onClick),
-        leadingContent = { Icon(icon, contentDescription = null, tint = tint) },
-        headlineContent = { Text(label, color = tint) },
-    )
-}

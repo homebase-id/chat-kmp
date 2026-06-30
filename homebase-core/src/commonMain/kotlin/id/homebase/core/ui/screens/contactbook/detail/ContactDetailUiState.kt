@@ -61,6 +61,22 @@ data class ContactDetailUiState(
     val hasOdinId: Boolean get() = !entry?.odinId.isNullOrBlank()
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected
     val isBlocked: Boolean get() = connectionStatus == ConnectionStatus.Blocked
+
+    /** The "About" tab has content: a short bio, an Experience attribute (text/image), or socials. */
+    val hasAboutContent: Boolean
+        get() = !entry?.shortBio.isNullOrBlank() ||
+            experienceImage != null ||
+            experience?.let {
+                !it.title.isNullOrBlank() || !it.fullBio.isNullOrEmpty() || !it.link.isNullOrBlank()
+            } == true ||
+            entry?.socialHandles?.isNotEmpty() == true
+
+    /** The "Activity" tab has content: any shared media/files/audio/dice/locations in the 1:1. */
+    val hasActivityContent: Boolean
+        get() = overview?.let {
+            it.media.isNotEmpty() || it.files.isNotEmpty() || it.audio.isNotEmpty() ||
+                it.diceRolls.isNotEmpty() || it.locations.isNotEmpty()
+        } == true
 }
 
 sealed interface ContactDetailAction {
