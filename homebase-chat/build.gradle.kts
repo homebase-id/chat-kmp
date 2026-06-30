@@ -49,6 +49,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":homebase-api"))
+            implementation(project(":homebase-upload"))
             implementation(project(":homebase-common"))
             implementation(project(":image-editor-ui"))
 

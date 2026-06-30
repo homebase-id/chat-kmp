@@ -1,4 +1,6 @@
 package id.homebase.chat.services
+import id.homebase.upload.thumbnailDescriptorsFor
+import id.homebase.upload.PayloadBundle
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader

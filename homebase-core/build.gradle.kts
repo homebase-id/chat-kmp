@@ -66,6 +66,7 @@ kotlin {
             api(project(":homebase-api"))
             api(project(":homebase-common"))
             api(project(":image-editor-ui"))
+            implementation(project(":homebase-upload"))
             implementation(project(":homebase-auth"))
             implementation(project(":homebase-chat"))
 

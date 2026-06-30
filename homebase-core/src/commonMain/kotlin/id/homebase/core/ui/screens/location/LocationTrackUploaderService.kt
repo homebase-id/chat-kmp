@@ -22,7 +22,7 @@ import id.homebase.api.sync.database.BufferedLocationPoint
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptionService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.locationLabeledDrive

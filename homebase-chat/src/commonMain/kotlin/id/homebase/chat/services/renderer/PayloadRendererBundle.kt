@@ -1,7 +1,7 @@
 package id.homebase.chat.services.renderer
 
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.builder.LinkPreviewPayloadBuilder
 import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
 

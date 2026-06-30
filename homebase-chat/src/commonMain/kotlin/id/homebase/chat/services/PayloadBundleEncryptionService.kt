@@ -1,4 +1,5 @@
 package id.homebase.chat.services
+import id.homebase.upload.PayloadBundle
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile

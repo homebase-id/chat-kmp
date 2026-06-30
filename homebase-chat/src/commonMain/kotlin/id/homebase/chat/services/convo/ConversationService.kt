@@ -38,7 +38,7 @@ import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.GroupHealCleanupInfo
 import id.homebase.chat.services.GroupHealInfo
