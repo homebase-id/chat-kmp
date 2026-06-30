@@ -36,13 +36,16 @@ internal actual fun createPlatformHttpClient(
     }
 }
 
-private object HomebaseTrustManager {
+internal object HomebaseTrustManager {
     /**
      * An [X509TrustManager] trusting the JRE default anchors plus [ExtraTrustRoots],
      * or `null` if it could not be built (in which case CIO keeps its default and we
      * log — we never want a trust-store hiccup to silently disable TLS validation).
      */
     val augmented: X509TrustManager? by lazy { runCatching { build() }.getOrElse { it.log(); null } }
+
+    /** The JRE's default trust anchors, exposed so tests can assert we ADD to (never replace) them. */
+    internal fun jreDefaults(): X509TrustManager = defaultTrustManager()
 
     private fun build(): X509TrustManager {
         val ks = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null) }
@@ -88,7 +91,7 @@ private object HomebaseTrustManager {
  * root rotation reintroduces the symptom, append its PEM rather than reaching for
  * a broader (and riskier) "trust the OS keychain" scheme.
  */
-private object ExtraTrustRoots {
+internal object ExtraTrustRoots {
     // ISRG Root X2 (Let's Encrypt ECDSA root, valid 2020-09-04 .. 2040-09-17).
     // SHA-256: 69:72:9B:8E:15:A8:6E:FC:17:7A:57:AF:B7:17:1D:FC:64:AD:D2:8C:2F:CA:8C:F1:50:7E:34:45:3C:CB:14:70
     private const val ISRG_ROOT_X2 = """-----BEGIN CERTIFICATE-----
