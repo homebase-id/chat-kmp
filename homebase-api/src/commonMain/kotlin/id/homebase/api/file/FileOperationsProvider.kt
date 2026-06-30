@@ -37,6 +37,19 @@ interface FileOperationsProvider {
 
     fun getFileSize(path: String): Long
 
+    /**
+     * Whether [path] currently resolves to a readable upload source. Probed at the
+     * encryption-on-send boundary so a swept/evicted temp (or a revoked
+     * `content://`/`ph://` permission) fails soft — see [SourceUnavailableException]
+     * — instead of throwing an uncaught read error and enqueuing a doomed outbox row.
+     *
+     * The default probes via [getFileSize] (size > 0 ⇒ present). Platforms whose
+     * sources include URIs [getFileSize] cannot size — notably iOS `ph://` Photos
+     * assets, which `getFileSize` reports as 0 — MUST override with a real existence
+     * check, or every such source would be misreported as missing.
+     */
+    suspend fun sourceExists(path: String): Boolean = getFileSize(path) > 0L
+
     suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,

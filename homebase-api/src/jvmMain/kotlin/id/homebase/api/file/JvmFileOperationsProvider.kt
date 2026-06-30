@@ -67,6 +67,9 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         return if (file.exists() && file.isFile) file.length() else 0L
     }
 
+    override suspend fun sourceExists(path: String): Boolean =
+        withContext(Dispatchers.IO) { File(path).exists() }
+
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
