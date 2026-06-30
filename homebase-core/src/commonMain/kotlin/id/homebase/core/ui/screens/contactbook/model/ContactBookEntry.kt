@@ -109,8 +109,8 @@ data class ContactBookEntry(
     val subtitle: String? get() = odinId ?: phone ?: email
 
     /**
-     * The full postal address formatted for display, one component per line:
-     * street lines, then "postcode city", then country. Null when nothing is set.
+     * The full postal address formatted for display on a single line: street lines, then
+     * "postcode city", then country, joined with commas. Null when nothing is set.
      */
     val location: String?
         get() = listOfNotNull(
@@ -119,7 +119,7 @@ data class ContactBookEntry(
             listOfNotNull(postcode?.ifBlank { null }, city?.ifBlank { null })
                 .joinToString(" ").ifBlank { null },
             country?.ifBlank { null },
-        ).joinToString("\n").ifBlank { null }
+        ).joinToString(", ").ifBlank { null }
 
     fun matches(query: String): Boolean {
         if (query.isBlank()) return true

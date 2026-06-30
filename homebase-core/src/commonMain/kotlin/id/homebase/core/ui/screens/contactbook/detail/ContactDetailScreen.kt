@@ -86,6 +86,8 @@ import id.homebase.resources.contactbook_detail_emergency_badge
 import id.homebase.resources.contactbook_detail_location_data_as_of
 import id.homebase.resources.contactbook_action_unblocked
 import id.homebase.resources.contactbook_connected
+import id.homebase.resources.contactbook_detail_about_empty
+import id.homebase.resources.contactbook_detail_activity_empty
 import id.homebase.resources.contactbook_detail_block
 import id.homebase.resources.contactbook_detail_block_message
 import id.homebase.resources.contactbook_detail_block_title
@@ -218,12 +220,13 @@ fun ContactDetailScreen(
 
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }
-                    // Only show tabs that have content; a plain contact stays a single list.
-                    val tabs = buildList {
-                        add(ContactDetailTab.DETAILS)
-                        if (uiState.hasAboutContent) add(ContactDetailTab.ABOUT)
-                        if (uiState.hasActivityContent) add(ContactDetailTab.ACTIVITY)
-                    }
+                    // Always show all three tabs; each renders a friendly empty state when it has
+                    // nothing, so the contact's layout stays consistent.
+                    val tabs = listOf(
+                        ContactDetailTab.DETAILS,
+                        ContactDetailTab.ABOUT,
+                        ContactDetailTab.ACTIVITY,
+                    )
                     var selectedTab by rememberSaveable(entry.uniqueId) {
                         mutableStateOf(ContactDetailTab.DETAILS)
                     }
@@ -290,21 +293,33 @@ fun ContactDetailScreen(
                                 }
 
                                 ContactDetailTab.ABOUT -> {
-                                    BioSection(entry.shortBio)
-                                    ExperienceSection(uiState.experience, uiState.experienceImage)
-                                    SocialSection(entry.socialHandles)
+                                    if (uiState.hasAboutContent) {
+                                        BioSection(entry.shortBio)
+                                        ExperienceSection(uiState.experience, uiState.experienceImage)
+                                        SocialSection(entry.socialHandles)
+                                    } else {
+                                        TabEmptyMessage(
+                                            stringResource(MR.string.contactbook_detail_about_empty),
+                                        )
+                                    }
                                 }
 
                                 ContactDetailTab.ACTIVITY -> {
-                                    RecentMediaSection(
-                                        overview = uiState.overview,
-                                        onMediaClick = {
-                                            viewModel.onAction(ContactDetailAction.OpenMedia(it))
-                                        },
-                                        onSeeAll = {
-                                            viewModel.onAction(ContactDetailAction.SeeAllMediaClicked)
-                                        },
-                                    )
+                                    if (uiState.hasActivityContent) {
+                                        RecentMediaSection(
+                                            overview = uiState.overview,
+                                            onMediaClick = {
+                                                viewModel.onAction(ContactDetailAction.OpenMedia(it))
+                                            },
+                                            onSeeAll = {
+                                                viewModel.onAction(ContactDetailAction.SeeAllMediaClicked)
+                                            },
+                                        )
+                                    } else {
+                                        TabEmptyMessage(
+                                            stringResource(MR.string.contactbook_detail_activity_empty),
+                                        )
+                                    }
                                 }
                             }
                             Spacer(modifier = Modifier.height(24.dp))

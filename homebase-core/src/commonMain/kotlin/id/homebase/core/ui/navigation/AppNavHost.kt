@@ -144,7 +144,6 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
 import kotlinx.io.files.Path
-import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
 import id.homebase.imageeditor.ui.CropScreen
@@ -606,15 +605,6 @@ fun AppNavHost(
                                 onUpdateClick = { viewModel.triggerUpdate() }
                             )
                         }
-                        if (uiState.incomingRequests.isNotEmpty()) {
-                            ConnectionRequestHeaderBanner(
-                                requestCount = uiState.incomingRequests.size,
-                                // Pending requests now live in the Contact Book's Requests pill
-                                // (accept/reject in-app), so land there instead of the owner console.
-                                onBannerClick = openContactBook,
-                            )
-                        }
-
                         val pendingUpgrade = uiState.pendingUpgrade
                         if (pendingUpgrade is PendingUpgradeState.ShowSnackbar) {
                             LaunchedEffect(pendingUpgrade) {

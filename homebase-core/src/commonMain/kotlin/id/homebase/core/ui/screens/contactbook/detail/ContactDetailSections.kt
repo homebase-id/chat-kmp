@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -48,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -76,14 +78,12 @@ import id.homebase.resources.contactbook_detail_circles_empty
 import id.homebase.resources.contactbook_detail_contact_details
 import id.homebase.resources.contactbook_detail_experience
 import id.homebase.resources.contactbook_detail_location
+import id.homebase.resources.contactbook_detail_name
 import id.homebase.resources.contactbook_detail_override_none
 import id.homebase.resources.contactbook_detail_override_synced
 import id.homebase.resources.contactbook_edit_birthday
 import id.homebase.resources.contactbook_edit_email
-import id.homebase.resources.contactbook_edit_given_name
-import id.homebase.resources.contactbook_edit_odinid
 import id.homebase.resources.contactbook_edit_phone
-import id.homebase.resources.contactbook_edit_surname
 import id.homebase.resources.contactbook_detail_groups_connect
 import id.homebase.resources.contactbook_detail_groups_empty
 import id.homebase.resources.contactbook_detail_less
@@ -232,6 +232,25 @@ private fun CircleChip(name: String) {
     }
 }
 
+/**
+ * Friendly, centered empty state for a whole tab that currently has nothing to show. Tabs are
+ * always present, so this explains why one is blank rather than leaving an empty pane.
+ */
+@Composable
+fun TabEmptyMessage(text: String) {
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
 /** Muted single-line hint used by sections for their empty / not-connected states. */
 @Composable
 private fun SectionHint(text: String) {
@@ -260,17 +279,16 @@ fun ContactFieldsSection(
     )
 
     // Labels resolved here (stringResource can't be called inside the buildList builder).
-    val lblFirst = stringResource(MR.string.contactbook_edit_given_name)
-    val lblLast = stringResource(MR.string.contactbook_edit_surname)
-    val lblId = stringResource(MR.string.contactbook_edit_odinid)
+    val lblName = stringResource(MR.string.contactbook_detail_name)
     val lblPhone = stringResource(MR.string.contactbook_edit_phone)
     val lblEmail = stringResource(MR.string.contactbook_edit_email)
     val lblLocation = stringResource(MR.string.contactbook_detail_location)
     val lblBirthday = stringResource(MR.string.contactbook_edit_birthday)
 
     // Each field carries its synced original ([DetailFieldRow.synced]) when the user has overridden
-    // it, so a small peek icon can reveal "their profile says …". Name parts come first so an
-    // identity contact shows its real details, not just the Homebase ID; the rest tuck behind "More".
+    // it, so a small peek icon can reveal "their profile says …". The full name comes first so an
+    // identity contact shows its real details; the rest tuck behind "More". The Homebase ID isn't
+    // repeated here — it's already shown under the name in the header.
     val o = entry.syncedOverlay
     val syncedLocation = o?.let { ov ->
         if (ov.city != null || ov.country != null) {
@@ -279,13 +297,23 @@ fun ContactFieldsSection(
             null
         }
     }
+    // First and last name on one line.
+    val fullName = listOfNotNull(
+        entry.givenName?.ifBlank { null },
+        entry.surname?.ifBlank { null },
+    ).joinToString(" ").ifBlank { null }
+    // Synced "their profile says …" original, only when given/surname was overridden; the
+    // non-overridden part falls back to the entry's own value so the peek shows the whole name.
+    val syncedName = if (o?.givenName != null || o?.surname != null) {
+        listOfNotNull(
+            (o?.givenName ?: entry.givenName)?.ifBlank { null },
+            (o?.surname ?: entry.surname)?.ifBlank { null },
+        ).joinToString(" ").ifBlank { null }
+    } else {
+        null
+    }
     val fields = buildList {
-        entry.givenName?.takeIf { it.isNotBlank() }
-            ?.let { add(DetailFieldRow(Icons.Outlined.Person, lblFirst, it, o?.givenName)) }
-        entry.surname?.takeIf { it.isNotBlank() }
-            ?.let { add(DetailFieldRow(Icons.Outlined.Person, lblLast, it, o?.surname)) }
-        entry.odinId?.takeIf { it.isNotBlank() }
-            ?.let { add(DetailFieldRow(Icons.Outlined.AlternateEmail, lblId, it, null)) }
+        fullName?.let { add(DetailFieldRow(Icons.Outlined.Person, lblName, it, syncedName)) }
         entry.phone?.takeIf { it.isNotBlank() }
             ?.let { add(DetailFieldRow(Icons.Outlined.Call, lblPhone, it, o?.phone)) }
         // App-local additional phones (no synced counterpart) render as plain extra rows.

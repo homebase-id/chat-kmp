@@ -101,6 +101,11 @@ data class ContactBookUiState(
     val confirmed: List<ContactBookEntry> = emptyList(),
     /** Requests filter: pending connection requests (incoming + outgoing), newest first. */
     val requests: List<PendingRequestEntry> = emptyList(),
+    /**
+     * Count of incoming connection requests, unfiltered by search — drives the in-list banner
+     * that jumps to the Requests pill.
+     */
+    val incomingRequestCount: Int = 0,
     /** Lowercased contact-domain → introducer display name, for the "Introduced by" row line. */
     val introducedByDomain: Map<String, String> = emptyMap(),
     /** Circles tab. */
