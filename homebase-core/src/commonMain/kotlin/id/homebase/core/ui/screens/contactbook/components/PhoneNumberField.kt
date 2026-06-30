@@ -42,6 +42,8 @@ fun PhoneNumberField(
     onValueChange: (String) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    supportingText: String? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
 ) {
     val region = Locale.current.region
     // Seed country/national from the incoming value once; the field owns them after.
@@ -75,6 +77,8 @@ fun PhoneNumberField(
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
         },
+        trailingIcon = trailingIcon,
+        supportingText = supportingText?.let { { Text(it) } },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
         modifier = modifier,
     )

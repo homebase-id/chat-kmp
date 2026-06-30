@@ -19,18 +19,26 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.chat.data.IncomingConnectionRequestUiModel
+import id.homebase.chat.data.OutgoingConnectionRequestUiModel
+import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.clearICanLocate
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
+import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
+import id.homebase.core.ui.screens.contactbook.saveContactEdit
+import id.homebase.core.ui.screens.contactbook.withOverride
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -56,11 +64,42 @@ class ContactDetailViewModel(
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val connectionService: ConnectionService,
+    private val connectionRequestService: ConnectionRequestService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val credentialsManager: CredentialsManager,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
+    private val overrideStore: ContactOverrideStore,
 ) : ViewModel() {
+
+    /** The synced (pre-override) entry for the contact in view — the baseline for save diffs. */
+    private var syncedEntry: ContactBookEntry? = null
+
+    /** (uniqueId, versionTag) we last fetched ext_data for, to avoid re-fetching unchanged. */
+    private var extLoadedFor: Pair<Uuid, Uuid?>? = null
+
+    /**
+     * Fetches the on-demand `ext_data` payload (Experience / Bio rich-text) once per contact version
+     * and folds the Experience attribute into state. [ContactRepository.loadExtData] is a cheap no-op
+     * (returns null) when the contact has no such payload.
+     */
+    private fun loadExtData(contact: Contact) {
+        val key = contact.uniqueId to contact.versionTag
+        if (extLoadedFor == key) return
+        extLoadedFor = key
+        viewModelScope.launch {
+            val experience = contactRepository.loadExtData(contact)?.experience
+            _uiState.update { it.copy(experience = experience, experienceImage = null) }
+            // The Experience attribute references its image by payload key; fetch the bytes too.
+            val imageKey = experience?.imageKey?.takeIf { it.isNotBlank() }
+            if (imageKey != null) {
+                val bytes = contactRepository.loadPayloadBytes(contact, imageKey)
+                if (bytes != null && _uiState.value.experience === experience) {
+                    _uiState.update { it.copy(experienceImage = bytes) }
+                }
+            }
+        }
+    }
 
     private val route = savedStateHandle.toRoute<Route.ContactBookDetail>()
 
@@ -77,26 +116,63 @@ class ContactDetailViewModel(
     private val odinId: String?
         get() = route.odinId?.ifBlank { null } ?: _uiState.value.entry?.odinId?.ifBlank { null }
 
+    private data class DetailBundle(
+        val contacts: List<ContactBookEntry>,
+        val conn: id.homebase.chat.services.convo.contact.ConnectionState,
+        val circ: id.homebase.chat.services.convo.contact.CircleMembershipState,
+        val incoming: List<IncomingConnectionRequestUiModel>,
+        val outgoing: List<OutgoingConnectionRequestUiModel>,
+    )
+
     init {
         // Self-sufficient on deep-link: ensure the repo has loaded even if the list wasn't opened.
         viewModelScope.launch { contactRepository.ensureLoaded() }
+        // Idempotent — makes pending-request state available even on a deep-link into detail.
+        viewModelScope.launch { connectionRequestService.start() }
         // Keep the entry + connection status live (an edit / block reflects immediately).
         viewModelScope.launch {
             val selfDomain = runCatching { credentialsManager.getActiveDomain()?.domainName }.getOrNull()
             combine(
-                contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
-                connectionService.connections,
-                connectionService.circles,
-            ) { contacts, conn, circ ->
-                Triple(contacts, conn, circ)
-            }.collect { (contacts, conn, circ) ->
-                val entry = contacts.find { it.uniqueId.toString() == route.uniqueId }
+                combine(
+                    contactRepository.contacts.map { list -> list.mapNotNull { it.toContactBookEntry() } },
+                    connectionService.connections,
+                    connectionService.circles,
+                    connectionRequestService.incomingRequests,
+                    connectionRequestService.outgoingRequests,
+                ) { contacts, conn, circ, incoming, outgoing ->
+                    DetailBundle(contacts, conn, circ, incoming, outgoing)
+                },
+                overrideStore.overrides,
+            ) { bundle, overrides -> bundle to overrides }.collect { (bundle, overrides) ->
+                val contacts = bundle.contacts
+                val conn = bundle.conn
+                val circ = bundle.circ
+                val synced = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
+                syncedEntry = synced
+                // Load this contact's override (bulk app-data tier) and its on-demand ext_data
+                // (Experience/Bio) on first view; cheap no-ops after.
+                contactRepository.contacts.value
+                    .firstOrNull { it.uniqueId.toString() == route.uniqueId }
+                    ?.let { rawContact ->
+                        overrideStore.hydrate(rawContact)
+                        loadExtData(rawContact)
+                    }
+                val entry = synced?.withOverride(overrides[synced.uniqueId])
                 val domain = entry?.odinId
                 val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
                 val status = domain?.let { d ->
                     conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }
                         ?.value?.status
+                }
+                val requestDirection = domain?.let { d ->
+                    when {
+                        bundle.incoming.any { it.senderOdinId.domainName.equals(d, ignoreCase = true) } ->
+                            RequestDirection.INCOMING
+                        bundle.outgoing.any { it.recipientOdinId.domainName.equals(d, ignoreCase = true) } ->
+                            RequestDirection.OUTGOING
+                        else -> null
+                    }
                 }
                 // User-defined circles only — the Confirmed/Auto system circles are surfaced
                 // through the connection status, not as chips.
@@ -119,6 +195,7 @@ class ContactDetailViewModel(
                         circles = circleNames,
                         isLoading = false,
                         isSelf = isSelf,
+                        requestDirection = requestDirection,
                     )
                 }
             }
@@ -176,6 +253,15 @@ class ContactDetailViewModel(
             ContactDetailAction.BlockClicked -> _uiState.update { it.copy(confirm = ContactDetailConfirm.BLOCK) }
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
+            ContactDetailAction.AcceptRequestClicked -> handleRequestAction(
+                event = ContactDetailEvent.RequestAccepted,
+            ) { connectionRequestService.acceptIncomingRequest(it) }
+            ContactDetailAction.RejectRequestClicked -> handleRequestAction(
+                event = ContactDetailEvent.RequestRejected,
+            ) { connectionRequestService.rejectIncomingRequest(it) }
+            ContactDetailAction.CancelRequestClicked -> handleRequestAction(
+                event = ContactDetailEvent.RequestCancelled,
+            ) { connectionRequestService.cancelOutgoingRequest(it) }
             ContactDetailAction.UnblockClicked -> handleUnblock()
             ContactDetailAction.ConfirmYes -> handleConfirm()
             ContactDetailAction.ConfirmDismiss -> _uiState.update { it.copy(confirm = null) }
@@ -264,14 +350,35 @@ class ContactDetailViewModel(
 
     private fun handleSave(action: ContactDetailAction.SaveContact) {
         val editing = _uiState.value.entry
+        val synced = syncedEntry
         _uiState.update { it.copy(editOpen = false) }
         viewModelScope.launch {
-            when (val result = saveContactDraft(
-                repo = contactRepository,
-                draft = action.draft,
-                editing = editing,
-                photo = action.photo,
-            )) {
+            // Any *identity* contact (has an odinId) is enriched on sync — from the peer's
+            // ProfileDrive when connected, else from their public profile card — and the merge
+            // overwrites content per-leaf, so its edits must go to the enrichment-proof override
+            // (not just connected ones; connection status can also flip later). Only a pure manual
+            // contact (no odinId) is never synced, so its primaries write to content as normal.
+            val result = if (editing != null && synced != null) {
+                saveContactEdit(
+                    store = overrideStore,
+                    repo = contactRepository,
+                    useOverride = !synced.odinId.isNullOrBlank() && synced.versionTag != null,
+                    editing = editing,
+                    synced = synced,
+                    draft = action.draft,
+                    additionalPhones = action.additionalPhones,
+                    additionalEmails = action.additionalEmails,
+                    photo = action.photo,
+                )
+            } else {
+                saveContactDraft(
+                    repo = contactRepository,
+                    draft = action.draft,
+                    editing = editing,
+                    photo = action.photo,
+                )
+            }
+            when (result) {
                 is ContactSaveResult.Success -> {
                     // repo.save already applied the optimistic update.
                     if (result.photoFailed) _events.tryEmit(ContactDetailEvent.PhotoError)
@@ -281,6 +388,28 @@ class ContactDetailViewModel(
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)
                 ContactSaveResult.Failed -> _events.tryEmit(ContactDetailEvent.Error)
+            }
+        }
+    }
+
+    /**
+     * Runs a connection-request mutation (accept / reject / cancel) for this contact's odinId,
+     * emitting [event] on success. The services apply the optimistic list update and refresh, so
+     * the detail screen's request/connection status reconciles on the next combine emission.
+     */
+    private fun handleRequestAction(
+        event: ContactDetailEvent,
+        action: suspend (OdinId) -> Unit,
+    ) {
+        val domain = odinId ?: return
+        _uiState.update { it.copy(actionInProgress = true) }
+        viewModelScope.launch {
+            try {
+                runCatching { action(OdinId(domain)) }
+                    .onSuccess { _events.tryEmit(event) }
+                    .onFailure { emitConnectionError(it) }
+            } finally {
+                _uiState.update { it.copy(actionInProgress = false) }
             }
         }
     }

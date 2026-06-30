@@ -526,7 +526,7 @@
     <string name="chat_new_conversation">New conversation</string>
     <string name="chat_new_conversation_search_placeholder">Search contacts</string>
     <string name="chat_new_conversation_new_group">New group</string>
-    <string name="chat_new_conversation_connection_request">New connection request</string>
+    <string name="chat_new_conversation_new_contact">New contact</string>
     <string name="chat_no_contacts_found">No contacts found</string>
     <string name="chat_group_select_members">Select members</string>
 
@@ -1355,6 +1355,7 @@
     <string name="location_dashboard_stop_confirm_title">Stop all sharing?</string>
     <string name="location_dashboard_stop_confirm_body">This ends every live location share you've started.</string>
     <string name="share_live_location">Share live location</string>
+    <string name="live_share_duration_prompt">Share live location for</string>
     <string name="stop_sharing">Stop sharing</string>
     <string name="live_share_active">Live location · %1$s left</string>
     <string name="live_share_ended">Live share ended</string>
@@ -1363,6 +1364,7 @@
     <string name="live_share_1h">1 hour</string>
     <string name="live_share_2h">2 hours</string>
     <string name="live_share_4h">4 hours</string>
+    <string name="live_share_24h">24 hours</string>
     <string name="live_share_enable_location_title">Turn on location to share</string>
     <string name="live_share_enable_location_body">To share your live location, set up location on this device first so it can send your position.</string>
     <string name="live_share_enable_location_cta">Set up location</string>
@@ -1402,6 +1404,11 @@
     <string name="contactbook_filter_all">All</string>
     <string name="contactbook_filter_introduced">Introduced</string>
     <string name="contactbook_filter_confirmed">Confirmed</string>
+    <string name="contactbook_filter_requests">Requests</string>
+    <string name="contactbook_filter_requests_count">Requests (%1$d)</string>
+    <string name="contactbook_requests_empty">No pending connection requests</string>
+    <string name="contactbook_request_incoming">Wants to connect</string>
+    <string name="contactbook_request_outgoing">Request sent</string>
     <string name="contactbook_no_results">No contacts match your search</string>
 
     <string name="contactbook_action_add">Add contact</string>
@@ -1421,6 +1428,11 @@
     <string name="contactbook_detail_connect">Send connection request</string>
     <string name="contactbook_detail_not_connected">Not connected</string>
     <string name="contactbook_detail_pending">Connection request pending</string>
+    <string name="contactbook_detail_request_incoming">Wants to connect with you</string>
+    <string name="contactbook_detail_request_outgoing">Connection request sent</string>
+    <string name="contactbook_detail_accept">Accept</string>
+    <string name="contactbook_detail_reject">Reject</string>
+    <string name="contactbook_detail_cancel_request">Cancel request</string>
     <string name="contactbook_detail_blocked">Blocked</string>
     <string name="contactbook_detail_recent_media">Recent media</string>
     <string name="contactbook_detail_no_recent_media">No recent media yet</string>
@@ -1428,6 +1440,11 @@
     <string name="contactbook_detail_emergency_badge">Emergency contact</string>
     <string name="contactbook_detail_location_data_as_of">Location data as of %1$s</string>
     <string name="contactbook_detail_bio">Bio</string>
+    <string name="contactbook_detail_experience">Experience</string>
+    <string name="contactbook_detail_tab_details">Details</string>
+    <string name="contactbook_detail_tab_about">About</string>
+    <string name="contactbook_detail_tab_activity">Activity</string>
+    <string name="contactbook_detail_manage">Manage contact</string>
     <string name="contactbook_detail_social">Social</string>
     <string name="contactbook_detail_location">Location</string>
     <string name="contactbook_detail_circles">Circles</string>
@@ -1453,7 +1470,17 @@
     <string name="contactbook_edit_surname">Last name</string>
     <string name="contactbook_edit_odinid">Homebase ID</string>
     <string name="contactbook_edit_odinid_locked">Homebase ID can't be changed for a connected contact.</string>
+    <string name="contactbook_edit_synced_banner">Synced from their Homebase profile. Changes you make are saved only for you and won't change their profile.</string>
+    <string name="contactbook_edit_synced_from_profile">From their Homebase profile</string>
+    <string name="contactbook_edit_overrides">Overrides their profile value (%1$s) · only you see this</string>
+    <string name="contactbook_edit_override_added">Only you see this</string>
+    <string name="contactbook_edit_reset">Reset to profile value</string>
+    <string name="contactbook_detail_override_synced">Their profile: %1$s</string>
+    <string name="contactbook_detail_override_none">not set in their profile</string>
     <string name="contactbook_edit_phone">Phone</string>
+    <string name="contactbook_edit_add_phone">Add phone number</string>
+    <string name="contactbook_edit_add_email">Add email address</string>
+    <string name="contactbook_edit_remove">Remove</string>
     <string name="contactbook_country_search">Search countries</string>
     <string name="contactbook_edit_email">Email</string>
     <string name="contactbook_edit_city">City</string>
@@ -1483,6 +1510,25 @@
     <string name="contactbook_action_unblocked">Contact unblocked.</string>
     <string name="contactbook_action_disconnected">Disconnected.</string>
     <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
+    <string name="contactbook_action_request_accepted">Connection request accepted.</string>
+    <string name="contactbook_action_request_rejected">Connection request declined.</string>
+    <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
+
+    <string name="add_contact_title">Add contact</string>
+    <string name="add_contact_odinid_label">Homebase ID</string>
+    <string name="add_contact_odinid_hint">name.homebase.id</string>
+    <string name="add_contact_lead_help">Enter their Homebase ID and we'll look up their profile.</string>
+    <string name="add_contact_resolving">Looking up identity…</string>
+    <string name="add_contact_invalid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+    <string name="add_contact_not_found">We couldn't find that Homebase ID. You can still add them as a contact.</string>
+    <string name="add_contact_identity_found">Found %1$s</string>
+    <string name="add_contact_manual_link">Don't know their Homebase ID? Add manually</string>
+    <string name="add_contact_byid_link">Have their Homebase ID? Look them up</string>
+    <string name="add_contact_details_optional">Details (optional)</string>
+    <string name="add_contact_photo_from_profile">Photo from their Homebase profile</string>
+    <string name="add_contact_send_request">Send connection request</string>
+    <string name="add_contact_send_request_help">Not connected yet. Send a request so you can message each other.</string>
+    <string name="add_contact_already_connected">You're already connected</string>
 
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>

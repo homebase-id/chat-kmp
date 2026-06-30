@@ -1,5 +1,14 @@
 package id.homebase.chat.groupsettings
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,12 +60,14 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
@@ -64,6 +75,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,9 +87,13 @@ import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
+import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -86,6 +102,7 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
+import id.homebase.resources.avatar_conversation
 import id.homebase.resources.cancel
 import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.chat_group_add_members
@@ -153,7 +170,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun GroupSettingsScreen(
     viewModel: GroupSettingsViewModel,
@@ -252,15 +269,43 @@ fun GroupSettingsScreen(
         onSheetClosed = viewModel::bottomSheetDismissed
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        GroupSettingsUi(
-            snackbarHostState = snackbarHostState,
-            uiState = uiState,
-            onUiAction = viewModel::onUiAction
-        )
+    // Group photo opened full-screen (zoomable). Held here in the outer Box so
+    // the viewer covers the whole screen, including the top bar. Null = closed.
+    var fullScreenAvatar by remember { mutableStateOf<HomebaseImageData?>(null) }
 
-        if (uiState.isLeaving) {
-            LeavingGroupOverlay()
+    SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = fullScreenAvatar,
+            contentKey = { it == null },
+            transitionSpec = {
+                fadeIn(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)) togetherWith
+                        fadeOut(tween(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION))
+            },
+            label = "groupAvatarViewer",
+        ) { avatar ->
+            if (avatar == null) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    GroupSettingsUi(
+                        snackbarHostState = snackbarHostState,
+                        uiState = uiState,
+                        onUiAction = viewModel::onUiAction,
+                        onAvatarClick = { fullScreenAvatar = it },
+                        sharedTransitionScope = this@SharedTransitionLayout,
+                        animatedVisibilityScope = this@AnimatedContent,
+                    )
+                    if (uiState.isLeaving) {
+                        LeavingGroupOverlay()
+                    }
+                }
+            } else {
+                GroupAvatarFullScreenViewer(
+                    imageData = avatar,
+                    groupName = uiState.conversation?.name.orEmpty(),
+                    onDismiss = { fullScreenAvatar = null },
+                    sharedTransitionScope = this@SharedTransitionLayout,
+                    animatedVisibilityScope = this@AnimatedContent,
+                )
+            }
         }
     }
 }
@@ -307,12 +352,75 @@ private fun LeavingGroupOverlay() {
     }
 }
 
+/**
+ * Full-screen, pinch-zoomable viewer for the group photo. The header avatar
+ * morphs in via a shared element; a translucent top bar shows the group name.
+ * Exit via the back arrow or system back.
+ */
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@Composable
+private fun GroupAvatarFullScreenViewer(
+    imageData: HomebaseImageData,
+    groupName: String,
+    onDismiss: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+) {
+    @Suppress("DEPRECATION")
+    BackHandler(enabled = true) { onDismiss() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        ZoomableSubSamplingImage(
+            source = SubSamplingImageSource.Remote(imageData.copy(loadFullPayload = true)),
+            contentDescription = stringResource(MR.string.avatar_conversation),
+            modifier = Modifier.fillMaxSize(),
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+            sharedContentStateKey = "image-${imageData.fileId}-${imageData.payloadKey}",
+        )
+
+        TopAppBar(
+            modifier = Modifier.align(Alignment.TopCenter),
+            title = {
+                Text(
+                    text = groupName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            navigationIcon = {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(MR.string.menu_back),
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Black.copy(alpha = 0.4f),
+                titleContentColor = Color.White,
+                navigationIconContentColor = Color.White,
+            ),
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupSettingsUi(
     snackbarHostState: SnackbarHostState,
     uiState: GroupSettingsUiState,
     onUiAction: (GroupSettingsUiAction) -> Unit,
+    onAvatarClick: (HomebaseImageData) -> Unit = {},
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -362,6 +470,15 @@ fun GroupSettingsUi(
                                 .padding(horizontal = 16.dp),
                             displayName = conversation.name,
                             avatarModel = conversation.avatarModel,
+                            // Only a real uploaded group photo opens full screen;
+                            // initials / People-icon fallbacks have no image, so
+                            // onAvatarClick stays null and the avatar isn't tappable.
+                            onAvatarClick = conversation.avatarModel
+                                .takeIf { it.type == ConversationAvatarModel.Type.ConversationImage }
+                                ?.imageData
+                                ?.let { imageData -> { onAvatarClick(imageData) } },
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
                         )
                         Spacer(modifier = Modifier.height(32.dp))
                     }

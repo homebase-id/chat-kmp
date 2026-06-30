@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -26,8 +30,13 @@ import id.homebase.resources.contactbook_confirmed_empty
 import id.homebase.resources.contactbook_filter_all
 import id.homebase.resources.contactbook_filter_confirmed
 import id.homebase.resources.contactbook_filter_introduced
+import id.homebase.resources.contactbook_filter_requests
+import id.homebase.resources.contactbook_filter_requests_count
 import id.homebase.resources.contactbook_introduced_empty
 import id.homebase.resources.contactbook_no_results
+import id.homebase.resources.contactbook_request_incoming
+import id.homebase.resources.contactbook_request_outgoing
+import id.homebase.resources.contactbook_requests_empty
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -36,14 +45,20 @@ fun ContactBookContent(
     onAction: (ContactBookUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val list = when (uiState.filter) {
-        ContactFilter.ALL -> uiState.contacts
-        ContactFilter.INTRODUCED -> uiState.introduced
-        ContactFilter.CONFIRMED -> uiState.confirmed
-    }
-
     Column(modifier = modifier.fillMaxSize()) {
-        FilterRow(uiState.filter, onAction)
+        FilterRow(uiState.filter, uiState.requests.size, onAction)
+
+        if (uiState.filter == ContactFilter.REQUESTS) {
+            RequestsList(uiState, onAction)
+            return@Column
+        }
+
+        val list = when (uiState.filter) {
+            ContactFilter.ALL -> uiState.contacts
+            ContactFilter.INTRODUCED -> uiState.introduced
+            ContactFilter.CONFIRMED -> uiState.confirmed
+            ContactFilter.REQUESTS -> emptyList() // handled above
+        }
 
         when {
             uiState.isLoading -> Box(
@@ -61,7 +76,7 @@ fun ContactBookContent(
                 ContactFilter.CONFIRMED ->
                     CenterText(stringResource(MR.string.contactbook_confirmed_empty))
 
-                ContactFilter.ALL -> ContactBookEmptyState(
+                else -> ContactBookEmptyState(
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
                 )
             }
@@ -104,6 +119,67 @@ fun ContactBookContent(
     }
 }
 
+/** Pending connection requests (incoming + outgoing), newest first — no A–Z sectioning. */
+@Composable
+private fun RequestsList(
+    uiState: ContactBookUiState,
+    onAction: (ContactBookUiAction) -> Unit,
+) {
+    when {
+        uiState.isLoading && uiState.requests.isEmpty() -> Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) { CircularProgressIndicator() }
+
+        uiState.requests.isEmpty() && uiState.searchQuery.isNotBlank() ->
+            CenterText(stringResource(MR.string.contactbook_no_results))
+
+        uiState.requests.isEmpty() ->
+            CenterText(stringResource(MR.string.contactbook_requests_empty))
+
+        else -> LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 88.dp),
+        ) {
+            items(
+                uiState.requests,
+                key = { "${it.direction}_${it.entry.uniqueId}" },
+            ) { request ->
+                ContactBookRow(
+                    entry = request.entry,
+                    onClick = { onAction(ContactBookUiAction.ContactClicked(request.entry)) },
+                    trailing = { RequestDirectionChip(request.direction) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RequestDirectionChip(direction: RequestDirection) {
+    val label = when (direction) {
+        RequestDirection.INCOMING -> stringResource(MR.string.contactbook_request_incoming)
+        RequestDirection.OUTGOING -> stringResource(MR.string.contactbook_request_outgoing)
+    }
+    val container = when (direction) {
+        RequestDirection.INCOMING -> MaterialTheme.colorScheme.primaryContainer
+        RequestDirection.OUTGOING -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = when (direction) {
+        RequestDirection.INCOMING -> MaterialTheme.colorScheme.onPrimaryContainer
+        RequestDirection.OUTGOING -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = content,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(container)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
+}
+
 @Composable
 private fun CenterText(text: String) {
     Box(
@@ -121,11 +197,18 @@ private fun CenterText(text: String) {
 @Composable
 private fun FilterRow(
     filter: ContactFilter,
+    requestCount: Int,
     onAction: (ContactBookUiAction) -> Unit,
 ) {
+    val requestsLabel = if (requestCount > 0) {
+        stringResource(MR.string.contactbook_filter_requests_count, requestCount)
+    } else {
+        stringResource(MR.string.contactbook_filter_requests)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -143,6 +226,11 @@ private fun FilterRow(
             selected = filter == ContactFilter.CONFIRMED,
             onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CONFIRMED)) },
             label = { Text(stringResource(MR.string.contactbook_filter_confirmed)) },
+        )
+        FilterChip(
+            selected = filter == ContactFilter.REQUESTS,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.REQUESTS)) },
+            label = { Text(requestsLabel) },
         )
     }
 }
