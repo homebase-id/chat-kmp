@@ -47,9 +47,19 @@ open class OkioFileOperationsProvider(
         prefix: String,
         suffix: String
     ): String {
-        // Into the KEEP-protected hb-temp/ subdir (#844 PR4) so it's aligned with the other
-        // platforms and survives the startup/clear CacheSweeper pass while a send is pending.
-        val dir = cacheDir.toPath() / CacheAudit.TEMP_DIR_NAME
+        return writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+    }
+
+    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
+    override suspend fun writeBytesToOutboxTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // upload-temp is swept every startup (disposable); outbox-temp is KEEP-protected until sent.
+    private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
+        val dir = cacheDir.toPath() / dirName
         fileSystem.createDirectories(dir)
         val path = dir / "$prefix${randomToken()}$suffix"
         fileSystem.write(path) { write(bytes) }

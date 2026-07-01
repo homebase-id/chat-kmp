@@ -75,12 +75,26 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         prefix: String,
         suffix: String
     ): String =
+        writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
+    override suspend fun writeBytesToOutboxTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Both temp dirs live under the app cache dir (not java.io.tmpdir), so the Storage screen
+    // counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
+    // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    private suspend fun writeBytesIn(
+        dirName: String,
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String =
         withContext(Dispatchers.IO) {
-            // Into the KEEP-protected hb-temp/ under the cache dir (#844 PR4) — previously
-            // java.io.tmpdir, which the Storage screen neither counted nor cleared and the
-            // CacheSweeper couldn't reach. hb-temp survives the startup/clear sweep so an
-            // offline-pending upload's encrypted payload isn't deleted mid-flight.
-            val tempDir = File(getCacheDirectory(), CacheAudit.TEMP_DIR_NAME).apply { mkdirs() }
+            val tempDir = File(getCacheDirectory(), dirName).apply { mkdirs() }
             val file = File.createTempFile(prefix, suffix, tempDir)
             file.writeBytes(bytes)
             file.absolutePath

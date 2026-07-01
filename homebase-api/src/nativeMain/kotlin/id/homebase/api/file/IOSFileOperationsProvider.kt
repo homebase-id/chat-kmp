@@ -130,13 +130,21 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         bytes: ByteArray,
         prefix: String,
         suffix: String
-    ): String {
-        // Into the KEEP-protected hb-temp/ under the Caches dir (#844 PR4) — previously
-        // NSTemporaryDirectory(), which the Storage screen neither counted nor cleared and the
-        // CacheSweeper couldn't reach. hb-temp survives the startup/clear sweep so an
-        // offline-pending upload's encrypted payload isn't deleted mid-flight.
+    ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
+    override suspend fun writeBytesToOutboxTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Both temp dirs live under the Caches dir (not NSTemporaryDirectory()), so the Storage
+    // screen counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
+    // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
         val cacheDir = getCacheDirectory().trimEnd('/')
-        val tempDir = "$cacheDir/${CacheAudit.TEMP_DIR_NAME}"
+        val tempDir = "$cacheDir/$dirName"
         val fm = NSFileManager.defaultManager
         if (!fm.fileExistsAtPath(tempDir)) {
             fm.createDirectoryAtPath(tempDir, true, null, null)

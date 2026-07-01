@@ -50,11 +50,23 @@ pre-encrypted + plaintext* payload set (and, for amend, an "amend a queued creat
 needs its rare encrypt branch split out from the hot mutation path, or the whole method carefully
 migrated to `updateFile` with its heal/reuse and conditional-optimistic-write behavior preserved.
 
-## Where temps live
+## Where temps live — two folders, split at the encryption boundary
 
-`FileOperationsProvider.writeBytesToTempFile` writes every raw and encrypted upload temp into
-`<cacheDir>/hb-temp/` on all platforms. `CacheSweeper` **keeps** `hb-temp` on the startup /
-"Clear caches" sweep — an offline-pending upload's encrypted payload lives there until the send
-completes, and deleting it mid-flight would break the send — and only wipes it on full logout.
-FFmpeg scratch is separate: it goes to the cache root and is swept as reclaimable (it's large and
-transient, the opposite durability need).
+#844's rule is *"the durability boundary begins at encryption; everything before it is
+disposable."* So upload temps live in **two** dirs under the app cache dir, swept differently:
+
+| Dir | Contents | Written by | Cleaned |
+|-----|----------|-----------|---------|
+| `<cacheDir>/upload-temp/` | RAW, pre-encryption source | `writeBytesToTempFile` (senders) | **Disposable** — swept on **every** startup / "Clear caches" / logout (it's untracked). Self-heals, can't grow. A source gone at send time just fails soft (re-pick). |
+| `<cacheDir>/outbox-temp/` | ENCRYPTED, ready-to-transmit | `writeBytesToOutboxTempFile` (`encryptFile`) | **Durable** — each file is referenced by an outbox row until sent. `CacheSweeper` **KEEPs** it on startup / "Clear caches" (never deletes a pending send's payload); only logout wipes the whole dir. |
+
+**The encrypted `outbox-temp` file is the hand-off to the outbox** — it's the input the outbox row
+transmits, so its lifecycle belongs to the outbox (`homebase-api` sync layer, *outside this
+module*): the outbox deletes each file when the send **succeeds** (`cleanupPayloadTempFiles`) and
+when a row is **dropped** after ~48h of failed retries (`cleanupPayloadsForDroppedRow`). `UploadService`
+does not manage it beyond writing it. *(Residual, tracked separately: a crash between server-ack and
+the outbox's per-file cleanup leaves an orphan in `outbox-temp` with no live row; a post-auth
+reference-aware reap would close it — not yet built.)*
+
+FFmpeg scratch is a third, separate case: it goes to the cache **root** and is swept as reclaimable
+(large + transient — the opposite durability need from `outbox-temp`).

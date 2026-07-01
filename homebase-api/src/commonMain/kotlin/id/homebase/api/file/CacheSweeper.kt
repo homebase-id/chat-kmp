@@ -130,11 +130,13 @@ internal fun decide(entry: CacheAudit.Entry, mode: SweepMode): SweepAction = whe
     // Wins over every other rule — including the full "logout" sweep.
     entry.androidSystem -> SweepAction.KEEP
     entry.name == ORPHAN_COIL_DIR_NAME -> SweepAction.ORPHAN_COIL_DELETE
-    // Upload-pipeline temps (writeBytesToTempFile). KEEP on the startup / "Clear caches"
-    // sweep — an offline-pending upload's encrypted payload temp lives here until the send
-    // completes, and deleting it mid-flight breaks the send. Only the full logout sweep wipes
-    // it (session reset — pending sends are abandoned anyway). Callers reap their own temps.
-    entry.name == CacheAudit.TEMP_DIR_NAME -> if (mode == SweepMode.ALL) SweepAction.DELETE else SweepAction.KEEP
+    // Encrypted outbox payload temps. KEEP on the startup / "Clear caches" sweep — each is
+    // referenced by an outbox row (long-lived when offline) and deleting it mid-flight breaks
+    // the send; the outbox reaps them along its own lifecycle (on send success, and on drop
+    // after ~48h). Only the full logout sweep wipes them. The RAW upload-temp dir gets NO such
+    // rule: it's disposable pre-encryption scratch that self-heals via the normal untracked
+    // sweep below (loss = fail-soft re-pick).
+    entry.name == CacheAudit.OUTBOX_TEMP_DIR_NAME -> if (mode == SweepMode.ALL) SweepAction.DELETE else SweepAction.KEEP
     !entry.known -> SweepAction.DELETE
     mode == SweepMode.ALL -> SweepAction.DELETE
     else -> SweepAction.KEEP
