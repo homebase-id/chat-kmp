@@ -125,7 +125,6 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return NSFileManager.defaultManager.fileExistsAtPath(path)
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
@@ -142,6 +141,7 @@ class IOSFileOperationsProvider : FileOperationsProvider {
     // Both temp dirs live under the Caches dir (not NSTemporaryDirectory()), so the Storage
     // screen counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
     // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
         val cacheDir = getCacheDirectory().trimEnd('/')
         val tempDir = "$cacheDir/$dirName"
