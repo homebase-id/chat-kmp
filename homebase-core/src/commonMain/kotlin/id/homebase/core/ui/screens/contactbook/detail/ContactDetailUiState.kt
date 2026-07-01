@@ -135,4 +135,6 @@ sealed interface ContactDetailEvent {
     data object RequestAccepted : ContactDetailEvent
     data object RequestRejected : ContactDetailEvent
     data object RequestCancelled : ContactDetailEvent
+    /** Accept failed because the sender already withdrew the request (server-confirmed gone). */
+    data object RequestWithdrawn : ContactDetailEvent
 }

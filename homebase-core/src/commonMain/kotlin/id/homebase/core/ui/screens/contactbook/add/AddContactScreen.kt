@@ -90,6 +90,7 @@ import id.homebase.resources.add_contact_send_request_help
 import id.homebase.resources.add_contact_title
 import id.homebase.resources.contactbook_action_request_accepted
 import id.homebase.resources.contactbook_action_request_cancelled
+import id.homebase.resources.contactbook_action_request_withdrawn
 import id.homebase.resources.contactbook_action_request_rejected
 import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_cancel_request
@@ -139,6 +140,7 @@ fun AddContactScreen(
     val msgRejected = stringResource(MR.string.contactbook_action_request_rejected)
     val msgCancelled = stringResource(MR.string.contactbook_action_request_cancelled)
     val msgActionFailed = stringResource(MR.string.auto_connect_failed_generic)
+    val msgWithdrawn = stringResource(MR.string.contactbook_action_request_withdrawn)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -153,6 +155,7 @@ fun AddContactScreen(
                 AddContactEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRejected)
                 AddContactEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgCancelled)
                 AddContactEvent.RequestActionFailed -> snackbarHostState.showSnackbar(msgActionFailed)
+                AddContactEvent.RequestWithdrawn -> snackbarHostState.showSnackbar(msgWithdrawn)
                 is AddContactEvent.OpenConversation -> onOpenConversation(event.conversationId)
             }
         }
