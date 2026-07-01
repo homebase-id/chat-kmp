@@ -20,8 +20,8 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.chat.services.SendMessageResult
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.chat.services.outbox.OptimisticWriter

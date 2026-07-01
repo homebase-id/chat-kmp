@@ -10,7 +10,9 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
@@ -44,32 +46,58 @@ class AddContactViewModel(
     private val repo: ContactRepository,
     private val publicIdentityRepository: PublicIdentityRepository,
     private val connectionService: ConnectionService,
+    private val connectionRequestService: ConnectionRequestService,
+    private val conversationService: ConversationService,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddContactUiState())
 
     /**
-     * Public state, with [AddContactUiState.alreadyConnected] folded in live from the connection
-     * list so the "Send connection request" offer never tells you to connect with someone you're
-     * already connected to.
+     * Public state, with [AddContactUiState.relation] and [AddContactUiState.alreadySaved] folded
+     * in live from the connection map, the pending incoming/outgoing request lists, and the saved
+     * contacts. This is what lets the resolved-identity card offer exactly the applicable action
+     * (send / accept / reject / cancel / nothing) and avoid offering to save a contact twice.
      */
     val state: StateFlow<AddContactUiState> =
-        combine(_state, connectionService.connections) { s, conn ->
-            val resolved = (s.resolution as? RecipientResolution.Resolved)
+        combine(
+            _state,
+            connectionService.connections,
+            connectionRequestService.incomingRequests,
+            connectionRequestService.outgoingRequests,
+            repo.contacts,
+        ) { s, conn, incoming, outgoing, contacts ->
+            val domain = (s.resolution as? RecipientResolution.Resolved)
                 ?.identity?.odinId?.domainName?.lowercase()
-            val connectedDomains = conn.map
-                .filterValues { it.status == ConnectionStatus.Connected }
-                .keys.map { it.domainName.lowercase() }.toSet()
-            s.copy(alreadyConnected = resolved != null && resolved in connectedDomains)
+            val status = domain?.let { d ->
+                conn.map.entries
+                    .firstOrNull { it.key.domainName.lowercase() == d }
+                    ?.value?.status
+            }
+            val relation = when {
+                domain == null -> IdentityRelation.NONE
+                status == ConnectionStatus.Connected -> IdentityRelation.CONNECTED
+                status == ConnectionStatus.Blocked -> IdentityRelation.BLOCKED
+                incoming.any { it.senderOdinId.domainName.lowercase() == domain } ->
+                    IdentityRelation.INCOMING_PENDING
+                outgoing.any { it.recipientOdinId.domainName.lowercase() == domain } ->
+                    IdentityRelation.OUTGOING_PENDING
+                else -> IdentityRelation.NONE
+            }
+            val alreadySaved = domain != null &&
+                contacts.any { it.content.odinId?.lowercase() == domain }
+            s.copy(relation = relation, alreadySaved = alreadySaved)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddContactUiState())
 
     private val _events = MutableSharedFlow<AddContactEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<AddContactEvent> = _events.asSharedFlow()
 
     init {
-        // Idempotent — already started by app bootstrap; ensures the connection map is hydrated
-        // so `alreadyConnected` is accurate even if Add Contact is reached very early.
+        // All idempotent — already started by app bootstrap; we re-trigger so the connection map,
+        // the pending-request lists, and the contact list are hydrated even if Add Contact is the
+        // first screen reached, keeping `relation` / `alreadySaved` accurate from the start.
         connectionService.start()
+        viewModelScope.launch { connectionRequestService.start() }
+        viewModelScope.launch { repo.ensureLoaded() }
     }
 
     private var resolveJob: Job? = null
@@ -98,7 +126,45 @@ class AddContactViewModel(
             AddContactAction.SwitchToByIdentity ->
                 _state.update { it.copy(mode = AddContactMode.BY_IDENTITY) }
             AddContactAction.SaveClicked -> save()
+            AddContactAction.MessageClicked -> openConversation()
+            AddContactAction.AcceptRequestClicked -> handleRequestAction(
+                AddContactEvent.RequestAccepted,
+            ) { connectionRequestService.acceptIncomingRequest(it) }
+            AddContactAction.RejectRequestClicked -> handleRequestAction(
+                AddContactEvent.RequestRejected,
+            ) { connectionRequestService.rejectIncomingRequest(it) }
+            AddContactAction.CancelRequestClicked -> handleRequestAction(
+                AddContactEvent.RequestCancelled,
+            ) { connectionRequestService.cancelOutgoingRequest(it) }
             AddContactAction.BackClicked -> _events.tryEmit(AddContactEvent.Back)
+        }
+    }
+
+    /**
+     * Runs an accept/reject/cancel against the resolved identity. The relation/alreadySaved
+     * state updates reactively once the service refreshes its lists, so we only manage the
+     * in-flight flag and surface a success/failure event for the snackbar.
+     */
+    private fun handleRequestAction(
+        success: AddContactEvent,
+        action: suspend (OdinId) -> Unit,
+    ) {
+        val odinId = (_state.value.resolution as? RecipientResolution.Resolved)?.identity?.odinId
+            ?: return
+        if (_state.value.actionInProgress) return
+        _state.update { it.copy(actionInProgress = true) }
+        viewModelScope.launch {
+            try {
+                runCatching { action(odinId) }
+                    .onSuccess { _events.tryEmit(success) }
+                    .onFailure {
+                        if (it is CancellationException) throw it
+                        Logger.w(it) { "Request action failed for $odinId" }
+                        _events.tryEmit(AddContactEvent.RequestActionFailed)
+                    }
+            } finally {
+                _state.update { it.copy(actionInProgress = false) }
+            }
         }
     }
 
@@ -157,6 +223,28 @@ class AddContactViewModel(
                     },
                 )
             }
+        }
+    }
+
+    /**
+     * Opens (or reuses) the 1:1 conversation with the resolved, already-connected identity, then
+     * navigates into it. Used by the identity-only (chat) entry where a connected contact is
+     * actionable as "Message" rather than "Save as new contact".
+     */
+    private fun openConversation() {
+        val odinId = (_state.value.resolution as? RecipientResolution.Resolved)?.identity?.odinId
+            ?: return
+        viewModelScope.launch {
+            val id = try {
+                conversationService.createConversation(listOf(odinId), "", null).conversationId
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Failed to open conversation with $odinId" }
+                _events.tryEmit(AddContactEvent.Error)
+                return@launch
+            }
+            _events.tryEmit(AddContactEvent.OpenConversation(id))
         }
     }
 

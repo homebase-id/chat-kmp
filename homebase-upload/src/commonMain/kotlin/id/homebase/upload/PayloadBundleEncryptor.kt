@@ -1,4 +1,4 @@
-package id.homebase.chat.services
+package id.homebase.upload
 
 import id.homebase.api.common.SecureByteArray
 import kotlinx.coroutines.CoroutineScope

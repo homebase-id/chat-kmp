@@ -49,6 +49,11 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":homebase-api"))
+            // `api` (not implementation): PayloadBundle and the encryptor are part of chat's
+            // public API surface (e.g. sendNewMessage(payloadBundle), MessageAttachmentBuilder),
+            // which the app modules call — so the types must be transitively visible. Not exported
+            // to the iOS Swift framework (no export()), so it stays off the Swift surface.
+            api(project(":homebase-upload"))
             implementation(project(":homebase-common"))
             implementation(project(":image-editor-ui"))
 
@@ -138,6 +143,7 @@ kotlin {
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
+            implementation(libs.okio.fakefilesystem)
         }
     }
 
