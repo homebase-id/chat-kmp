@@ -1,4 +1,8 @@
 package id.homebase.chat.services
+import id.homebase.upload.UploadService
+import id.homebase.chat.services.outbox.OptimisticWriterPort
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.PayloadBundleEncryptor
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
@@ -127,6 +131,16 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
         )
         val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache)
 
+        val cacheSeeder = PayloadCacheSeeder(driveFileProvider, SenderNoopFileOperationsProvider())
+        // Same wiring the app uses (UploadService over the same outbox/encryptor/optimistic
+        // writer/seeder), so these tests exercise the real shared send spine.
+        val uploadService = UploadService(
+            encryptor = payloadEncryptor,
+            outboxSync = outboxSync,
+            optimisticWriter = OptimisticWriterPort(optimisticWriter),
+            payloadCacheSeeder = cacheSeeder,
+        )
+
         return ChatMessageSenderService(
             outboxSync = outboxSync,
             conversationStream = conversationLookup,
@@ -136,7 +150,8 @@ class ChatMessageSenderServiceTestFixture : AutoCloseable {
             optimisticWriter = optimisticWriter,
             fileOperationsProvider = SenderNoopFileOperationsProvider(),
             driveFileProvider = driveFileProvider,
-            payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, SenderNoopFileOperationsProvider()),
+            payloadCacheSeeder = cacheSeeder,
+            uploadService = uploadService,
             shareSuggestionDonor = ShareSuggestionDonor(),
         )
     }

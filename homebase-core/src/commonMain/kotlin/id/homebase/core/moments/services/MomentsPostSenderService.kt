@@ -33,9 +33,9 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundleEncryptor
-import id.homebase.chat.services.PayloadCacheSeeder
-import id.homebase.chat.services.thumbnailDescriptorsFor
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter

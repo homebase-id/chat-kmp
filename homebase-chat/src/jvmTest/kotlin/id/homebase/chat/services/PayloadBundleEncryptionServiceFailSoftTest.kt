@@ -1,6 +1,7 @@
 package id.homebase.chat.services
+import id.homebase.upload.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadBundle
 
-import com.russhwolf.settings.Settings
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.eventbus.EventBus
@@ -8,7 +9,7 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.core.settings.UserPreferences
+import id.homebase.upload.VideoEncodePolicy
 import kotlinx.coroutines.test.runTest
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -39,7 +40,7 @@ class PayloadBundleEncryptionServiceFailSoftTest {
             fileOps = fileOps,
             videoProcessor = VideoPayloadProcessor(fileOps),
             eventBus = EventBus(),
-            userPreferences = UserPreferences(InMemorySettings()),
+            videoEncodePolicy = object : VideoEncodePolicy { override val allowTenBitVideo = false },
         )
 
     private fun bundle(vararg payloads: PayloadFile) =
@@ -126,38 +127,4 @@ class PayloadBundleEncryptionServiceFailSoftTest {
             "the first payload's encrypted temp must be reaped on the fail-soft path (no leak)",
         )
     }
-}
-
-/**
- * Minimal in-memory [Settings] so the encryptor's [UserPreferences] dependency can be
- * constructed without a real backing store. (homebase-common has an equivalent test fake,
- * but test source sets aren't shared across modules.) Only the getters [UserPreferences]
- * touches at construction are exercised; the encryptor itself never reads preferences on
- * the non-video path under test.
- */
-private class InMemorySettings : Settings {
-    private val backing = mutableMapOf<String, Any>()
-    override val keys: Set<String> get() = backing.keys.toSet()
-    override val size: Int get() = backing.size
-    override fun clear() = backing.clear()
-    override fun remove(key: String) { backing.remove(key) }
-    override fun hasKey(key: String): Boolean = backing.containsKey(key)
-    override fun putInt(key: String, value: Int) { backing[key] = value }
-    override fun getInt(key: String, defaultValue: Int): Int = backing[key] as? Int ?: defaultValue
-    override fun getIntOrNull(key: String): Int? = backing[key] as? Int
-    override fun putLong(key: String, value: Long) { backing[key] = value }
-    override fun getLong(key: String, defaultValue: Long): Long = backing[key] as? Long ?: defaultValue
-    override fun getLongOrNull(key: String): Long? = backing[key] as? Long
-    override fun putString(key: String, value: String) { backing[key] = value }
-    override fun getString(key: String, defaultValue: String): String = backing[key] as? String ?: defaultValue
-    override fun getStringOrNull(key: String): String? = backing[key] as? String
-    override fun putFloat(key: String, value: Float) { backing[key] = value }
-    override fun getFloat(key: String, defaultValue: Float): Float = backing[key] as? Float ?: defaultValue
-    override fun getFloatOrNull(key: String): Float? = backing[key] as? Float
-    override fun putDouble(key: String, value: Double) { backing[key] = value }
-    override fun getDouble(key: String, defaultValue: Double): Double = backing[key] as? Double ?: defaultValue
-    override fun getDoubleOrNull(key: String): Double? = backing[key] as? Double
-    override fun putBoolean(key: String, value: Boolean) { backing[key] = value }
-    override fun getBoolean(key: String, defaultValue: Boolean): Boolean = backing[key] as? Boolean ?: defaultValue
-    override fun getBooleanOrNull(key: String): Boolean? = backing[key] as? Boolean
 }

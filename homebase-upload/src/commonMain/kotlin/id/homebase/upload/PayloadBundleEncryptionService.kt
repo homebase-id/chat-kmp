@@ -1,4 +1,4 @@
-package id.homebase.chat.services
+package id.homebase.upload
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
@@ -11,7 +11,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.video.VideoPayloadProgressPhase
 import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -20,7 +19,7 @@ class PayloadBundleEncryptionService(
     private val fileOps: FileOperationsProvider,
     private val videoProcessor: VideoPayloadProcessor,
     private val eventBus: EventBus,
-    private val userPreferences: UserPreferences,
+    private val videoEncodePolicy: VideoEncodePolicy,
 ) : PayloadBundleEncryptor {
 
     override suspend fun encryptBundle(
@@ -85,10 +84,10 @@ class PayloadBundleEncryptionService(
                         payload = payload,
                         keyHeader = keyHeader,
                         onProgress = progress,
-                        descriptorContentPayloadKey = "${ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index",
+                        descriptorContentPayloadKey = "${UploadProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index",
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
-                        allowTenBit = userPreferences.allowTenBitVideo,
+                        allowTenBit = videoEncodePolicy.allowTenBitVideo,
                         inputBlobUrl = payload.inputBlobUrl,
                     )
 

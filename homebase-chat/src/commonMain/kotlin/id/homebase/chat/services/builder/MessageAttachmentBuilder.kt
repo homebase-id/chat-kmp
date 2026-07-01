@@ -4,7 +4,7 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 
 object MessageAttachmentBuilder {
 
