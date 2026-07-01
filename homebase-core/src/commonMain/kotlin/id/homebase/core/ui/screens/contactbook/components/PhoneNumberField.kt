@@ -35,6 +35,10 @@ import org.jetbrains.compose.resources.stringResource
  * number field. Emits a normalized **E.164** string (e.g. `+14155550123`) via
  * [onValueChange], or `""` when the number is blank — so the user never types `+` or
  * the country code. Defaults the country from the device region.
+ *
+ * Set [isError] (with [errorText]) to flag a value that isn't valid E.164 — e.g. legacy
+ * data imported before this control existed. The bad value stays visible (seeded into the
+ * national field) so the user can see and re-enter it; editing it emits a proper E.164 string.
  */
 @Composable
 fun PhoneNumberField(
@@ -42,6 +46,8 @@ fun PhoneNumberField(
     onValueChange: (String) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    isError: Boolean = false,
+    errorText: String? = null,
     supportingText: String? = null,
     trailingIcon: (@Composable () -> Unit)? = null,
 ) {
@@ -78,7 +84,12 @@ fun PhoneNumberField(
             }
         },
         trailingIcon = trailingIcon,
-        supportingText = supportingText?.let { { Text(it) } },
+        isError = isError,
+        supportingText = when {
+            isError && errorText != null -> { { Text(errorText) } }
+            supportingText != null -> { { Text(supportingText) } }
+            else -> null
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
         modifier = modifier,
     )

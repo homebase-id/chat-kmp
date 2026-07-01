@@ -112,14 +112,44 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return size?.longLongValue ?: 0L
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    @OptIn(ExperimentalForeignApi::class)
+    override suspend fun sourceExists(path: String): Boolean {
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
+            // getFileSize can't size a Photos-library asset (it reports 0), so probe the
+            // library directly: the fetch returns nothing once the asset is deleted or the
+            // photo-library grant is revoked.
+            val assetId = if (path.startsWith("ph://")) path.removePrefix("ph://") else path
+            val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)
+            return fetchResult.count.toInt() > 0
+        }
+        return NSFileManager.defaultManager.fileExistsAtPath(path)
+    }
+
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
         suffix: String
-    ): String {
-        val tempDir = NSTemporaryDirectory()
-        val filePath = "$tempDir$prefix${NSUUID().UUIDString}$suffix"
+    ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
+    override suspend fun writeBytesToOutboxTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Both temp dirs live under the Caches dir (not NSTemporaryDirectory()), so the Storage
+    // screen counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
+    // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
+        val cacheDir = getCacheDirectory().trimEnd('/')
+        val tempDir = "$cacheDir/$dirName"
+        val fm = NSFileManager.defaultManager
+        if (!fm.fileExistsAtPath(tempDir)) {
+            fm.createDirectoryAtPath(tempDir, true, null, null)
+        }
+        val filePath = "$tempDir/$prefix${NSUUID().UUIDString}$suffix"
 
         val data =
             bytes.usePinned { pinned ->

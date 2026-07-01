@@ -145,7 +145,6 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
 import kotlinx.io.files.Path
-import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
 import id.homebase.imageeditor.ui.CropScreen
@@ -358,7 +357,7 @@ fun AppNavHost(
                 is ContactBookUiEvent.OpenDetail ->
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
                 ContactBookUiEvent.OpenAddContact ->
-                    navController.navigate(Route.AddContact)
+                    navController.navigate(Route.AddContact())
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* Error handled by ContactBookScreen */ }
@@ -607,15 +606,6 @@ fun AppNavHost(
                                 onUpdateClick = { viewModel.triggerUpdate() }
                             )
                         }
-                        if (uiState.incomingRequests.isNotEmpty()) {
-                            ConnectionRequestHeaderBanner(
-                                requestCount = uiState.incomingRequests.size,
-                                // Pending requests now live in the Contact Book's Requests pill
-                                // (accept/reject in-app), so land there instead of the owner console.
-                                onBannerClick = openContactBook,
-                            )
-                        }
-
                         val pendingUpgrade = uiState.pendingUpgrade
                         if (pendingUpgrade is PendingUpgradeState.ShowSnackbar) {
                             LaunchedEffect(pendingUpgrade) {
@@ -815,11 +805,13 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.AddContact> {
+                        composable<Route.AddContact> { backStackEntry ->
                             if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.AddContact>()
                                 AddContactScreen(
                                     viewModel = koinViewModel(),
                                     connectRequestViewModel = koinViewModel(),
+                                    identityOnly = route.identityOnly,
                                     onBack = { navController.popBackStack() },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
@@ -967,7 +959,9 @@ fun AppNavHost(
                                         navController.navigate(Route.CreateConversationSelectMembers)
                                     },
                                     onAddContact = {
-                                        navController.navigate(Route.AddContact)
+                                        // From a chat flow: a contact is only useful with a
+                                        // Homebase ID, so hide manual entry.
+                                        navController.navigate(Route.AddContact(identityOnly = true))
                                     })
                             }
                         }

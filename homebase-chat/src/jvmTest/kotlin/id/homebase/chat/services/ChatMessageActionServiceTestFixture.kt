@@ -226,6 +226,7 @@ class ChatMessageActionServiceTestFixture(
         val conversationService = ConversationService(
             credentialsManager = credentialsManager,
             payloadBundleEncryptionService = FakePayloadBundleEncryptor(),
+            uploadService = buildTestUploadService(outboxSync, optimisticWriter, FakePayloadBundleEncryptor(), credentialsManager),
             dbm = dbm,
             introductionProvider = FakeIntroductionSender(),
             scope = scope,

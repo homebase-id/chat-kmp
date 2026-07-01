@@ -37,11 +37,45 @@ interface FileOperationsProvider {
 
     fun getFileSize(path: String): Long
 
+    /**
+     * Whether [path] currently resolves to a readable upload source. Probed at the
+     * encryption-on-send boundary so a swept/evicted temp (or a revoked
+     * `content://`/`ph://` permission) fails soft — see [SourceUnavailableException]
+     * — instead of throwing an uncaught read error and enqueuing a doomed outbox row.
+     *
+     * The default probes via [getFileSize] (size > 0 ⇒ present). Platforms whose
+     * sources include URIs [getFileSize] cannot size — notably iOS `ph://` Photos
+     * assets, which `getFileSize` reports as 0 — MUST override with a real existence
+     * check, or every such source would be misreported as missing.
+     */
+    suspend fun sourceExists(path: String): Boolean = getFileSize(path) > 0L
+
+    /**
+     * Write a RAW, pre-encryption source temp into `<cacheDir>/upload-temp/` (see
+     * [CacheAudit.UPLOAD_TEMP_DIR_NAME]). Disposable: the CacheSweeper reaps this dir on every
+     * startup / "Clear caches", so a leaked temp self-heals and can't grow — a source that's gone
+     * at send time just fails soft (re-pick). Use this for the plaintext inputs to the pipeline.
+     */
     suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
         suffix: String
     ): String
+
+    /**
+     * Write an ENCRYPTED, ready-to-transmit payload temp into `<cacheDir>/outbox-temp/` (see
+     * [CacheAudit.OUTBOX_TEMP_DIR_NAME]). Durable: each file is referenced by an outbox row until
+     * the send completes (long-lived when offline), so the CacheSweeper KEEPs this dir on the
+     * startup / "Clear caches" sweep and only wipes it on logout; the outbox reaps individual
+     * files along its own lifecycle. Used ONLY by the encryption step (PayloadBundleEncryption
+     * Service.encryptFile). Default delegates to [writeBytesToTempFile] for any provider that
+     * hasn't overridden it (behaviour-preserving).
+     */
+    suspend fun writeBytesToOutboxTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String = writeBytesToTempFile(bytes, prefix, suffix)
 
     /**
      * Write [bytes] to a sequestered subdirectory `<cacheDir>/share_outbound/`

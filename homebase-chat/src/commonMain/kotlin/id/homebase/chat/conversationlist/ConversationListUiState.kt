@@ -310,6 +310,15 @@ sealed interface FullScreenOverlay {
         val localFilePath: String? = null,
         val uploadMessageId: Uuid? = null,
     ) : FullScreenOverlay
+
+    @Immutable
+    data class PdfViewerData(
+        val messageId: Uuid,
+        val fileId: Uuid,
+        val payloadKey: String,
+        val title: String,
+        val userDate: Instant,
+    ) : FullScreenOverlay
 }
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {

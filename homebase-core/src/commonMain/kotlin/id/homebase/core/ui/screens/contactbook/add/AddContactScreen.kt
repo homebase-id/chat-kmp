@@ -20,8 +20,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.outlined.AddAPhoto
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAddAlt1
@@ -48,13 +51,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.identity.initials
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.cleanDomain
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.connections.ConnectRequestAction
@@ -62,11 +69,13 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
+import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.add_contact_already_connected
+import id.homebase.resources.add_contact_already_saved
+import id.homebase.resources.add_contact_blocked
 import id.homebase.resources.add_contact_byid_link
 import id.homebase.resources.add_contact_details_optional
-import id.homebase.resources.add_contact_identity_found
 import id.homebase.resources.add_contact_invalid
 import id.homebase.resources.add_contact_lead_help
 import id.homebase.resources.add_contact_manual_link
@@ -75,9 +84,20 @@ import id.homebase.resources.add_contact_odinid_hint
 import id.homebase.resources.add_contact_odinid_label
 import id.homebase.resources.add_contact_photo_from_profile
 import id.homebase.resources.add_contact_resolving
+import id.homebase.resources.add_contact_save_as_new
 import id.homebase.resources.add_contact_send_request
 import id.homebase.resources.add_contact_send_request_help
 import id.homebase.resources.add_contact_title
+import id.homebase.resources.contactbook_action_request_accepted
+import id.homebase.resources.contactbook_action_request_cancelled
+import id.homebase.resources.contactbook_action_request_rejected
+import id.homebase.resources.contactbook_detail_accept
+import id.homebase.resources.contactbook_detail_cancel_request
+import id.homebase.resources.contactbook_detail_message
+import id.homebase.resources.contactbook_detail_request_incoming
+import id.homebase.resources.contactbook_detail_request_outgoing
+import id.homebase.resources.contactbook_detail_reject
+import id.homebase.resources.auto_connect_failed_generic
 import id.homebase.resources.contactbook_edit_change_photo
 import id.homebase.resources.contactbook_edit_city
 import id.homebase.resources.contactbook_edit_country
@@ -104,6 +124,10 @@ fun AddContactScreen(
     connectRequestViewModel: ConnectRequestViewModel,
     onBack: () -> Unit,
     onOpenConversation: (Uuid) -> Unit,
+    // Launched from a chat flow: a contact is only useful with a Homebase ID (you can't message
+    // someone without one), so manual entry and "save as new contact" are hidden — a resolved
+    // identity is actionable only as connect/accept/cancel, or Message once connected.
+    identityOnly: Boolean = false,
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -111,6 +135,10 @@ fun AddContactScreen(
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
+    val msgAccepted = stringResource(MR.string.contactbook_action_request_accepted)
+    val msgRejected = stringResource(MR.string.contactbook_action_request_rejected)
+    val msgCancelled = stringResource(MR.string.contactbook_action_request_cancelled)
+    val msgActionFailed = stringResource(MR.string.auto_connect_failed_generic)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -119,6 +147,13 @@ fun AddContactScreen(
                 AddContactEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
                 AddContactEvent.Error -> snackbarHostState.showSnackbar(errSave)
                 AddContactEvent.PhotoFailed -> snackbarHostState.showSnackbar(errPhoto)
+                // Request actions keep the user on the screen — the card reflects the new
+                // relationship reactively, and we just confirm with a snackbar.
+                AddContactEvent.RequestAccepted -> snackbarHostState.showSnackbar(msgAccepted)
+                AddContactEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRejected)
+                AddContactEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgCancelled)
+                AddContactEvent.RequestActionFailed -> snackbarHostState.showSnackbar(msgActionFailed)
+                is AddContactEvent.OpenConversation -> onOpenConversation(event.conversationId)
             }
         }
     }
@@ -185,6 +220,7 @@ fun AddContactScreen(
                 AddContactMode.BY_IDENTITY -> ByIdentitySection(
                     uiState = uiState,
                     onAction = viewModel::onAction,
+                    identityOnly = identityOnly,
                     onSendConnectionRequest = { odinId ->
                         connectRequestViewModel.onAction(
                             ConnectRequestAction.OpenDialogWithRecipient(odinId),
@@ -193,15 +229,6 @@ fun AddContactScreen(
                 )
 
                 AddContactMode.MANUAL -> ManualSection(uiState, viewModel::onAction)
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = { viewModel.onAction(AddContactAction.SaveClicked) },
-                enabled = uiState.canSave,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(MR.string.contactbook_edit_save))
             }
         }
 
@@ -250,47 +277,283 @@ private fun AddContactAvatar(uiState: AddContactUiState, photoBytes: ByteArray?)
 private fun ByIdentitySection(
     uiState: AddContactUiState,
     onAction: (AddContactAction) -> Unit,
+    identityOnly: Boolean,
     onSendConnectionRequest: (OdinId) -> Unit,
 ) {
     val resolution = uiState.resolution
-    AddField(
-        value = uiState.draft.odinId,
-        label = stringResource(MR.string.add_contact_odinid_label),
-        placeholder = stringResource(MR.string.add_contact_odinid_hint),
-        isError = resolution is RecipientResolution.InvalidFormat,
+    // Local TextFieldValue stores space-encoded text; HomebaseIdField's visual transformation
+    // renders those spaces as dots. The VM's canonical draft.odinId is the dotted form. This
+    // mirrors ConnectRequestBottomSheet's recipient field.
+    var fieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = uiState.draft.odinId.replace('.', ' '),
+                selection = TextRange(uiState.draft.odinId.length),
+            )
+        )
+    }
+    HomebaseIdField(
+        value = fieldValue,
+        onValueChange = { incoming ->
+            val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
+            fieldValue = incoming.copy(text = normalizedSpaces)
+            val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false)
+            if (dotted != uiState.draft.odinId) onAction(AddContactAction.OdinIdChanged(dotted))
+        },
+        label = { Text(stringResource(MR.string.add_contact_odinid_label)) },
+        placeholder = { Text(stringResource(MR.string.add_contact_odinid_hint)) },
         supportingText = when (resolution) {
-            RecipientResolution.InvalidFormat -> stringResource(MR.string.add_contact_invalid)
-            RecipientResolution.Idle -> stringResource(MR.string.add_contact_lead_help)
+            RecipientResolution.InvalidFormat -> {
+                { Text(stringResource(MR.string.add_contact_invalid)) }
+            }
+            RecipientResolution.Idle -> {
+                { Text(stringResource(MR.string.add_contact_lead_help)) }
+            }
             else -> null
         },
-        keyboardType = KeyboardType.Uri,
-        onChange = { onAction(AddContactAction.OdinIdChanged(it)) },
+        isError = resolution is RecipientResolution.InvalidFormat,
     )
 
     ResolutionIndicator(resolution)
 
-    // A resolved identity is someone you can actually connect with — offer to send a request
-    // (reuses the same autoConnect pipeline as the rest of the app) right alongside saving them
-    // to the contact book. If you're already connected, say so instead of offering to connect.
-    if (resolution is RecipientResolution.Resolved) {
-        if (uiState.alreadyConnected) {
-            AlreadyConnectedNote()
-        } else {
-            ConnectRequestOffer(onClick = { onSendConnectionRequest(resolution.identity.odinId) })
+    when (resolution) {
+        // A resolved identity is presented read-only: the profile data we pulled, plus exactly
+        // the connection action that currently applies (send / accept / reject / cancel /
+        // already connected) and a one-tap "Save as new contact". We deliberately do NOT show
+        // editable fields for data that came from their Homebase profile.
+        is RecipientResolution.Resolved -> {
+            ResolvedIdentityCard(resolution.identity)
+            RelationActions(
+                relation = uiState.relation,
+                odinId = resolution.identity.odinId,
+                actionInProgress = uiState.actionInProgress,
+                identityOnly = identityOnly,
+                onSendConnectionRequest = onSendConnectionRequest,
+                onAction = onAction,
+            )
+            // In identity-only (chat) mode a contact can't be "saved as new" — the only useful
+            // outcomes are connect or message-once-connected, both handled by RelationActions.
+            if (!identityOnly) SaveAsNewRow(uiState, onAction)
+        }
+
+        else -> {}
+    }
+
+    // The "Add manually" escape hatch is only offered when a manual contact is useful — never
+    // from a chat flow, where a contact without a Homebase ID can't be messaged — and never once
+    // an identity has resolved, where switching to manual entry makes no sense. Manual entry
+    // (NameFields/OptionalDetails/SaveButton) lives entirely in ManualSection, reached via this
+    // link; it must stay a deliberate action, not auto-open just because a typed ID hasn't
+    // resolved yet (RecipientResolution.NotFound is a normal mid-typing state, not a request for
+    // the manual form).
+    if (!identityOnly && resolution !is RecipientResolution.Resolved) {
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
+            Text(stringResource(MR.string.add_contact_manual_link))
         }
     }
+}
 
-    // Once the user has committed to an identity (resolved or "add anyway"), let them refine
-    // the name and add optional details before saving.
-    if (resolution is RecipientResolution.Resolved || resolution is RecipientResolution.NotFound) {
-        NameFields(uiState, onAction)
-        Spacer(modifier = Modifier.height(8.dp))
-        OptionalDetails(uiState, onAction)
+/** Read-only display of the data pulled from a resolved Homebase profile. */
+@Composable
+private fun ResolvedIdentityCard(identity: PublicIdentity) {
+    Spacer(modifier = Modifier.height(4.dp))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = identity.displayNameOrDomain(),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            text = identity.odinId.domainName,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        identity.status?.takeIf { it.isNotBlank() }?.let { status ->
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
     }
+}
 
+/** The single connection action applicable to the resolved identity's current relationship. */
+@Composable
+private fun RelationActions(
+    relation: IdentityRelation,
+    odinId: OdinId,
+    actionInProgress: Boolean,
+    identityOnly: Boolean,
+    onSendConnectionRequest: (OdinId) -> Unit,
+    onAction: (AddContactAction) -> Unit,
+) {
+    when (relation) {
+        IdentityRelation.NONE ->
+            ConnectRequestOffer(onClick = { onSendConnectionRequest(odinId) })
+
+        IdentityRelation.INCOMING_PENDING -> {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = stringResource(MR.string.contactbook_detail_request_incoming),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { onAction(AddContactAction.AcceptRequestClicked) },
+                    enabled = !actionInProgress,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(stringResource(MR.string.contactbook_detail_accept))
+                }
+                OutlinedButton(
+                    onClick = { onAction(AddContactAction.RejectRequestClicked) },
+                    enabled = !actionInProgress,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(MR.string.contactbook_detail_reject))
+                }
+            }
+        }
+
+        IdentityRelation.OUTGOING_PENDING -> {
+            Spacer(modifier = Modifier.height(12.dp))
+            IndicatorRow(
+                content = {
+                    Icon(
+                        Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                text = stringResource(MR.string.contactbook_detail_request_outgoing),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = { onAction(AddContactAction.CancelRequestClicked) },
+                enabled = !actionInProgress,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.size(8.dp))
+                Text(stringResource(MR.string.contactbook_detail_cancel_request))
+            }
+        }
+
+        // Already connected: in a chat flow, offer to jump straight into the conversation;
+        // otherwise just note the connection (the contact-book add has nothing to message from).
+        IdentityRelation.CONNECTED ->
+            if (identityOnly) {
+                MessageConnectedButton(
+                    enabled = !actionInProgress,
+                    onClick = { onAction(AddContactAction.MessageClicked) },
+                )
+            } else {
+                AlreadyConnectedNote()
+            }
+
+        IdentityRelation.BLOCKED -> {
+            Spacer(modifier = Modifier.height(12.dp))
+            IndicatorRow(
+                content = {
+                    Icon(
+                        Icons.Outlined.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+                text = stringResource(MR.string.add_contact_blocked),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** "Save as new contact" affordance, or a note if they're already in the book. */
+@Composable
+private fun SaveAsNewRow(
+    uiState: AddContactUiState,
+    onAction: (AddContactAction) -> Unit,
+) {
+    if (uiState.alreadySaved) {
+        Spacer(modifier = Modifier.height(12.dp))
+        IndicatorRow(
+            content = {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+            text = stringResource(MR.string.add_contact_already_saved),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        return
+    }
+    // Keep one primary (filled) button on screen: when the relationship already has a filled CTA
+    // (Send request / Accept), Save is the secondary outlined action; otherwise it's primary.
+    val saveSecondary = uiState.relation == IdentityRelation.NONE ||
+        uiState.relation == IdentityRelation.INCOMING_PENDING
     Spacer(modifier = Modifier.height(8.dp))
-    TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
-        Text(stringResource(MR.string.add_contact_manual_link))
+    if (saveSecondary) {
+        OutlinedButton(
+            onClick = { onAction(AddContactAction.SaveClicked) },
+            enabled = uiState.canSave,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(MR.string.add_contact_save_as_new))
+        }
+    } else {
+        Button(
+            onClick = { onAction(AddContactAction.SaveClicked) },
+            enabled = uiState.canSave,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(MR.string.add_contact_save_as_new))
+        }
+    }
+}
+
+/** Full-width primary Save used by manual entry and the "add anyway" (NotFound) path. */
+@Composable
+private fun SaveButton(enabled: Boolean, onClick: () -> Unit) {
+    Spacer(modifier = Modifier.height(24.dp))
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(stringResource(MR.string.contactbook_edit_save))
+    }
+}
+
+/** Primary "Message" CTA shown for an already-connected identity in the chat (identity-only) flow. */
+@Composable
+private fun MessageConnectedButton(enabled: Boolean, onClick: () -> Unit) {
+    Spacer(modifier = Modifier.height(8.dp))
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.AutoMirrored.Outlined.Message, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(stringResource(MR.string.contactbook_detail_message))
     }
 }
 
@@ -320,7 +583,7 @@ private fun ConnectRequestOffer(onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
     )
-    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+    Button(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null)
         Spacer(modifier = Modifier.size(8.dp))
         Text(stringResource(MR.string.add_contact_send_request))
@@ -335,21 +598,8 @@ private fun ResolutionIndicator(resolution: RecipientResolution) {
             text = stringResource(MR.string.add_contact_resolving),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        is RecipientResolution.Resolved -> IndicatorRow(
-            content = {
-                Icon(
-                    Icons.Outlined.CheckCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            },
-            text = stringResource(
-                MR.string.add_contact_identity_found,
-                resolution.identity.displayNameOrDomain(),
-            ),
-            tint = MaterialTheme.colorScheme.primary,
-        )
+        // A resolved identity is rendered by ResolvedIdentityCard, not as a one-line indicator.
+        is RecipientResolution.Resolved -> {}
         RecipientResolution.NotFound -> IndicatorRow(
             content = {
                 Icon(
@@ -389,6 +639,10 @@ private fun ManualSection(
 ) {
     NameFields(uiState, onAction)
     OptionalDetails(uiState, onAction)
+    SaveButton(
+        enabled = uiState.canSave,
+        onClick = { onAction(AddContactAction.SaveClicked) },
+    )
     Spacer(modifier = Modifier.height(8.dp))
     TextButton(onClick = { onAction(AddContactAction.SwitchToByIdentity) }) {
         Text(stringResource(MR.string.add_contact_byid_link))

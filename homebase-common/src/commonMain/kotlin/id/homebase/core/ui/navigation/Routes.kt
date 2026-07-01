@@ -132,7 +132,10 @@ sealed class Route {
 
     @Serializable
     @SerialName("contactbook-add")
-    data object AddContact : Route()
+    // identityOnly: launched from a chat flow, where a contact is only useful if it has a
+    // Homebase ID (you can't message someone without one) — so the manual-entry affordances
+    // are hidden and the screen stays a Homebase ID lookup.
+    data class AddContact(val identityOnly: Boolean = false) : Route()
 
     @Serializable
     @SerialName("feed")

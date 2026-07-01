@@ -67,4 +67,31 @@ class OkioFileOperationsProviderTest {
     fun getFileSizeOfMissingFileIsZero() {
         assertEquals(0L, provider().getFileSize("/tmp/homebase/does-not-exist.bin"))
     }
+
+    @Test
+    fun sourceExistsTrueForWrittenFileFalseAfterDelete() = runTest {
+        val ops = provider()
+        val path = ops.writeBytesToTempFile(byteArrayOf(1, 2, 3), "src_", ".bin")
+
+        assertTrue(ops.sourceExists(path), "a written source must report present")
+
+        ops.deleteTempFile(path)
+        assertTrue(!ops.sourceExists(path), "a swept source must report missing (fail-soft signal)")
+    }
+
+    @Test
+    fun sourceExistsTrueForZeroByteFile() = runTest {
+        val ops = provider()
+        // A real (if empty) file must not be misreported as missing — sourceExists is an
+        // existence probe, not a size probe (unlike getFileSize, which returns 0 for both).
+        val path = ops.writeBytesToTempFile(ByteArray(0), "empty_", ".bin")
+
+        assertEquals(0L, ops.getFileSize(path), "the file is genuinely zero-length")
+        assertTrue(ops.sourceExists(path), "a present zero-byte file must still report present")
+    }
+
+    @Test
+    fun sourceExistsFalseForMissingPath() = runTest {
+        assertTrue(!provider().sourceExists("/tmp/homebase/never-written.bin"))
+    }
 }
