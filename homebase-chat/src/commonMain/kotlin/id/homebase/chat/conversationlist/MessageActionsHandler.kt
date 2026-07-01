@@ -671,6 +671,7 @@ internal class MessageActionsHandler(
                         var filePath = attachment.image.file.toUploadPath(fileOperationsProvider)
                         var contentType = resolveContentType(
                             fileName = attachment.image.fileName,
+                            platformMimeType = attachment.image.file.mimeType()?.toString(),
                         )
                         if (contentType == "image/heic" || contentType == "image/heif") {
                             val heicBytes = fileOperationsProvider.readFileBytes(filePath)
