@@ -313,26 +313,17 @@ private fun ByIdentitySection(
             if (!identityOnly) SaveAsNewRow(uiState, onAction)
         }
 
-        // Couldn't resolve the ID. Outside chat the user can still add them by hand ("add anyway");
-        // in identity-only mode there's nothing to do without a Homebase ID, so we stop here.
-        RecipientResolution.NotFound -> {
-            if (!identityOnly) {
-                NameFields(uiState, onAction)
-                Spacer(modifier = Modifier.height(8.dp))
-                OptionalDetails(uiState, onAction)
-                SaveButton(
-                    enabled = uiState.canSave,
-                    onClick = { onAction(AddContactAction.SaveClicked) },
-                )
-            }
-        }
-
         else -> {}
     }
 
     // The "Add manually" escape hatch is only offered when a manual contact is useful — never
-    // from a chat flow, where a contact without a Homebase ID can't be messaged.
-    if (!identityOnly) {
+    // from a chat flow, where a contact without a Homebase ID can't be messaged — and never once
+    // an identity has resolved, where switching to manual entry makes no sense. Manual entry
+    // (NameFields/OptionalDetails/SaveButton) lives entirely in ManualSection, reached via this
+    // link; it must stay a deliberate action, not auto-open just because a typed ID hasn't
+    // resolved yet (RecipientResolution.NotFound is a normal mid-typing state, not a request for
+    // the manual form).
+    if (!identityOnly && resolution !is RecipientResolution.Resolved) {
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
             Text(stringResource(MR.string.add_contact_manual_link))
