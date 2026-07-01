@@ -14,6 +14,10 @@ import kotlinx.serialization.Serializable
  * @property targetDrive the drive that was checked.
  * @property windowSeconds the effective lookback window (seconds) the caller is clamped to, or null
  *   when the caller has unconstrained read access (no time clamp). Only meaningful when [hasAccess].
+ *   NOT a reliable discriminator for "this is an emergency-circle grant" — a real
+ *   `ConditionalTemporalRead` emergency grant has been observed to report `windowSeconds = null` in
+ *   practice, same as a plain full read (see issue #875). Membership decisions must gate on
+ *   [hasAccess] alone.
  * @property newestFileModified the `modified` timestamp of the newest active file on the drive — a
  *   "is data still flowing?" signal (e.g. has tracking been turned off?). It is **not** clamped to
  *   [windowSeconds]: if data stopped longer ago than the window you still get the real last-update
@@ -27,13 +31,4 @@ data class TemporalAccessStatus(
     val targetDrive: TargetDrive? = null,
     val windowSeconds: Long? = null,
     val newestFileModified: UnixTimeUtc = UnixTimeUtc.ZeroTime,
-) {
-    /**
-     * True only for a *time-clamped* grant — [hasAccess] AND a finite [windowSeconds]. This is the
-     * `ConditionalTemporalRead` signature, so it's the correct signal for "this peer designated me an
-     * emergency contact". Plain full/unconstrained read also reports `hasAccess = true` but with
-     * `windowSeconds == null`, so gating on [hasAccess] alone wrongly treats any readable location
-     * drive as an emergency designation.
-     */
-    val isTimeWindowed: Boolean get() = hasAccess && windowSeconds != null
-}
+)
