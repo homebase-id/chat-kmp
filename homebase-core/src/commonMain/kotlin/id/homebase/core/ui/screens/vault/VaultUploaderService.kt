@@ -53,13 +53,9 @@ private const val TAG = "VaultUploaderService"
 private fun vaultPayloadKey(index: Int): String = "vlt_pg_${index.toString().padStart(2, '0')}"
 
 class VaultUploaderService(
-    private val outboxSync: OutboxSync,
-    private val optimisticWriter: OptimisticWriter,
-    private val payloadEncryptionService: PayloadBundleEncryptionService,
     private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
-    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val vaultService: VaultService,
 ) {
@@ -219,14 +215,8 @@ class VaultUploaderService(
                 allThumbnails += thumbnails
             }
 
-            val keyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey
-            )
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                Uuid.random(), PayloadBundle(allPayloads, allThumbnails, emptyList()),
-                keyHeader.aesKey, scope,
-            )
-
+            // Plaintext bundle — UploadService.updateFile (via enqueueFileContentUpdate) encrypts
+            // (fail-soft), builds the manifest, and writes the optimistic update.
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -237,13 +227,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                manifest = UpdateManifest.build(
-                    payloads = encryptedBundle.payloads,
-                    thumbnails = encryptedBundle.thumbnails,
-                    generatePayloadIv = false,
-                ),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
+                bundle = PayloadBundle(allPayloads, allThumbnails, emptyList()),
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
@@ -310,14 +294,6 @@ class VaultUploaderService(
                 previewThumbnail = previewThumbnail,
             )
 
-            val keyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey
-            )
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                Uuid.random(), PayloadBundle(listOf(payload), thumbnails, emptyList()),
-                keyHeader.aesKey, scope,
-            )
-
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -328,13 +304,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                manifest = UpdateManifest.build(
-                    payloads = encryptedBundle.payloads,
-                    thumbnails = encryptedBundle.thumbnails,
-                    generatePayloadIv = false,
-                ),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
+                bundle = PayloadBundle(listOf(payload), thumbnails, emptyList()),
             )
         } catch (e: CancellationException) {
             throw e
@@ -366,9 +336,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                manifest = UpdateManifest.build(
-                    toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
-                ),
+                toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue delete page $payloadKey from ${file.uniqueId}" }
@@ -397,18 +365,6 @@ class VaultUploaderService(
                 descriptorContent = notePreview,
             )
 
-            val keyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16),
-                aesKey = file.keyHeader.aesKey,
-            )
-
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                Uuid.random(),
-                PayloadBundle(listOf(payload), emptyList(), emptyList()),
-                keyHeader.aesKey,
-                scope,
-            )
-
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -419,11 +375,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                manifest = UpdateManifest.build(
-                    payloads = encryptedBundle.payloads,
-                    generatePayloadIv = false,
-                ),
-                payloads = encryptedBundle.payloads,
+                bundle = PayloadBundle(listOf(payload), emptyList(), emptyList()),
             )
         } catch (e: CancellationException) {
             throw e
