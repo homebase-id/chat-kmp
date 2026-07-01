@@ -567,6 +567,7 @@ fun MomentDetailPane(
                     is FullScreenOverlay.ViewMessageData -> "image"
                     is FullScreenOverlay.VideoPlayerData -> "video"
                     is FullScreenOverlay.AttachmentData -> "attachment"
+                    is FullScreenOverlay.PdfViewerData -> "pdf"
                 }
             },
             transitionSpec = {
@@ -616,6 +617,11 @@ fun MomentDetailPane(
                 is FullScreenOverlay.AttachmentData -> {
                     // Not used by moments — that overlay is the chat composer's
                     // attachment editor. The VM never emits this variant.
+                }
+
+                is FullScreenOverlay.PdfViewerData -> {
+                    // Not used by moments — PDF attachments are chat-only. The VM
+                    // never emits this variant.
                 }
             }
         }
