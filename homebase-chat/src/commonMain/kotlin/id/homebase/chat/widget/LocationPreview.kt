@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -61,8 +62,10 @@ import id.homebase.resources.live_share_15m
 import id.homebase.resources.live_share_1h
 import id.homebase.resources.live_share_2h
 import id.homebase.resources.live_share_30m
+import id.homebase.resources.live_share_24h
 import id.homebase.resources.live_share_4h
 import id.homebase.resources.live_share_active
+import id.homebase.resources.live_share_duration_prompt
 import id.homebase.resources.live_share_ended
 import id.homebase.resources.share_live_location
 import id.homebase.resources.stop_sharing
@@ -456,7 +459,9 @@ private fun LiveShareActionArea(
                 Column {
                     if (controls.sentByYou) {
                         Row(
-                            modifier = Modifier.clickable { controls.onStop() },
+                            modifier = Modifier
+                                .clickable { controls.onStop() }
+                                .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
@@ -498,7 +503,9 @@ private fun LiveShareActionArea(
                 var menuExpanded by remember { mutableStateOf(false) }
                 Column {
                     Row(
-                        modifier = Modifier.clickable { menuExpanded = true },
+                        modifier = Modifier
+                            .clickable { menuExpanded = true }
+                            .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
@@ -515,6 +522,13 @@ private fun LiveShareActionArea(
                         )
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        Text(
+                            text = stringResource(MR.string.live_share_duration_prompt),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                        HorizontalDivider()
                         DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
                             DropdownMenuItem(
                                 text = { Text(stringResource(labelRes)) },
@@ -541,6 +555,10 @@ private val DURATION_OPTIONS = listOf(
     MR.string.live_share_1h to 60 * 60_000L,
     MR.string.live_share_2h to 2 * 60 * 60_000L,
     MR.string.live_share_4h to 4 * 60 * 60_000L,
+    // All-day sharing (festivals etc.) — #889. Window is absolute-endTime
+    // driven, so this is just a larger value; formatRemaining renders it as
+    // "24h"/"23h". Backgrounded GPS freshness is governed separately by #878.
+    MR.string.live_share_24h to 24L * 60 * 60_000L,
 )
 
 /** Compact "time left" label: "42m", "1h", "1h 20m". */

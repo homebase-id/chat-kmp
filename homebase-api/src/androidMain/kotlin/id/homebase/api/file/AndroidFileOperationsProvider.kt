@@ -114,6 +114,20 @@ class AndroidFileOperationsProvider(
         return File(path).length()
     }
 
+    override suspend fun sourceExists(path: String): Boolean = withContext(Dispatchers.IO) {
+        if (path.startsWith("content://") || path.startsWith("content:")) {
+            // getFileSize's SIZE-column query returns 0 for a perfectly valid URI that
+            // doesn't expose OpenableColumns.SIZE, so don't gate on size here. Opening
+            // the stream is the authoritative "still readable?" check and also surfaces
+            // a revoked grant (SecurityException) as "missing".
+            runCatching {
+                context.contentResolver.openInputStream(path.toUri())?.use { true } ?: false
+            }.getOrDefault(false)
+        } else {
+            File(path).exists()
+        }
+    }
+
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray, prefix: String, suffix: String
     ): String = withContext(Dispatchers.IO) {

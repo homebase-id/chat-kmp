@@ -5,6 +5,7 @@ import id.homebase.api.PlatformType
 import id.homebase.api.getPlatform
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.createPlatformHttpClient
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -17,7 +18,6 @@ import id.homebase.api.sync.DriveWebSocketUpsertWorker
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
-import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -71,7 +71,7 @@ class OdinWebSocketClient(
     private val MAX_RECONNECT_DELAY_BACKGROUND_MS = 30_000L
     private var closed = false
 
-    private val client = HttpClient {
+    private val client = createPlatformHttpClient {
         // TODO: enable per-message deflate compression via WebSocketDeflateExtension once
         //  server support is confirmed (RFC 7692 / permessage-deflate).
         //  install(WebSockets) { extensions { install(WebSocketDeflateExtension) } }

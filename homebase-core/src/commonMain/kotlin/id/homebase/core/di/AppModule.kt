@@ -46,9 +46,13 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContentParser
-import id.homebase.chat.services.PayloadBundleEncryptionService
-import id.homebase.chat.services.PayloadCacheSeeder
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.VideoEncodePolicy
+import id.homebase.upload.OptimisticLocalWriter
+import id.homebase.upload.UploadService
+import id.homebase.chat.services.outbox.OptimisticWriterPort
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.api.client.drives.HomebaseFile
@@ -73,9 +77,11 @@ import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
@@ -118,7 +124,6 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
-import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
@@ -177,6 +182,14 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    // Adapter so the upload pipeline's encoding policy doesn't couple homebase-common's
+    // UserPreferences to homebase-upload. Reads the live preference value on each access.
+    single<VideoEncodePolicy> {
+        val prefs: UserPreferences = get()
+        object : VideoEncodePolicy {
+            override val allowTenBitVideo: Boolean get() = prefs.allowTenBitVideo
+        }
+    }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
@@ -223,6 +236,8 @@ val appModule = module {
     single { ContactBookPreferences(get()) }
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
+    // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
+    singleOf(::ContactOverrideStore)
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -271,9 +286,7 @@ val appModule = module {
     single<LocationTracker> { createLocationTracker(get<LocationFixRouter>()) }
     single {
         LocationTrackUploaderService(
-            outboxSync = get(),
-            optimisticWriter = get(),
-            payloadEncryptionService = get(),
+            uploadService = get(),
             fileOperationsProvider = get(),
             driveFileProvider = get(),
             databaseManager = get(),
@@ -560,6 +573,11 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)
+    // Adapts chat's OptimisticWriter onto the upload pipeline's OptimisticLocalWriter port, so
+    // the shared UploadService writes optimistic rows without homebase-upload depending on chat.
+    single<OptimisticLocalWriter> { OptimisticWriterPort(get()) }
+    // The one shared, feature-agnostic upload pipeline (#844 Deliverable B).
+    singleOf(::UploadService)
     // Shared optimistic-send cache seeder — used by Chat, Moments, Vault, Stickers
     // so a just-sent image shows its sharp thumbnail through "finalizing".
     singleOf(::PayloadCacheSeeder)
@@ -826,6 +844,7 @@ val appModule = module {
     }
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
+    viewModelOf(::AddContactViewModel)
     viewModelOf(::ContactBookSettingsViewModel)
     singleOf(::LocationDeviceDirectory)
     viewModel { params ->
@@ -881,7 +900,6 @@ val appModule = module {
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
-    viewModelOf(::ConnectionsViewModel)
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)

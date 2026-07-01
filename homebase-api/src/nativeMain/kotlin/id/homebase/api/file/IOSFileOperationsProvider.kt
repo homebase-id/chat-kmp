@@ -112,6 +112,19 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return size?.longLongValue ?: 0L
     }
 
+    @OptIn(ExperimentalForeignApi::class)
+    override suspend fun sourceExists(path: String): Boolean {
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
+            // getFileSize can't size a Photos-library asset (it reports 0), so probe the
+            // library directly: the fetch returns nothing once the asset is deleted or the
+            // photo-library grant is revoked.
+            val assetId = if (path.startsWith("ph://")) path.removePrefix("ph://") else path
+            val fetchResult = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(assetId), options = null)
+            return fetchResult.count.toInt() > 0
+        }
+        return NSFileManager.defaultManager.fileExistsAtPath(path)
+    }
+
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,

@@ -323,6 +323,29 @@ visibility, optional biometric gate), follow the recipe in
 routing, `AppNavHost` wiring, `AuthConnectionCoordinator` drive subscription, DI, and the
 expect/actual biometric layer.
 
+## Phone numbers & email addresses in the UI
+
+Any UI that captures a phone number or email — primary slot, additional/extra slots, add
+flows, anywhere — must enforce the canonical format. Don't drop a raw `OutlinedTextField`
+in for these.
+
+- **Phone numbers** are stored as **E.164** (`+14155550123`). Capture them with
+  `PhoneNumberField` (`…/contactbook/components/PhoneNumberField.kt`) — a country-code
+  selector + national-number field that emits a normalized E.164 string (or `""` when
+  blank). The user never types the `+` or country code. Never persist a hand-typed national
+  string. The control is stateful (it seeds its country/national once and then owns them),
+  so render lists of them under a **stable `key(id)`**, not the list index — index-keying
+  shuffles a row's seeded state when a sibling above it is removed. See the keyed
+  `DraftPhone` rows in `ContactEditSheet.kt`.
+- **Email addresses** must be validated before they can be saved.
+- Use `ContactFieldValidation` (`…/contactbook/ContactFieldValidation.kt`) as the single
+  source of truth: `isValidPhone` (E.164), `isValidEmail`, `normalizePhone`. Validators
+  treat blank as valid (fields are optional); the empty-vs-required decision is the caller's.
+- **Legacy data may not be E.164.** Show it (seed it into `PhoneNumberField`, render it in
+  the email field) and flag it with the field's `isError` + `errorText`, but **block Save
+  until it's corrected** — gate the Save button on every phone/email being valid, primary
+  *and* additional. Error strings: `contactbook_error_phone`, `contactbook_error_email`.
+
 ## Adding a New Typed Message Kind
 
 When adding a new chat message kind (poll, doodle, sticker — anything whose descriptor
