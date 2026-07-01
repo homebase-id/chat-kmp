@@ -1526,6 +1526,7 @@
     <string name="contactbook_action_request_accepted">Connection request accepted.</string>
     <string name="contactbook_action_request_rejected">Connection request declined.</string>
     <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
+    <string name="contactbook_action_request_withdrawn">This request was withdrawn by the sender.</string>
 
     <string name="add_contact_title">Add contact</string>
     <string name="add_contact_odinid_label">Homebase ID</string>
