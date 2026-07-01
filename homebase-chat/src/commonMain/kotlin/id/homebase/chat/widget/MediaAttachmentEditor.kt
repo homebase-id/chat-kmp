@@ -42,7 +42,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateMap
@@ -57,6 +59,8 @@ import coil3.compose.AsyncImage
 import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.pdf.generatePdfThumbnail
+import id.homebase.core.util.resolveContentType
 import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
@@ -72,9 +76,14 @@ import id.homebase.resources.chat_message_remove_gallery_image
 import id.homebase.resources.crop
 import id.homebase.resources.draw
 import id.homebase.resources.menu_back
+import id.homebase.resources.chat_message_pdf_preview
 import id.homebase.resources.save
+import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.readBytes
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.uuid.Uuid
@@ -190,14 +199,30 @@ fun MediaAttachmentEditor(
             ) { page ->
                 when (val attachment = attachments[page]) {
                     is AttachmentPendingFile.File -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(Icons.Default.UploadFile, contentDescription = stringResource(MR.string.cd_file_attachment), Modifier.size(96.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(attachment.file.name)
+                        val isPdf = remember(attachment.file) {
+                            resolveContentType(fileName = attachment.file.name) == "application/pdf"
+                        }
+                        if (isPdf) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                PdfAttachmentPreview(
+                                    file = attachment.file,
+                                    imageLoader = imageLoader,
+                                    maxWidth = 1080,
+                                    contentDescription = stringResource(MR.string.chat_message_pdf_preview),
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            }
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.Center,
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Default.UploadFile, contentDescription = stringResource(MR.string.cd_file_attachment), Modifier.size(96.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(attachment.file.name)
+                            }
                         }
                     }
                     is AttachmentPendingFile.FileImage -> {
@@ -404,11 +429,26 @@ fun MediaAttachmentEditor(
                     ) {
                         when (attachment) {
                             is AttachmentPendingFile.File -> {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(Icons.Default.UploadFile, contentDescription = stringResource(MR.string.cd_file_attachment))
+                                val isPdf = remember(attachment.file) {
+                                    resolveContentType(fileName = attachment.file.name) == "application/pdf"
+                                }
+                                if (isPdf) {
+                                    PdfAttachmentPreview(
+                                        file = attachment.file,
+                                        imageLoader = imageLoader,
+                                        maxWidth = 240,
+                                        contentDescription = stringResource(MR.string.chat_message_pdf_preview),
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop,
+                                        alignment = Alignment.TopCenter,
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Icon(Icons.Default.UploadFile, contentDescription = stringResource(MR.string.cd_file_attachment))
+                                    }
                                 }
                             }
                             is AttachmentPendingFile.FileImage -> {
@@ -558,5 +598,44 @@ fun MediaAttachmentEditor(
         } // end AnimatedVisibility (tool row)
 
         bottomBar()
+    }
+}
+
+/**
+ * First-page preview for a PDF attachment in the composer: renders page 1 to a
+ * bitmap ([generatePdfThumbnail]) off the main thread and shows it. Falls back to
+ * the generic file icon while rendering, or when the PDF can't be rendered
+ * (e.g. web, where the renderer returns null).
+ */
+@Composable
+private fun PdfAttachmentPreview(
+    file: PlatformFile,
+    imageLoader: ImageLoader,
+    maxWidth: Int,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit,
+    alignment: Alignment = Alignment.Center,
+) {
+    val pageJpeg by produceState<ByteArray?>(initialValue = null, file, maxWidth) {
+        value = withContext(Dispatchers.Default) {
+            runCatching { generatePdfThumbnail(file.readBytes(), maxWidth)?.thumbnailBytes }.getOrNull()
+        }
+    }
+
+    val bytes = pageJpeg
+    if (bytes != null) {
+        AsyncImage(
+            imageLoader = imageLoader,
+            model = bytes,
+            contentDescription = contentDescription,
+            modifier = modifier,
+            contentScale = contentScale,
+            alignment = alignment,
+        )
+    } else {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.UploadFile, contentDescription = contentDescription)
+        }
     }
 }
