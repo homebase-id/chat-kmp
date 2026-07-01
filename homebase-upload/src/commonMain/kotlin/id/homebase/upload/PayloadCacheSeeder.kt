@@ -23,11 +23,11 @@ import kotlin.uuid.Uuid
  * only degrades to a re-download / unrecoverable-media retry — so a single
  * failure is logged and skipped, never propagated.
  */
-class PayloadCacheSeeder(
+open class PayloadCacheSeeder(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
-    suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+    open suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
         for (payload in bundle.payloads) {
             try {
                 driveFileProvider.cachePayloadBytesEncrypted(

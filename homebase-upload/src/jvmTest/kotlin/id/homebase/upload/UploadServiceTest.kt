@@ -30,6 +30,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -65,6 +66,7 @@ class UploadServiceTest {
         val dbm: DatabaseManager,
         val encryptor: RecordingEncryptor,
         val writer: RecordingOptimisticWriter,
+        val seeder: RecordingSeeder,
     )
 
     private suspend fun countRows(h: Harness): Long = h.dbm.outbox.count()
@@ -91,7 +93,9 @@ class UploadServiceTest {
         // needs a DriveFileProvider, wired over a MockEngine that 500s (never called).
         val httpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
         val creds = CredentialsManager()
-        val seeder = PayloadCacheSeeder(
+        // Recording seeder: records the fileId each seed targets instead of doing real byte IO, so
+        // a test can assert the update path seeds the fresh bytes under the existing fileId.
+        val seeder = RecordingSeeder(
             DriveFileProvider(httpClient, creds, DriveFileProviderCached(httpClient, creds, NoopFileOps())),
             NoopFileOps(),
         )
@@ -102,7 +106,7 @@ class UploadServiceTest {
             optimisticWriter = writer,
             payloadCacheSeeder = seeder,
         )
-        return Harness(service, db, encryptor, writer)
+        return Harness(service, db, encryptor, writer, seeder)
     }
 
     private val driveId = Uuid.parse("9ff813af-f2d6-1e2f-9b9d-b189e72d1a11")
@@ -233,6 +237,85 @@ class UploadServiceTest {
         assertEquals(1, h.encryptor.callCount, "a new plaintext payload is encrypted by the pipeline")
     }
 
+    // ---------- updateFile write-through (issue #927 — lost vault-note bodies) ----------
+
+    @Test
+    fun updateFile_fullStateOverwrite_writesPayloadDescriptorsThrough_andSeedsUnderFileId() = runTest {
+        // The vault-note edit repro: a complete new payload set + the existing fileId. The body must
+        // be written THROUGH to the local store (non-null descriptors) and its bytes seeded under the
+        // file's own id — otherwise a read-back before the send decrypts stale server bytes with the
+        // new IV, and a dropped row silently reverts to the old body. (culprit #1)
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        val fileId = Uuid.random()
+        val outcome = h.service.updateFile(
+            MediaUpdateSpec(
+                driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+                metadata = metadata(uid, versionTag = Uuid.random()),
+                bundle = bundleOf("note_body"),
+                fileId = fileId, writeOptimistic = true, seedCache = true,
+            ),
+            scope = backgroundScope,
+        )
+        assertIs<UploadOutcome.Enqueued>(outcome)
+        assertEquals(1L, countRows(h))
+        val descriptors = h.writer.lastUpdateDescriptors
+        assertNotNull(descriptors, "the new note body must be written through, not left as null (preserve-old)")
+        assertEquals(listOf("note_body"), descriptors.map { it.key })
+        assertEquals(listOf(fileId), h.seeder.seededFileIds, "fresh bytes seeded under the existing fileId")
+    }
+
+    @Test
+    fun updateFile_newPayloadWithoutFileId_preservesExistingDescriptors_andDoesNotSeed() = runTest {
+        // No fileId → an incremental/partial update (append a page, add-recipients): must NOT replace
+        // the whole descriptor set with the partial one, and must not seed. Keeps the old contract.
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        h.service.updateFile(
+            MediaUpdateSpec(
+                driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+                metadata = metadata(uid, versionTag = Uuid.random()),
+                bundle = bundleOf("p0"), fileId = null, writeOptimistic = true,
+            ),
+            scope = backgroundScope,
+        )
+        assertNull(h.writer.lastUpdateDescriptors, "no fileId → preserve existing payloads (null write)")
+        assertTrue(h.seeder.seededFileIds.isEmpty(), "no fileId → nothing seeded")
+    }
+
+    @Test
+    fun updateFile_replaceTrue_coalescesRapidReEdits_newestWins() = runTest {
+        // culprit #2: a second save while the first is still queued must SUPERSEDE it (replace=true),
+        // not be rejected as AlreadyQueued. Same (driveId, uniqueId) → one row, both Enqueued.
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        fun spec() = MediaUpdateSpec(
+            driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+            metadata = metadata(uid, versionTag = Uuid.random()),
+            bundle = bundleOf("note_body"), fileId = Uuid.random(),
+            replace = true, sendNow = false,
+        )
+        assertIs<UploadOutcome.Enqueued>(h.service.updateFile(spec(), backgroundScope))
+        assertIs<UploadOutcome.Enqueued>(h.service.updateFile(spec(), backgroundScope))
+        assertEquals(1L, countRows(h), "the newer edit supersedes the queued one — no duplicate, no drop")
+    }
+
+    @Test
+    fun updateFile_replaceFalse_dropsTheNewerReEdit_asAlreadyQueued() = runTest {
+        // The pre-fix vault behavior, pinned so the regression is visible: replace=false rejects the
+        // newer save (AlreadyQueued) → the older queued body ships and the new edit is lost.
+        val h = buildHarness(backgroundScope)
+        val uid = Uuid.random()
+        fun spec() = MediaUpdateSpec(
+            driveId = driveId, uniqueId = uid, keyHeader = KeyHeader.newRandom16(),
+            metadata = metadata(uid, versionTag = Uuid.random()),
+            bundle = bundleOf("note_body"), fileId = Uuid.random(),
+            replace = false, sendNow = false,
+        )
+        assertIs<UploadOutcome.Enqueued>(h.service.updateFile(spec(), backgroundScope))
+        assertIs<UploadOutcome.AlreadyQueued>(h.service.updateFile(spec(), backgroundScope))
+    }
+
     @Test
     fun updateFile_missingSource_enqueuesNothing() = runTest {
         val h = buildHarness(backgroundScope, RecordingEncryptor(throwMissing = "src/p0"))
@@ -279,6 +362,10 @@ private class RecordingOptimisticWriter : OptimisticLocalWriter {
     var updateCount = 0
         private set
 
+    /** The descriptors passed to the LAST `writeUpdate` — null means "preserve existing payloads". */
+    var lastUpdateDescriptors: List<PayloadDescriptor>? = null
+        private set
+
     override suspend fun writeNewFile(
         driveId: Uuid,
         keyHeader: KeyHeader,
@@ -299,9 +386,22 @@ private class RecordingOptimisticWriter : OptimisticLocalWriter {
         payloadDescriptors: List<PayloadDescriptor>?,
     ) {
         updateCount++
+        lastUpdateDescriptors = payloadDescriptors
     }
 
     override suspend fun removeOptimisticFile(driveId: Uuid, uniqueId: Uuid): Boolean = true
+}
+
+/** Records the fileId of each seed instead of doing real byte IO (which the NoopFileOps forbids). */
+private class RecordingSeeder(
+    driveFileProvider: DriveFileProvider,
+    fileOperationsProvider: FileOperationsProvider,
+) : PayloadCacheSeeder(driveFileProvider, fileOperationsProvider) {
+    val seededFileIds = mutableListOf<Uuid>()
+
+    override suspend fun seed(driveId: Uuid, fileId: Uuid, bundle: PayloadBundle) {
+        seededFileIds += fileId
+    }
 }
 
 private object ThrowingUploader : OutboxUploader {
