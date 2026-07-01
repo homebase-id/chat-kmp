@@ -37,6 +37,27 @@ object CacheAudit {
     )
 
     /**
+     * The two upload-pipeline temp subdirectories of the cache dir (#844 PR4). They straddle the
+     * #844 durability boundary ("everything before encryption is disposable") and are swept
+     * DIFFERENTLY:
+     *
+     * - [UPLOAD_TEMP_DIR_NAME] — the RAW, pre-encryption source temps ([writeBytesToTempFile]).
+     *   Disposable: if one is gone at send time the pipeline fails soft (re-pick). Left "untracked"
+     *   so the CacheSweeper reaps it on every startup / "Clear caches" — it self-heals and can't
+     *   grow. This is the biggest leak source (picker-resolved inputs).
+     * - [OUTBOX_TEMP_DIR_NAME] — the ENCRYPTED, ready-to-transmit payloads
+     *   ([writeBytesToOutboxTempFile]), each referenced by an outbox row until the send completes
+     *   (a long time when offline). Durable: the CacheSweeper KEEPs it on the startup / "Clear
+     *   caches" sweep so an in-flight upload's payload is never deleted mid-flight, and only wipes
+     *   it on full logout. It's reaped along the outbox's own lifecycle — on success
+     *   (cleanupPayloadTempFiles) and on drop after ~48h (cleanupPayloadsForDroppedRow).
+     *
+     * Both are counted in the Storage screen total.
+     */
+    const val UPLOAD_TEMP_DIR_NAME: String = "upload-temp"
+    const val OUTBOX_TEMP_DIR_NAME: String = "outbox-temp"
+
+    /**
      * Top-level entries Android places inside our `cacheDir` that are owned by
      * the platform / WebView / a crash reporter — not by us. Wiping any of
      * these is destructive: nukes in-app browser cookies + storage, forces a
@@ -188,6 +209,8 @@ object CacheAudit {
         name == "Crash Reports" -> "Android system: crash reporter — sacred"
         name == "hbvid_preload" -> "legacy video preload dir"
         name == "coil3_disk_cache" -> "orphan Coil disk cache"
+        name == UPLOAD_TEMP_DIR_NAME -> "raw pre-encryption upload temps (disposable — swept every startup)"
+        name == OUTBOX_TEMP_DIR_NAME -> "encrypted outbox payload temps (kept until sent/dropped to protect pending sends)"
         name == "homebase-payloads" || name == "homebase-thumbs" ||
             name == "homebase-public-profiles" || name == "homebase-public-images" ->
             "legacy kache dir (pre-v2)"

@@ -135,7 +135,10 @@ class PayloadBundleEncryptionService(
 
         val encrypted = encryptBytes(plainBytes, keyHeader)
 
-        val path = fileOps.writeBytesToTempFile(
+        // Encrypted, ready-to-transmit → the DURABLE outbox-temp dir (not the disposable
+        // upload-temp): this file rides an outbox row until the send completes and must survive
+        // the startup/clear CacheSweeper pass. The outbox reaps it on send success / drop. (#844)
+        val path = fileOps.writeBytesToOutboxTempFile(
             bytes = encrypted, prefix = "enc", suffix = ".encrypted"
         )
 

@@ -31,6 +31,42 @@ class ArchitectureTest {
             }
     }
 
+    /**
+     * Single-upload-path guard (#844). Payload encryption for an upload must go through the shared
+     * pipeline — `UploadService.upload`/`updateFile` — so the payload-cache/fail-soft/seed policies
+     * live in exactly one place. `encryptBundle` is the true "I'm doing a payload upload" signal, so
+     * calling it anywhere else is the violation. (The two-request-type rule was unworkable: header-only
+     * system records and the outbox rekey plumbing legitimately build UploadFileRequest /
+     * UpdateFileByUniqueIdRequest, and a text rule can't tell payload-bearing from header-only.)
+     *
+     * The regex matches CALLS (`.encryptBundle(`); the interface/impl `fun encryptBundle(` definitions
+     * have no leading dot and don't match. `UploadService` is excluded (it owns the one allowed call).
+     * Three functions are documented exceptions — each re-encrypts an in-memory text-overflow mixed
+     * with already-encrypted payloads (recovery plumbing) or is a hot multi-purpose mutation whose
+     * encrypt branch is rare, so routing them through UploadService adds risk without payoff:
+     *   - `updateMessage` (chat edit / amend-pending-create), `resendAsCreate` (chat resend),
+     *   - `updateConversationInternal` (conversation update: archival/participants/leaveGroup/heal).
+     * Adding a NEW `encryptBundle` call anywhere else — or a new media-send function — fails here.
+     */
+    @Test
+    fun `encryptBundle is confined to the shared upload pipeline`() {
+        val documentedExceptions = setOf("updateMessage", "resendAsCreate", "updateConversationInternal")
+        Konsist.scopeFromProject()
+            .files
+            .filter { !it.hasNameEndingWith("Test") }
+            .filter { !it.hasNameEndingWith("UploadService") }
+            .functions()
+            .filter { it.name !in documentedExceptions }
+            .assertFalse(
+                additionalMessage = "Payload encryption for an upload must go through " +
+                    "UploadService.upload/updateFile (issue #844), not a direct encryptBundle call. " +
+                    "If this is a genuine recovery/plumbing exception, add it to documentedExceptions " +
+                    "with a comment explaining why it can't route through UploadService."
+            ) {
+                it.text.contains(Regex("""\.\s*encryptBundle\s*\("""))
+            }
+    }
+
     @Test
     fun `Do not allow calling close on httpClient`() {
         Konsist.scopeFromProject()

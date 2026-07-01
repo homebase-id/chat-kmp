@@ -125,14 +125,31 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         return NSFileManager.defaultManager.fileExistsAtPath(path)
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
         suffix: String
-    ): String {
-        val tempDir = NSTemporaryDirectory()
-        val filePath = "$tempDir$prefix${NSUUID().UUIDString}$suffix"
+    ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
+    override suspend fun writeBytesToOutboxTempFile(
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Both temp dirs live under the Caches dir (not NSTemporaryDirectory()), so the Storage
+    // screen counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
+    // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
+        val cacheDir = getCacheDirectory().trimEnd('/')
+        val tempDir = "$cacheDir/$dirName"
+        val fm = NSFileManager.defaultManager
+        if (!fm.fileExistsAtPath(tempDir)) {
+            fm.createDirectoryAtPath(tempDir, true, null, null)
+        }
+        val filePath = "$tempDir/$prefix${NSUUID().UUIDString}$suffix"
 
         val data =
             bytes.usePinned { pinned ->

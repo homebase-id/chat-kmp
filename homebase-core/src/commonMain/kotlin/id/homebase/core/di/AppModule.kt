@@ -475,6 +475,14 @@ val appModule = module {
                 // never cancelled here; logout clears it in-stream via SessionEnded.
                 get<LiveLocationReceiveStore>().reset()
 
+                // Self-heal crash-orphaned encrypted payload temps in outbox-temp/ (#844). The
+                // dir is KEEP-protected from the CacheSweeper (a pending send's payload must
+                // survive), so this idle+age-gated reap is its safety net. Fire-and-forget.
+                get<OutboxSync>().scheduleIdleOutboxTempReap(
+                    get<FileOperationsProvider>().getCacheDirectory().trimEnd('/') +
+                        "/" + CacheAudit.OUTBOX_TEMP_DIR_NAME
+                )
+
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()
@@ -603,6 +611,7 @@ val appModule = module {
         ConversationService(
             credentialsManager = get(),
             payloadBundleEncryptionService = get(),
+            uploadService = get(),
             dbm = get(),
             introductionProvider = get(),
             scope = get(),
