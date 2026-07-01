@@ -35,6 +35,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.MediaUpdateSpec
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
 import id.homebase.upload.PayloadCacheSeeder
@@ -62,13 +63,10 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
 class MomentsPostSenderService(
-    private val outboxSync: OutboxSync,
-    private val payloadBundleEncryptor: PayloadBundleEncryptor,
     private val uploadService: UploadService,
     private val fileOps: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
-    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
@@ -321,13 +319,6 @@ class MomentsPostSenderService(
                 ?.toMap()
                 ?.takeIf { it.isNotEmpty() }
 
-            val encrypted = payloadBundleEncryptor.encryptBundle(
-                uniqueId = momentUniqueId,
-                bundle = bundle,
-                aesKey = keyHeader.aesKey,
-                scope = scope,
-            )
-
             val content = OdinSystemSerializer.serialize(
                 MomentPostContent(
                     version = MomentsProtocol.MomentPostVersionNumberOne,
@@ -339,6 +330,7 @@ class MomentsPostSenderService(
                 )
             )
 
+            // previewThumbs pass through encryption unchanged → derive from the plaintext bundle.
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = !isLocalOnly,
                 isEncrypted = true,
@@ -348,84 +340,67 @@ class MomentsPostSenderService(
                     fileType = MomentsProtocol.MomentPostFileType,
                     userDate = userDate.milliseconds,
                     content = content,
-                    previewThumbnail = encrypted.previewThumbs.minByOrNull { it.pixelWidth },
+                    previewThumbnail = bundle.previewThumbs.minByOrNull { it.pixelWidth },
                 ),
             )
 
-            val request = UploadFileRequest(
-                driveId = drive,
-                keyHeader = keyHeader,
-                metadata = unencryptedMetadata.encryptContent(keyHeader),
-                transitOptions = TransitOptions(
-                    recipients = recipients,
-                    sendContents = SendContents.All,
-                    useAppNotification = !isLocalOnly,
-                    appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                        // Must stay on the chat appId — this IS the chat app and the
-                        // backend rejects a push whose appId isn't the registered app.
-                        // typeId == tagId == momentId marks this as a moment *post* (vs a
-                        // comment, which uses MOMENT_COMMENT_TAG_SENTINEL for tagId); a
-                        // chat message always has distinct conversationId/messageId. See
-                        // NotificationService.resolveMomentsTap.
-                        appId = ChatProtocol.ChatAppId.toString(),
-                        typeId = momentUniqueId.toString(),
-                        tagId = momentUniqueId.toString(),
-                        silent = false,
-                        unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_post),
+            // Two-phase: UploadService encrypts + enqueues (CREATE) + seeds the cache under the
+            // placeholder's fileId, but does NOT write optimistically — the placeholder already
+            // exists, so we PROMOTE it below with writeUpdate (not writeNewFile).
+            val outcome = uploadService.upload(
+                MediaUploadSpec(
+                    driveId = drive,
+                    uniqueId = momentUniqueId,
+                    keyHeader = keyHeader,
+                    bundle = bundle,
+                    metadata = unencryptedMetadata,
+                    transit = TransitOptions(
+                        recipients = recipients,
+                        sendContents = SendContents.All,
+                        useAppNotification = !isLocalOnly,
+                        appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
+                            // Stay on the chat appId (this IS the chat app; the backend rejects a
+                            // push whose appId isn't the registered app). typeId == tagId == momentId
+                            // marks a moment *post* (a comment uses MOMENT_COMMENT_TAG_SENTINEL).
+                            appId = ChatProtocol.ChatAppId.toString(),
+                            typeId = momentUniqueId.toString(),
+                            tagId = momentUniqueId.toString(),
+                            silent = false,
+                            unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_post),
+                        ),
                     ),
+                    dependencyUniqueId = null,
+                    priority = 1,
+                    originalRecipientCount = recipients.size,
+                    optimisticFileId = optimisticFileId,
+                    writeOptimistic = false, // placeholder already written; we promote it via writeUpdate
+                    seedCache = true,        // seed under the placeholder's fileId (before the writeUpdate)
                 ),
-                payloads = encrypted.payloads,
-                thumbnails = encrypted.thumbnails,
+                scope = scope,
             )
-
-            val result = outboxSync.tryEnqueue(
-                request,
-                priority = 1,
-                dependencyUniqueId = null,
-            )
-            enqueued = result.enqueued
-
-            if (!enqueued) {
-                error("Failed to enqueue moment for upload (outbox: $result)")
+            enqueued = outcome is UploadOutcome.Enqueued
+            if (outcome !is UploadOutcome.Enqueued) {
+                error("Failed to enqueue moment for upload (outbox: $outcome)")
             }
 
             Logger.d(tag = TAG) { "finalizeMomentSend: outbox enqueued moment=$momentUniqueId" }
 
-            @OptIn(ExperimentalEncodingApi::class)
-            val payloadDescriptors = encrypted.payloads.map { payload ->
-                // Prefer the builder's own preview (photos/audio); fall back to
-                // the extracted video poster so the optimistic video tile has a
-                // still to show over the player surface during warm-up. This
-                // descriptor feeds the local `writeUpdate` only — it isn't part
-                // of the uploaded payload bundle, so there's no header-budget
-                // concern with the full-frame poster bytes.
-                val previewThumb = payload.previewThumbnail?.let {
-                    ThumbnailDescriptor(
-                        pixelWidth = it.pixelWidth,
-                        pixelHeight = it.pixelHeight,
-                        contentType = it.contentType,
-                        content = it.content,
-                    )
-                } ?: posterThumbByKey[payload.key]
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    // Native thumbnail sizes so the tile can request a native size
-                    // (availableThumbSizes) and hit the seed below during sending.
-                    thumbnails = encrypted.thumbnailDescriptorsFor(payload.key),
-                    iv = payload.iv?.let { Base64.encode(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = previewThumb,
-                )
-            }.ifEmpty { null }
+            // Graft the extracted video posters onto the descriptors UploadService built: the
+            // attachment builder produces no thumbnail for videos, so without this the optimistic
+            // video tile has no still to paint over the player during warm-up (renders black).
+            // The poster feeds the local writeUpdate only — not the uploaded bundle — so the
+            // full-frame poster bytes carry no header-budget concern.
+            val payloadDescriptors = outcome.payloadDescriptors?.map { descriptor ->
+                if (descriptor.previewThumbnail == null) {
+                    posterThumbByKey[descriptor.key]?.let { descriptor.copy(previewThumbnail = it) } ?: descriptor
+                } else {
+                    descriptor
+                }
+            }
 
             try {
-                // Seed BEFORE the writeUpdate: writeUpdate installs the descriptors
-                // and triggers the feed recompose → thumbnail read, so the cache must
-                // already be fully populated under the optimistic fileId or that read
-                // races ahead of the seed, misses, and 404s (non-retriable) → blur.
-                // rekeyCacheAfterCreate later moves these entries to the server fileId.
-                payloadCacheSeeder.seed(drive, optimisticFileId, encrypted)
+                // Promote the placeholder to the real row. The cache was already seeded (above)
+                // under the same optimisticFileId, so the feed recompose → thumbnail read hits.
                 optimisticWriter.writeUpdate(
                     driveId = drive,
                     keyHeader = keyHeader,
@@ -539,59 +514,26 @@ class MomentsPostSenderService(
             ),
         )
 
-        // Empty manifest: no payload appends, no payload deletes — the
-        // existing media payloads on the file are left intact.
-        val manifest = UpdateManifest.build(
-            payloads = null,
-            toDeletePayloads = null,
-            thumbnails = null,
-            generatePayloadIv = false,
-        )
-
-        val request = UpdateFileByUniqueIdRequest(
-            driveId = drive,
-            uniqueId = momentUniqueId,
-            keyHeader = keyHeader,
-            instructions = FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
-                recipients = recipients,
-                manifest = manifest,
-                useAppNotification = false,
-                appNotificationOptions = null,
-            ),
-            metadata = unencryptedMetadata.encryptContent(keyHeader),
-            payloads = emptyList(),
-            thumbnails = emptyList(),
-        )
-
-        val enqueued = outboxSync.replaceEnqueue(
-            request,
-            priority = 1,
-            dependencyUniqueId = null,
-        )
-
-        if (!enqueued.enqueued) {
-            error("Failed to enqueue moment update (outbox: $enqueued)")
-        }
-
-        Logger.d(tag = TAG) { "updateMoment: outbox enqueued moment=$momentUniqueId" }
-
-        // Best-effort optimistic write — applies the description edit to the
-        // local copy so the detail screen reflects it immediately. Media
-        // payloads on the existing file are preserved (we don't touch them).
-        try {
-            optimisticWriter.writeUpdate(
+        // Header-only update through the shared pipeline: no payload appends/deletes, so the
+        // existing media payloads are left intact. UploadService does the enqueue + optimistic
+        // writeUpdate (the description edit reflects on the local copy immediately).
+        val outcome = uploadService.updateFile(
+            MediaUpdateSpec(
                 driveId = drive,
+                uniqueId = momentUniqueId,
                 keyHeader = keyHeader,
-                unecryptedMetadata = unencryptedMetadata,
-            )
-            Logger.d(tag = TAG) { "updateMoment: optimistic write complete moment=$momentUniqueId" }
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) {
-                "updateMoment: optimistic write failed (non-fatal) moment=$momentUniqueId"
-            }
+                metadata = unencryptedMetadata,
+                recipients = recipients,
+                dependencyUniqueId = null,
+                priority = 1,
+                replace = true,
+            ),
+            scope = scope,
+        )
+        if (outcome !is UploadOutcome.Enqueued) {
+            error("Failed to enqueue moment update (outbox: $outcome)")
         }
+        Logger.d(tag = TAG) { "updateMoment: outbox enqueued moment=$momentUniqueId" }
 
         return UpdateMomentResult(uniqueId = momentUniqueId)
     }
@@ -674,13 +616,6 @@ class MomentsPostSenderService(
         // actually receive it (an empty manifest would ship header only).
         val (reusedPayloads, reusedThumbs) = reuseExistingPayloadsForResend(existing)
 
-        val manifest = UpdateManifest.build(
-            payloads = reusedPayloads.takeIf { it.isNotEmpty() },
-            toDeletePayloads = null,
-            thumbnails = reusedThumbs.takeIf { it.isNotEmpty() },
-            generatePayloadIv = false,
-        )
-
         val content = OdinSystemSerializer.serialize(
             MomentPostContent(
                 version = MomentsProtocol.MomentPostVersionNumberOne,
@@ -732,52 +667,28 @@ class MomentsPostSenderService(
                 "versionTag=$versionTag locale=Local useAppNotification=false"
         }
 
-        val request = UpdateFileByUniqueIdRequest(
-            driveId = drive,
-            uniqueId = momentUniqueId,
-            keyHeader = keyHeader,
-            instructions = FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
+        // Re-attach the file's EXISTING encrypted payloads (no re-encryption) and transit only to
+        // the genuinely-new recipients. UploadService builds the manifest + enqueues + writeUpdate.
+        val outcome = uploadService.updateFile(
+            MediaUpdateSpec(
+                driveId = drive,
+                uniqueId = momentUniqueId,
+                keyHeader = keyHeader,
+                metadata = unencryptedMetadata,
+                preEncryptedPayloads = reusedPayloads,
+                preEncryptedThumbnails = reusedThumbs,
                 recipients = genuinelyNew,
-                manifest = manifest,
-                useAppNotification = false,
-                appNotificationOptions = null,
+                dependencyUniqueId = null,
+                priority = 1,
+                replace = true,
             ),
-            metadata = unencryptedMetadata.encryptContent(keyHeader),
-            payloads = reusedPayloads,
-            thumbnails = reusedThumbs,
+            scope = scope,
         )
-
-        val enqueued = outboxSync.replaceEnqueue(
-            request,
-            priority = 1,
-            dependencyUniqueId = null,
-        )
-
-        if (!enqueued.enqueued) {
-            error("Failed to enqueue moment recipient update (outbox: $enqueued)")
+        if (outcome !is UploadOutcome.Enqueued) {
+            error("Failed to enqueue moment recipient update (outbox: $outcome)")
         }
-
         Logger.d(tag = TAG) {
             "addRecipientsToMoment: outbox enqueued moment=$momentUniqueId added=${genuinelyNew.size}"
-        }
-
-        // Best-effort optimistic write so the author's detail screen reflects
-        // the widened audience immediately. Media payloads are preserved.
-        try {
-            optimisticWriter.writeUpdate(
-                driveId = drive,
-                keyHeader = keyHeader,
-                unecryptedMetadata = unencryptedMetadata,
-            )
-            Logger.d(tag = TAG) {
-                "addRecipientsToMoment: optimistic write complete moment=$momentUniqueId"
-            }
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) {
-                "addRecipientsToMoment: optimistic write failed (non-fatal) moment=$momentUniqueId"
-            }
         }
 
         // === MomentAddPeopleAudit ===
@@ -1095,54 +1006,24 @@ class MomentsPostSenderService(
             ),
         )
 
-        val manifest = UpdateManifest.build(
-            payloads = null,
-            toDeletePayloads = null,
-            thumbnails = null,
-            generatePayloadIv = false,
-        )
-
-        val request = UpdateFileByUniqueIdRequest(
-            driveId = drive,
-            uniqueId = commentUniqueId,
-            keyHeader = keyHeader,
-            instructions = FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
-                recipients = recipients,
-                manifest = manifest,
-                useAppNotification = false,
-                appNotificationOptions = null,
-            ),
-            metadata = unencryptedMetadata.encryptContent(keyHeader),
-            payloads = emptyList(),
-            thumbnails = emptyList(),
-        )
-
-        val enqueued = outboxSync.replaceEnqueue(
-            request,
-            priority = 1,
-            dependencyUniqueId = null,
-        )
-
-        if (!enqueued.enqueued) {
-            error("Failed to enqueue comment update (outbox: $enqueued)")
-        }
-
-        Logger.d(tag = TAG) { "updateComment: outbox enqueued comment=$commentUniqueId" }
-
-        try {
-            optimisticWriter.writeUpdate(
+        // Header-only comment edit through the shared pipeline (enqueue + optimistic writeUpdate).
+        val outcome = uploadService.updateFile(
+            MediaUpdateSpec(
                 driveId = drive,
+                uniqueId = commentUniqueId,
                 keyHeader = keyHeader,
-                unecryptedMetadata = unencryptedMetadata,
-            )
-            Logger.d(tag = TAG) { "updateComment: optimistic write complete comment=$commentUniqueId" }
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) {
-                "updateComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-            }
+                metadata = unencryptedMetadata,
+                recipients = recipients,
+                dependencyUniqueId = null,
+                priority = 1,
+                replace = true,
+            ),
+            scope = scope,
+        )
+        if (outcome !is UploadOutcome.Enqueued) {
+            error("Failed to enqueue comment update (outbox: $outcome)")
         }
+        Logger.d(tag = TAG) { "updateComment: outbox enqueued comment=$commentUniqueId" }
 
         return UpdateMomentCommentResult(uniqueId = commentUniqueId)
     }
