@@ -1261,7 +1261,7 @@
 
     <!-- Conversation media album + groups in common -->
     <string name="conversation_media_see_all">See all</string>
-    <string name="conversation_groups_in_common">Groups in common</string>
+    <string name="conversation_groups_in_common">Chat Groups in common</string>
     <string name="conversation_media_album_title">Shared media</string>
     <string name="conversation_media_empty">Nothing here yet</string>
     <string name="conversation_media_tab_media">Media</string>
@@ -1462,8 +1462,8 @@
     <string name="contactbook_detail_circles">Circles</string>
     <string name="contactbook_detail_circles_empty">Not in any of your circles yet.</string>
     <string name="contactbook_detail_circles_connect">Connect with this person to add them to your circles.</string>
-    <string name="contactbook_detail_groups_empty">No groups in common.</string>
-    <string name="contactbook_detail_groups_connect">Connect with this person to see groups you have in common.</string>
+    <string name="contactbook_detail_groups_empty">No chat groups in common.</string>
+    <string name="contactbook_detail_groups_connect">Connect with this person to see chat groups you have in common.</string>
     <string name="contactbook_detail_none">None</string>
     <string name="contactbook_detail_more">More</string>
     <string name="contactbook_detail_less">Less</string>
