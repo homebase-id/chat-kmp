@@ -71,13 +71,17 @@ disposable."* So upload temps live in **two** dirs under the app cache dir, swep
   row is **dropped** after ~48h of failed retries (`cleanupPayloadsForDroppedRow`), and the whole
   dir is wiped on **logout**. The `CacheSweeper` never touches it (a pending/offline send's payload
   must survive). Its **self-heal for crash-orphans** (a process death between server-ack and the
-  outbox's per-file cleanup leaves a file with no live row) is `OutboxSync.reapIdleOutboxTemps`,
-  wired into the post-auth hook: **when the outbox is idle (`count() == 0`), delete `outbox-temp/`
-  files older than 24h.** The two gates make it provably safe — *idle* means nothing is referenced
-  (an offline-pending send keeps `count() > 0`), and the *age floor* means a temp for a send being
-  created right now (row not yet inserted) is too young to touch. *(Residual: a user whose outbox
-  literally never empties won't get the idle reap; the fuller fix is a per-file reference-aware reap
-  reusing `cleanupPayloadsForDroppedRow`'s path extraction — not built, low priority.)*
+  outbox's per-file cleanup leaves a file with no live row) is **built + tested**:
+  `OutboxSync.reapIdleOutboxTemps`, wired fire-and-forget into the post-auth hook — **when the
+  outbox is idle (`count() == 0`), it deletes `outbox-temp/` files older than 24h.** The two gates
+  make it provably safe: *idle* means nothing is referenced (an offline-pending send keeps
+  `count() > 0`), and the *age floor* means a temp for a send being created right now (row not yet
+  inserted) is too young to touch.
+
+  The **only** thing left unbuilt is a strictly-better variant for one pathological case — a user
+  whose outbox *literally never* drains to empty never triggers the idle reap. Closing that would
+  take a per-file **reference-aware** reap (delete `outbox-temp/` files no live row references,
+  reusing `cleanupPayloadsForDroppedRow`'s path extraction). Low priority; not built.
 
 FFmpeg scratch is a third case: it goes to the cache **root** and is swept as reclaimable (large +
 transient — same disposable class as `upload-temp/`, opposite of `outbox-temp/`). Ideally it would
