@@ -21,7 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.resources.MR
+import id.homebase.resources.contactbook_circle_unvetted
 import id.homebase.resources.contactbook_circles_empty
 import org.jetbrains.compose.resources.stringResource
 
@@ -49,29 +51,39 @@ fun CirclesTabContent(
             )
         }
 
-        else -> LazyColumn(
-            modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp),
-        ) {
-            items(circles, key = { it.circle.id }) { circle ->
-                val description = circle.circle.description
-                ListItem(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onAction(ContactBookUiAction.CircleClicked(circle)) },
-                    leadingContent = { Icon(Icons.Outlined.Groups, contentDescription = null) },
-                    headlineContent = { Text(circle.circle.name) },
-                    supportingContent = if (!description.isNullOrBlank()) {
-                        { Text(description) }
-                    } else null,
-                    trailingContent = {
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                )
+        else -> {
+            // Client-side display override only — the auto-connected system circle keeps its
+            // server-side name/id, we just relabel it "Unvetted" here.
+            val unvettedName = stringResource(MR.string.contactbook_circle_unvetted)
+            LazyColumn(
+                modifier = modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                items(circles, key = { it.circle.id }) { circle ->
+                    val description = circle.circle.description
+                    val displayName = if (circle.circle.id == AUTO_CONNECTIONS_CIRCLE_ID) {
+                        unvettedName
+                    } else {
+                        circle.circle.name
+                    }
+                    ListItem(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onAction(ContactBookUiAction.CircleClicked(circle)) },
+                        leadingContent = { Icon(Icons.Outlined.Groups, contentDescription = null) },
+                        headlineContent = { Text(displayName) },
+                        supportingContent = if (!description.isNullOrBlank()) {
+                            { Text(description) }
+                        } else null,
+                        trailingContent = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                    )
+                }
             }
         }
     }
