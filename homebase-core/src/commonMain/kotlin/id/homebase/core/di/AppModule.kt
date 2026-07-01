@@ -603,6 +603,7 @@ val appModule = module {
         ConversationService(
             credentialsManager = get(),
             payloadBundleEncryptionService = get(),
+            uploadService = get(),
             dbm = get(),
             introductionProvider = get(),
             scope = get(),
