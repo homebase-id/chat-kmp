@@ -60,13 +60,28 @@ disposable."* So upload temps live in **two** dirs under the app cache dir, swep
 | `<cacheDir>/upload-temp/` | RAW, pre-encryption source | `writeBytesToTempFile` (senders) | **Disposable** — swept on **every** startup / "Clear caches" / logout (it's untracked). Self-heals, can't grow. A source gone at send time just fails soft (re-pick). |
 | `<cacheDir>/outbox-temp/` | ENCRYPTED, ready-to-transmit | `writeBytesToOutboxTempFile` (`encryptFile`) | **Durable** — each file is referenced by an outbox row until sent. `CacheSweeper` **KEEPs** it on startup / "Clear caches" (never deletes a pending send's payload); only logout wipes the whole dir. |
 
-**The encrypted `outbox-temp` file is the hand-off to the outbox** — it's the input the outbox row
-transmits, so its lifecycle belongs to the outbox (`homebase-api` sync layer, *outside this
-module*): the outbox deletes each file when the send **succeeds** (`cleanupPayloadTempFiles`) and
-when a row is **dropped** after ~48h of failed retries (`cleanupPayloadsForDroppedRow`). `UploadService`
-does not manage it beyond writing it. *(Residual, tracked separately: a crash between server-ack and
-the outbox's per-file cleanup leaves an orphan in `outbox-temp` with no live row; a post-auth
-reference-aware reap would close it — not yet built.)*
+### When each folder is cleaned
 
-FFmpeg scratch is a third, separate case: it goes to the cache **root** and is swept as reclaimable
-(large + transient — the opposite durability need from `outbox-temp`).
+- **`upload-temp/`** — reaped by the `CacheSweeper` on **every app startup**, on **"Clear caches"**,
+  and on **logout**. It self-heals continuously and cannot grow. (Senders also delete their own
+  source temp after use, but the sweep is the real safety net, so a sender that forgets can't leak.)
+- **`outbox-temp/`** — cleaned along the **outbox's own lifecycle** (`homebase-api` sync layer,
+  *outside this module* — it's the hand-off point where we deliver the encrypted file to the
+  outbox): each file is deleted when its send **succeeds** (`cleanupPayloadTempFiles`) or when its
+  row is **dropped** after ~48h of failed retries (`cleanupPayloadsForDroppedRow`), and the whole
+  dir is wiped on **logout**. The `CacheSweeper` never touches it (a pending/offline send's payload
+  must survive). Its **self-heal for crash-orphans** (a process death between server-ack and the
+  outbox's per-file cleanup leaves a file with no live row) is `OutboxSync.reapIdleOutboxTemps`,
+  wired into the post-auth hook: **when the outbox is idle (`count() == 0`), delete `outbox-temp/`
+  files older than 24h.** The two gates make it provably safe — *idle* means nothing is referenced
+  (an offline-pending send keeps `count() > 0`), and the *age floor* means a temp for a send being
+  created right now (row not yet inserted) is too young to touch. *(Residual: a user whose outbox
+  literally never empties won't get the idle reap; the fuller fix is a per-file reference-aware reap
+  reusing `cleanupPayloadsForDroppedRow`'s path extraction — not built, low priority.)*
+
+FFmpeg scratch is a third case: it goes to the cache **root** and is swept as reclaimable (large +
+transient — same disposable class as `upload-temp/`, opposite of `outbox-temp/`). Ideally it would
+live *inside* `upload-temp/` for one tidy disposable-scratch folder, but it's written by an external
+process to self-resolved per-platform paths (not via `writeBytesToTempFile`), and moving it is a
+4-platform change for zero functional gain (both are already swept identically) that would also cost
+the per-type Storage-screen labels (`compressed_`/`input_`/`hls_`). Not worth the effort.
