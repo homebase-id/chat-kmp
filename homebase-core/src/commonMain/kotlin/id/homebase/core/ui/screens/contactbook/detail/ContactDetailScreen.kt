@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -86,6 +87,8 @@ import id.homebase.resources.contactbook_detail_emergency_badge
 import id.homebase.resources.contactbook_detail_location_data_as_of
 import id.homebase.resources.contactbook_action_unblocked
 import id.homebase.resources.contactbook_connected
+import id.homebase.resources.contactbook_detail_about_empty
+import id.homebase.resources.contactbook_detail_activity_empty
 import id.homebase.resources.contactbook_detail_block
 import id.homebase.resources.contactbook_detail_block_message
 import id.homebase.resources.contactbook_detail_block_title
@@ -181,28 +184,34 @@ fun ContactDetailScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = { viewModel.onAction(ContactDetailAction.BackClicked) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
-                        Icon(
-                            Icons.Outlined.Edit,
-                            contentDescription = stringResource(MR.string.contactbook_detail_edit),
-                        )
-                    }
-                    if (uiState.entry != null) {
-                        ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
-                    }
-                },
-            )
+            // While the full-screen media viewer is open it draws its own top bar
+            // (contact name + date + back/menu). Suppress this screen's app bar so
+            // the two don't stack — the viewer's opaque surface already covers the
+            // content beneath it. Mirrors ConversationMediaScreen.
+            if (uiState.fullScreenMedia == null) {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = { viewModel.onAction(ContactDetailAction.BackClicked) }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back),
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
+                            Icon(
+                                Icons.Outlined.Edit,
+                                contentDescription = stringResource(MR.string.contactbook_detail_edit),
+                            )
+                        }
+                        if (uiState.entry != null) {
+                            ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                        }
+                    },
+                )
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
@@ -218,12 +227,13 @@ fun ContactDetailScreen(
 
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }
-                    // Only show tabs that have content; a plain contact stays a single list.
-                    val tabs = buildList {
-                        add(ContactDetailTab.DETAILS)
-                        if (uiState.hasAboutContent) add(ContactDetailTab.ABOUT)
-                        if (uiState.hasActivityContent) add(ContactDetailTab.ACTIVITY)
-                    }
+                    // Always show all three tabs; each renders a friendly empty state when it has
+                    // nothing, so the contact's layout stays consistent.
+                    val tabs = listOf(
+                        ContactDetailTab.DETAILS,
+                        ContactDetailTab.ACTIVITY,
+                        ContactDetailTab.ABOUT,
+                    )
                     var selectedTab by rememberSaveable(entry.uniqueId) {
                         mutableStateOf(ContactDetailTab.DETAILS)
                     }
@@ -290,21 +300,43 @@ fun ContactDetailScreen(
                                 }
 
                                 ContactDetailTab.ABOUT -> {
-                                    BioSection(entry.shortBio)
-                                    ExperienceSection(uiState.experience, uiState.experienceImage)
-                                    SocialSection(entry.socialHandles)
+                                    if (uiState.hasAboutContent) {
+                                        // Bio, then social handles, then experience. All text here
+                                        // is selectable/copyable (one selection scope for the whole
+                                        // tab — it reads like a profile page).
+                                        SelectionContainer {
+                                            Column {
+                                                BioSection(entry.shortBio)
+                                                SocialSection(entry.socialHandles)
+                                                ExperienceSection(
+                                                    uiState.experience,
+                                                    uiState.experienceImage,
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        TabEmptyMessage(
+                                            stringResource(MR.string.contactbook_detail_about_empty),
+                                        )
+                                    }
                                 }
 
                                 ContactDetailTab.ACTIVITY -> {
-                                    RecentMediaSection(
-                                        overview = uiState.overview,
-                                        onMediaClick = {
-                                            viewModel.onAction(ContactDetailAction.OpenMedia(it))
-                                        },
-                                        onSeeAll = {
-                                            viewModel.onAction(ContactDetailAction.SeeAllMediaClicked)
-                                        },
-                                    )
+                                    if (uiState.hasActivityContent) {
+                                        RecentMediaSection(
+                                            overview = uiState.overview,
+                                            onMediaClick = {
+                                                viewModel.onAction(ContactDetailAction.OpenMedia(it))
+                                            },
+                                            onSeeAll = {
+                                                viewModel.onAction(ContactDetailAction.SeeAllMediaClicked)
+                                            },
+                                        )
+                                    } else {
+                                        TabEmptyMessage(
+                                            stringResource(MR.string.contactbook_detail_activity_empty),
+                                        )
+                                    }
                                 }
                             }
                             Spacer(modifier = Modifier.height(24.dp))
@@ -461,17 +493,22 @@ private fun DetailHeader(
     ) {
         ContactBookAvatar(entry = entry, size = 88.dp)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = entry.displayName,
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-        )
-        entry.odinId?.let {
+        // Name and Homebase ID are selectable so they can be copied (the ID especially).
+        SelectionContainer {
             Text(
-                text = it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = entry.displayName,
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
             )
+        }
+        entry.odinId?.let {
+            SelectionContainer {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         // Free-text status/tagline the contact set, under the odinId.

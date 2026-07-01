@@ -1445,6 +1445,9 @@
     <string name="contactbook_detail_tab_details">Details</string>
     <string name="contactbook_detail_tab_about">About</string>
     <string name="contactbook_detail_tab_activity">Activity</string>
+    <string name="contactbook_detail_name">Name</string>
+    <string name="contactbook_detail_about_empty">There's nothing here yet. A bio, experience, and social links will show up once this person shares them.</string>
+    <string name="contactbook_detail_activity_empty">No shared activity yet. Media and other things you share in your conversation will appear here.</string>
     <string name="contactbook_detail_manage">Manage contact</string>
     <string name="contactbook_detail_social">Social</string>
     <string name="contactbook_detail_location">Location</string>
@@ -1530,6 +1533,9 @@
     <string name="add_contact_send_request">Send connection request</string>
     <string name="add_contact_send_request_help">Not connected yet. Send a request so you can message each other.</string>
     <string name="add_contact_already_connected">You're already connected</string>
+    <string name="add_contact_save_as_new">Save as new contact</string>
+    <string name="add_contact_already_saved">Already in your contacts</string>
+    <string name="add_contact_blocked">You've blocked this person</string>
 
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>

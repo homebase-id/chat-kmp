@@ -291,6 +291,7 @@ class ContactBookViewModel(
             introduced = introduced,
             confirmed = confirmed,
             requests = requests,
+            incomingRequestCount = incomingRequests.size,
             introducedByDomain = introducedByDomain,
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
