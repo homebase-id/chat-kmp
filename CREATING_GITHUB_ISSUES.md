@@ -38,6 +38,25 @@ reasonable implementation plan without a back-and-forth.
    issue with `gh`.
 7. **Report back** the issue URL that `gh` prints.
 
+### Updating an issue after new information (corrections)
+
+When the user clarifies, corrects, or adds evidence to an **already-filed** issue,
+**prefer editing the main issue description in place** (`gh issue edit <n> --body-file`)
+over appending a comment. The top description must always read as the single, current
+source of truth — a `/plan` agent (or a human) should get the correct, consolidated
+picture from the body alone, without scrolling a trail of "correction:" comments.
+
+- **Fold corrections into the relevant sections** (reproduction, root cause, evidence,
+  acceptance) and update the **title** if the framing changed.
+- If earlier correction **comments** you posted are now fully folded into the body,
+  **delete them** to keep the thread clean
+  (`gh api -X DELETE repos/homebase-id/chat-kmp/issues/comments/<comment_id>`).
+- Reserve **comments** for genuinely additive discussion that isn't a correction to the
+  spec (e.g. a question back to the assignee, a cross-link, a status note) — not for
+  restating what the issue now is.
+- Rewriting the whole body is cheap: fetch it (`gh issue view <n> --json body --jq .body`),
+  edit, and re-`--body-file`. Do that rather than stacking deltas.
+
 ---
 
 ## Assignees
@@ -202,6 +221,9 @@ Notes:
 - **Title:** specific and searchable. Lead with the symptom for bugs, the capability
   for features. No trailing period.
 - **One issue per problem.** Don't bundle unrelated bugs.
+- **Correct in place, not in comments.** When new info arrives for a filed issue, edit
+  the body (and title) so it stays the single source of truth; delete correction
+  comments once folded in. See "Updating an issue after new information".
 - **Plan-ready over terse.** Err toward more context. The "Scope for the plan"
   section is what separates a filed ticket from a `/plan` prompt.
 - **Evidence over guesses** (see CLAUDE.md). Prefer a stack trace to a hunch; if the
