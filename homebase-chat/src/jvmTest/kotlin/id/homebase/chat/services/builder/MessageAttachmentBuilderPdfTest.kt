@@ -18,8 +18,6 @@ import kotlin.test.assertTrue
  */
 class MessageAttachmentBuilderPdfTest {
 
-    // The PDF branch renders straight from the file path (JVM PDFBox actual) and never
-    // touches FileOperationsProvider, so every op here should be unreachable.
     private fun failingFs() = object : FileOperationsProvider {
         override fun getCacheDirectory(): String = "/tmp/test-cache"
         override fun openFileInput(path: String): InputProvider = fail("openFileInput")

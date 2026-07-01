@@ -54,12 +54,7 @@ fun DocumentMediaItem(
     onDownloadClick: () -> Unit,
     onLongPress: () -> Unit,
     isDownloading: Boolean = false,
-    // When set (PDFs, issue #909) a first-page preview is rendered above the file
-    // row and the row's leading icon is dropped — the card reads as a preview, not
-    // a plain chip. Null keeps the original icon-only row for every other document.
     previewImageData: HomebaseImageData? = null,
-    // PDFs open in a viewer on tap (which offers download), so their bubble drops
-    // the redundant download button; other documents keep it as the tap target.
     showDownloadButton: Boolean = true,
 ) {
     val contentType = payload.contentType ?: ""
@@ -90,6 +85,7 @@ fun DocumentMediaItem(
                 imageData = previewImageData,
                 modifier = Modifier.fillMaxWidth().height(180.dp),
                 contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
                 contentDescription = stringResource(MR.string.chat_message_pdf_preview),
             )
         }

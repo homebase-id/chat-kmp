@@ -620,8 +620,7 @@ fun MomentDetailPane(
                 }
 
                 is FullScreenOverlay.PdfViewerData -> {
-                    // Not used by moments — PDF attachments are chat-only. The VM
-                    // never emits this variant.
+                    // Not used by moments — PDFs are chat-only.
                 }
             }
         }

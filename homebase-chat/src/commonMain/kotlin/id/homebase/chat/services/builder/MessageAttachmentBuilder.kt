@@ -96,10 +96,6 @@ object MessageAttachmentBuilder {
                         )
                     }
                     attachment.contentType == "application/pdf" -> {
-                        // Ride a first-page preview on the message like images do, so the
-                        // receiver sees it without downloading the full PDF. If rendering
-                        // isn't available (web / unreadable PDF) thumbs is null and we send
-                        // a plain payload — the bubble then shows the icon row.
                         val thumbs =
                             MessageThumbnailGenerator.generateFromPdf(attachment.filePath, payloadKey)
 

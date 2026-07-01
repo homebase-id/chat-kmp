@@ -9,8 +9,6 @@ import kotlinx.coroutines.withContext
 
 object MessageThumbnailGenerator {
 
-    // Render width for the first PDF page before it is fed through the normal
-    // image thumbnail ladder — large enough that the widest thumb stays crisp.
     private const val PDF_PREVIEW_RENDER_WIDTH = 1600
 
     suspend fun generate(

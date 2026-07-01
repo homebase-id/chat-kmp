@@ -311,16 +311,13 @@ sealed interface FullScreenOverlay {
         val uploadMessageId: Uuid? = null,
     ) : FullScreenOverlay
 
-    // PDF viewer (issue #909). The decrypted file is produced by the existing
-    // DecryptFile path and read back from decryptedFiles[DecryptedFileKey(fileId,
-    // payloadKey)]; this overlay just needs enough to look it up and to offer
-    // download in the viewer bar.
     @Immutable
     data class PdfViewerData(
         val messageId: Uuid,
         val fileId: Uuid,
         val payloadKey: String,
         val title: String,
+        val userDate: Instant,
     ) : FullScreenOverlay
 }
 

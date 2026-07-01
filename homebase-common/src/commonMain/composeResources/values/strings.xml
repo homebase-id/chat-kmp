@@ -922,7 +922,6 @@
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_pdf_preview">PDF preview</string>
-    <string name="chat_pdf_viewer_close">Close</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
 

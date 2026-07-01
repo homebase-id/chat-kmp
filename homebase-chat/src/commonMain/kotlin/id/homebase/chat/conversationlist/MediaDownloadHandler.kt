@@ -380,8 +380,6 @@ internal class MediaDownloadHandler(
 
                     contentType.startsWith("audio/") -> {}
                     contentType == "application/pdf" -> {
-                        // Decrypt to a local cache path (reusing the DecryptFile path) so
-                        // the viewer can render it, then open the fullscreen PDF overlay.
                         val alreadyDecrypted = messagesUiState.value.decryptedFiles
                             .containsKey(DecryptedFileKey(action.message.fileId, action.payloadKey))
                         if (!alreadyDecrypted) {
@@ -398,6 +396,7 @@ internal class MediaDownloadHandler(
                                     fileId = action.message.fileId,
                                     payloadKey = action.payloadKey,
                                     title = action.message.originalAuthor?.domainName ?: "null",
+                                    userDate = action.message.userDate,
                                 )
                             )
                         }

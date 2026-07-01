@@ -556,11 +556,6 @@ fun MediaItem(
         }
 
         contentType == "application/pdf" -> {
-            // Reuse the image thumbnail path: the sender ships a first-page preview on
-            // the message (previewThumbnail + thumbnail ladder), so the receiver sees it
-            // without downloading the full PDF. No preview (old sends / web / render
-            // failure) → the plain icon row. Tap opens the PDF viewer either way (see
-            // MediaDownloadHandler.handleMediaClicked).
             val pdfPreviewData =
                 remember(driveId, fileId, payload.key, payload.lastModified) {
                     val previewThumb = payload.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail

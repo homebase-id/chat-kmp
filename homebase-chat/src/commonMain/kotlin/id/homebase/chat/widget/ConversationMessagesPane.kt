@@ -352,6 +352,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.PdfViewerData -> {
                         ChatPdfViewer(
                             title = data.title,
+                            userDate = data.userDate,
                             filePath = uiState.decryptedFiles[
                                 DecryptedFileKey(data.fileId, data.payloadKey)
                             ],
