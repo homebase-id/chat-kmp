@@ -37,6 +37,19 @@ object CacheAudit {
     )
 
     /**
+     * The single subdirectory of the cache dir that [FileOperationsProvider.writeBytesToTempFile]
+     * writes into, on every platform (#844 PR4). Holds the upload pipeline's transient files —
+     * raw pre-encryption source temps AND the encrypted payload temps that ride in an outbox row
+     * until the send completes (which can be a long time when offline). It is deliberately NOT
+     * "untracked" scratch: the [CacheSweeper] KEEPs it on the startup / "Clear caches" sweep so an
+     * in-flight (esp. offline-pending) upload's encrypted payload is never deleted out from under
+     * it, and only wipes it on the full logout sweep. Callers still reap their own temps normally
+     * (finally blocks, outbox completion), so it doesn't grow unbounded; a crash-leaked temp is
+     * bounded by the next logout. Its bytes are still counted in the Storage screen's total.
+     */
+    const val TEMP_DIR_NAME: String = "hb-temp"
+
+    /**
      * Top-level entries Android places inside our `cacheDir` that are owned by
      * the platform / WebView / a crash reporter — not by us. Wiping any of
      * these is destructive: nukes in-app browser cookies + storage, forces a
@@ -188,6 +201,7 @@ object CacheAudit {
         name == "Crash Reports" -> "Android system: crash reporter — sacred"
         name == "hbvid_preload" -> "legacy video preload dir"
         name == "coil3_disk_cache" -> "orphan Coil disk cache"
+        name == TEMP_DIR_NAME -> "upload-pipeline temps (raw + encrypted payloads; kept until logout to protect pending sends)"
         name == "homebase-payloads" || name == "homebase-thumbs" ||
             name == "homebase-public-profiles" || name == "homebase-public-images" ->
             "legacy kache dir (pre-v2)"

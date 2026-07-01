@@ -48,6 +48,20 @@ class CacheSweeperTest {
     }
 
     @Test
+    fun uploadTempDir_isKeptOnUntrackedSweep_butDeletedOnLogout() {
+        // hb-temp holds in-flight (incl. offline-pending) upload payload temps — a startup /
+        // "Clear caches" sweep must NOT delete them, but the full logout sweep wipes them.
+        assertEquals(
+            SweepAction.KEEP,
+            decide(entry(CacheAudit.TEMP_DIR_NAME), SweepMode.UNTRACKED),
+        )
+        assertEquals(
+            SweepAction.DELETE,
+            decide(entry(CacheAudit.TEMP_DIR_NAME), SweepMode.ALL),
+        )
+    }
+
+    @Test
     fun coil3DiskCache_isAlwaysOrphanCoilDelete_regardlessOfMode() {
         assertEquals(
             SweepAction.ORPHAN_COIL_DELETE,

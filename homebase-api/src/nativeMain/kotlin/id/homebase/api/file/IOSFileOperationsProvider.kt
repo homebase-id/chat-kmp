@@ -131,8 +131,17 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         prefix: String,
         suffix: String
     ): String {
-        val tempDir = NSTemporaryDirectory()
-        val filePath = "$tempDir$prefix${NSUUID().UUIDString}$suffix"
+        // Into the KEEP-protected hb-temp/ under the Caches dir (#844 PR4) — previously
+        // NSTemporaryDirectory(), which the Storage screen neither counted nor cleared and the
+        // CacheSweeper couldn't reach. hb-temp survives the startup/clear sweep so an
+        // offline-pending upload's encrypted payload isn't deleted mid-flight.
+        val cacheDir = getCacheDirectory().trimEnd('/')
+        val tempDir = "$cacheDir/${CacheAudit.TEMP_DIR_NAME}"
+        val fm = NSFileManager.defaultManager
+        if (!fm.fileExistsAtPath(tempDir)) {
+            fm.createDirectoryAtPath(tempDir, true, null, null)
+        }
+        val filePath = "$tempDir/$prefix${NSUUID().UUIDString}$suffix"
 
         val data =
             bytes.usePinned { pinned ->

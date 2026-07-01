@@ -47,7 +47,9 @@ open class OkioFileOperationsProvider(
         prefix: String,
         suffix: String
     ): String {
-        val dir = cacheDir.toPath()
+        // Into the KEEP-protected hb-temp/ subdir (#844 PR4) so it's aligned with the other
+        // platforms and survives the startup/clear CacheSweeper pass while a send is pending.
+        val dir = cacheDir.toPath() / CacheAudit.TEMP_DIR_NAME
         fileSystem.createDirectories(dir)
         val path = dir / "$prefix${randomToken()}$suffix"
         fileSystem.write(path) { write(bytes) }

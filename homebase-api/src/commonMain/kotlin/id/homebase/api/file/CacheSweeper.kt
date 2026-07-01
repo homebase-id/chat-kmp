@@ -130,6 +130,11 @@ internal fun decide(entry: CacheAudit.Entry, mode: SweepMode): SweepAction = whe
     // Wins over every other rule — including the full "logout" sweep.
     entry.androidSystem -> SweepAction.KEEP
     entry.name == ORPHAN_COIL_DIR_NAME -> SweepAction.ORPHAN_COIL_DELETE
+    // Upload-pipeline temps (writeBytesToTempFile). KEEP on the startup / "Clear caches"
+    // sweep — an offline-pending upload's encrypted payload temp lives here until the send
+    // completes, and deleting it mid-flight breaks the send. Only the full logout sweep wipes
+    // it (session reset — pending sends are abandoned anyway). Callers reap their own temps.
+    entry.name == CacheAudit.TEMP_DIR_NAME -> if (mode == SweepMode.ALL) SweepAction.DELETE else SweepAction.KEEP
     !entry.known -> SweepAction.DELETE
     mode == SweepMode.ALL -> SweepAction.DELETE
     else -> SweepAction.KEEP

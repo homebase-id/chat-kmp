@@ -76,7 +76,12 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         suffix: String
     ): String =
         withContext(Dispatchers.IO) {
-            val file = File.createTempFile(prefix, suffix)
+            // Into the KEEP-protected hb-temp/ under the cache dir (#844 PR4) — previously
+            // java.io.tmpdir, which the Storage screen neither counted nor cleared and the
+            // CacheSweeper couldn't reach. hb-temp survives the startup/clear sweep so an
+            // offline-pending upload's encrypted payload isn't deleted mid-flight.
+            val tempDir = File(getCacheDirectory(), CacheAudit.TEMP_DIR_NAME).apply { mkdirs() }
+            val file = File.createTempFile(prefix, suffix, tempDir)
             file.writeBytes(bytes)
             file.absolutePath
         }

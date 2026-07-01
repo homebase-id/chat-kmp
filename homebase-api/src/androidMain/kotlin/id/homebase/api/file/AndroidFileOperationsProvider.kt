@@ -131,7 +131,10 @@ class AndroidFileOperationsProvider(
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray, prefix: String, suffix: String
     ): String = withContext(Dispatchers.IO) {
-        val file = File.createTempFile(prefix, suffix, context.cacheDir)
+        // Into the KEEP-protected hb-temp/ subdir (#844 PR4) — CacheSweeper won't wipe an
+        // offline-pending upload's encrypted payload out from under it on a startup/clear sweep.
+        val tempDir = File(context.cacheDir, CacheAudit.TEMP_DIR_NAME).apply { mkdirs() }
+        val file = File.createTempFile(prefix, suffix, tempDir)
         file.writeBytes(bytes)
         file.path
     }
