@@ -120,6 +120,11 @@ class UploadService(
         // encrypt the plaintext bundle (fail soft on a missing source, BEFORE any enqueue).
         val payloads: List<PayloadFile>
         val thumbnails: List<ThumbnailFile>
+        // The freshly-encrypted bundle, kept ONLY on the encrypt path so the optimistic step below
+        // can write its payload descriptors through + seed its bytes under the existing fileId (see
+        // MediaUpdateSpec.fileId / issue #927). Null on the pre-encrypted (add-recipients) path,
+        // where the reused bytes/IVs are unchanged and the existing descriptors stay valid.
+        var freshlyEncrypted: PayloadBundle? = null
         if (spec.preEncryptedPayloads != null) {
             payloads = spec.preEncryptedPayloads
             thumbnails = spec.preEncryptedThumbnails ?: emptyList()
@@ -131,6 +136,7 @@ class UploadService(
             }
             payloads = encrypted.payloads
             thumbnails = encrypted.thumbnails
+            freshlyEncrypted = encrypted
         }
 
         val request = UpdateFileByUniqueIdRequest(
@@ -167,19 +173,29 @@ class UploadService(
             is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
         }
 
-        // Best-effort optimistic writeUpdate — metadata/header update. Matches the migrated
-        // methods' prior behavior (no payload descriptors passed; sync brings new payloads).
+        // When the caller gave us the existing fileId AND we just encrypted a COMPLETE new payload
+        // set (a full-state overwrite — a vault note edit, not an incremental append), write the new
+        // payload descriptors THROUGH and seed the encrypted bytes under that fileId. Without this the
+        // optimistic write kept the OLD descriptors, so the local store never reflected the new body
+        // and a read-back before the send decrypted stale server bytes with the new IV (issue #927).
+        // Otherwise (header-only edit, incremental append, add-recipients) pass null → writeUpdate
+        // preserves the existing payloads. Seed + write are best-effort; outbox delivery is the gate.
+        val writeThrough = freshlyEncrypted?.takeIf { spec.fileId != null && it.payloads.isNotEmpty() }
+        val optimisticDescriptors = writeThrough?.toPayloadDescriptors()
         if (spec.writeOptimistic) {
             try {
-                optimisticWriter.writeUpdate(spec.driveId, spec.keyHeader, spec.metadata, null)
+                if (writeThrough != null && spec.seedCache) {
+                    payloadCacheSeeder.seed(spec.driveId, spec.fileId!!, writeThrough)
+                }
+                optimisticWriter.writeUpdate(spec.driveId, spec.keyHeader, spec.metadata, optimisticDescriptors)
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) {
-                    "updateFile: optimistic writeUpdate failed (non-fatal) uniqueId=${spec.uniqueId}"
+                    "updateFile: optimistic seed/writeUpdate failed (non-fatal) uniqueId=${spec.uniqueId}"
                 }
             }
         }
 
-        return UploadOutcome.Enqueued(spec.uniqueId, optimisticFileId = null, payloadDescriptors = null)
+        return UploadOutcome.Enqueued(spec.uniqueId, optimisticFileId = null, payloadDescriptors = optimisticDescriptors)
     }
 
     private companion object {
