@@ -51,7 +51,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -59,6 +61,7 @@ import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.identity.initials
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.cleanDomain
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.connections.ConnectRequestAction
@@ -66,6 +69,7 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
+import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.add_contact_already_connected
 import id.homebase.resources.add_contact_already_saved
@@ -277,18 +281,37 @@ private fun ByIdentitySection(
     onSendConnectionRequest: (OdinId) -> Unit,
 ) {
     val resolution = uiState.resolution
-    AddField(
-        value = uiState.draft.odinId,
-        label = stringResource(MR.string.add_contact_odinid_label),
-        placeholder = stringResource(MR.string.add_contact_odinid_hint),
-        isError = resolution is RecipientResolution.InvalidFormat,
+    // Local TextFieldValue stores space-encoded text; HomebaseIdField's visual transformation
+    // renders those spaces as dots. The VM's canonical draft.odinId is the dotted form. This
+    // mirrors ConnectRequestBottomSheet's recipient field.
+    var fieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = uiState.draft.odinId.replace('.', ' '),
+                selection = TextRange(uiState.draft.odinId.length),
+            )
+        )
+    }
+    HomebaseIdField(
+        value = fieldValue,
+        onValueChange = { incoming ->
+            val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
+            fieldValue = incoming.copy(text = normalizedSpaces)
+            val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false)
+            if (dotted != uiState.draft.odinId) onAction(AddContactAction.OdinIdChanged(dotted))
+        },
+        label = { Text(stringResource(MR.string.add_contact_odinid_label)) },
+        placeholder = { Text(stringResource(MR.string.add_contact_odinid_hint)) },
         supportingText = when (resolution) {
-            RecipientResolution.InvalidFormat -> stringResource(MR.string.add_contact_invalid)
-            RecipientResolution.Idle -> stringResource(MR.string.add_contact_lead_help)
+            RecipientResolution.InvalidFormat -> {
+                { Text(stringResource(MR.string.add_contact_invalid)) }
+            }
+            RecipientResolution.Idle -> {
+                { Text(stringResource(MR.string.add_contact_lead_help)) }
+            }
             else -> null
         },
-        keyboardType = KeyboardType.Uri,
-        onChange = { onAction(AddContactAction.OdinIdChanged(it)) },
+        isError = resolution is RecipientResolution.InvalidFormat,
     )
 
     ResolutionIndicator(resolution)
@@ -313,26 +336,17 @@ private fun ByIdentitySection(
             if (!identityOnly) SaveAsNewRow(uiState, onAction)
         }
 
-        // Couldn't resolve the ID. Outside chat the user can still add them by hand ("add anyway");
-        // in identity-only mode there's nothing to do without a Homebase ID, so we stop here.
-        RecipientResolution.NotFound -> {
-            if (!identityOnly) {
-                NameFields(uiState, onAction)
-                Spacer(modifier = Modifier.height(8.dp))
-                OptionalDetails(uiState, onAction)
-                SaveButton(
-                    enabled = uiState.canSave,
-                    onClick = { onAction(AddContactAction.SaveClicked) },
-                )
-            }
-        }
-
         else -> {}
     }
 
     // The "Add manually" escape hatch is only offered when a manual contact is useful — never
-    // from a chat flow, where a contact without a Homebase ID can't be messaged.
-    if (!identityOnly) {
+    // from a chat flow, where a contact without a Homebase ID can't be messaged — and never once
+    // an identity has resolved, where switching to manual entry makes no sense. Manual entry
+    // (NameFields/OptionalDetails/SaveButton) lives entirely in ManualSection, reached via this
+    // link; it must stay a deliberate action, not auto-open just because a typed ID hasn't
+    // resolved yet (RecipientResolution.NotFound is a normal mid-typing state, not a request for
+    // the manual form).
+    if (!identityOnly && resolution !is RecipientResolution.Resolved) {
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = { onAction(AddContactAction.SwitchToManual) }) {
             Text(stringResource(MR.string.add_contact_manual_link))
