@@ -26,6 +26,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
@@ -451,7 +452,16 @@ class ContactBookViewModel(
                 Logger.w(e, "ContactBookViewModel") { "getCirclesWithMembers failed" }
                 emptyList()
             }
-            _circles.value = circles.sortedBy { it.circle.name.lowercase() }
+            // Pin the auto-connected ("Unvetted") system circle to the top, sink the confirmed-
+            // connected system circle to the bottom, and keep the user's own circles (including
+            // Emergency Location Access, which is a user circle, not a system one) alphabetical
+            // in between.
+            _circles.value = circles.sortedWith(
+                compareBy(
+                    { it.circle.id.circleSortRank() },
+                    { it.circle.name.lowercase() },
+                ),
+            )
             _circlesLoading.value = false
         }
     }
@@ -514,4 +524,15 @@ private fun CircleWithMembers.matchesQuery(query: String): Boolean {
     val q = query.trim().lowercase()
     return circle.name.lowercase().contains(q) ||
         circle.description?.lowercase()?.contains(q) == true
+}
+
+/**
+ * Sort bucket for the Circles tab: the auto-connected ("Unvetted") system circle first, the
+ * user's own circles (including Emergency Location Access — a user circle, not a system one)
+ * in the middle, and the confirmed-connected system circle last.
+ */
+private fun String.circleSortRank(): Int = when (this) {
+    AUTO_CONNECTIONS_CIRCLE_ID -> 0
+    CONFIRMED_CONNECTIONS_CIRCLE_ID -> 2
+    else -> 1
 }
