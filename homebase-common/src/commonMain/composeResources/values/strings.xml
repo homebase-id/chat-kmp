@@ -845,6 +845,7 @@
     <string name="chat_groodle_deadline_week">1 week</string>
     <string name="chat_groodle_deadline_none">No deadline</string>
     <string name="chat_groodle_add_time">Add a time</string>
+    <string name="chat_groodle_add_another_time">Add another time</string>
     <string name="chat_groodle_set_time">Set time</string>
     <string name="chat_groodle_duration">Duration</string>
     <string name="chat_groodle_duration_minutes">%1$d min</string>

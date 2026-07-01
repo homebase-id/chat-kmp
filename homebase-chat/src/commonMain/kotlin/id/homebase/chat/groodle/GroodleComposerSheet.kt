@@ -72,6 +72,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.ok
+import id.homebase.resources.chat_groodle_add_another_time
 import id.homebase.resources.chat_groodle_add_time
 import id.homebase.resources.chat_groodle_allow_maybe
 import id.homebase.resources.chat_groodle_deadline
@@ -343,7 +344,7 @@ private fun GroodleComposerContent(
                             modifier = Modifier.offset(x = (-12).dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                         ) {
-                            Text(stringResource(MR.string.chat_groodle_add_time))
+                            Text(stringResource(MR.string.chat_groodle_add_another_time))
                         }
                         Text(
                             text = stringResource(MR.string.chat_groodle_max_options, MAX_SLOTS),
