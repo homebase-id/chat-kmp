@@ -41,15 +41,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import id.homebase.api.util.cleanDomain
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.syncedDraft
 import id.homebase.core.ui.screens.contactbook.toDraft
+import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_edit_add_email
 import id.homebase.resources.contactbook_edit_add_phone
@@ -163,18 +167,40 @@ fun ContactEditSheet(
             ) { draft = draft.copy(surname = it) }
             val odinIdLockNote =
                 if (odinIdLocked) stringResource(MR.string.contactbook_edit_odinid_locked) else null
-            Field(
-                value = draft.odinId,
-                label = stringResource(MR.string.contactbook_edit_odinid),
-                isError = !draft.odinIdValid,
-                errorText = stringResource(MR.string.contactbook_error_odinid),
-                keyboardType = KeyboardType.Uri,
-                readOnly = odinIdLocked,
-                helperText = odinIdLockNote,
+            val odinIdErrorText = stringResource(MR.string.contactbook_error_odinid)
+            val odinIdShowError = !draft.odinIdValid && draft.odinId.isNotBlank()
+            // Local TextFieldValue stores space-encoded text; HomebaseIdField's visual
+            // transformation renders those spaces as dots. Sheet is composed fresh on each
+            // open, so `remember` re-seeding from draft.odinId is fine.
+            var odinIdField by remember {
+                mutableStateOf(
+                    TextFieldValue(
+                        text = draft.odinId.replace('.', ' '),
+                        selection = TextRange(draft.odinId.length),
+                    )
+                )
+            }
+            HomebaseIdField(
+                value = odinIdField,
+                onValueChange = { incoming ->
+                    val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
+                    odinIdField = incoming.copy(text = normalizedSpaces)
+                    draft = draft.copy(
+                        odinId = normalizedSpaces.cleanDomain(preserveTrailingDot = false),
+                    )
+                },
+                label = { Text(stringResource(MR.string.contactbook_edit_odinid)) },
+                supportingText = when {
+                    odinIdShowError -> { { Text(odinIdErrorText) } }
+                    odinIdLockNote != null -> { { Text(odinIdLockNote) } }
+                    else -> null
+                },
                 trailingIcon = if (odinIdLocked) {
                     { Icon(Icons.Outlined.Lock, contentDescription = odinIdLockNote) }
                 } else null,
-            ) { draft = draft.copy(odinId = it) }
+                isError = odinIdShowError,
+                readOnly = odinIdLocked,
+            )
             val resetDesc = stringResource(MR.string.contactbook_edit_reset)
             // PhoneNumberField owns its national/country state after seeding, so reset re-keys it.
             var phoneSeed by remember { mutableStateOf(0) }
