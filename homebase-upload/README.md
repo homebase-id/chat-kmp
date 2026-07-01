@@ -89,3 +89,19 @@ live *inside* `upload-temp/` for one tidy disposable-scratch folder, but it's wr
 process to self-resolved per-platform paths (not via `writeBytesToTempFile`), and moving it is a
 4-platform change for zero functional gain (both are already swept identically) that would also cost
 the per-type Storage-screen labels (`compressed_`/`input_`/`hls_`). Not worth the effort.
+
+## Troubleshooting: "a conversation/group/admin file didn't reach a peer"
+
+This upload pipeline's job ends when the **server accepts the file and queues it for the peers** —
+it does not do the server-to-server delivery. So don't start on the client. In the sender's log,
+find the file's `DriveOutboxUploader uploadNewFile: success … recipientStatus=<peer>=Enqueued`:
+
+- If `recipientStatus` lists the peers as **`Enqueued`**, the client did everything right (transit
+  recipients preserved, file uploaded, server queued outbound delivery). "Not on peer" is then
+  **downstream**: the sender's server delivering to the peer's server, or the peer's inbox sync.
+  Chase it in the *peer's* log (an incoming batch with the server-assigned fileId) or server transit
+  status — not here. (A dropped-recipients regression would instead show `(no recipients)`.)
+- The `ConvoAudit` `postOutboxDelta=FAIL` / "outbox grew by N, expected ≥M" warning is a **known
+  false alarm** when online: rows drain (upload + pop) concurrently with the create, so the net
+  outbox delta undercounts already-sent rows. Trust the per-step `PASS`/`FAIL` verdicts, not the
+  delta.
