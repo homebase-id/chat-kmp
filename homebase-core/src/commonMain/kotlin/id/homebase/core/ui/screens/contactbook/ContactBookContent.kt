@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.components.ContactBookEmptyState
 import id.homebase.core.ui.screens.contactbook.components.ContactBookRow
+import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_confirmed_empty
 import id.homebase.resources.contactbook_filter_all
@@ -47,6 +48,16 @@ fun ContactBookContent(
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         FilterRow(uiState.filter, uiState.requests.size, onAction)
+
+        // Incoming connection requests surface here (not as a global app banner). Tapping it
+        // jumps straight to the Requests pill. Hidden once that pill is active to avoid
+        // redundancy.
+        if (uiState.filter != ContactFilter.REQUESTS && uiState.incomingRequestCount > 0) {
+            ConnectionRequestHeaderBanner(
+                requestCount = uiState.incomingRequestCount,
+                onBannerClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.REQUESTS)) },
+            )
+        }
 
         if (uiState.filter == ContactFilter.REQUESTS) {
             RequestsList(uiState, onAction)

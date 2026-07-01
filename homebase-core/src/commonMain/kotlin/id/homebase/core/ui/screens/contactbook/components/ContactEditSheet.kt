@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.ui.screens.contactbook.ContactDraft
+import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.syncedDraft
 import id.homebase.core.ui.screens.contactbook.toDraft
@@ -74,6 +75,7 @@ import id.homebase.resources.contactbook_edit_title_edit
 import id.homebase.resources.contactbook_edit_title_new
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_odinid
+import id.homebase.resources.contactbook_error_phone
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -89,7 +91,12 @@ fun ContactEditSheet(
 ) {
     var draft by remember { mutableStateOf(editing?.toDraft() ?: ContactDraft()) }
     // Extra phones/emails beyond the single canonical slot — app-local additions (see overlay).
-    var addPhones by remember { mutableStateOf(editing?.additionalPhones.orEmpty()) }
+    // Phones carry a stable id so the stateful PhoneNumberField rows keep their seeded country/
+    // national state when a row above them is removed (index-keying would shuffle that state).
+    var addPhones by remember {
+        mutableStateOf(editing?.additionalPhones.orEmpty().mapIndexed { i, v -> DraftPhone(i, v) })
+    }
+    var nextPhoneId by remember { mutableStateOf(editing?.additionalPhones.orEmpty().size) }
     var addEmails by remember { mutableStateOf(editing?.additionalEmails.orEmpty()) }
     // Identity contact (has odinId): fields are synced from the profile and edits become private
     // overrides. `synced` is the pre-override baseline used for the per-field affordance.
@@ -173,11 +180,14 @@ fun ContactEditSheet(
             var phoneSeed by remember { mutableStateOf(0) }
             val phoneOverridden =
                 isIdentity && synced?.phone.orEmpty().trim() != draft.phone.trim()
+            val phoneErrorText = stringResource(MR.string.contactbook_error_phone)
             key(phoneSeed) {
                 PhoneNumberField(
                     e164Value = draft.phone,
                     onValueChange = { draft = draft.copy(phone = it) },
                     label = stringResource(MR.string.contactbook_edit_phone),
+                    isError = draft.phone.isNotBlank() && !draft.phoneValid,
+                    errorText = phoneErrorText,
                     supportingText = if (isIdentity) {
                         syncedSupportingText(draft.phone, synced?.phone)
                     } else null,
@@ -193,20 +203,27 @@ fun ContactEditSheet(
                 )
             }
             val removeDesc = stringResource(MR.string.contactbook_edit_remove)
-            addPhones.forEachIndexed { i, value ->
-                Field(
-                    value = value,
-                    label = stringResource(MR.string.contactbook_edit_phone),
-                    keyboardType = KeyboardType.Phone,
-                    trailingIcon = {
-                        IconButton(onClick = { addPhones = addPhones.removeAt(i) }) {
-                            Icon(Icons.Outlined.Close, contentDescription = removeDesc)
-                        }
-                    },
-                ) { addPhones = addPhones.replaceAt(i, it) }
+            // Additional phones use the same E.164 control + validation as the primary number.
+            addPhones.forEachIndexed { i, entry ->
+                key(entry.id) {
+                    PhoneNumberField(
+                        e164Value = entry.value,
+                        onValueChange = { addPhones = addPhones.replaceAt(i, entry.copy(value = it)) },
+                        label = stringResource(MR.string.contactbook_edit_phone),
+                        isError = entry.value.isNotBlank() &&
+                            !ContactFieldValidation.isValidPhone(entry.value),
+                        errorText = phoneErrorText,
+                        trailingIcon = {
+                            IconButton(onClick = { addPhones = addPhones.filterNot { it.id == entry.id } }) {
+                                Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    )
+                }
             }
             AddMoreButton(stringResource(MR.string.contactbook_edit_add_phone)) {
-                addPhones = addPhones + ""
+                addPhones = addPhones + DraftPhone(nextPhoneId++, "")
             }
             SyncedField(
                 value = draft.email,
@@ -217,10 +234,13 @@ fun ContactEditSheet(
                 keyboardType = KeyboardType.Email,
                 onReset = { draft = draft.copy(email = synced?.email.orEmpty()) },
             ) { draft = draft.copy(email = it) }
+            val emailErrorText = stringResource(MR.string.contactbook_error_email)
             addEmails.forEachIndexed { i, value ->
                 Field(
                     value = value,
                     label = stringResource(MR.string.contactbook_edit_email),
+                    isError = !ContactFieldValidation.isValidEmail(value),
+                    errorText = emailErrorText,
                     keyboardType = KeyboardType.Email,
                     trailingIcon = {
                         IconButton(onClick = { addEmails = addEmails.removeAt(i) }) {
@@ -259,12 +279,18 @@ fun ContactEditSheet(
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(MR.string.contactbook_edit_cancel))
                 }
-                // Savable if the primary draft is valid OR there's at least one additional
-                // phone/email — so adding only an extra contact method still enables Save.
-                val hasAdditions = addPhones.any { it.isNotBlank() } || addEmails.any { it.isNotBlank() }
+                // Save requires at least one meaningful field AND every phone/email — primary and
+                // additional — to be well-formed (E.164 / valid email). Legacy bad data stays
+                // visible but blocks Save until corrected.
+                val hasContent = draft.givenName.isNotBlank() || draft.surname.isNotBlank() ||
+                    draft.phone.isNotBlank() || draft.email.isNotBlank() || draft.odinId.isNotBlank() ||
+                    addPhones.any { it.value.isNotBlank() } || addEmails.any { it.isNotBlank() }
+                val primaryValid = draft.phoneValid && draft.emailValid && draft.odinIdValid
+                val additionsValid = addPhones.all { ContactFieldValidation.isValidPhone(it.value) } &&
+                    addEmails.all { ContactFieldValidation.isValidEmail(it) }
                 Button(
-                    onClick = { onSave(draft, addPhones, addEmails, photo) },
-                    enabled = draft.isSavable || hasAdditions,
+                    onClick = { onSave(draft, addPhones.map { it.value }, addEmails, photo) },
+                    enabled = hasContent && primaryValid && additionsValid,
                 ) {
                     Text(stringResource(MR.string.contactbook_edit_save))
                 }
@@ -389,6 +415,13 @@ private fun syncedSupportingText(value: String, synced: String?): String? {
         else -> null
     }
 }
+
+/** An additional phone row with a stable id, so the stateful [PhoneNumberField] keeps its seeded
+ *  country/national state across insertions and removals of sibling rows. */
+private data class DraftPhone(val id: Int, val value: String)
+
+private fun List<DraftPhone>.replaceAt(index: Int, value: DraftPhone): List<DraftPhone> =
+    toMutableList().also { it[index] = value }
 
 private fun List<String>.replaceAt(index: Int, value: String): List<String> =
     toMutableList().also { it[index] = value }

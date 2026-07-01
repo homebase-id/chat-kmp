@@ -15,6 +15,7 @@ import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.contacts.socialHandles
 import id.homebase.core.contactbook.iCanLocate
+import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.HomebaseImageData
@@ -105,12 +106,13 @@ data class ContactBookEntry(
             return if (c in 'A'..'Z') c.toString() else "#"
         }
 
-    /** Secondary line under the name in list rows. */
-    val subtitle: String? get() = odinId ?: phone ?: email
+    /** Secondary line under the name in list rows. A phone falls through to a country-aware
+     *  display format; non-E.164 legacy values are shown as stored. */
+    val subtitle: String? get() = odinId ?: phone?.let { formatPhoneForDisplay(it) } ?: email
 
     /**
-     * The full postal address formatted for display, one component per line:
-     * street lines, then "postcode city", then country. Null when nothing is set.
+     * The full postal address formatted for display on a single line: street lines, then
+     * "postcode city", then country, joined with commas. Null when nothing is set.
      */
     val location: String?
         get() = listOfNotNull(
@@ -119,7 +121,7 @@ data class ContactBookEntry(
             listOfNotNull(postcode?.ifBlank { null }, city?.ifBlank { null })
                 .joinToString(" ").ifBlank { null },
             country?.ifBlank { null },
-        ).joinToString("\n").ifBlank { null }
+        ).joinToString(", ").ifBlank { null }
 
     fun matches(query: String): Boolean {
         if (query.isBlank()) return true
