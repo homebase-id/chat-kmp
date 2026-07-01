@@ -286,9 +286,7 @@ val appModule = module {
     single<LocationTracker> { createLocationTracker(get<LocationFixRouter>()) }
     single {
         LocationTrackUploaderService(
-            outboxSync = get(),
-            optimisticWriter = get(),
-            payloadEncryptionService = get(),
+            uploadService = get(),
             fileOperationsProvider = get(),
             driveFileProvider = get(),
             databaseManager = get(),
