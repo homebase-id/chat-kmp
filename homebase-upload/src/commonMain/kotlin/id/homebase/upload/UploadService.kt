@@ -2,7 +2,12 @@ package id.homebase.upload
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.sync.database.EnqueueResult
@@ -102,6 +107,79 @@ class UploadService(
             optimisticFileId = if (spec.writeOptimistic) spec.optimisticFileId else null,
             payloadDescriptors = payloadDescriptors,
         )
+    }
+
+    /**
+     * Update an existing file (`UpdateFileByUniqueIdRequest`). The shared counterpart to [upload]
+     * for the non-create paths: header-only edits, appending/overwriting payloads, delete-only
+     * manifests, and re-attaching a file's existing already-encrypted payloads. Same fail-soft +
+     * [UploadOutcome] contract; the optimistic step is `writeUpdate` (not `writeNewFile`).
+     */
+    suspend fun updateFile(spec: MediaUpdateSpec, scope: CoroutineScope): UploadOutcome {
+        // Resolve the payloads to attach: reuse the caller's already-encrypted payloads as-is, or
+        // encrypt the plaintext bundle (fail soft on a missing source, BEFORE any enqueue).
+        val payloads: List<PayloadFile>
+        val thumbnails: List<ThumbnailFile>
+        if (spec.preEncryptedPayloads != null) {
+            payloads = spec.preEncryptedPayloads
+            thumbnails = spec.preEncryptedThumbnails ?: emptyList()
+        } else {
+            val encrypted = try {
+                encryptor.encryptBundle(spec.uniqueId, spec.bundle, spec.keyHeader.aesKey, scope)
+            } catch (e: SourceUnavailableException) {
+                return UploadOutcome.SourceMissing(listOf(e.path))
+            }
+            payloads = encrypted.payloads
+            thumbnails = encrypted.thumbnails
+        }
+
+        val request = UpdateFileByUniqueIdRequest(
+            driveId = spec.driveId,
+            uniqueId = spec.uniqueId,
+            keyHeader = spec.keyHeader,
+            instructions = FileUpdateInstructionSet(
+                transferIv = spec.transferIv,
+                locale = spec.locale,
+                recipients = spec.recipients,
+                manifest = UpdateManifest.build(
+                    payloads = payloads.ifEmpty { null },
+                    toDeletePayloads = spec.toDeletePayloads,
+                    thumbnails = thumbnails.ifEmpty { null },
+                    generatePayloadIv = spec.generatePayloadIv,
+                ),
+                useAppNotification = spec.useAppNotification,
+                appNotificationOptions = spec.appNotificationOptions,
+            ),
+            metadata = spec.metadata.encryptContent(spec.keyHeader),
+            payloads = payloads.ifEmpty { null },
+            thumbnails = thumbnails.ifEmpty { null },
+        )
+
+        val enqueue = if (spec.replace) {
+            outboxSync.replaceEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
+        } else {
+            outboxSync.tryEnqueue(request, spec.priority, spec.dependencyUniqueId, spec.sendNow)
+        }
+        when (enqueue) {
+            is EnqueueResult.Enqueued -> Unit
+            is EnqueueResult.AlreadyQueued -> return UploadOutcome.AlreadyQueued(spec.uniqueId)
+            is EnqueueResult.WouldStrandCreate -> return UploadOutcome.WouldStrandCreate
+            is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
+        }
+
+        // Best-effort optimistic writeUpdate — metadata/header update. Matches the migrated
+        // methods' prior behavior (no payload descriptors passed; sync brings new payloads).
+        if (spec.writeOptimistic) {
+            try {
+                optimisticWriter.writeUpdate(spec.driveId, spec.keyHeader, spec.metadata, null)
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) {
+                    "updateFile: optimistic writeUpdate failed (non-fatal) uniqueId=${spec.uniqueId}"
+                }
+            }
+        }
+
+        return UploadOutcome.Enqueued(spec.uniqueId, optimisticFileId = null, payloadDescriptors = null)
     }
 
     private companion object {
