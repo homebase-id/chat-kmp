@@ -1406,6 +1406,7 @@
     <string name="contactbook_introduced_empty">No introduced connections yet.</string>
     <string name="contactbook_confirmed_empty">No confirmed connections yet.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
+    <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
 
@@ -1525,6 +1526,7 @@
     <string name="contactbook_action_request_accepted">Connection request accepted.</string>
     <string name="contactbook_action_request_rejected">Connection request declined.</string>
     <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
+    <string name="contactbook_action_request_withdrawn">This request was withdrawn by the sender.</string>
 
     <string name="add_contact_title">Add contact</string>
     <string name="add_contact_odinid_label">Homebase ID</string>
