@@ -47,6 +47,7 @@ import id.homebase.chat.conversationlist.ConversationListUiAction.SaveScrollPosi
 import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
+import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -274,6 +275,7 @@ fun ConversationMessagesPane(
                     is FullScreenOverlay.ViewMessageData -> "view"
                     is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
                     is FullScreenOverlay.AttachmentData -> "attachment"
+                    is FullScreenOverlay.PdfViewerData -> "pdf"
                 }
             },
             transitionSpec = {
@@ -344,6 +346,18 @@ fun ConversationMessagesPane(
                             onDismiss = { onUiAction(CloseFullScreenOverlay) },
                             onSave = { onUiAction(DownloadVideoMedia(data.fileId, data.payloadKey, data.keyHeader, data.payload)) },
                             uploadStatus = data.uploadMessageId?.let { uiState.uploadProgress[it] },
+                        )
+                    }
+
+                    is FullScreenOverlay.PdfViewerData -> {
+                        ChatPdfViewer(
+                            title = data.title,
+                            filePath = uiState.decryptedFiles[
+                                DecryptedFileKey(data.fileId, data.payloadKey)
+                            ],
+                            isDownloading = "${data.messageId}_${data.payloadKey}" in uiState.downloadingFiles,
+                            onDownload = { onUiAction(DownloadMedia(data.messageId, data.payloadKey)) },
+                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
                         )
                     }
 

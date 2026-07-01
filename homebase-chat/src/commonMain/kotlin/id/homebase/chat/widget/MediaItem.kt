@@ -555,6 +555,41 @@ fun MediaItem(
             )
         }
 
+        contentType == "application/pdf" -> {
+            // Reuse the image thumbnail path: the sender ships a first-page preview on
+            // the message (previewThumbnail + thumbnail ladder), so the receiver sees it
+            // without downloading the full PDF. No preview (old sends / web / render
+            // failure) → the plain icon row. Tap opens the PDF viewer either way (see
+            // MediaDownloadHandler.handleMediaClicked).
+            val pdfPreviewData =
+                remember(driveId, fileId, payload.key, payload.lastModified) {
+                    val previewThumb = payload.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail
+                    val payloadIv = payload.iv?.let { Base64.decode(it) }
+                    if (previewThumb == null || payloadIv == null) return@remember null
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payload.key,
+                        previewThumbnail = previewThumb,
+                        requestedSize = ImageSize.THUMB_MEDIUM,
+                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
+                        lastModified = payload.lastModified,
+                        isEncrypted = true,
+                        payloadContentType = contentType,
+                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
+                    )
+                }
+            DocumentMediaItem(
+                payload = payload,
+                modifier = baseModifier,
+                onDownloadClick = { onClick?.invoke() },
+                onLongPress = { onLongPress?.invoke(Offset.Zero) },
+                isDownloading = isDownloading,
+                previewImageData = pdfPreviewData,
+                showDownloadButton = false,
+            )
+        }
+
         contentType == "application/zip" ||
                 contentType == "application/x-rar-compressed" ||
                 contentType == "application/vnd.android.package-archive" ||

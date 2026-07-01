@@ -379,6 +379,29 @@ internal class MediaDownloadHandler(
                     }
 
                     contentType.startsWith("audio/") -> {}
+                    contentType == "application/pdf" -> {
+                        // Decrypt to a local cache path (reusing the DecryptFile path) so
+                        // the viewer can render it, then open the fullscreen PDF overlay.
+                        val alreadyDecrypted = messagesUiState.value.decryptedFiles
+                            .containsKey(DecryptedFileKey(action.message.fileId, action.payloadKey))
+                        if (!alreadyDecrypted) {
+                            dispatch(
+                                ConversationListUiAction.DecryptFile(
+                                    action.message.id, action.payloadKey
+                                )
+                            )
+                        }
+                        messagesUiState.update {
+                            it.copy(
+                                fullScreenOverlay = FullScreenOverlay.PdfViewerData(
+                                    messageId = action.message.id,
+                                    fileId = action.message.fileId,
+                                    payloadKey = action.payloadKey,
+                                    title = action.message.originalAuthor?.domainName ?: "null",
+                                )
+                            )
+                        }
+                    }
                     contentType.startsWith("application/") || contentType.startsWith("text/") || contentType.startsWith(
                         "message/"
                     ) -> {
