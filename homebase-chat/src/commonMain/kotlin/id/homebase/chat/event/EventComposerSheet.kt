@@ -42,13 +42,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,6 +79,7 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.widget.GuardedComposerSheet
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
@@ -144,16 +143,14 @@ fun EventComposerSheet(
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
+    GuardedComposerSheet(onDismiss = onDismiss) { sheetState, requestClose, reportUnsaved ->
         EventComposerContent(
             conversationId = conversationId,
             sheetState = sheetState,
             onDismiss = onDismiss,
             onSent = onSent,
+            onRequestClose = requestClose,
+            onUnsavedContentChange = reportUnsaved,
         )
     }
 }
@@ -165,6 +162,8 @@ private fun EventComposerContent(
     sheetState: SheetState,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
+    onRequestClose: () -> Unit = onDismiss,
+    onUnsavedContentChange: (Boolean) -> Unit = {},
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
@@ -266,12 +265,12 @@ private fun EventComposerContent(
         derivedStateOf { title.isNotBlank() && !sending && timesValid }
     }
 
-    val dismiss: () -> Unit = {
-        scope.launch {
-            sheetState.hide()
-            onDismiss()
-        }
-    }
+    // Report unsaved content up so the sheet guards swipe/scrim/back/close
+    // against accidental discard (#891). Default date window doesn't count as
+    // user input — only fields the user actually filled.
+    val hasUnsavedContent = title.isNotBlank() || description.isNotBlank() ||
+        locationText.isNotBlank() || meetingUrl.isNotBlank() || coverInput != null
+    LaunchedEffect(hasUnsavedContent) { onUnsavedContentChange(hasUnsavedContent) }
 
     val doSend: () -> Unit = {
         if (isValid) {
@@ -325,7 +324,7 @@ private fun EventComposerContent(
                 .padding(start = 4.dp, end = 16.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = dismiss) {
+            IconButton(onClick = onRequestClose) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = stringResource(MR.string.close),
