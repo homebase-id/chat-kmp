@@ -50,6 +50,16 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+        jvmTest.dependencies {
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
+            // Real in-memory OutboxSync/DB for UploadServiceTest — same JDBC-SQLite wiring
+            // homebase-api's own DB tests use (xerial excluded in favour of the crypt fork).
+            implementation(libs.sqldelight.sqlite.driver.get().toString()) {
+                exclude(group = "org.xerial", module = "sqlite-jdbc")
+            }
+            implementation(libs.sqlite.jdbc.crypt)
+        }
     }
 
     targets.all {

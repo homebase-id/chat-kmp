@@ -4,28 +4,24 @@ package id.homebase.chat.services.sticker
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
+import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.PayloadBundle
-import id.homebase.upload.PayloadCacheSeeder
-import id.homebase.upload.thumbnailDescriptorsFor
-import id.homebase.upload.PayloadBundleEncryptionService
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
-import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.stickerLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import kotlinx.coroutines.CancellationException
@@ -54,11 +50,9 @@ private const val TAG = "StickerService"
  */
 class StickerService(
     private val outboxSync: OutboxSync,
-    private val optimisticWriter: OptimisticWriter,
-    private val payloadEncryptionService: PayloadBundleEncryptionService,
+    private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
-    private val payloadCacheSeeder: PayloadCacheSeeder,
     private val optionalDriveActivation: OptionalDriveActivation,
     private val stickerStream: StickerStream,
 ) {
@@ -153,13 +147,11 @@ class StickerService(
                 previewThumbs = listOfNotNull(thumbs?.preview),
             )
 
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                uniqueId, bundle, keyHeader.aesKey, scope,
-            )
-
             val content = OdinSystemSerializer.serialize(
                 StickerFileContent(name = name, sourceFileId = sourceFileId)
             )
+            // previewThumbs pass through encryption unchanged, so derive the preview from the
+            // plaintext bundle (UploadService owns the encrypt).
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -167,78 +159,46 @@ class StickerService(
                     uniqueId = uniqueId,
                     content = content,
                     fileType = StickerProtocol.STICKER_FILE_TYPE,
-                    previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
+                    previewThumbnail = bundle.previewThumbs.firstOrNull(),
                 ),
             )
 
-            val payloadDescriptors = encryptedBundle.payloads.map { p ->
-                PayloadDescriptor(
-                    key = p.key,
-                    contentType = p.contentType.ifEmpty { null },
-                    // Native thumbnail sizes so the tray tile requests a native size
-                    // (availableThumbSizes) and hits the seed below during upload.
-                    thumbnails = encryptedBundle.thumbnailDescriptorsFor(p.key),
-                    iv = p.iv?.let { Base64.encode(it) },
-                    descriptorContent = p.descriptorContent,
-                    previewThumbnail = p.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
-
-            val request = UploadFileRequest(
-                driveId = driveId,
-                keyHeader = keyHeader,
-                metadata = unencryptedMetadata.encryptContent(keyHeader),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
-            )
-
-            val enqueued = outboxSync.tryEnqueue(request)
-            if (!enqueued.enqueued) return null
-
-            // Optimistic local write + in-memory insert so the tray shows the sticker
-            // immediately, before the outbox round-trips. The real fileId is assigned by
-            // [OptimisticWriter] (and re-emitted by DriveSync); the in-memory optimistic
-            // row keys on uniqueId, so [StickerStream.upsertSticker] swaps in the
-            // server-confirmed SavedSticker (correct fileId) when it lands.
             // Pre-mint the optimistic fileId so the tray tile, the seeded cache, and
-            // rekeyCacheAfterCreate all key on the same id — and so we can seed BEFORE
-            // the write (which triggers the tray render → thumbnail read): otherwise
-            // that read races the seed, misses, and 404s (non-retriable) → blur.
+            // rekeyCacheAfterCreate all key on the same id.
             val optimisticFileId = Uuid.random()
-            try {
-                payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
-                optimisticWriter.writeNewFile(
+            val outcome = uploadService.upload(
+                MediaUploadSpec(
                     driveId = driveId,
+                    uniqueId = uniqueId,
                     keyHeader = keyHeader,
-                    unecryptedMetadata = unencryptedMetadata,
+                    bundle = bundle,
+                    metadata = unencryptedMetadata,
+                    // Local-only (allowDistribution=false): no transit recipients.
                     originalRecipientCount = 0,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = payloadDescriptors,
-                    fileId = optimisticFileId,
-                )
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for sticker $uniqueId" }
+                    optimisticFileId = optimisticFileId,
+                ),
+                scope = scope,
+            )
+            if (outcome !is UploadOutcome.Enqueued) {
+                Logger.w(tag = TAG) { "Sticker not enqueued uniqueId=$uniqueId outcome=$outcome" }
+                return null
             }
 
+            // In-memory tray insert so the tray shows the sticker immediately, before the
+            // outbox round-trips. The optimistic DB write + cache seed already ran inside
+            // UploadService (keyed on the same optimisticFileId); this is the tray mirror,
+            // keyed on uniqueId, swapped for the server-confirmed row when it lands. It reuses
+            // the payload descriptor UploadService built from the encrypted bundle.
             stickerStream.insertOptimistic(
                 SavedSticker(
-                    // Pending-row fileId; the confirmed row (with the server fileId)
-                    // replaces it via the stream's uniqueId-keyed upsert.
                     fileId = optimisticFileId,
                     uniqueId = uniqueId,
                     driveId = driveId,
                     payloadKey = key,
                     contentType = uploadType,
                     keyHeader = keyHeader,
-                    previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
-                    payloadDescriptor = payloadDescriptors?.firstOrNull()
+                    previewThumbnail = bundle.previewThumbs.firstOrNull(),
+                    payloadDescriptor = outcome.payloadDescriptors?.firstOrNull()
                         ?: PayloadDescriptor(key = key, contentType = uploadType),
                     createdAt = Clock.System.now().toEpochMilliseconds(),
                     sourceFileId = sourceFileId,

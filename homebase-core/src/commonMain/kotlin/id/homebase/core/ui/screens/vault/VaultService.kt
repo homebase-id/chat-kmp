@@ -1,15 +1,19 @@
 @file:OptIn(ExperimentalUuidApi::class, ExperimentalEncodingApi::class)
 
 package id.homebase.core.ui.screens.vault
+import kotlinx.coroutines.CoroutineScope
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
+import id.homebase.upload.MediaUpdateSpec
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
@@ -36,6 +40,8 @@ private const val TAG = "VaultService"
 class VaultService(
     private val outboxSync: OutboxSync,
     private val optimisticWriter: OptimisticWriter,
+    private val uploadService: UploadService,
+    private val scope: CoroutineScope,
 ) {
     private val driveId = vaultLabeledDrive.drive.alias
 
@@ -98,6 +104,12 @@ class VaultService(
         }
     }
 
+    /**
+     * Enqueue a content/metadata update for an existing vault file through the shared
+     * [UploadService.updateFile]. Pass a plaintext [bundle] for new/replaced payloads (the pipeline
+     * encrypts + fail-softs), [toDeletePayloads] for a delete, or neither for a header-only edit
+     * (rename / label / notes). The pipeline reuses the file's AES key with a fresh IV.
+     */
     internal suspend fun enqueueFileContentUpdate(
         uniqueId: Uuid,
         fileContent: VaultFileContent,
@@ -105,11 +117,12 @@ class VaultService(
         versionTag: Uuid?,
         keyHeader: KeyHeader,
         fileType: Int = VAULT_FILE_TYPE,
-        manifest: UpdateManifest = UpdateManifest.build(),
-        payloads: List<PayloadFile>? = null,
-        thumbnails: List<ThumbnailFile>? = null,
+        bundle: PayloadBundle? = null,
+        toDeletePayloads: List<PayloadDeleteKey>? = null,
+        generatePayloadIv: Boolean = false,
     ): Boolean {
         val content = OdinSystemSerializer.serialize(fileContent)
+        // Reuse the file's AES key with a fresh IV — the server rejects an update whose AES key differs.
         val newKeyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16), aesKey = keyHeader.aesKey
         )
@@ -125,32 +138,20 @@ class VaultService(
             versionTag = versionTag,
         )
 
-        val enqueued = outboxSync.tryEnqueue(
-            request = UpdateFileByUniqueIdRequest(
+        val outcome = uploadService.updateFile(
+            MediaUpdateSpec(
                 driveId = driveId,
                 uniqueId = uniqueId,
                 keyHeader = newKeyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = manifest,
-                ),
-                metadata = unencryptedMetadata.encryptContent(newKeyHeader),
-                payloads = payloads,
-                thumbnails = thumbnails,
+                metadata = unencryptedMetadata,
+                bundle = bundle,
+                toDeletePayloads = toDeletePayloads,
+                generatePayloadIv = generatePayloadIv,
+                replace = false, // tryEnqueue — matches prior behavior
             ),
-        ).enqueued
-
-        if (enqueued) {
-            try {
-                optimisticWriter.writeUpdate(driveId, newKeyHeader, unencryptedMetadata)
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for $uniqueId" }
-            }
-        }
-
-        return enqueued
+            scope = scope,
+        )
+        return outcome is UploadOutcome.Enqueued
     }
 
     suspend fun renameEntry(
