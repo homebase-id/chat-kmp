@@ -26,6 +26,9 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.PayloadBundleEncryptionService
 import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import id.homebase.upload.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -53,6 +56,7 @@ class VaultUploaderService(
     private val outboxSync: OutboxSync,
     private val optimisticWriter: OptimisticWriter,
     private val payloadEncryptionService: PayloadBundleEncryptionService,
+    private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val payloadCacheSeeder: PayloadCacheSeeder,
@@ -115,13 +119,10 @@ class VaultUploaderService(
             var pdfPageCount: Int? = null
             val bundle = buildMultiPayloadBundle(resolvedFiles, { pdfPageCount = it }, notePreview)
 
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                uniqueId, bundle, keyHeader.aesKey, scope
-            )
-
             val content = OdinSystemSerializer.serialize(
                 VaultFileContent(name = entryName, label = label, notes = notes, pdfPageCount = pdfPageCount)
             )
+            // previewThumbs pass through encryption unchanged, so derive from the plaintext bundle.
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -130,64 +131,24 @@ class VaultUploaderService(
                     content = content,
                     fileType = VAULT_FILE_TYPE,
                     groupId = groupId,
-                    previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
+                    previewThumbnail = bundle.previewThumbs.firstOrNull(),
                 ),
             )
 
-            val payloadDescriptors = encryptedBundle.payloads.map { payload ->
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    // Native thumbnail sizes so the grid tile can request a native
-                    // size (availableThumbSizes) and hit the seed below during upload.
-                    thumbnails = encryptedBundle.thumbnailDescriptorsFor(payload.key),
-                    iv = payload.iv?.let { Base64.encode(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
-
-            val request = UploadFileRequest(
-                driveId = driveId,
-                keyHeader = keyHeader,
-                metadata = unencryptedMetadata.encryptContent(keyHeader),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
+            // Local-only vault file (allowDistribution=false). UploadService owns the spine:
+            // encrypt (fail-soft) → enqueue → seed cache → optimistic writeNewFile.
+            val outcome = uploadService.upload(
+                MediaUploadSpec(
+                    driveId = driveId,
+                    uniqueId = uniqueId,
+                    keyHeader = keyHeader,
+                    bundle = bundle,
+                    metadata = unencryptedMetadata,
+                    originalRecipientCount = 0,
+                ),
+                scope = scope,
             )
-
-            val enqueued = outboxSync.tryEnqueue(request).enqueued
-            if (enqueued) {
-                try {
-                    // Seed BEFORE the write: writeNewFile triggers the grid recompose
-                    // → thumbnail read, so the cache must already be populated under the
-                    // optimistic fileId or that read races the seed, misses, and 404s
-                    // (non-retriable) → blur. Pre-mint the id so we can seed first.
-                    val optimisticFileId = Uuid.random()
-                    payloadCacheSeeder.seed(driveId, optimisticFileId, encryptedBundle)
-                    optimisticWriter.writeNewFile(
-                        driveId = driveId,
-                        keyHeader = keyHeader,
-                        unecryptedMetadata = unencryptedMetadata,
-                        originalRecipientCount = 0,
-                        fileSystemType = FileSystemType.Standard,
-                        payloadDescriptors = payloadDescriptors,
-                        fileId = optimisticFileId,
-                    )
-                    Logger.d(tag = TAG) { "Optimistic write complete: $entryName uniqueId=$uniqueId" }
-                } catch (e: Exception) {
-                    Logger.e(e, TAG) { "Optimistic write failed (non-fatal): $entryName" }
-                }
-                uniqueId
-            } else {
-                null
-            }
+            if (outcome is UploadOutcome.Enqueued) uniqueId else null
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue multi-payload upload: $entryName" }
             null

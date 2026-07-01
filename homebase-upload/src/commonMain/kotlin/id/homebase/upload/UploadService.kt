@@ -66,6 +66,10 @@ class UploadService(
             is EnqueueResult.Failed -> return UploadOutcome.Failed(enqueue.cause)
         }
 
+        // Optimistic mirror of what the server will return; also returned in the outcome so a
+        // feature can reuse it for its own optimistic bookkeeping (e.g. the sticker tray).
+        val payloadDescriptors = encryptedBundle.toPayloadDescriptors()
+
         // 4. Best-effort: seed the encrypted-payload cache, then write the optimistic row. Seed
         //    BEFORE the write — writeNewFile triggers the bubble's recompose + thumbnail read, so
         //    the cache must already be populated under the optimistic fileId or that read 404s.
@@ -82,7 +86,7 @@ class UploadService(
                         unecryptedMetadata = spec.metadata,
                         originalRecipientCount = spec.originalRecipientCount,
                         fileSystemType = spec.fileSystemType,
-                        payloadDescriptors = encryptedBundle.toPayloadDescriptors(),
+                        payloadDescriptors = payloadDescriptors,
                         fileId = spec.optimisticFileId,
                     )
                 }
@@ -96,6 +100,7 @@ class UploadService(
         return UploadOutcome.Enqueued(
             uniqueId = spec.uniqueId,
             optimisticFileId = if (spec.writeOptimistic) spec.optimisticFileId else null,
+            payloadDescriptors = payloadDescriptors,
         )
     }
 

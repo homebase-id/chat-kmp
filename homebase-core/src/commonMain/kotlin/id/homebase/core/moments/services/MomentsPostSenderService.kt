@@ -34,6 +34,9 @@ import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.AttachmentInput
@@ -61,6 +64,7 @@ import kotlin.uuid.Uuid
 class MomentsPostSenderService(
     private val outboxSync: OutboxSync,
     private val payloadBundleEncryptor: PayloadBundleEncryptor,
+    private val uploadService: UploadService,
     private val fileOps: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val optimisticWriter: OptimisticWriter,
@@ -966,13 +970,6 @@ class MomentsPostSenderService(
         ) { index, _ -> "mmc_${index.toString().padStart(4, '0')}" }
 
         val keyHeader = KeyHeader.newRandom16()
-        val encrypted = payloadBundleEncryptor.encryptBundle(
-            uniqueId = commentUniqueId,
-            bundle = bundle,
-            aesKey = keyHeader.aesKey,
-            scope = scope,
-        )
-
         val isLocalOnly = recipients.isEmpty()
         val effectiveUserDate = userDate ?: UnixTimeUtc.now()
 
@@ -983,6 +980,7 @@ class MomentsPostSenderService(
             )
         )
 
+        // previewThumbs pass through encryption unchanged → derive from the plaintext bundle.
         val unencryptedMetadata = UploadFileMetadata(
             allowDistribution = !isLocalOnly,
             isEncrypted = true,
@@ -992,82 +990,45 @@ class MomentsPostSenderService(
                 fileType = MomentsProtocol.MomentCommentFileType,
                 userDate = effectiveUserDate.milliseconds,
                 content = content,
-                previewThumbnail = encrypted.previewThumbs.minByOrNull { it.pixelWidth },
+                previewThumbnail = bundle.previewThumbs.minByOrNull { it.pixelWidth },
             ),
         )
 
-        val request = UploadFileRequest(
-            driveId = drive,
-            keyHeader = keyHeader,
-            metadata = unencryptedMetadata.encryptContent(keyHeader),
-            transitOptions = TransitOptions(
-                recipients = recipients,
-                sendContents = SendContents.All,
-                useAppNotification = !isLocalOnly,
-                appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
-                    // Must stay on the chat appId — the backend rejects a push whose
-                    // appId isn't the registered (chat) app. typeId = momentId so the
-                    // tap opens the commented-on moment and comments coalesce per moment
-                    // (one notification per moment via typeId.hashCode()); tagId is the
-                    // well-known comment sentinel so the recipient's tap router knows
-                    // this is a comment (vs a post, where tagId == typeId) and opens the
-                    // moment with the comment thread expanded. A chat message's tagId is
-                    // a random messageId, so it can't collide with the sentinel.
-                    appId = ChatProtocol.ChatAppId.toString(),
-                    typeId = momentId.toString(),
-                    tagId = MOMENT_COMMENT_TAG_SENTINEL,
-                    silent = false,
-                    unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_comment),
-                ),
-            ),
-            payloads = encrypted.payloads,
-            thumbnails = encrypted.thumbnails,
-        )
-
-        val enqueued = outboxSync.tryEnqueue(
-            request,
-            priority = 1,
-            dependencyUniqueId = null,
-        )
-
-        if (!enqueued.enqueued) {
-            error("Failed to enqueue comment for upload (outbox: $enqueued)")
-        }
-
-        Logger.d(tag = TAG) { "postComment: outbox enqueued comment=$commentUniqueId" }
-
-        @OptIn(ExperimentalEncodingApi::class)
-        val payloadDescriptors = encrypted.payloads.map { payload ->
-            PayloadDescriptor(
-                key = payload.key,
-                contentType = payload.contentType.ifEmpty { null },
-                iv = payload.iv?.let { Base64.encode(it) },
-                descriptorContent = payload.descriptorContent,
-                previewThumbnail = payload.previewThumbnail?.let {
-                    ThumbnailDescriptor(
-                        pixelWidth = it.pixelWidth,
-                        pixelHeight = it.pixelHeight,
-                        contentType = it.contentType,
-                        content = it.content,
-                    )
-                },
-            )
-        }.ifEmpty { null }
-        try {
-            optimisticWriter.writeNewFile(
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
                 driveId = drive,
+                uniqueId = commentUniqueId,
                 keyHeader = keyHeader,
-                unecryptedMetadata = unencryptedMetadata,
+                bundle = bundle,
+                metadata = unencryptedMetadata,
+                transit = TransitOptions(
+                    recipients = recipients,
+                    sendContents = SendContents.All,
+                    useAppNotification = !isLocalOnly,
+                    appNotificationOptions = if (isLocalOnly) null else PushNotificationOptions(
+                        // Stay on the chat appId (backend rejects a push whose appId isn't the
+                        // registered chat app). typeId = momentId so the tap opens the moment and
+                        // comments coalesce per moment; tagId is the comment sentinel so the tap
+                        // router opens the moment with the comment thread expanded.
+                        appId = ChatProtocol.ChatAppId.toString(),
+                        typeId = momentId.toString(),
+                        tagId = MOMENT_COMMENT_TAG_SENTINEL,
+                        silent = false,
+                        unEncryptedMessage = TranslationUtil.getString(MR.string.moments_push_new_comment),
+                    ),
+                ),
+                dependencyUniqueId = null,
+                priority = 1,
                 originalRecipientCount = recipients.size,
-                fileSystemType = FileSystemType.Standard,
-                payloadDescriptors = payloadDescriptors,
-            )
-            Logger.d(tag = TAG) { "postComment: optimistic write complete comment=$commentUniqueId" }
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) {
-                "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
-            }
+                // Comments don't seed the payload cache (parity with the prior behavior).
+                seedCache = false,
+            ),
+            scope = scope,
+        )
+        if (outcome !is UploadOutcome.Enqueued) {
+            error("Failed to enqueue comment for upload (outbox: $outcome)")
         }
+        Logger.d(tag = TAG) { "postComment: outbox enqueued comment=$commentUniqueId" }
 
         return PostMomentCommentResult(uniqueId = commentUniqueId)
     }
