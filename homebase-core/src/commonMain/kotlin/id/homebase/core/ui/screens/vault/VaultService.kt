@@ -1,7 +1,9 @@
 @file:OptIn(ExperimentalUuidApi::class, ExperimentalEncodingApi::class)
 
 package id.homebase.core.ui.screens.vault
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
@@ -44,6 +46,26 @@ class VaultService(
     private val scope: CoroutineScope,
 ) {
     private val driveId = vaultLabeledDrive.drive.alias
+
+    /**
+     * Runs [block] on this service's app-lifetime [scope] and awaits it, so a durable save
+     * (temp write → encrypt → outbox enqueue) COMPLETES even if the CALLER's coroutine is cancelled
+     * mid-flight — e.g. the user backs out of the note editor while the spinner shows. The caller
+     * still gets the result for its snackbar; if the caller is cancelled it simply stops awaiting
+     * while the enqueue lands anyway. Failures are funnelled through the Deferred, never up to
+     * [scope], so a failed save can't tear the service scope down. (issue #927 culprit #4)
+     */
+    internal suspend fun <T> runDurable(block: suspend () -> T): T {
+        val result = CompletableDeferred<T>()
+        scope.launch {
+            try {
+                result.complete(block())
+            } catch (e: Throwable) {
+                result.completeExceptionally(e)
+            }
+        }
+        return result.await()
+    }
 
     suspend fun createSection(
         sectionId: Uuid,
@@ -120,6 +142,13 @@ class VaultService(
         bundle: PayloadBundle? = null,
         toDeletePayloads: List<PayloadDeleteKey>? = null,
         generatePayloadIv: Boolean = false,
+        // Pass the file's own id ONLY for a full-state single-payload overwrite (a note edit) so the
+        // pipeline writes the new body through + seeds it (issue #927). Leave null for incremental
+        // updates (append/replace one page, delete a page, header-only rename/label/move).
+        fileId: Uuid? = null,
+        // true → coalesce a still-queued update for this file (newest wins); false → tryEnqueue.
+        // Safe only when the update carries the file's COMPLETE state (a note edit), not an increment.
+        replace: Boolean = false,
     ): Boolean {
         val content = OdinSystemSerializer.serialize(fileContent)
         // Reuse the file's AES key with a fresh IV — the server rejects an update whose AES key differs.
@@ -145,9 +174,10 @@ class VaultService(
                 keyHeader = newKeyHeader,
                 metadata = unencryptedMetadata,
                 bundle = bundle,
+                fileId = fileId,
                 toDeletePayloads = toDeletePayloads,
                 generatePayloadIv = generatePayloadIv,
-                replace = false, // tryEnqueue — matches prior behavior
+                replace = replace,
             ),
             scope = scope,
         )

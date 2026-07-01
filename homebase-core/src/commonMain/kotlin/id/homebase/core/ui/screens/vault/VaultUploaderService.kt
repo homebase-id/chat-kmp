@@ -340,11 +340,13 @@ class VaultUploaderService(
         markdown: String,
         notePreview: String?,
         scope: CoroutineScope,
-    ): Boolean {
+    ): Boolean = vaultService.runDurable {
+        // Run the whole persist (temp write → encrypt → enqueue) on the service scope so backing out
+        // of the editor mid-save doesn't cancel it before the outbox row commits (issue #927).
         val tempPath = fileOperationsProvider.writeBytesToTempFile(
             markdown.encodeToByteArray(), "vault_note_", ".md"
         )
-        return try {
+        try {
             val existingKey = file.payloadDescriptors.firstOrNull()?.key
                 ?: VaultEntry.DEFAULT_PAYLOAD_KEY
 
@@ -366,6 +368,11 @@ class VaultUploaderService(
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
                 bundle = PayloadBundle(listOf(payload), emptyList(), emptyList()),
+                // A note edit is a full-state single-payload overwrite: write the new body through +
+                // seed it (so a read-back before send is correct) and coalesce rapid re-saves so the
+                // newest body wins instead of being dropped as AlreadyQueued (issue #927).
+                fileId = file.fileId,
+                replace = true,
             )
         } catch (e: CancellationException) {
             throw e
