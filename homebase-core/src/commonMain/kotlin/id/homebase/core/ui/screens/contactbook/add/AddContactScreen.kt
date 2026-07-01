@@ -51,7 +51,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -59,6 +61,7 @@ import id.homebase.api.client.identity.PublicIdentity
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.identity.initials
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.cleanDomain
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.connections.ConnectRequestAction
@@ -66,6 +69,7 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
+import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.add_contact_already_connected
 import id.homebase.resources.add_contact_already_saved
@@ -277,18 +281,37 @@ private fun ByIdentitySection(
     onSendConnectionRequest: (OdinId) -> Unit,
 ) {
     val resolution = uiState.resolution
-    AddField(
-        value = uiState.draft.odinId,
-        label = stringResource(MR.string.add_contact_odinid_label),
-        placeholder = stringResource(MR.string.add_contact_odinid_hint),
-        isError = resolution is RecipientResolution.InvalidFormat,
+    // Local TextFieldValue stores space-encoded text; HomebaseIdField's visual transformation
+    // renders those spaces as dots. The VM's canonical draft.odinId is the dotted form. This
+    // mirrors ConnectRequestBottomSheet's recipient field.
+    var fieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = uiState.draft.odinId.replace('.', ' '),
+                selection = TextRange(uiState.draft.odinId.length),
+            )
+        )
+    }
+    HomebaseIdField(
+        value = fieldValue,
+        onValueChange = { incoming ->
+            val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
+            fieldValue = incoming.copy(text = normalizedSpaces)
+            val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false)
+            if (dotted != uiState.draft.odinId) onAction(AddContactAction.OdinIdChanged(dotted))
+        },
+        label = { Text(stringResource(MR.string.add_contact_odinid_label)) },
+        placeholder = { Text(stringResource(MR.string.add_contact_odinid_hint)) },
         supportingText = when (resolution) {
-            RecipientResolution.InvalidFormat -> stringResource(MR.string.add_contact_invalid)
-            RecipientResolution.Idle -> stringResource(MR.string.add_contact_lead_help)
+            RecipientResolution.InvalidFormat -> {
+                { Text(stringResource(MR.string.add_contact_invalid)) }
+            }
+            RecipientResolution.Idle -> {
+                { Text(stringResource(MR.string.add_contact_lead_help)) }
+            }
             else -> null
         },
-        keyboardType = KeyboardType.Uri,
-        onChange = { onAction(AddContactAction.OdinIdChanged(it)) },
+        isError = resolution is RecipientResolution.InvalidFormat,
     )
 
     ResolutionIndicator(resolution)

@@ -77,15 +77,16 @@ class EmergencyContactReconciler(
 
         val status = runCatching { temporalRead.verifyTemporalAccess(odinId, locationDrive) }
             .getOrNull() ?: return
-        // Emergency designation == a time-clamped grant (ConditionalTemporalRead), NOT plain full
-        // read — which also reports hasAccess=true. Gate on isTimeWindowed so a contact whose
-        // location drive we can merely read isn't mistaken for an emergency contact.
+        // Emergency designation == currently holding temporal read access to the peer's location
+        // drive. windowSeconds is NOT a reliable ACL-type discriminator — a real emergency-circle
+        // grant has been observed reporting windowSeconds=null in practice (see issue #875) — so
+        // gate on hasAccess alone.
         when {
-            status.isTimeWindowed && !flagged && allowSet ->
+            status.hasAccess && !flagged && allowSet ->
                 runCatching { contactRepository.setICanLocate(contact.uniqueId, versionTag) }
                     .onFailure { Logger.w(it) { "reconcile: setICanLocate failed for ${odinId.domainName}" } }
 
-            !status.isTimeWindowed && flagged ->
+            !status.hasAccess && flagged ->
                 runCatching { contactRepository.clearICanLocate(contact.uniqueId, versionTag) }
                     .onFailure { Logger.w(it) { "reconcile: clearICanLocate failed for ${odinId.domainName}" } }
         }

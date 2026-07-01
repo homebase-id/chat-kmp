@@ -326,9 +326,11 @@ class ContactDetailViewModel(
         val entry = _uiState.value.entry
         val versionTag = entry?.versionTag
 
-        // "Emergency contact" means a time-clamped (ConditionalTemporalRead) grant specifically —
-        // NOT plain full read, which also reports hasAccess=true (see TemporalAccessStatus).
-        if (status.isTimeWindowed) {
+        // "Emergency contact" means the peer currently grants us temporal read access to their
+        // location drive. windowSeconds is NOT a reliable ACL-type discriminator — a real
+        // emergency-circle grant has been observed reporting windowSeconds=null in practice, same
+        // as a plain full read (see issue #875) — so gate on hasAccess alone.
+        if (status.hasAccess) {
             // newestFileModified is only a real timestamp when we have access; 0 (ZeroTime) means the
             // drive has no files yet — render "no data", not the epoch.
             val newest = status.newestFileModified.takeIf { it.milliseconds > 0 }
