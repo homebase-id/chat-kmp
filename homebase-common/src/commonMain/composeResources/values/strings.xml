@@ -845,6 +845,7 @@
     <string name="chat_groodle_deadline_week">1 week</string>
     <string name="chat_groodle_deadline_none">No deadline</string>
     <string name="chat_groodle_add_time">Add a time</string>
+    <string name="chat_groodle_add_another_time">Add another time</string>
     <string name="chat_groodle_set_time">Set time</string>
     <string name="chat_groodle_duration">Duration</string>
     <string name="chat_groodle_duration_minutes">%1$d min</string>
@@ -867,6 +868,12 @@
     <string name="chat_groodle_err_times_missing">Set a time for every option.</string>
     <string name="chat_groodle_err_duplicate">Two options have the same date and time.</string>
     <string name="chat_groodle_send">Send Groodle</string>
+
+    <!-- Shared by the Groodle/Event/Poll composer discard-confirmation guard. -->
+    <string name="composer_discard_title">Discard changes?</string>
+    <string name="composer_discard_message">Your entries will be lost if you leave now.</string>
+    <string name="composer_discard_confirm">Discard</string>
+    <string name="composer_discard_keep">Keep editing</string>
 
     <!-- Poll composer -->
     <string name="chat_poll_share">Poll</string>
@@ -921,6 +928,7 @@
     <string name="moment_video_fit_screen">Fit to screen</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
+    <string name="chat_message_pdf_preview">PDF preview</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
 

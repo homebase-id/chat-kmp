@@ -95,6 +95,25 @@ object MessageAttachmentBuilder {
                             previewThumbs = listOfNotNull(thumbs?.preview)
                         )
                     }
+                    attachment.contentType == "application/pdf" -> {
+                        val thumbs =
+                            MessageThumbnailGenerator.generateFromPdf(attachment.filePath, payloadKey)
+
+                        PayloadBundle(
+                            payloads =
+                                listOf(
+                                    PayloadFile(
+                                        key = payloadKey,
+                                        filePath = attachment.filePath,
+                                        contentType = attachment.contentType,
+                                        previewThumbnail = thumbs?.preview,
+                                        descriptorContent = attachment.displayName,
+                                    )
+                                ),
+                            thumbnails = thumbs?.thumbnails ?: emptyList(),
+                            previewThumbs = listOfNotNull(thumbs?.preview)
+                        )
+                    }
                     else ->
                         PayloadBundle(
                             payloads =

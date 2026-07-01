@@ -26,13 +26,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -48,6 +47,7 @@ import id.homebase.chat.composer.ComposerEditableField
 import id.homebase.chat.composer.ComposerTitleField
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.widget.GuardedComposerSheet
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -82,16 +82,14 @@ fun PollComposerSheet(
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-    ) {
+    GuardedComposerSheet(onDismiss = onDismiss) { sheetState, requestClose, reportUnsaved ->
         PollComposerContent(
             conversationId = conversationId,
             sheetState = sheetState,
             onDismiss = onDismiss,
             onSent = onSent,
+            onRequestClose = requestClose,
+            onUnsavedContentChange = reportUnsaved,
         )
     }
 }
@@ -106,6 +104,8 @@ private fun PollComposerContent(
     sheetState: SheetState,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
+    onRequestClose: () -> Unit = onDismiss,
+    onUnsavedContentChange: (Boolean) -> Unit = {},
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
@@ -130,12 +130,10 @@ private fun PollComposerContent(
         }
     }
 
-    val dismiss: () -> Unit = {
-        scope.launch {
-            sheetState.hide()
-            onDismiss()
-        }
-    }
+    // Report unsaved content up so the sheet guards swipe/scrim/back/close
+    // against accidental discard (#891).
+    val hasUnsavedContent = question.isNotBlank() || options.any { it.text.isNotBlank() }
+    LaunchedEffect(hasUnsavedContent) { onUnsavedContentChange(hasUnsavedContent) }
 
     val doSend: () -> Unit = {
         if (isValid) {
@@ -176,7 +174,7 @@ private fun PollComposerContent(
                 .padding(start = 4.dp, end = 16.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = dismiss) {
+            IconButton(onClick = onRequestClose) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = stringResource(MR.string.cancel),
