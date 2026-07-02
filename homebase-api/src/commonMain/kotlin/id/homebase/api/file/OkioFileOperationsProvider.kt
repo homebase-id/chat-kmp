@@ -4,6 +4,9 @@ import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.io.Buffer
+import kotlinx.io.RawSource
+import kotlinx.io.buffered
+import okio.BufferedSource
 import okio.FileSystem
 import okio.buffer
 import okio.use
@@ -22,10 +25,18 @@ open class OkioFileOperationsProvider(
     private val cacheDir: String,
 ) : FileOperationsProvider {
 
-    override fun openFileInput(path: String): InputProvider {
-        val bytes = fileSystem.read(path.toPath()) { readByteArray() }
-        return InputProvider(size = bytes.size.toLong()) { Buffer().apply { write(bytes) } }
-    }
+    /**
+     * Lazy, CHUNKED multipart upload source (#947). Previously this read the whole
+     * file eagerly at `openFileInput` time and replayed the captured array on every
+     * block invocation. Now each ktor block invocation reopens the file (the block
+     * is re-invoked on ktor retries and outbox re-drives) and streams 64 KB at a
+     * time. `size` stays populated from metadata — it feeds the multipart
+     * Content-Length and is pinned by OkioFileOperationsProviderTest.
+     */
+    override fun openFileInput(path: String): InputProvider =
+        InputProvider(size = fileSystem.metadataOrNull(path.toPath())?.size) {
+            OkioBackedRawSource(fileSystem.source(path.toPath()).buffer()).buffered()
+        }
 
     override suspend fun readFileBytes(path: String): ByteArray =
         fileSystem.read(path.toPath()) { readByteArray() }
@@ -112,4 +123,28 @@ open class OkioFileOperationsProvider(
     }
 
     private fun randomToken(): String = Random.nextLong().toULong().toString(16)
+}
+
+/**
+ * A [kotlinx.io.RawSource] over an okio [BufferedSource], read in [chunkSize] steps —
+ * the lazy backing for [OkioFileOperationsProvider.openFileInput] (#947). Holds at
+ * most one chunk in memory. No okio↔kotlinx-io bridge exists in the repo; this small
+ * adapter is that bridge for the read direction.
+ */
+private class OkioBackedRawSource(
+    private val source: BufferedSource,
+    private val chunkSize: Int = FileOperationsProvider.DEFAULT_HEADER_BYTES,
+) : RawSource {
+    private val buf = ByteArray(chunkSize)
+
+    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+        require(byteCount >= 0L) { "byteCount must be non-negative: $byteCount" }
+        if (byteCount == 0L) return 0L
+        val read = source.read(buf, 0, minOf(byteCount, chunkSize.toLong()).toInt())
+        if (read == -1) return -1L
+        sink.write(buf, startIndex = 0, endIndex = read)
+        return read.toLong()
+    }
+
+    override fun close() = source.close()
 }
