@@ -6,6 +6,7 @@ import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
+import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
@@ -76,7 +77,7 @@ import okio.use
 class DriveFileProviderCached(
         httpClient: HttpClient,
         credentialsManager: CredentialsManager,
-        fileOperationsProvider: FileOperationsProvider
+        private val fileOperationsProvider: FileOperationsProvider
 ) {
     private val delegate: DriveFileHttpProvider =
             DriveFileHttpProvider(httpClient, credentialsManager)
@@ -261,11 +262,13 @@ class DriveFileProviderCached(
             key: String,
             keyHeader: KeyHeader,
             outputPath: String,
-            fileOps: FileOperationsProvider
+            fileOps: FileOperationsProvider = fileOperationsProvider,
+            onProgress: ((Float) -> Unit)? = null,
     ): Boolean {
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
         val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
-                ?: return delegate.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps)
+                ?: return delegate.streamPayloadDecryptedToPath(
+                        driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
 
         return snapshot.use { snap ->
             val encryptedFlow = channelFlow<ByteArray> {
@@ -288,6 +291,8 @@ class DriveFileProviderCached(
 
             val decryptedFlow = AesCbc.streamDecryptWithCbc(encryptedFlow, keyHeader.aesKey, keyHeader.iv)
             fileOps.writeStream(outputPath, decryptedFlow)
+            // Cache hit is local-disk speed — progress jumps straight to done.
+            onProgress?.invoke(1f)
             true
         }
     }
@@ -444,6 +449,17 @@ class DriveFileProviderCached(
             logTag: String,
             value: ByteApiResponse
     ) {
+        // Admission fence (#845): an entry above the render limit has no second
+        // read in-app, and committing it would make Coil's trimToSize evict every
+        // other entry and then the new entry itself — pure churn. The network
+        // guard in requestBytes keeps full reads under the limit already; this is
+        // defense-in-depth for locally-seeded bytes and any future caller.
+        if (value.bytes.size > PayloadSizePolicy.RENDER_LIMIT_BYTES) {
+            Logger.w(tag = logTag) {
+                "cache-admit REFUSED size=${value.bytes.size} (> ${PayloadSizePolicy.RENDER_LIMIT_BYTES}) key=$cacheKey"
+            }
+            return
+        }
         val editor = cache.openEditor(cacheKey.toDiskKey()) ?: return
         try {
             writeBytesResponse(editor.data.toString(), value)

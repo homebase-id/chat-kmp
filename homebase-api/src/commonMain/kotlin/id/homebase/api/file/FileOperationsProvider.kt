@@ -130,6 +130,36 @@ interface FileOperationsProvider {
         suffix: String,
     ): String
 
+    /**
+     * Reserve a unique writable path inside `<cacheDir>/share_outbound/` (creating
+     * the dir) WITHOUT writing bytes — the streaming seam for the "share to other
+     * app" flows (#845), which decrypt a payload directly to this path via
+     * `streamPayloadDecryptedToPath` instead of buffering it in RAM
+     * ([writeBytesToShareOutboundFile]). Same `share_<random><suffix>` shape and
+     * sequestration/sweep lifecycle: `share_outbound/` is reaped as a unit on cold
+     * start and app foreground.
+     */
+    suspend fun createShareOutboundPath(suffix: String): String =
+        createStagingPathIn(
+            getCacheDirectory().trimEnd('/') + "/" + SHARE_OUTBOUND_DIR_NAME,
+            "share_",
+            suffix,
+        )
+
+    /**
+     * Reserve a unique writable path inside `<cacheDir>/upload-temp/` (creating the
+     * dir) WITHOUT writing bytes — the streaming seam for export flows that need a
+     * DISPOSABLE decrypted temp (#845; e.g. vault open/share). Same dir
+     * [writeBytesToTempFile] targets, so the lifecycle is unchanged: swept on every
+     * startup / "Clear caches".
+     */
+    suspend fun createUploadTempPath(prefix: String, suffix: String): String =
+        createStagingPathIn(
+            getCacheDirectory().trimEnd('/') + "/" + CacheAudit.UPLOAD_TEMP_DIR_NAME,
+            prefix,
+            suffix,
+        )
+
     suspend fun writeStream(
         path: String,
         data: Flow<ByteArray>

@@ -99,12 +99,16 @@ actual fun VideoPlayerSurface(
     // gate the same optimizations behind it for a phased dark-launch.
     val context = LocalContext.current
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val playerPool = koinInject<ExoPlayerPool>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var firstFramePainted by remember(data) { mutableStateOf(false) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
+    // Streamed-to-file MP4 temp (hbvid_res_*, #845) — the surface owns deleting
+    // it on dispose; the startup sweep is the backstop.
+    var tempFile by remember(data) { mutableStateOf<File?>(null) }
     var exoPlayer by remember(data) { mutableStateOf<ExoPlayer?>(null) }
     // The PlayerView is owned by AndroidView's factory; we keep a reference so
     // we can detach the player from it on dispose before returning the player
@@ -182,6 +186,7 @@ actual fun VideoPlayerSurface(
             tempDir?.let { dir ->
                 dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
             }
+            tempFile?.delete()
         }
     }
 
@@ -258,7 +263,7 @@ actual fun VideoPlayerSurface(
 
         withContext(Dispatchers.IO) {
             try {
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
                         // preload, so StateFlow's initial value and every subsequent emit lands.
@@ -330,23 +335,13 @@ actual fun VideoPlayerSurface(
                             state = VpsState.Active
                         }
                     }
-                    is VideoContent.Mp4 -> {
+                    is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
+                    is VideoContent.Mp4File -> {
                         onProgress(0.5f)
-                        val file = run {
-                            val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
-                            if (preloadedPath != null) {
-                                Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
-                                File(preloadedPath)
-                            } else {
-                                val dir = File(context.cacheDir, "hbvid_${UUID.randomUUID()}").also { it.mkdirs() }
-                                tempDir = dir
-                                val (f, writeElapsed) = measureTimedValue {
-                                    File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
-                                }
-                                Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
-                                f
-                            }
-                        }
+                        // Already streamed to a disposable hbvid_res_* temp by the
+                        // resolver (#845) — no whole-payload RAM buffer, no second
+                        // temp-file write. Deleted on dispose (see tempFile).
+                        val file = File(content.filePath).also { tempFile = it }
                         withContext(Dispatchers.Main) {
                             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
                             onProgress(0.8f)

@@ -84,11 +84,13 @@ fun ChatMediaFullScreenHost(
                     scope.launch {
                         try {
                             val iv = item.payload.iv?.let { Base64.decode(it) } ?: return@launch
-                            val bytes = actionService.getPayloadBytes(
-                                item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey)
+                            // Stream-decrypt straight into share_outbound (#845) —
+                            // bounded RAM for any payload size; the old byte path
+                            // buffered the whole payload (~2×) in memory.
+                            val path = actionService.streamPayloadToShareOutbound(
+                                item.fileId, item.payload.key, KeyHeader(iv, item.keyHeader.aesKey), ".$ext"
                             )
-                            if (bytes != null) {
-                                val path = fileOps.writeBytesToShareOutboundFile(bytes, ".$ext")
+                            if (path != null) {
                                 fileSystemHandler.shareFile(
                                     file = Path(path),
                                     onError = { e ->

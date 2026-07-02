@@ -16,7 +16,11 @@ import io.ktor.client.request.patch
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.readRawBytes
+import io.ktor.http.contentLength
+import io.ktor.utils.io.cancel
+import io.ktor.utils.io.readAvailable
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -154,13 +158,35 @@ abstract class OdinApiProviderBase(
         }
     }
 
+    /**
+     * Fetch a binary body fully into RAM. When [maxBytes] is set (#845), the read
+     * is size-guarded: an over-limit `Content-Length` is refused BEFORE the body
+     * is read, and a length-less (chunked) response is aborted the moment the
+     * running count passes the limit — worst-case RAM is limit + one chunk, never
+     * unbounded. The throw is [PayloadTooLargeException] (not an IOException), so
+     * [networkCall] passes it through untyped-wrapped and the outbox classifier /
+     * callers can treat it as non-retryable.
+     */
     protected suspend fun requestBytes(
+        maxBytes: Long? = null,
         block: suspend () -> HttpResponse
     ): ByteApiResponse {
 
         val (response, bytes) = networkCall {
             val r = block()
-            r to r.readRawBytes()
+            if (maxBytes != null) {
+                val contentLength = r.contentLength()
+                if (contentLength != null && contentLength > maxBytes) {
+                    // Best-effort body discard — some engines throw their own
+                    // length-mismatch error from cancel; never let that mask the
+                    // typed refusal.
+                    runCatching { r.bodyAsChannel().cancel(null) }
+                    throw PayloadTooLargeException(sizeBytes = contentLength, limitBytes = maxBytes)
+                }
+                r to readBodyCapped(r, maxBytes)
+            } else {
+                r to r.readRawBytes()
+            }
         }
 
         val contentType =
@@ -174,6 +200,35 @@ abstract class OdinApiProviderBase(
             bytes = bytes,
             contentType = contentType
         )
+    }
+
+    /**
+     * Read the response body while counting — the chunked-transfer fallback for
+     * the [requestBytes] size guard, for responses without a Content-Length.
+     */
+    private suspend fun readBodyCapped(response: HttpResponse, maxBytes: Long): ByteArray {
+        val channel = response.bodyAsChannel()
+        val chunks = ArrayList<ByteArray>()
+        var total = 0L
+        val buf = ByteArray(64 * 1024)
+        while (true) {
+            val read = channel.readAvailable(buf, 0, buf.size)
+            if (read == -1) break
+            if (read == 0) continue
+            total += read
+            if (total > maxBytes) {
+                channel.cancel(null)
+                throw PayloadTooLargeException(sizeBytes = -1, limitBytes = maxBytes)
+            }
+            chunks.add(buf.copyOf(read))
+        }
+        val out = ByteArray(total.toInt())
+        var off = 0
+        for (c in chunks) {
+            c.copyInto(out, off)
+            off += c.size
+        }
+        return out
     }
 
     // ------------------------------------------------------------

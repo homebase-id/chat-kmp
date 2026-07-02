@@ -17,8 +17,15 @@ import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import id.homebase.api.client.PayloadSizePolicy
+import id.homebase.api.client.PayloadTooLargeException
+import id.homebase.api.client.drives.files.PayloadOperationOptions
 import io.ktor.client.request.forms.InputProvider
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -48,11 +55,19 @@ class DriveFileProviderCachedTest {
     private var requestCount = 0
     private var nextException: Exception? = null
     private var nextStatus = HttpStatusCode.OK
+    private var nextBody: ByteArray = ByteArray(0)
+    private var nextHeaders: Headers = headersOf()
+    // When set, the body is served as a raw channel (NO Content-Length header) —
+    // exercises the chunked-transfer fallback of the requestBytes size guard.
+    private var nextChannelBody: ByteArray? = null
 
     private val mockEngine = MockEngine { _ ->
         requestCount++
         nextException?.let { e -> throw e }
-        respond("", nextStatus)
+        nextChannelBody?.let { body ->
+            return@MockEngine respond(ByteReadChannel(body), nextStatus, nextHeaders)
+        }
+        respond(nextBody, nextStatus, nextHeaders)
     }
 
     private val httpClient = HttpClient(mockEngine)
@@ -96,6 +111,9 @@ class DriveFileProviderCachedTest {
         requestCount = 0
         nextException = null
         nextStatus = HttpStatusCode.OK
+        nextBody = ByteArray(0)
+        nextHeaders = headersOf()
+        nextChannelBody = null
 
         logCollector.entries.clear()
         Logger.setLogWriters(listOf(logCollector))
@@ -339,6 +357,73 @@ class DriveFileProviderCachedTest {
      * never-sent (failed) message's media retrievable for retry. The mock
      * engine throws on any request to prove the network is never touched.
      */
+    // ==================== #845: render/export size guard ====================
+
+    @Test
+    fun `full read over the render limit is refused via Content-Length before the body is read`() = runTest {
+        // MockEngine validates the header against the body, so the oversized body is
+        // real — the assertion that matters is the guard tripping on the HEADER
+        // (sizeBytes == the advertised length, not -1 from the counting fallback).
+        nextBody = ByteArray((PayloadSizePolicy.RENDER_LIMIT_BYTES + 1).toInt())
+        nextHeaders = headersOf(HttpHeaders.ContentLength, (PayloadSizePolicy.RENDER_LIMIT_BYTES + 1).toString())
+
+        val e = assertFailsWith<PayloadTooLargeException> {
+            provider.getPayloadBytesRaw(driveId, fileId, key)
+        }
+        assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES + 1, e.sizeBytes)
+        assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES, e.limitBytes)
+        assertEquals(1, requestCount)
+
+        // Not cached, not 404-poisoned: a fixed server (normal size) is fetched again.
+        nextHeaders = headersOf()
+        nextBody = ByteArray(8) { 1 }
+        val second = provider.getPayloadBytesRaw(driveId, fileId, key)
+        assertEquals(2, requestCount, "a refused read must not poison the notFound cache")
+        assertContentEquals(nextBody, second.bytes)
+    }
+
+    @Test
+    fun `chunked response without Content-Length is aborted once the running count passes the limit`() = runTest {
+        // Channel body → MockEngine sends no Content-Length → the guard's counting
+        // fallback must catch it mid-read.
+        nextChannelBody = ByteArray((PayloadSizePolicy.RENDER_LIMIT_BYTES + 1024).toInt())
+
+        val e = assertFailsWith<PayloadTooLargeException> {
+            provider.getPayloadBytesRaw(driveId, fileId, key)
+        }
+        assertEquals(-1, e.sizeBytes, "no Content-Length → size unknown at refusal time")
+    }
+
+    @Test
+    fun `range reads are exempt from the size guard even when the payload total is huge`() = runTest {
+        // A range response legitimately advertises a large total via headers on some
+        // servers; the guard must not applied to chunk-shaped requests at all.
+        nextHeaders = headersOf(HttpHeaders.ContentLength, "4096")
+        nextBody = ByteArray(4096) { 7 }
+
+        val result = provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 4096L),
+        )
+        assertEquals(200, result.status)
+        assertEquals(4096, result.bytes.size)
+    }
+
+    @Test
+    fun `oversized seed is refused by the cache-admission fence and nothing is written`() = runTest {
+        nextException = IOException("network must not be reached")
+        val oversized = ByteArray((PayloadSizePolicy.RENDER_LIMIT_BYTES + 1).toInt())
+
+        provider.cachePayloadBytesEncrypted(driveId, fileId, key, oversized, "application/zip")
+
+        assertTrue(
+            logCollector.entries.any { it.message.contains("cache-admit REFUSED") },
+            "the refusal must be observable in the log",
+        )
+        // The entry must not be served from cache — the read goes to the (throwing) network.
+        assertFailsWith<Exception> { provider.getPayloadBytesRaw(driveId, fileId, key) }
+    }
+
     @Test
     fun `seeded payload bytes are served from cache without touching the network`() = runTest {
         nextException = IOException("network must not be reached for a seeded payload")
