@@ -549,9 +549,10 @@ val appModule = module {
                     emergencyContactReceive.onRevoked(sender, file)
                 }
                 // Background backstop: the live status-message handlers above only fire on the
-                // WS-push path, so a designation/revocation that arrived during cold sync (or a
-                // dropped event) is never applied. Reconcile both directions against the
-                // authoritative temporal-access grant in the background — no screen required.
+                // WS-push path, so a designation that arrived during cold sync (or a dropped
+                // event) is never applied. Recover missed SETs against the temporal-access
+                // preflight in the background — no screen required. Set-only: the reconciler
+                // never clears; revocation is applied solely by onRevoked above (issue #961).
                 get<EmergencyContactReconciler>().start()
                 // endregion
 
@@ -849,7 +850,6 @@ val appModule = module {
             contactRepository = get(),
             connectionService = get(),
             contactService = get(),
-            emergencyContactReconciler = get(),
             temporalDriveReadProvider = get(),
             credentialsManager = get(),
             tracker = get(),

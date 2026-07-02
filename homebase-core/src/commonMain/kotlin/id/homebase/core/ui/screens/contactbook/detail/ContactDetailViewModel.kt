@@ -30,7 +30,8 @@ import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.contactbook.ContactOverrideStore
-import id.homebase.core.contactbook.clearICanLocate
+import id.homebase.core.contactbook.ReconcileAction
+import id.homebase.core.contactbook.reconcileAction
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.RequestDirection
@@ -337,18 +338,17 @@ class ContactDetailViewModel(
             // drive has no files yet — render "no data", not the epoch.
             val newest = status.newestFileModified.takeIf { it.milliseconds > 0 }
             _uiState.update { it.copy(locateNewestDataAt = newest) }
-            if (entry != null && versionTag != null && !entry.iCanLocate) {
+            if (entry != null && versionTag != null &&
+                reconcileAction(status.hasAccess, entry.iCanLocate) == ReconcileAction.Set
+            ) {
                 runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
                     .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
             }
         } else {
+            // Never clear the flag here (issue #961): hasAccess=false is not a trustworthy
+            // revocation — only the peer's explicit revocation message clears iCanLocate
+            // (EmergencyContactReceiveService.onRevoked). See reconcileAction.
             _uiState.update { it.copy(locateNewestDataAt = null) }
-            // A successful verify without a temporal grant is authoritative: clear a stale flag,
-            // mirroring EmergencyContactReconciler. Skip the write when the flag isn't set.
-            if (entry != null && versionTag != null && entry.iCanLocate) {
-                runCatching { contactRepository.clearICanLocate(entry.uniqueId, versionTag) }
-                    .onFailure { Logger.w(it, TAG) { "clearICanLocate failed for ${peer.domainName}" } }
-            }
         }
     }
 
