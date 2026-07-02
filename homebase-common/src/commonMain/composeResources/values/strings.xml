@@ -1318,6 +1318,9 @@
     <string name="location_devices_section">Find my device</string>
     <string name="location_locatable_section">Who you can locate</string>
     <string name="location_locatable_none">You can't locate anyone yet. People appear here when they add you to their emergency circle.</string>
+    <string name="location_locate_age_hours">%1$dh</string>
+    <string name="location_locate_age_days">%1$dd</string>
+    <string name="location_locatable_broken_cd">No longer connected</string>
     <string name="location_emergency_access_section">Who can locate you</string>
     <string name="location_emergency_access_manage">Add emergency contacts</string>
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>

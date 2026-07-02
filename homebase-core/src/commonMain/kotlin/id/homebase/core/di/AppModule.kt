@@ -9,6 +9,7 @@ import id.homebase.api.file.CacheAudit
 import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.file.wipeOutboxStaging
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.core.config.dataUpgradeReturnUrl
 
@@ -432,6 +433,17 @@ val appModule = module {
                         "logout cache sweep failed"
                     }
                 }
+                // The durable outbox staging dir (#842) sits OUTSIDE cacheDir, so the
+                // sweep above can't reach it — wipe it explicitly. Pairs with the
+                // outbox-table wipe (driveSyncManager.clearStorage()): rows and staged
+                // payloads leave together.
+                runCatching {
+                    wipeOutboxStaging(fileOps.getOutboxStagingDirectory())
+                }.onFailure {
+                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                        "logout outbox-staging wipe failed"
+                    }
+                }
                 runCatching { imageLoader.memoryCache?.clear() }
                     .onFailure {
                         Logger.w(tag = "YouAuthFlowManager", throwable = it) {
@@ -476,9 +488,15 @@ val appModule = module {
                 // never cancelled here; logout clears it in-stream via SessionEnded.
                 get<LiveLocationReceiveStore>().reset()
 
-                // Self-heal crash-orphaned encrypted payload temps in outbox-temp/ (#844). The
-                // dir is KEEP-protected from the CacheSweeper (a pending send's payload must
-                // survive), so this idle+age-gated reap is its safety net. Fire-and-forget.
+                // Self-heal crash-orphaned encrypted payload temps. Two dirs (#842):
+                // the durable staging dir (outside cacheDir, invisible to the
+                // CacheSweeper — this reap is its only safety net) and the legacy
+                // <cacheDir>/outbox-temp (KEEP-protected; still referenced by outbox
+                // rows enqueued before the app update — drains itself, then only this
+                // reap empties leftovers). Fire-and-forget.
+                get<OutboxSync>().scheduleIdleOutboxTempReap(
+                    get<FileOperationsProvider>().getOutboxStagingDirectory()
+                )
                 get<OutboxSync>().scheduleIdleOutboxTempReap(
                     get<FileOperationsProvider>().getCacheDirectory().trimEnd('/') +
                         "/" + CacheAudit.OUTBOX_TEMP_DIR_NAME
@@ -833,6 +851,7 @@ val appModule = module {
             connectionService = get(),
             contactService = get(),
             emergencyContactReconciler = get(),
+            temporalDriveReadProvider = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),

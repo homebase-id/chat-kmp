@@ -46,6 +46,9 @@ data class LocationUiState(
     val whoICanLocate: List<ContactUiModel> = emptyList(),
     /** False until the locatable-contacts list has loaded at least once (drives the spinner). */
     val whoICanLocateLoaded: Boolean = false,
+    /** Per-entry temporal-verify status for the "who I can locate" list, keyed by odinId.domainName.
+     *  Absent key = not yet requested (renders nothing until the section is expanded). */
+    val whoICanLocateStatus: Map<String, LocateVerifyStatus> = emptyMap(),
     /** Owner-console deep link to manage the Emergency Location Access circle (the actual location
      *  drive grant); null until the identity is known. */
     val emergencyManageUrl: String? = null,
@@ -59,6 +62,21 @@ data class LocationUiState(
 ) {
     /** Only OSM tiles are implemented today; the canvas takes a boolean. */
     val showMapTiles: Boolean get() = mapProvider == LocationMapProvider.OpenStreetMap
+}
+
+/**
+ * Result of the per-entry temporal-access preflight for a "who I can locate" row. The row shows a
+ * spinner until this resolves, then either a broken-link icon or the age of the peer's newest data.
+ */
+sealed interface LocateVerifyStatus {
+    /** Preflight in flight → spinner. */
+    data object Loading : LocateVerifyStatus
+
+    /** Verify succeeded but the peer no longer grants us access → broken-link icon. */
+    data object Broken : LocateVerifyStatus
+
+    /** We hold access; [newestModifiedMs] is the peer's newest-file time, or null when no data yet. */
+    data class Active(val newestModifiedMs: Long?) : LocateVerifyStatus
 }
 
 /** One row in the "Sharing with" list: a person and the latest time my share to them lasts. */
@@ -116,6 +134,8 @@ sealed interface LocationUiAction {
     data class StopSharingWith(val odinId: String) : LocationUiAction
     /** Stop every outgoing live share (Dashboard "stop sharing with everyone"). */
     data object StopSharingWithEveryone : LocationUiAction
+    /** Preflight each "who I can locate" entry's link freshness (fired when the section expands). */
+    data object VerifyLocatable : LocationUiAction
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction

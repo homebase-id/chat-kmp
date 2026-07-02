@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxReque
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.cleanupHlsScratch
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
 import okio.FileSystem
 import okio.Path.Companion.toPath
@@ -904,10 +905,22 @@ class OutboxSync(
         val files = runCatching { fileSystem.list(dir) }.getOrNull() ?: return
         var reaped = 0
         for (f in files) {
-            val mtime = fileSystem.metadataOrNull(f)?.lastModifiedAtMillis ?: continue
-            if (mtime < cutoff) runCatching { fileSystem.delete(f) }.onSuccess { reaped++ }
+            val meta = fileSystem.metadataOrNull(f) ?: continue
+            val mtime = meta.lastModifiedAtMillis ?: continue
+            if (mtime >= cutoff) continue
+            if (meta.isDirectory) {
+                // Staged HLS payloads are whole hls_<uuid>/ directories (#842) — a flat
+                // delete() fails on a non-empty dir, so they'd leak forever. Recursive-
+                // delete them (age-gated on the dir's own mtime, same idle precondition).
+                // Any OTHER directory shape is unexpected here: skip it, never guess.
+                if (f.name.startsWith("hls_") &&
+                    safeDeleteRecursively(outboxTempDir, f.name, fileSystem)
+                ) reaped++
+            } else {
+                runCatching { fileSystem.delete(f) }.onSuccess { reaped++ }
+            }
         }
-        if (reaped > 0) Logger.i("OutboxSync: reaped $reaped orphaned outbox-temp file(s) (outbox idle, >${maxAgeMs}ms old)")
+        if (reaped > 0) Logger.i("OutboxSync: reaped $reaped orphaned outbox-temp entrie(s) (outbox idle, >${maxAgeMs}ms old)")
     }
 
     suspend fun clearCheckout(timeoutMs: Long = 10_000) {

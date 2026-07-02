@@ -6,9 +6,13 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.Buffer
+import kotlinx.io.RawSource
+import kotlinx.io.buffered
+import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSFileHandle
@@ -16,12 +20,15 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.closeFile
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.fileHandleForReadingAtPath
 import platform.Foundation.fileHandleForWritingAtPath
+import platform.Foundation.readDataOfLength
 import platform.Foundation.seekToEndOfFile
 import platform.Foundation.writeData
 import platform.Foundation.writeToFile
@@ -55,13 +62,31 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         }
     }
 
+    /**
+     * Lazy, CHUNKED multipart upload source (#947). The previous implementation
+     * buffered the entire staged encrypted payload (`Buffer().write(readFileData(path))`)
+     * when the outbox drained — with single-file HLS that meant a whole video in RAM
+     * at send time, despite streamed encryption (#842). Now the ktor block opens a
+     * fresh [FileHandleRawSource] per invocation (the block is re-invoked on ktor
+     * retries and outbox re-drives, so it must be re-creatable) and streams 64 KB at
+     * a time. `size` feeds the multipart Content-Length; app-level progress totals
+     * come from `calculateUploadSize`, not from here.
+     *
+     * Photos-library sources (`ph://` / raw PHAsset ids) keep the whole-file path:
+     * PHImageManager has no byte-stream API, these are photo-sized, and videos never
+     * come through here — they're materialized to a real file via [resolveToFilePath].
+     */
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    override fun openFileInput(path: String): InputProvider = InputProvider {
+    override fun openFileInput(path: String): InputProvider {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
-            val bytes = runBlocking { readPhotoLibraryAsset(path) }
-            return@InputProvider Buffer().apply { write(bytes) }
+            return InputProvider {
+                val bytes = runBlocking { readPhotoLibraryAsset(path) }
+                Buffer().apply { write(bytes) }
+            }
         }
-        Buffer().apply { write(readFileData(path)) }
+        return InputProvider(size = getFileSize(path).takeIf { it > 0 }) {
+            FileHandleRawSource(path).buffered()
+        }
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -70,6 +95,44 @@ class IOSFileOperationsProvider : FileOperationsProvider {
             return readPhotoLibraryAsset(path)
         }
         return readFileData(path)
+    }
+
+    /**
+     * Real chunked streaming via [NSFileHandle] (#842) — without this override the
+     * interface default loads the ENTIRE file as one chunk, so "streamed" encryption
+     * of a large payload still spiked memory by the full file size on iOS.
+     *
+     * Photos-library sources (`ph://` / raw PHAsset ids) keep the single-chunk path:
+     * PHImageManager has no byte-stream API for image data, these are photo-sized
+     * (videos never come through here — they're materialized to a real file via
+     * [resolveToFilePath] first), and the bytes must come from the library, not disk.
+     */
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> = flow {
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
+            emit(readPhotoLibraryAsset(path))
+            return@flow
+        }
+        val url = NSURL.fileURLWithPath(path)
+        val accessed = url.startAccessingSecurityScopedResource()
+        try {
+            val handle = NSFileHandle.fileHandleForReadingAtPath(path)
+                ?: error("Unable to read file at $path")
+            try {
+                while (true) {
+                    val data = handle.readDataOfLength(chunkSize.toULong())
+                    val len = data.length.toInt()
+                    if (len == 0) break
+                    val bytes = ByteArray(len)
+                    bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+                    emit(bytes)
+                }
+            } finally {
+                handle.closeFile()
+            }
+        } finally {
+            if (accessed) url.stopAccessingSecurityScopedResource()
+        }
     }
 
     @OptIn(ExperimentalForeignApi::class)
@@ -131,16 +194,37 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         suffix: String
     ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
 
-    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
-    override suspend fun writeBytesToOutboxTempFile(
-        bytes: ByteArray,
-        prefix: String,
-        suffix: String
-    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+    // Encrypted, ready-to-transmit payloads live in the durable staging dir (#842) — under
+    // Application Support, NOT Caches: iOS purges Caches under storage pressure, which deleted
+    // staged payloads out from under long-lived outbox rows (the ENOENT retry loop). The dir is
+    // excluded from iCloud backup on every creation (the attribute doesn't survive recreation):
+    // staged payloads are regeneratable and their outbox DB rows don't ride a restore.
+    // The interface default routes writeBytesToOutboxTempFile through this dir.
+    @OptIn(ExperimentalForeignApi::class)
+    override fun getOutboxStagingDirectory(): String {
+        val fm = NSFileManager.defaultManager
+        val supportUrl = fm.URLForDirectory(
+            directory = NSApplicationSupportDirectory,
+            inDomain = NSUserDomainMask,
+            appropriateForURL = null,
+            create = true,
+            error = null
+        )
+        val base = supportUrl?.path ?: return super.getOutboxStagingDirectory()
+        val dir = "${base.trimEnd('/')}/$OUTBOX_STAGING_DIR_NAME"
+        if (!fm.fileExistsAtPath(dir)) {
+            fm.createDirectoryAtPath(dir, true, null, null)
+        }
+        NSURL.fileURLWithPath(dir, isDirectory = true).setResourceValue(
+            value = NSNumber(bool = true),
+            forKey = NSURLIsExcludedFromBackupKey,
+            error = null
+        )
+        return dir
+    }
 
-    // Both temp dirs live under the Caches dir (not NSTemporaryDirectory()), so the Storage
-    // screen counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
-    // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    // upload-temp lives under the Caches dir (not NSTemporaryDirectory()), so the Storage
+    // screen counts it and the CacheSweeper reaps it on every startup (disposable; #844 PR4).
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
         val cacheDir = getCacheDirectory().trimEnd('/')
@@ -328,4 +412,48 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         }
 
 
+}
+
+/**
+ * A [RawSource] over an [NSFileHandle] read in [chunkSize] steps — the lazy backing
+ * for [IOSFileOperationsProvider.openFileInput] (#947). Holds at most one chunk in
+ * memory at a time. Mirrors the chunk loop of `readFileAsFlow` (incl. the pinned
+ * `memcpy` idiom) and the security-scoped-resource guard of `readFileData`: access
+ * is acquired on construction and released in [close] alongside the file handle.
+ * A missing file throws the same `IllegalStateException("Unable to read file …")`
+ * shape as the other readers.
+ */
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+private class FileHandleRawSource(
+    path: String,
+    private val chunkSize: Int = FileOperationsProvider.DEFAULT_HEADER_BYTES,
+) : RawSource {
+    private val url = NSURL.fileURLWithPath(path)
+    private val accessed = url.startAccessingSecurityScopedResource()
+    private val handle = NSFileHandle.fileHandleForReadingAtPath(path)
+        ?: run {
+            if (accessed) url.stopAccessingSecurityScopedResource()
+            error("Unable to read file at $path")
+        }
+    private var closed = false
+
+    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+        require(byteCount >= 0L) { "byteCount must be non-negative: $byteCount" }
+        if (byteCount == 0L) return 0L
+        check(!closed) { "source is closed" }
+        val data = handle.readDataOfLength(minOf(byteCount, chunkSize.toLong()).toULong())
+        val len = data.length.toInt()
+        if (len == 0) return -1L
+        val bytes = ByteArray(len)
+        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+        sink.write(bytes)
+        return len.toLong()
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        handle.closeFile()
+        if (accessed) url.stopAccessingSecurityScopedResource()
+    }
 }

@@ -132,10 +132,14 @@ class AndroidFileOperationsProvider(
         bytes: ByteArray, prefix: String, suffix: String
     ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
 
-    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
-    override suspend fun writeBytesToOutboxTempFile(
-        bytes: ByteArray, prefix: String, suffix: String
-    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+    // Encrypted, ready-to-transmit payloads live in the durable staging dir (#842) — under
+    // noBackupFilesDir, NOT cacheDir: cacheDir is OS-reclaimable under storage pressure, which
+    // deleted staged payloads out from under long-lived outbox rows (the ENOENT retry loop).
+    // noBackupFilesDir (not filesDir) because the outbox DB is excluded from backup rules — a
+    // future backup enablement must not restore staged files whose rows didn't ride along.
+    // The interface default routes writeBytesToOutboxTempFile through this dir.
+    override fun getOutboxStagingDirectory(): String =
+        File(context.noBackupFilesDir, OUTBOX_STAGING_DIR_NAME).apply { mkdirs() }.absolutePath
 
     private suspend fun writeBytesIn(
         dirName: String, bytes: ByteArray, prefix: String, suffix: String
