@@ -300,14 +300,28 @@ actual fun VideoPlayerSurface(
                             player.setMediaSource(mediaSource)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             val hlsFirstFrameListener = object : Player.Listener {
-                                private var stateReadyLogged = false
+                                private var progressCompleted = false
+                                // Progress completion fires on WHICHEVER of STATE_READY /
+                                // first-frame / player-error arrives first: on some
+                                // device+codec combos the first frame renders BEFORE the
+                                // READY transition, and the old remove-listener-on-first-
+                                // frame left nobody around to hear READY — the spinner
+                                // froze at its last emit (0% on a warm cache) over a
+                                // PLAYING video. An error means READY never comes at all
+                                // (e.g. 10-bit AVC High-10 → NO_EXCEEDS_CAPABILITIES),
+                                // which used to spin forever.
+                                private fun completeProgress(source: String) {
+                                    if (progressCompleted) return
+                                    progressCompleted = true
+                                    Logger.d(tag = "VideoIO") { "HLS progress complete via $source: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
+                                    progressJob.cancel()
+                                    onProgress(1f)
+                                }
                                 override fun onPlaybackStateChanged(playbackState: Int) {
-                                    if (playbackState == Player.STATE_READY && !stateReadyLogged) {
-                                        stateReadyLogged = true
-                                        Logger.d(tag = "VideoIO") { "HLS prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
-                                        progressJob.cancel()
-                                        onProgress(1f)
-                                    }
+                                    if (playbackState == Player.STATE_READY) completeProgress("STATE_READY")
+                                }
+                                override fun onPlayerError(error: PlaybackException) {
+                                    completeProgress("player-error")
                                 }
                                 // Hide the loading spinner the moment a real
                                 // pixel has been pushed to the TextureView —
@@ -318,6 +332,7 @@ actual fun VideoPlayerSurface(
                                 // between "ready to play" and "playing".
                                 override fun onRenderedFirstFrame() {
                                     Logger.d(tag = "VideoIO") { "HLS first-frame: ${clickMark.elapsedNow()}" }
+                                    completeProgress("first-frame")
                                     firstFramePainted = true
                                     onFirstFrame()
                                     player.removeListener(this)
@@ -347,16 +362,26 @@ actual fun VideoPlayerSurface(
                             onProgress(0.8f)
                             val prepareStart = TimeSource.Monotonic.markNow()
                             val mp4FirstFrameListener = object : Player.Listener {
-                                private var stateReadyLogged = false
+                                private var progressCompleted = false
+                                // Same completion race as the HLS listener above: first
+                                // frame can render BEFORE STATE_READY, and the old
+                                // remove-on-first-frame lost the READY→100% emit — the
+                                // bar froze at exactly 80% over a playing video.
+                                private fun completeProgress(source: String) {
+                                    if (progressCompleted) return
+                                    progressCompleted = true
+                                    Logger.d(tag = "VideoIO") { "mp4 progress complete via $source: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
+                                    onProgress(1f)
+                                }
                                 override fun onPlaybackStateChanged(playbackState: Int) {
-                                    if (playbackState == Player.STATE_READY && !stateReadyLogged) {
-                                        stateReadyLogged = true
-                                        Logger.d(tag = "VideoIO") { "mp4 prepare→STATE_READY: ${prepareStart.elapsedNow()}  |  total click→ready: ${clickMark.elapsedNow()}" }
-                                        onProgress(1f)
-                                    }
+                                    if (playbackState == Player.STATE_READY) completeProgress("STATE_READY")
+                                }
+                                override fun onPlayerError(error: PlaybackException) {
+                                    completeProgress("player-error")
                                 }
                                 override fun onRenderedFirstFrame() {
                                     Logger.d(tag = "VideoIO") { "mp4 first-frame: ${clickMark.elapsedNow()}" }
+                                    completeProgress("first-frame")
                                     firstFramePainted = true
                                     onFirstFrame()
                                     player.removeListener(this)
