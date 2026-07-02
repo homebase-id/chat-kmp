@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.profile
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +37,8 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -98,6 +100,7 @@ import id.homebase.resources.profile_edit_title
 import id.homebase.resources.profile_edit_twitter
 import id.homebase.resources.profile_edit_visibility_connected
 import id.homebase.resources.profile_edit_visibility_public
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -199,233 +202,259 @@ private fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
     }
 }
 
+/** Mirrors [id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen]'s Details/About
+ *  tabs, so the owner's own profile reads the same way any other identity's profile does. */
+private enum class ProfileFormTab(val labelRes: StringResource) {
+    DETAILS(MR.string.contactbook_detail_tab_details),
+    ABOUT(MR.string.contactbook_detail_tab_about),
+}
+
 @Composable
 private fun ProfileForm(
     uiState: ProfileEditUiState,
     onAction: (ProfileEditAction) -> Unit,
     modifier: Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .imePadding()
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 24.dp),
-    ) {
-        // Details / About mirror the contact detail screen's tabs, so the owner's own profile
-        // reads the same way any other identity's profile does elsewhere in the app.
-        SectionHeader(stringResource(MR.string.contactbook_detail_tab_details))
-        FieldGroup(ProfileAttributeTypes.NAME, uiState) { tier ->
-            val v: (ProfileField) -> String = { uiState.value(it, tier) }
-            ProfileField(
-                v(ProfileField.GIVEN_NAME),
-                stringResource(MR.string.profile_edit_given_name),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.GIVEN_NAME, tier, it))
-            }
-            ProfileField(
-                v(ProfileField.SURNAME),
-                stringResource(MR.string.profile_edit_surname),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.SURNAME, tier, it))
-            }
-            ProfileField(
-                v(ProfileField.ADDITIONAL_NAME),
-                stringResource(MR.string.profile_edit_additional_name),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.ADDITIONAL_NAME, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.NICKNAME, uiState) { tier ->
-            ProfileField(
-                uiState.value(ProfileField.NICKNAME, tier),
-                stringResource(MR.string.profile_edit_nickname),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.NICKNAME, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.PHONE, uiState) { tier ->
-            val v: (ProfileField) -> String = { uiState.value(it, tier) }
-            val phoneValue = v(ProfileField.PHONE)
-            PhoneNumberField(
-                e164Value = phoneValue,
-                onValueChange = { onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, tier, it)) },
-                label = stringResource(MR.string.profile_edit_phone),
-                isError = phoneValue.isNotBlank() && !uiState.phoneValid,
-                errorText = stringResource(MR.string.contactbook_error_phone),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            ProfileField(
-                value = v(ProfileField.PHONE_LABEL),
-                label = stringResource(MR.string.profile_edit_phone_label),
-                placeholder = stringResource(MR.string.profile_edit_phone_label_hint),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE_LABEL, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.EMAIL, uiState) { tier ->
-            val v: (ProfileField) -> String = { uiState.value(it, tier) }
-            val emailValue = v(ProfileField.EMAIL)
-            ProfileField(
-                value = emailValue,
-                label = stringResource(MR.string.profile_edit_email),
-                keyboardType = KeyboardType.Email,
-                isError = emailValue.isNotBlank() && !uiState.emailValid,
-                errorText = stringResource(MR.string.contactbook_error_email),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.EMAIL, tier, it))
-            }
-            ProfileField(
-                value = v(ProfileField.EMAIL_LABEL),
-                label = stringResource(MR.string.profile_edit_email_label),
-                placeholder = stringResource(MR.string.profile_edit_email_label_hint),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.EMAIL_LABEL, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.ADDRESS, uiState) { tier ->
-            val v: (ProfileField) -> String = { uiState.value(it, tier) }
-            ProfileField(
-                value = v(ProfileField.ADDRESS_LABEL),
-                label = stringResource(MR.string.profile_edit_address_label),
-                placeholder = stringResource(MR.string.profile_edit_address_label_hint),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.ADDRESS_LABEL, tier, it))
-            }
-            ProfileField(
-                value = v(ProfileField.ADDRESS1),
-                label = stringResource(MR.string.profile_edit_address1),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.ADDRESS1, tier, it))
-            }
-            ProfileField(
-                value = v(ProfileField.ADDRESS2),
-                label = stringResource(MR.string.profile_edit_address2),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.ADDRESS2, tier, it))
-            }
-            ProfileField(
-                value = v(ProfileField.POSTCODE),
-                label = stringResource(MR.string.profile_edit_postcode),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.POSTCODE, tier, it))
-            }
-            ProfileField(
-                value = v(ProfileField.CITY),
-                label = stringResource(MR.string.profile_edit_city),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.CITY, tier, it))
-            }
-            ProfileField(
-                value = v(ProfileField.COUNTRY),
-                label = stringResource(MR.string.profile_edit_country),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.COUNTRY, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.BIRTHDAY, uiState) { tier ->
-            ProfileField(
-                value = uiState.value(ProfileField.BIRTHDAY, tier),
-                label = stringResource(MR.string.profile_edit_birthday),
-                placeholder = stringResource(MR.string.profile_edit_birthday_hint),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.BIRTHDAY, tier, it))
+    var selectedTab by remember { mutableStateOf(ProfileFormTab.DETAILS) }
+
+    Column(modifier = modifier) {
+        TabRow(selectedTabIndex = selectedTab.ordinal) {
+            ProfileFormTab.entries.forEach { tab ->
+                Tab(
+                    selected = tab == selectedTab,
+                    onClick = { selectedTab = tab },
+                    text = { Text(stringResource(tab.labelRes)) },
+                )
             }
         }
 
-        SectionHeader(stringResource(MR.string.contactbook_detail_tab_about))
-        FieldGroup(ProfileAttributeTypes.STATUS, uiState) { tier ->
-            ProfileField(
-                uiState.value(ProfileField.STATUS, tier),
-                stringResource(MR.string.profile_edit_status),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.STATUS, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.TWITTER, uiState) { tier ->
-            ProfileField(
-                uiState.value(ProfileField.TWITTER, tier),
-                stringResource(MR.string.profile_edit_twitter),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.TWITTER, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.FACEBOOK, uiState) { tier ->
-            ProfileField(
-                uiState.value(ProfileField.FACEBOOK, tier),
-                stringResource(MR.string.profile_edit_facebook),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.FACEBOOK, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.INSTAGRAM, uiState) { tier ->
-            ProfileField(
-                uiState.value(ProfileField.INSTAGRAM, tier),
-                stringResource(MR.string.profile_edit_instagram),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.INSTAGRAM, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.TIKTOK, uiState) { tier ->
-            ProfileField(
-                uiState.value(ProfileField.TIKTOK, tier),
-                stringResource(MR.string.profile_edit_tiktok),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.TIKTOK, tier, it))
-            }
-        }
-        FieldGroup(ProfileAttributeTypes.LINKEDIN, uiState) { tier ->
-            ProfileField(
-                uiState.value(ProfileField.LINKEDIN, tier),
-                stringResource(MR.string.profile_edit_linkedin),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                onAction(ProfileEditAction.FieldChanged(ProfileField.LINKEDIN, tier, it))
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-        Button(
-            onClick = { onAction(ProfileEditAction.SaveClicked) },
-            enabled = uiState.canSave,
-            modifier = Modifier.fillMaxWidth(),
+        // Fresh scroll position per tab.
+        val scroll = remember(selectedTab) { ScrollState(0) }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .imePadding()
+                .padding(horizontal = 16.dp),
         ) {
-            if (uiState.isSaving) {
-                CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
-            } else {
-                Text(stringResource(MR.string.profile_edit_save))
+            Spacer(Modifier.height(12.dp))
+            when (selectedTab) {
+                ProfileFormTab.DETAILS -> DetailsFields(uiState, onAction)
+                ProfileFormTab.ABOUT -> AboutFields(uiState, onAction)
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // Save applies to edits from both tabs together, so it stays outside the tabbed/scrolling
+        // area rather than being duplicated per tab or scrolling away.
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Button(
+                onClick = { onAction(ProfileEditAction.SaveClicked) },
+                enabled = uiState.canSave,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (uiState.isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(stringResource(MR.string.profile_edit_save))
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 4.dp),
-    )
+private fun DetailsFields(uiState: ProfileEditUiState, onAction: (ProfileEditAction) -> Unit) {
+    FieldGroup(ProfileAttributeTypes.NAME, uiState) { tier ->
+        val v: (ProfileField) -> String = { uiState.value(it, tier) }
+        ProfileField(
+            v(ProfileField.GIVEN_NAME),
+            stringResource(MR.string.profile_edit_given_name),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.GIVEN_NAME, tier, it))
+        }
+        ProfileField(
+            v(ProfileField.SURNAME),
+            stringResource(MR.string.profile_edit_surname),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.SURNAME, tier, it))
+        }
+        ProfileField(
+            v(ProfileField.ADDITIONAL_NAME),
+            stringResource(MR.string.profile_edit_additional_name),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.ADDITIONAL_NAME, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.NICKNAME, uiState) { tier ->
+        ProfileField(
+            uiState.value(ProfileField.NICKNAME, tier),
+            stringResource(MR.string.profile_edit_nickname),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.NICKNAME, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.PHONE, uiState) { tier ->
+        val v: (ProfileField) -> String = { uiState.value(it, tier) }
+        val phoneValue = v(ProfileField.PHONE)
+        PhoneNumberField(
+            e164Value = phoneValue,
+            onValueChange = { onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, tier, it)) },
+            label = stringResource(MR.string.profile_edit_phone),
+            isError = phoneValue.isNotBlank() && !uiState.phoneValid,
+            errorText = stringResource(MR.string.contactbook_error_phone),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        ProfileField(
+            value = v(ProfileField.PHONE_LABEL),
+            label = stringResource(MR.string.profile_edit_phone_label),
+            placeholder = stringResource(MR.string.profile_edit_phone_label_hint),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE_LABEL, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.EMAIL, uiState) { tier ->
+        val v: (ProfileField) -> String = { uiState.value(it, tier) }
+        val emailValue = v(ProfileField.EMAIL)
+        ProfileField(
+            value = emailValue,
+            label = stringResource(MR.string.profile_edit_email),
+            keyboardType = KeyboardType.Email,
+            isError = emailValue.isNotBlank() && !uiState.emailValid,
+            errorText = stringResource(MR.string.contactbook_error_email),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.EMAIL, tier, it))
+        }
+        ProfileField(
+            value = v(ProfileField.EMAIL_LABEL),
+            label = stringResource(MR.string.profile_edit_email_label),
+            placeholder = stringResource(MR.string.profile_edit_email_label_hint),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.EMAIL_LABEL, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.ADDRESS, uiState) { tier ->
+        val v: (ProfileField) -> String = { uiState.value(it, tier) }
+        ProfileField(
+            value = v(ProfileField.ADDRESS_LABEL),
+            label = stringResource(MR.string.profile_edit_address_label),
+            placeholder = stringResource(MR.string.profile_edit_address_label_hint),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.ADDRESS_LABEL, tier, it))
+        }
+        ProfileField(
+            value = v(ProfileField.ADDRESS1),
+            label = stringResource(MR.string.profile_edit_address1),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.ADDRESS1, tier, it))
+        }
+        ProfileField(
+            value = v(ProfileField.ADDRESS2),
+            label = stringResource(MR.string.profile_edit_address2),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.ADDRESS2, tier, it))
+        }
+        ProfileField(
+            value = v(ProfileField.POSTCODE),
+            label = stringResource(MR.string.profile_edit_postcode),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.POSTCODE, tier, it))
+        }
+        ProfileField(
+            value = v(ProfileField.CITY),
+            label = stringResource(MR.string.profile_edit_city),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.CITY, tier, it))
+        }
+        ProfileField(
+            value = v(ProfileField.COUNTRY),
+            label = stringResource(MR.string.profile_edit_country),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.COUNTRY, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.BIRTHDAY, uiState) { tier ->
+        ProfileField(
+            value = uiState.value(ProfileField.BIRTHDAY, tier),
+            label = stringResource(MR.string.profile_edit_birthday),
+            placeholder = stringResource(MR.string.profile_edit_birthday_hint),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.BIRTHDAY, tier, it))
+        }
+    }
+}
+
+@Composable
+private fun AboutFields(uiState: ProfileEditUiState, onAction: (ProfileEditAction) -> Unit) {
+    FieldGroup(ProfileAttributeTypes.STATUS, uiState) { tier ->
+        ProfileField(
+            uiState.value(ProfileField.STATUS, tier),
+            stringResource(MR.string.profile_edit_status),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.STATUS, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.TWITTER, uiState) { tier ->
+        ProfileField(
+            uiState.value(ProfileField.TWITTER, tier),
+            stringResource(MR.string.profile_edit_twitter),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.TWITTER, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.FACEBOOK, uiState) { tier ->
+        ProfileField(
+            uiState.value(ProfileField.FACEBOOK, tier),
+            stringResource(MR.string.profile_edit_facebook),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.FACEBOOK, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.INSTAGRAM, uiState) { tier ->
+        ProfileField(
+            uiState.value(ProfileField.INSTAGRAM, tier),
+            stringResource(MR.string.profile_edit_instagram),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.INSTAGRAM, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.TIKTOK, uiState) { tier ->
+        ProfileField(
+            uiState.value(ProfileField.TIKTOK, tier),
+            stringResource(MR.string.profile_edit_tiktok),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.TIKTOK, tier, it))
+        }
+    }
+    FieldGroup(ProfileAttributeTypes.LINKEDIN, uiState) { tier ->
+        ProfileField(
+            uiState.value(ProfileField.LINKEDIN, tier),
+            stringResource(MR.string.profile_edit_linkedin),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            onAction(ProfileEditAction.FieldChanged(ProfileField.LINKEDIN, tier, it))
+        }
+    }
 }
 
 @Composable
