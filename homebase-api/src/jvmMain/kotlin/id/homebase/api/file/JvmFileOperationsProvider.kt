@@ -77,16 +77,16 @@ class JvmFileOperationsProvider : FileOperationsProvider {
     ): String =
         writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
 
-    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
-    override suspend fun writeBytesToOutboxTempFile(
-        bytes: ByteArray,
-        prefix: String,
-        suffix: String
-    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+    // Encrypted, ready-to-transmit payloads live in the durable app-data staging dir (#842),
+    // NOT the OS-reclaimable cache dir — see getOutboxStagingDirectory(). The interface
+    // default routes writeBytesToOutboxTempFile through it.
+    override fun getOutboxStagingDirectory(): String =
+        File(JvmFileSystemUtil.getAppDataDirectory(), OUTBOX_STAGING_DIR_NAME)
+            .apply { mkdirs() }
+            .absolutePath
 
-    // Both temp dirs live under the app cache dir (not java.io.tmpdir), so the Storage screen
-    // counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
-    // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    // upload-temp lives under the app cache dir (not java.io.tmpdir), so the Storage screen
+    // counts it and the CacheSweeper reaps it on every startup (disposable; #844 PR4).
     private suspend fun writeBytesIn(
         dirName: String,
         bytes: ByteArray,

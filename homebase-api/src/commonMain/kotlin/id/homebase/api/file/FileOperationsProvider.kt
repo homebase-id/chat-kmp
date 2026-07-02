@@ -3,6 +3,7 @@ package id.homebase.api.file
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 
 interface FileOperationsProvider {
     fun openFileInput(path: String): InputProvider
@@ -63,19 +64,55 @@ interface FileOperationsProvider {
     ): String
 
     /**
-     * Write an ENCRYPTED, ready-to-transmit payload temp into `<cacheDir>/outbox-temp/` (see
-     * [CacheAudit.OUTBOX_TEMP_DIR_NAME]). Durable: each file is referenced by an outbox row until
-     * the send completes (long-lived when offline), so the CacheSweeper KEEPs this dir on the
-     * startup / "Clear caches" sweep and only wipes it on logout; the outbox reaps individual
-     * files along its own lifecycle. Used ONLY by the encryption step (PayloadBundleEncryption
-     * Service.encryptFile). Default delegates to [writeBytesToTempFile] for any provider that
-     * hasn't overridden it (behaviour-preserving).
+     * Absolute path of the DURABLE outbox staging directory (#842). Unlike
+     * [getCacheDirectory] this location is never reclaimed by the OS under storage
+     * pressure and sits outside the CacheSweeper's reach — every file here is
+     * referenced by an outbox row until the send completes (long-lived when
+     * offline) and is reaped ONLY along the outbox lifecycle (send success /
+     * permanent drop / logout / idle orphan reap). See [OUTBOX_STAGING_DIR_NAME].
+     *
+     * Platform actuals: JVM app-data dir, Android `noBackupFilesDir`, iOS
+     * Application Support (backup-excluded). The default — used by web — stays at
+     * `<cacheDir>/outbox-temp`: the wasm FS is a RAM-only FakeFileSystem and the
+     * sql.js DB is in-memory, so outbox rows don't survive a refresh either; true
+     * web durability is deferred until web gets persistent storage.
+     */
+    fun getOutboxStagingDirectory(): String =
+        getCacheDirectory().trimEnd('/') + "/" + CacheAudit.OUTBOX_TEMP_DIR_NAME
+
+    /**
+     * Reserve a unique writable path inside [getOutboxStagingDirectory] (creating
+     * the dir) WITHOUT writing bytes — the seam for stream writers
+     * ([writeStream] of an encrypting Flow), which must produce their output
+     * directly in staging instead of writing cache scratch and copying.
+     */
+    suspend fun createOutboxStagingPath(prefix: String, suffix: String): String =
+        createStagingPathIn(getOutboxStagingDirectory(), prefix, suffix)
+
+    /**
+     * Move an encrypted, ready-to-transmit file OR directory (e.g. an
+     * `hls_<uuid>/` tree) into [getOutboxStagingDirectory] and return its new
+     * absolute path. Rename-first with a recursive copy+delete fallback for
+     * cross-filesystem moves — see [promoteIntoStaging].
+     */
+    suspend fun promoteToOutboxStaging(path: String): String =
+        promoteIntoStaging(path, getOutboxStagingDirectory())
+
+    /**
+     * Write an ENCRYPTED, ready-to-transmit payload into the durable outbox
+     * staging dir ([getOutboxStagingDirectory]) and return its absolute path.
+     * Each staged file is referenced by an outbox row and reaped only along the
+     * outbox lifecycle — never by the CacheSweeper or OS cache reclaim.
      */
     suspend fun writeBytesToOutboxTempFile(
         bytes: ByteArray,
         prefix: String,
         suffix: String
-    ): String = writeBytesToTempFile(bytes, prefix, suffix)
+    ): String {
+        val path = createOutboxStagingPath(prefix, suffix)
+        writeStream(path, flowOf(bytes))
+        return path
+    }
 
     /**
      * Write [bytes] to a sequestered subdirectory `<cacheDir>/share_outbound/`
