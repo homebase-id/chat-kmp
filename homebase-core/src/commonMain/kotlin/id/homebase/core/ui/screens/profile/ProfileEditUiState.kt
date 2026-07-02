@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.runtime.Immutable
+import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 
 /**
  * Flat form state for the owner's standard-profile editor. Every field is a plain string the user
@@ -48,7 +49,11 @@ data class ProfileEditUiState(
     val tiktok: String = "",
     val linkedin: String = "",
 ) {
-    val canSave: Boolean get() = !isLoading && !isSaving && !loadFailed
+    val emailValid: Boolean get() = ContactFieldValidation.isValidEmail(email)
+    val phoneValid: Boolean get() = ContactFieldValidation.isValidPhone(phone)
+
+    // Legacy data may not be E.164/well-formed; show it but block Save until corrected.
+    val canSave: Boolean get() = !isLoading && !isSaving && !loadFailed && emailValid && phoneValid
 }
 
 sealed interface ProfileEditAction {

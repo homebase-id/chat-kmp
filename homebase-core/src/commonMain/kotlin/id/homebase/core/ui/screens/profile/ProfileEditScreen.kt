@@ -38,7 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.resources.MR
+import id.homebase.resources.contactbook_error_email
+import id.homebase.resources.contactbook_error_phone
 import id.homebase.resources.menu_back
 import id.homebase.resources.profile_edit_additional_name
 import id.homebase.resources.profile_edit_address1
@@ -194,19 +197,22 @@ private fun ProfileForm(
             value = uiState.email,
             label = stringResource(MR.string.profile_edit_email),
             keyboardType = KeyboardType.Email,
+            isError = uiState.email.isNotBlank() && !uiState.emailValid,
+            errorText = stringResource(MR.string.contactbook_error_email),
         ) {
             onAction(ProfileEditAction.FieldChanged(ProfileField.EMAIL, it))
         }
         ProfileField(uiState.emailLabel, stringResource(MR.string.profile_edit_email_label)) {
             onAction(ProfileEditAction.FieldChanged(ProfileField.EMAIL_LABEL, it))
         }
-        ProfileField(
-            value = uiState.phone,
+        PhoneNumberField(
+            e164Value = uiState.phone,
+            onValueChange = { onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, it)) },
             label = stringResource(MR.string.profile_edit_phone),
-            keyboardType = KeyboardType.Phone,
-        ) {
-            onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE, it))
-        }
+            isError = uiState.phone.isNotBlank() && !uiState.phoneValid,
+            errorText = stringResource(MR.string.contactbook_error_phone),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        )
         ProfileField(uiState.phoneLabel, stringResource(MR.string.profile_edit_phone_label)) {
             onAction(ProfileEditAction.FieldChanged(ProfileField.PHONE_LABEL, it))
         }
@@ -279,6 +285,8 @@ private fun ProfileField(
     label: String,
     placeholder: String? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
+    isError: Boolean = false,
+    errorText: String? = null,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -287,6 +295,8 @@ private fun ProfileField(
         label = { Text(label) },
         placeholder = placeholder?.let { { Text(it) } },
         singleLine = true,
+        isError = isError,
+        supportingText = if (isError && errorText != null) { { Text(errorText) } } else null,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
     )
