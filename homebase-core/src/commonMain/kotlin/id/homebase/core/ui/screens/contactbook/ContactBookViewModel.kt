@@ -17,7 +17,6 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.convo.ConversationService
-import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
@@ -145,7 +144,6 @@ class ContactBookViewModel(
         val contacts: List<ContactBookEntry>,
         val loaded: Boolean,
         val connections: ConnectionState,
-        val circles: CircleMembershipState,
         val overrides: Map<Uuid, ContactFieldOverlay>,
     )
 
@@ -177,10 +175,9 @@ class ContactBookViewModel(
             entries,
             repo.isLoaded,
             connectionService.connections,
-            connectionService.circles,
             overrideStore.overrides,
-        ) { c, l, conn, circ, overrides ->
-            ContactsBundle(c, l, conn, circ, overrides)
+        ) { c, l, conn, overrides ->
+            ContactsBundle(c, l, conn, overrides)
         },
         combine(_searchQuery, _filter, _selectedTab, _overlay) { q, f, tab, o ->
             UiBits(q, f, tab, o)
@@ -205,18 +202,17 @@ class ContactBookViewModel(
         //  - Introduced = provenance: the connection originated from an introduction. This is
         //    permanent (it stays true after confirmation), which is what "we connected via an
         //    intro" means, and it rides in the connection data so it needs no circle load.
-        //  - Confirmed = membership in the Confirmed Connections system circle (the explicit
-        //    confirm action). Until the circle list loads we fall back to "connected and not
-        //    introduced" so the pill isn't empty on a cold start.
+        //  - Confirmed = the server-computed `vetted` flag (connected AND a member of the
+        //    Confirmed Connections system circle — see issue #919). Rides with the connection
+        //    data itself, so unlike the old circle-membership derivation it needs no separate
+        //    circle-load fallback.
         val introducedDomains = connectedRegs
             .filterValues { it.connectionRequestOrigin == ConnectionRequestOrigin.Introduction }
             .keys.map { it.domainName.lowercase() }
             .toSet()
-        val confirmedDomains = if (contactsData.circles.isLoaded) {
-            connectedDomains intersect contactsData.circles.membersOf(CONFIRMED_CONNECTIONS_CIRCLE_ID)
-        } else {
-            connectedDomains - introducedDomains
-        }
+        val confirmedDomains = connectedRegs.filterValues { it.vetted }
+            .keys.map { it.domainName.lowercase() }
+            .toSet()
 
         // contact-domain (lowercase) → introducer display name, resolved to a saved
         // contact's name when we have one, else the raw introducer domain.
