@@ -97,11 +97,53 @@ class DriveUploadProvider(
 
     // ==================== HIGH-LEVEL UPLOAD METHODS ====================
 
+    /**
+     * DRAIN-TIME payload integrity pre-flight (HealAudit + #842). Payload bytes are
+     * staged to a file at ENQUEUE time but read lazily at outbox-drain time, which
+     * can be days later — if the staged file is gone by then, openFileInput() would
+     * either stream 0 bytes (silently shipping an EMPTY payload that clobbers a good
+     * one on AppendOrOverwrite) or throw mid-request as a platform-specific IO error
+     * that gets misclassified as a transient "Network failure" and retried 20×.
+     *
+     * So: probe every payload path BEFORE any network call. A plain filesystem path
+     * that is missing/empty throws [StagedPayloadMissingException] — deterministic,
+     * classified PERMANENT, row drops on attempt 1 with an honest OutboxItemDropped.
+     *
+     * URI-shaped sources (Android `content://`, iOS `ph://` / raw PHAsset ids) are
+     * NOT escalated: they aren't staged artifacts we own, and getFileSize can't
+     * reliably size them (the SAF SIZE column is optional; Photos assets report 0) —
+     * a false PERMANENT drop is worse than a retry tail. They keep the WARN-only
+     * audit log.
+     */
+    private fun preflightStagedPayloads(payloads: List<PayloadFile>?, context: String) {
+        payloads?.forEach { p ->
+            val path = p.filePath
+            val size = runCatching { fileOperationsProvider.getFileSize(path) }.getOrDefault(-1L)
+            if (size > 0L) {
+                Logger.d(tag = "HealAudit") {
+                    "$TAG.$context: payload key=${p.key} size=$size at drain (preEncrypted=${p.isPreEncrypted})"
+                }
+                return@forEach
+            }
+            val isUriSource =
+                path.startsWith("content:") || path.startsWith("ph://") || path.contains("/L0/")
+            Logger.w(tag = "HealAudit") {
+                "$TAG.$context: payload key=${p.key} size=$size at drain " +
+                    "(path=$path preEncrypted=${p.isPreEncrypted}) — " +
+                    if (isUriSource) "URI source, keeping WARN-only (not escalating)"
+                    else "staged file missing, failing PERMANENT"
+            }
+            if (!isUriSource) throw StagedPayloadMissingException(path, p.key)
+        }
+    }
+
     suspend fun uploadFile(
         request: UploadFileRequest,
         onProgress: UploadProgress? = null,
         onVersionConflict: (suspend () -> CreateFileResult?)? = null
     ): CreateFileResult? {
+
+        preflightStagedPayloads(request.payloads, "uploadFile uniqueId=${request.metadata.appData.uniqueId}")
 
         val creds = requireCreds()
 
@@ -168,6 +210,8 @@ class DriveUploadProvider(
         onVersionConflict: (suspend () -> UpdateFileResult?)? = null
     ): UpdateFileResult? {
 
+        preflightStagedPayloads(request.payloads, "updateFileByFileId fileId=${request.fileId}")
+
         val creds = requireCreds()
         val sharedSecret = creds.secret.unsafeBytes
 
@@ -221,33 +265,7 @@ class DriveUploadProvider(
         val creds = requireCreds()
         val sharedSecret = creds.secret.unsafeBytes
 
-        // DRAIN-TIME payload integrity check (HealAudit). Payload bytes (e.g. the
-        // reused `convo_img` group image on a group heal) are staged to a temp
-        // file at ENQUEUE time but read lazily HERE, at outbox-drain time. On
-        // Android that staging dir is cacheDir, which the OS can reclaim while the
-        // row waits in the outbox: getFileSize() returns 0 for a missing file and
-        // openFileInput() then streams 0 bytes, so an AppendOrOverwrite can
-        // silently replace a good payload with an EMPTY one — the file header (and
-        // its previewThumbnail) survive while the full payload becomes unreadable
-        // (warning triangle over the tiny thumb). The upload still reports
-        // "success", so without this log the corruption is invisible. Logged WARN
-        // when a payload is missing/zero so a heal repro shows exactly which
-        // payload shipped empty.
-        request.payloads?.forEach { p ->
-            val size = runCatching { fileOperationsProvider.getFileSize(p.filePath) }.getOrDefault(-1L)
-            if (size <= 0L) {
-                Logger.w(tag = "HealAudit") {
-                    "$TAG.updateFileByUniqueId: payload key=${p.key} size=$size at drain " +
-                        "(uniqueId=${request.uniqueId} path=${p.filePath} preEncrypted=${p.isPreEncrypted}) — " +
-                        "AppendOrOverwrite may ship an EMPTY payload and clobber the existing one"
-                }
-            } else {
-                Logger.d(tag = "HealAudit") {
-                    "$TAG.updateFileByUniqueId: payload key=${p.key} size=$size at drain " +
-                        "(uniqueId=${request.uniqueId} preEncrypted=${p.isPreEncrypted})"
-                }
-            }
-        }
+        preflightStagedPayloads(request.payloads, "updateFileByUniqueId uniqueId=${request.uniqueId}")
 
         // Build encrypted descriptor
         val sharedSecretEncryptedDescriptor =
