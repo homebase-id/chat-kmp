@@ -115,7 +115,7 @@ class LocationViewModel(
                 val members = circleState.membersOf(EMERGENCY_LOCATION_CIRCLE_ID)
                     .asSequence()
                     .filterNot { it == self }
-                    .mapNotNull { contactService.resolveByOdinId(OdinId(it)) }
+                    .map { contactService.resolveByOdinId(OdinId(it)) }
                     .sortedBy { it.name.lowercase() }
                     .toList()
                 _uiState.update {
@@ -246,7 +246,6 @@ class LocationViewModel(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
                             avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
-                            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
                             untilMs = entries.maxOf { it.endTimeMs },
                         )
                     }
@@ -262,7 +261,6 @@ class LocationViewModel(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
                             avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
-                            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
                             ageMs = now - lp.receivedAtMs,
                         )
                     }

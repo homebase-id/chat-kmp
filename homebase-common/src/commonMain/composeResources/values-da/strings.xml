@@ -108,7 +108,6 @@
     <string name="avatar_conversation">Samtale avatar</string>
     <string name="avatar_default">Standard avatar</string>
     <string name="avatar_public">Offentlig avatar</string>
-    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
