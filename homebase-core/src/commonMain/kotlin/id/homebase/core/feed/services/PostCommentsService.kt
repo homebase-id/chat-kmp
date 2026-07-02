@@ -6,9 +6,13 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
@@ -77,6 +81,9 @@ class PostCommentsService(
     private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
     private val fileOps: FileOperationsProvider,
+    // Reads a followed author's comment thread over peer (their comments live on their drive, not
+    // ours). Only used when a post is a received/followed reference (non-null senderOdinId).
+    private val driveQueryProvider: DriveQueryProvider,
     private val scope: CoroutineScope,
 ) {
 
@@ -104,10 +111,15 @@ class PostCommentsService(
     private val pendingByGroupId = mutableMapOf<Uuid, MutableList<HomebaseFile>>()
     private var subscriptionStarted = false
 
-    fun commentsFor(postId: Uuid): StateFlow<List<PostCommentItem>> {
-        val (state, isFirstObserver) = stateFor(postId)
+    /**
+     * Comments for [post]. Takes the whole post (not just its id) so a followed/received post can be
+     * cold-loaded over peer: its comments live on the author's drive, addressed by the post's
+     * globalTransitId on the author's channel drive. Own/connected posts still cold-load locally.
+     */
+    fun commentsFor(post: FeedPostItem): StateFlow<List<PostCommentItem>> {
+        val (state, isFirstObserver) = stateFor(post.id)
         if (isFirstObserver) {
-            scope.launch { coldLoad(postId, state) }
+            scope.launch { coldLoad(post, state) }
             ensureSubscription()
         }
         return state.flow.asStateFlow()
@@ -152,7 +164,8 @@ class PostCommentsService(
         }
     }
 
-    private suspend fun coldLoad(postId: Uuid, state: PerPostState) {
+    private suspend fun coldLoad(post: FeedPostItem, state: PerPostState) {
+        val postId = post.id
         try {
             val active = credentialsManager.getActiveCredentials() ?: return
             val identityId = active.getIdentityId()
@@ -192,9 +205,67 @@ class PostCommentsService(
                     seenGroupIds.addAll(newTopLevelIds)
                 }
             }
+            // Followed/received posts: the author's copy of the thread lives on THEIR drive, so the
+            // local passes above find nothing. Read it over peer by the post's globalTransitId.
+            loadPeerComments(post, state)
             emitSorted(state)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Cold-load failed for post=$postId: ${e.message}" }
+        }
+    }
+
+    /**
+     * Cold-load a followed post's comment thread over peer. The author's comments live on their
+     * channel drive ([FeedPostItem.channelId]) keyed by the post's [FeedPostItem.globalTransitId];
+     * we broker the read through our own server via [DriveQueryProvider.queryBatch] with the author
+     * as `ownerOdinId`. Comments are the **Comment** file system (fileType 801) per the dotyoucore
+     * convention, selected by the `X-ODIN-FILE-SYSTEM-TYPE` header (see queryBatch's fileSystemType).
+     *
+     * Two passes mirror the local cold-load: top-level (groupId == the post's gtid), then replies
+     * (groupId in the discovered top-level comment ids). No-op for own posts (null senderOdinId).
+     */
+    private suspend fun loadPeerComments(post: FeedPostItem, state: PerPostState) {
+        val author = post.senderOdinId ?: return
+        val gtid = post.globalTransitId ?: return
+        val channelDrive = runCatching { Uuid.parse(post.channelId) }.getOrNull() ?: return
+
+        val seenGroupIds = mutableSetOf(gtid)
+        var roundGroupIds = listOf(gtid)
+        repeat(2) {
+            if (roundGroupIds.isEmpty()) return@repeat
+            val response = try {
+                driveQueryProvider.queryBatch(
+                    driveId = channelDrive,
+                    request = QueryBatchRequest(
+                        queryParams = FileQueryParams(
+                            fileType = listOf(FeedProtocol.CommentFileType),
+                            groupId = roundGroupIds,
+                        ),
+                        resultOptionsRequest = QueryBatchResultOptionsRequest(
+                            maxRecords = ColdLoadPageSize,
+                            includeMetadataHeader = true,
+                            ordering = QueryBatchSortOrder.NewestFirst,
+                            sorting = QueryBatchSortField.UserDate,
+                        ),
+                    ),
+                    ownerOdinId = author,
+                    fileSystemType = FileSystemType.Comment,
+                )
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = TAG) {
+                    "loadPeerComments: query failed post=${post.id} author=$author: ${e.message}"
+                }
+                return
+            }
+            val items = response.searchResults
+                .filterNot { it.isSoftDeleted() }
+                .mapNotNull { it.toCommentItem(topLevelPostId = post.id) }
+            val newTopLevelIds = synchronized(lock) {
+                items.forEach { state.byId[it.id] = it }
+                state.byId.values.filter { it.replyToId == null }.map { it.id }
+            }
+            roundGroupIds = newTopLevelIds.filterNot { it in seenGroupIds }
+            seenGroupIds.addAll(newTopLevelIds)
         }
     }
 

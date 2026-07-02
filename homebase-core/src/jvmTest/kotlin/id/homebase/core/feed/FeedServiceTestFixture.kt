@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -100,6 +101,16 @@ class FeedTestEnv(testScope: TestScope) {
             payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps),
         )
     }
+
+    /**
+     * A [DriveQueryProvider] over a MockEngine that 500s. The feed comment tests only cold-load OWN
+     * posts (null senderOdinId), so the over-peer comment query is never reached — this exists just
+     * to satisfy the [PostCommentsService] constructor.
+     */
+    val driveQueryProvider: DriveQueryProvider = DriveQueryProvider(
+        httpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }),
+        credentialsManager = credentialsManager,
+    )
 
     suspend fun login(domain: String = "test.example.com") {
         credentialsManager.setActiveCredentials(

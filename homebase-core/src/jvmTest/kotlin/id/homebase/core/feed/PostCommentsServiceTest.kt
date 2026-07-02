@@ -13,11 +13,13 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.Outbox
+import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostCommentContent
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostType
+import id.homebase.core.feed.services.ReactAccess
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -60,7 +62,33 @@ class PostCommentsServiceTest {
         uploadService = env.uploadService,
         optimisticWriter = env.optimisticWriter,
         fileOps = env.fileOps,
+        driveQueryProvider = env.driveQueryProvider,
         scope = env.scope,
+    )
+
+    /** A minimal own-post [FeedPostItem] (null senderOdinId → no over-peer comment load). */
+    private fun ownPost(postId: Uuid) = FeedPostItem(
+        id = postId,
+        fileId = Uuid.random(),
+        globalTransitId = null,
+        driveId = channelDrive,
+        keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+        payloads = emptyList(),
+        caption = "",
+        type = PostType.Tweet,
+        channelId = channelDrive.toString(),
+        slug = "",
+        reactAccess = ReactAccess.All,
+        embeddedPost = null,
+        userDateMs = 0,
+        createdMs = 0,
+        previewThumbnail = null,
+        reactionPreview = null,
+        senderOdinId = null,
+        originalAuthor = null,
+        versionTag = null,
+        ownReactions = emptyList(),
+        commentCount = 0,
     )
 
     /** Write a post row locally so the comment service can resolve the post's drive/audience. */
@@ -179,7 +207,7 @@ class PostCommentsServiceTest {
         seedComment(Uuid.random(), groupId = decoyPostId, body = "comment on the OTHER post")
         advanceUntilIdle()
 
-        val comments = service().commentsFor(postId)
+        val comments = service().commentsFor(ownPost(postId))
         advanceUntilIdle()
 
         assertEquals(

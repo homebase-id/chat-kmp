@@ -12,6 +12,7 @@ import io.ktor.client.call.body
 import io.ktor.client.request.accept
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
@@ -404,7 +405,10 @@ abstract class OdinApiProviderBase(
         url: String,
         token: String,
         jsonBody: String,
-        secret: SecureByteArray
+        secret: SecureByteArray,
+        // Extra request headers (e.g. X-ODIN-FILE-SYSTEM-TYPE for a Comment-filesystem query).
+        // Empty by default so existing callers are unaffected.
+        extraHeaders: Map<String, String> = emptyMap(),
     ): ApiResponse {
         requireHostInUrl(url)
 
@@ -414,6 +418,7 @@ abstract class OdinApiProviderBase(
                     bearerAuth(token)
                     contentType(ContentType.Application.Json)
                     accept(ContentType.Application.Json)
+                    extraHeaders.forEach { (name, value) -> header(name, value) }
                     setBody(
                         TextContent(
                             OdinSystemSerializer.serialize(

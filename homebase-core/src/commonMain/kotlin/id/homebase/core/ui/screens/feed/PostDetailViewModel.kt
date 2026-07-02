@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.builder.AttachmentInput
@@ -22,9 +23,16 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -63,6 +71,14 @@ class PostDetailViewModel(
     private val _replyingTo = MutableStateFlow<PostCommentItem?>(null)
 
     /**
+     * Live reaction tallies for the open post, read fresh via
+     * [PostReactionService.liveReactionSummary] (the same group-reactions path chat uses) — this
+     * overrides the header's stale `reactionPreview` snapshot, which never reflects reactions that
+     * landed after the post was aggregated into the feed. Null until the first load resolves.
+     */
+    private val _liveReactionSummary = MutableStateFlow<ReactionSummary?>(null)
+
+    /**
      * Reactor roster for the "who reacted" sheet. `list == null` means the sheet is
      * closed; a non-null list (possibly empty) means it's open. [ReactorsState.loading]
      * covers the in-flight [PostReactionService.listReactors] fetch before the list lands.
@@ -92,6 +108,17 @@ class PostDetailViewModel(
         // FOLLOW-UP: fix the race at the source in AuthConnectionCoordinator (run onPostAuthenticated
         // exactly once even when promoted mid-bootstrap) and drop these consumer-side start() calls.
         stickerStream.start()
+        // Live-load the post's reactions the way chat does (fresh group-reactions read), rather than
+        // trusting the header snapshot. Reload whenever a sync batch bumps the header's reaction
+        // preview (someone reacted) or the file is replaced — that re-emits the timeline.
+        viewModelScope.launch {
+            timelineService.timeline
+                .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+                .distinctUntilChanged { a, b ->
+                    a.fileId == b.fileId && a.reactionPreview == b.reactionPreview
+                }
+                .collect { post -> loadLiveReactions(post) }
+        }
         viewModelScope.launch {
             val self = credentialsManager.getActiveCredentials()?.domain
             _selfOdinId.value = self
@@ -104,29 +131,55 @@ class PostDetailViewModel(
         }
     }
 
-    // Fold self-identity, the reactor-sheet state, and the resolved-name map into one upstream
-    // so the main combine stays at the typed 5-arg overload.
-    private val _selfReactorsNames = combine(
+    // Fold self-identity, the reactor-sheet state, the resolved-name map, and the live reaction
+    // summary into one upstream so the main combine stays at the typed 5-arg overload.
+    private val _detailAux = combine(
         _selfOdinId,
         _reactors,
         contactService.contacts,
         _selfName,
-    ) { self, reactors, contacts, selfName ->
+        _liveReactionSummary,
+    ) { self, reactors, contacts, selfName, liveReactions ->
         val names = contacts.associate { it.odinId to it.name }.toMutableMap()
         // Overlay the owner's own resolved name so your posts/comments show your name, not domain.
         if (self != null && !selfName.isNullOrBlank()) names[self] = selfName
-        Triple(self, reactors, names.toMap())
+        DetailAux(self, reactors, names.toMap(), liveReactions)
     }
+
+    /**
+     * The post's comment thread, sourced from the resolved post so a followed/received post can be
+     * cold-loaded over peer (comments live on the author's drive). We can't call `commentsFor` with
+     * just [postId] because it needs the post's author/channel/globalTransitId to route the peer
+     * read; those only exist on the resolved [FeedPostItem]. Re-subscribes only when the routing
+     * fields change (effectively once), and seeds an empty list so the main combine can emit before
+     * the post resolves.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val _comments: Flow<List<PostCommentItem>> = timelineService.timeline
+        .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+        .distinctUntilChangedBy {
+            listOf(it.id, it.senderOdinId, it.globalTransitId, it.channelId)
+        }
+        .flatMapLatest { post -> commentsService.commentsFor(post) }
+        .onStart { emit(emptyList()) }
 
     val uiState: StateFlow<PostDetailUiState> = combine(
         timelineService.timeline
             .onEach { _timelineEmitted.value = true }
             .map { feed -> feed.firstOrNull { it.id == postId } },
-        commentsService.commentsFor(postId),
+        _comments,
         _replyingTo,
-        _selfReactorsNames,
+        _detailAux,
         _timelineEmitted,
-    ) { post, comments, replyingTo, (self, reactors, displayNames), timelineEmitted ->
+    ) { postRaw, comments, replyingTo, aux, timelineEmitted ->
+        // Override the header's stale reaction snapshot with the live read (chat parity). Keep the
+        // snapshot only when the live read is empty/not-yet-loaded, so reactions never blank out.
+        // Comment count reflects the live thread rendered right below.
+        val post = postRaw?.copy(
+            reactionPreview = aux.liveReactions?.takeIf { it.reactions.isNotEmpty() }
+                ?: postRaw.reactionPreview,
+            commentCount = comments.size,
+        )
         PostDetailUiState(
             post = post,
             comments = comments,
@@ -136,10 +189,10 @@ class PostDetailViewModel(
             // re-subscription never flashes the spinner over loaded content.
             isLoading = !timelineEmitted && post == null,
             replyingTo = replyingTo,
-            selfOdinId = self,
-            displayNames = displayNames,
-            reactorsSheet = reactors.list,
-            isReactorsLoading = reactors.loading,
+            selfOdinId = aux.self,
+            displayNames = aux.displayNames,
+            reactorsSheet = aux.reactors.list,
+            isReactorsLoading = aux.reactors.loading,
             errorMessage = null,
         )
     }.stateIn(
@@ -242,6 +295,17 @@ class PostDetailViewModel(
         }
     }
 
+    /** Fetch the post's live reaction tallies (chat-parity) and publish them to the UI. */
+    private fun loadLiveReactions(post: FeedPostItem) {
+        viewModelScope.launch {
+            runCatching { reactionService.liveReactionSummary(post) }
+                .onSuccess { _liveReactionSummary.value = it }
+                .onFailure {
+                    Logger.w(throwable = it, tag = TAG) { "loadLiveReactions failed: ${it.message}" }
+                }
+        }
+    }
+
     /**
      * Open the "who reacted" sheet for the post and fetch its reactor roster. Opens with
      * an empty list + loading flag so the sheet appears immediately, then fills in once
@@ -314,6 +378,18 @@ class PostDetailViewModel(
 private data class ReactorsState(
     val list: List<ReactionDisplayItem>? = null,
     val loading: Boolean = false,
+)
+
+/**
+ * The detail's auxiliary streams (self identity, reactor sheet, resolved names, live reaction
+ * summary) folded into one flow so the main [PostDetailViewModel.uiState] combine stays within the
+ * typed 5-argument overload.
+ */
+private data class DetailAux(
+    val self: OdinId?,
+    val reactors: ReactorsState,
+    val displayNames: Map<OdinId, String>,
+    val liveReactions: ReactionSummary?,
 )
 
 /** One-time navigation / snackbar events for the post detail screen. */

@@ -2,6 +2,8 @@ package id.homebase.core.feed.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.ReactionEntry
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
@@ -110,6 +112,25 @@ class PostReactionService(
     /** Per-emoji counts on [comment]. */
     suspend fun reactionSummary(comment: PostCommentItem): PostReactionSummary =
         summaryFor(comment.driveId, comment.fileId)
+
+    /**
+     * Live reaction summary for [post] shaped as the header [ReactionSummary] the feed UI already
+     * renders. Read fresh through the shared group-reactions provider — the same live path chat uses
+     * ([id.homebase.chat.services.ChatMessageActionService.getReactions]) — rather than the stale
+     * `reactionPreview` snapshot on the header, which never reflects reactions that landed after the
+     * post was aggregated into the feed. The provider keys its count map by the raw reactionContent
+     * JSON, which is exactly what [ReactionEntry.reactionContent] and the facepile decode, so it
+     * passes straight through. Comment previews aren't part of this (the detail streams the full
+     * thread separately), so `comments`/`totalCommentCount` stay empty here.
+     */
+    suspend fun liveReactionSummary(post: FeedPostItem): ReactionSummary {
+        val response = reactionProvider.getReactionSummary(post.driveId, post.fileId)
+        return ReactionSummary(
+            reactions = response.reactions.mapValues { (raw, count) ->
+                ReactionEntry(key = raw, count = count, reactionContent = raw)
+            },
+        )
+    }
 
     private suspend fun summaryFor(driveId: Uuid, fileId: Uuid): PostReactionSummary {
         val response = reactionProvider.getReactionSummary(driveId, fileId)
