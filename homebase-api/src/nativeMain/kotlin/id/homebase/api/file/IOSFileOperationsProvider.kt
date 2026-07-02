@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.Buffer
+import kotlinx.io.RawSource
+import kotlinx.io.buffered
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
@@ -60,13 +62,31 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         }
     }
 
+    /**
+     * Lazy, CHUNKED multipart upload source (#947). The previous implementation
+     * buffered the entire staged encrypted payload (`Buffer().write(readFileData(path))`)
+     * when the outbox drained — with single-file HLS that meant a whole video in RAM
+     * at send time, despite streamed encryption (#842). Now the ktor block opens a
+     * fresh [FileHandleRawSource] per invocation (the block is re-invoked on ktor
+     * retries and outbox re-drives, so it must be re-creatable) and streams 64 KB at
+     * a time. `size` feeds the multipart Content-Length; app-level progress totals
+     * come from `calculateUploadSize`, not from here.
+     *
+     * Photos-library sources (`ph://` / raw PHAsset ids) keep the whole-file path:
+     * PHImageManager has no byte-stream API, these are photo-sized, and videos never
+     * come through here — they're materialized to a real file via [resolveToFilePath].
+     */
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    override fun openFileInput(path: String): InputProvider = InputProvider {
+    override fun openFileInput(path: String): InputProvider {
         if (path.startsWith("ph://") || path.contains("/L0/")) {
-            val bytes = runBlocking { readPhotoLibraryAsset(path) }
-            return@InputProvider Buffer().apply { write(bytes) }
+            return InputProvider {
+                val bytes = runBlocking { readPhotoLibraryAsset(path) }
+                Buffer().apply { write(bytes) }
+            }
         }
-        Buffer().apply { write(readFileData(path)) }
+        return InputProvider(size = getFileSize(path).takeIf { it > 0 }) {
+            FileHandleRawSource(path).buffered()
+        }
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -392,4 +412,48 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         }
 
 
+}
+
+/**
+ * A [RawSource] over an [NSFileHandle] read in [chunkSize] steps — the lazy backing
+ * for [IOSFileOperationsProvider.openFileInput] (#947). Holds at most one chunk in
+ * memory at a time. Mirrors the chunk loop of `readFileAsFlow` (incl. the pinned
+ * `memcpy` idiom) and the security-scoped-resource guard of `readFileData`: access
+ * is acquired on construction and released in [close] alongside the file handle.
+ * A missing file throws the same `IllegalStateException("Unable to read file …")`
+ * shape as the other readers.
+ */
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+private class FileHandleRawSource(
+    path: String,
+    private val chunkSize: Int = FileOperationsProvider.DEFAULT_HEADER_BYTES,
+) : RawSource {
+    private val url = NSURL.fileURLWithPath(path)
+    private val accessed = url.startAccessingSecurityScopedResource()
+    private val handle = NSFileHandle.fileHandleForReadingAtPath(path)
+        ?: run {
+            if (accessed) url.stopAccessingSecurityScopedResource()
+            error("Unable to read file at $path")
+        }
+    private var closed = false
+
+    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+        require(byteCount >= 0L) { "byteCount must be non-negative: $byteCount" }
+        if (byteCount == 0L) return 0L
+        check(!closed) { "source is closed" }
+        val data = handle.readDataOfLength(minOf(byteCount, chunkSize.toLong()).toULong())
+        val len = data.length.toInt()
+        if (len == 0) return -1L
+        val bytes = ByteArray(len)
+        bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+        sink.write(bytes)
+        return len.toLong()
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        handle.closeFile()
+        if (accessed) url.stopAccessingSecurityScopedResource()
+    }
 }
