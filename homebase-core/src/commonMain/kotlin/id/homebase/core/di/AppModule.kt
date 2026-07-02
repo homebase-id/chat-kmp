@@ -832,6 +832,7 @@ val appModule = module {
             connectionService = get(),
             contactService = get(),
             emergencyContactReconciler = get(),
+            temporalDriveReadProvider = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),
