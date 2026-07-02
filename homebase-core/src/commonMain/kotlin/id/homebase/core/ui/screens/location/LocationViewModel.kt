@@ -15,7 +15,6 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
-import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationPointStore
@@ -56,7 +55,6 @@ class LocationViewModel(
     private val contactRepository: ContactRepository,
     private val connectionService: ConnectionService,
     private val contactService: ContactService,
-    private val emergencyContactReconciler: EmergencyContactReconciler,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
     private val credentialsManager: CredentialsManager,
     private val receiveStore: LiveLocationReceiveStore,
@@ -142,10 +140,6 @@ class LocationViewModel(
                     }
                 }
         }
-
-        // On dashboard open, reconcile the iCanLocate cache against the authoritative temporal-access
-        // grant so a lost revocation (stale flag) self-corrects. Best-effort, one-shot per open.
-        viewModelScope.launch { runCatching { emergencyContactReconciler.reconcile() } }
 
         viewModelScope.launch {
             locationPermissionViewModel.permissionsGranted
