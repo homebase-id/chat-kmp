@@ -104,6 +104,10 @@ class VideoPreloaderTest {
             isDescriptorContentComplete = true,
             isSegmented = false,
             key = metadataKey,
+            // Real sent MP4s always carry their size (≤ 5 MB — bigger sends are
+            // HLS). The render-limit gate (#845) skips prefetch when the size is
+            // unknown or export-sized, so this must be realistic.
+            fileSize = 3L * 1024 * 1024,
         )
         val fake = FakeVideoPrefetchDriveAccess()
 
@@ -115,6 +119,43 @@ class VideoPreloaderTest {
         assertEquals(1, prefetchPayloadCalls.size)
         assertEquals(payloadKey, prefetchPayloadCalls.single().key)
         assertTrue(prefetchChunkCalls.isEmpty())
+    }
+
+    // -- #845: the render-limit gate — an export-sized or unknown-size MP4 must
+    //    NOT be prefetched (the network guard would refuse it anyway, and the
+    //    fetch would churn the LRU), but progress still settles at 1f (#788).
+    @Test
+    fun oversizedMp4_skipsPrefetch_progressStillSettles() = runTest {
+        val stub = VideoMetadata(
+            mimeType = "video/mp4",
+            isDescriptorContentComplete = true,
+            isSegmented = false,
+            key = metadataKey,
+            fileSize = id.homebase.api.client.PayloadSizePolicy.RENDER_LIMIT_BYTES + 1,
+        )
+        val fake = FakeVideoPrefetchDriveAccess()
+        var lastProgress = -1f
+
+        newPreloader(fake).preload(playerData(stub)) { lastProgress = it }
+
+        assertTrue(fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.PrefetchPayload>().isEmpty())
+        assertEquals(1f, lastProgress)
+    }
+
+    @Test
+    fun unknownSizeMp4_skipsPrefetch() = runTest {
+        val stub = VideoMetadata(
+            mimeType = "video/mp4",
+            isDescriptorContentComplete = true,
+            isSegmented = false,
+            key = metadataKey,
+            // fileSize defaults to 0 (unknown) — a foreign client's descriptor might omit it.
+        )
+        val fake = FakeVideoPrefetchDriveAccess()
+
+        newPreloader(fake).preload(playerData(stub))
+
+        assertTrue(fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.PrefetchPayload>().isEmpty())
     }
 
     // -- Case 4: HLS playlist has no explicit `<len>@<offset>` byterange on segment 0; skip the

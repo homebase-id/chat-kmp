@@ -17,8 +17,15 @@ import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import id.homebase.api.client.PayloadSizePolicy
+import id.homebase.api.client.PayloadTooLargeException
+import id.homebase.api.client.drives.files.PayloadOperationOptions
 import io.ktor.client.request.forms.InputProvider
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -36,6 +43,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -48,11 +56,19 @@ class DriveFileProviderCachedTest {
     private var requestCount = 0
     private var nextException: Exception? = null
     private var nextStatus = HttpStatusCode.OK
+    private var nextBody: ByteArray = ByteArray(0)
+    private var nextHeaders: Headers = headersOf()
+    // When set, the body is served as a raw channel (NO Content-Length header) —
+    // exercises the chunked-transfer fallback of the requestBytes size guard.
+    private var nextChannelBody: ByteArray? = null
 
     private val mockEngine = MockEngine { _ ->
         requestCount++
         nextException?.let { e -> throw e }
-        respond("", nextStatus)
+        nextChannelBody?.let { body ->
+            return@MockEngine respond(ByteReadChannel(body), nextStatus, nextHeaders)
+        }
+        respond(nextBody, nextStatus, nextHeaders)
     }
 
     private val httpClient = HttpClient(mockEngine)
@@ -96,6 +112,9 @@ class DriveFileProviderCachedTest {
         requestCount = 0
         nextException = null
         nextStatus = HttpStatusCode.OK
+        nextBody = ByteArray(0)
+        nextHeaders = headersOf()
+        nextChannelBody = null
 
         logCollector.entries.clear()
         Logger.setLogWriters(listOf(logCollector))
@@ -318,10 +337,11 @@ class DriveFileProviderCachedTest {
 
         val stats = provider.getCacheStats()
 
-        assertEquals(2, stats.size, "both rows must be returned even if one ctor failed")
+        assertEquals(3, stats.size, "all rows must be returned even if one ctor failed")
 
         val payload = stats.single { it.id == "drive_payloads" }
         val thumb = stats.single { it.id == "drive_thumbnails" }
+        val chunks = stats.single { it.id == "hls_chunks" }
 
         assertTrue(
             payload.sizeBytes != CacheStats.UNAVAILABLE,
@@ -331,6 +351,10 @@ class DriveFileProviderCachedTest {
             CacheStats.UNAVAILABLE, thumb.sizeBytes,
             "broken thumb cache must be marked unavailable via the sentinel"
         )
+        assertTrue(
+            chunks.sizeBytes != CacheStats.UNAVAILABLE,
+            "healthy chunk cache must NOT be marked unavailable (got sizeBytes=${chunks.sizeBytes})"
+        )
     }
 
     /**
@@ -339,6 +363,183 @@ class DriveFileProviderCachedTest {
      * never-sent (failed) message's media retrievable for retry. The mock
      * engine throws on any request to prove the network is never touched.
      */
+    // ==================== #845 PR2: dedicated HLS chunk cache ====================
+
+    private fun statsSize(stats: List<CacheStats>, id: String): Long =
+        stats.single { it.id == id }.sizeBytes
+
+    @Test
+    fun `range reads land in the chunk cache and never pollute the payload LRU`() = runTest {
+        nextBody = ByteArray(4096) { 3 }
+
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 4096L),
+        )
+
+        val stats = provider.getCacheStats()
+        assertTrue(statsSize(stats, "hls_chunks") > 0L, "chunk must land in the chunk cache: $stats")
+        assertEquals(0L, statsSize(stats, "drive_payloads"), "the payload LRU must contain NO range entries: $stats")
+
+        // Second identical range read → served from the chunk cache, no new fetch.
+        val before = requestCount
+        val again = provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 4096L),
+        )
+        assertEquals(before, requestCount, "warm chunk must be served without the network")
+        assertContentEquals(nextBody, again.bytes)
+    }
+
+    /**
+     * OWNER-REQUIRED (#845): the seg-0 PRELOADER and playback range reads must
+     * converge on the same chunk cache. The preloader warms via
+     * `DriveFileProvider.prefetchPayloadChunk`; iOS's LocalVideoServer reads the
+     * same range via `getPayloadBytesEncryptedChunk` — two different entry
+     * points, ONE network fetch, and zero range entries in the payload LRU.
+     * (If routing were per-caller, prefetch would write the payload LRU while
+     * playback reads the chunk cache: a guaranteed seg-0 double-download plus
+     * pollution.)
+     */
+    @Test
+    fun `prefetched seg0 is served to playback from the chunk cache with no second fetch`() = runTest {
+        nextBody = ByteArray(2048) { 9 }
+        val fileProvider = id.homebase.api.client.drives.files.DriveFileProvider(
+            httpClient, credentialsManager, provider,
+        )
+
+        // 1) Preloader shape: VideoPreloader.preloadFirstHlsSegment → prefetchPayloadChunk.
+        fileProvider.prefetchPayloadChunk(driveId, fileId, key, chunkStart = 0L, chunkLength = 2048L)
+        assertEquals(1, requestCount)
+
+        // 2) Playback shape: iOS LocalVideoServer → getPayloadBytesEncryptedChunk, same range.
+        val bytes = fileProvider.getPayloadBytesEncryptedChunk(driveId, fileId, key, chunkStart = 0L, chunkLength = 2048L)
+
+        assertEquals(1, requestCount, "playback must be served from the prefetch-warmed chunk cache")
+        assertContentEquals(nextBody, assertNotNull(bytes))
+        assertEquals(0L, statsSize(provider.getCacheStats(), "drive_payloads"),
+            "no range entry may leak into the payload LRU")
+    }
+
+    @Test
+    fun `full reads still land in the payload LRU, not the chunk cache`() = runTest {
+        nextBody = ByteArray(1024) { 5 }
+
+        provider.getPayloadBytesRaw(driveId, fileId, key)
+
+        val stats = provider.getCacheStats()
+        assertTrue(statsSize(stats, "drive_payloads") > 0L, "full read must land in the payload LRU: $stats")
+        assertEquals(0L, statsSize(stats, "hls_chunks"), "full read must not leak into the chunk cache: $stats")
+    }
+
+    @Test
+    fun `clearCaches empties the chunk cache and getCacheStats reports its 100 MB cap`() = runTest {
+        nextBody = ByteArray(512) { 1 }
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 512L),
+        )
+        assertTrue(statsSize(provider.getCacheStats(), "hls_chunks") > 0L)
+        assertEquals(100L * 1024 * 1024, provider.getCacheStats().single { it.id == "hls_chunks" }.maxBytes)
+
+        provider.clearCaches()
+
+        assertEquals(0L, statsSize(provider.getCacheStats(), "hls_chunks"))
+        val before = requestCount
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 512L),
+        )
+        assertEquals(before + 1, requestCount, "cleared chunk must be re-fetched")
+    }
+
+    @Test
+    fun `rekey leaves chunk entries alone`() = runTest {
+        nextBody = ByteArray(256) { 2 }
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 256L),
+        )
+        val chunkBytesBefore = statsSize(provider.getCacheStats(), "hls_chunks")
+
+        provider.rekeyCachedFile(
+            driveId, fileId, Uuid.parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+            payloads = listOf(PayloadDescriptor(key = key, contentType = "video/mp2t")),
+        )
+
+        assertEquals(
+            chunkBytesBefore, statsSize(provider.getCacheStats(), "hls_chunks"),
+            "chunk entries are intentionally not rekeyed — they only exist post-sync",
+        )
+    }
+
+    // ==================== #845: render/export size guard ====================
+
+    @Test
+    fun `full read over the render limit is refused via Content-Length before the body is read`() = runTest {
+        // MockEngine validates the header against the body, so the oversized body is
+        // real — the assertion that matters is the guard tripping on the HEADER
+        // (sizeBytes == the advertised length, not -1 from the counting fallback).
+        nextBody = ByteArray((PayloadSizePolicy.RENDER_LIMIT_BYTES + 1).toInt())
+        nextHeaders = headersOf(HttpHeaders.ContentLength, (PayloadSizePolicy.RENDER_LIMIT_BYTES + 1).toString())
+
+        val e = assertFailsWith<PayloadTooLargeException> {
+            provider.getPayloadBytesRaw(driveId, fileId, key)
+        }
+        assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES + 1, e.sizeBytes)
+        assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES, e.limitBytes)
+        assertEquals(1, requestCount)
+
+        // Not cached, not 404-poisoned: a fixed server (normal size) is fetched again.
+        nextHeaders = headersOf()
+        nextBody = ByteArray(8) { 1 }
+        val second = provider.getPayloadBytesRaw(driveId, fileId, key)
+        assertEquals(2, requestCount, "a refused read must not poison the notFound cache")
+        assertContentEquals(nextBody, second.bytes)
+    }
+
+    @Test
+    fun `chunked response without Content-Length is aborted once the running count passes the limit`() = runTest {
+        // Channel body → MockEngine sends no Content-Length → the guard's counting
+        // fallback must catch it mid-read.
+        nextChannelBody = ByteArray((PayloadSizePolicy.RENDER_LIMIT_BYTES + 1024).toInt())
+
+        val e = assertFailsWith<PayloadTooLargeException> {
+            provider.getPayloadBytesRaw(driveId, fileId, key)
+        }
+        assertEquals(-1, e.sizeBytes, "no Content-Length → size unknown at refusal time")
+    }
+
+    @Test
+    fun `range reads are exempt from the size guard even when the payload total is huge`() = runTest {
+        // A range response legitimately advertises a large total via headers on some
+        // servers; the guard must not applied to chunk-shaped requests at all.
+        nextHeaders = headersOf(HttpHeaders.ContentLength, "4096")
+        nextBody = ByteArray(4096) { 7 }
+
+        val result = provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 4096L),
+        )
+        assertEquals(200, result.status)
+        assertEquals(4096, result.bytes.size)
+    }
+
+    @Test
+    fun `oversized seed is refused by the cache-admission fence and nothing is written`() = runTest {
+        nextException = IOException("network must not be reached")
+        val oversized = ByteArray((PayloadSizePolicy.RENDER_LIMIT_BYTES + 1).toInt())
+
+        provider.cachePayloadBytesEncrypted(driveId, fileId, key, oversized, "application/zip")
+
+        assertTrue(
+            logCollector.entries.any { it.message.contains("cache-admit REFUSED") },
+            "the refusal must be observable in the log",
+        )
+        // The entry must not be served from cache — the read goes to the (throwing) network.
+        assertFailsWith<Exception> { provider.getPayloadBytesRaw(driveId, fileId, key) }
+    }
+
     @Test
     fun `seeded payload bytes are served from cache without touching the network`() = runTest {
         nextException = IOException("network must not be reached for a seeded payload")

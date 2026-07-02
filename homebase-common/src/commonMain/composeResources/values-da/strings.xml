@@ -608,6 +608,7 @@
     <string name="storage_defragment_button">Defragmentér</string>
     <string name="storage_cache_payloads">Mediedata</string>
     <string name="storage_cache_thumbnails">Miniaturebilleder</string>
+    <string name="storage_cache_hls_chunks">Videostream-cache</string>
     <string name="storage_cache_profile_images">Profilbilleder</string>
     <string name="storage_cache_profiles">Offentlige profiler</string>
     <string name="storage_cache_coil_memory">Billeder i hukommelsen</string>
