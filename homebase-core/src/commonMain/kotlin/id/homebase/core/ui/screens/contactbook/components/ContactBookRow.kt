@@ -23,6 +23,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.connections_introduced_by
 import id.homebase.resources.contactbook_connected
+import id.homebase.resources.contactbook_self_you
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -32,6 +33,8 @@ fun ContactBookRow(
     connected: Boolean = false,
     /** When non-null, the contact was connected via this introducer (display name). */
     introducedBy: String? = null,
+    /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -43,8 +46,13 @@ fun ContactBookRow(
         ContactBookAvatar(entry = entry)
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
+            val name = if (entry.isSelf) {
+                stringResource(MR.string.contactbook_self_you, entry.displayName)
+            } else {
+                entry.displayName
+            }
             Text(
-                text = entry.displayName,
+                text = name,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -71,7 +79,10 @@ fun ContactBookRow(
                 )
             }
         }
-        if (connected) {
+        if (trailing != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            trailing()
+        } else if (connected) {
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
                 imageVector = Icons.Filled.Verified,

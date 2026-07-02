@@ -147,14 +147,17 @@ private fun SingleImageLayout(
 ) {
     // Compute aspect from the payload's thumbnail metadata so the cell sizes
     // before the (possibly remote, encrypted) full image is decoded. Falls
-    // back to 1:1 when no thumbnail data is present. Capped at
-    // [MaxFeedMediaAspect] so a wide landscape doesn't render as a thin strip
-    // — the cell stays a comfortable height and ContentScale.Crop
-    // (preserveAspectRatio = false, below) fills it, trimming the far edges.
-    // A non-null [minAspect] also floors very tall portraits so a single post
-    // can't take over the whole viewport (the feed's "80vh" cap).
+    // back to 1:1 when no thumbnail data is present. The photo is drawn
+    // ContentScale.Fit by the inline zoom wrapper (enableZoom below), so the
+    // cell must match the photo's real aspect or Fit leaves blank bars — the
+    // landscape letterbox of #873 (and the mirror-image side-crop of #818 back
+    // when this was Crop into a fixed-tall cell). Size to the natural aspect;
+    // clamp only extreme panoramas to [MaxFeedPhotoAspect] so a very wide shot
+    // doesn't collapse into a thin strip. A non-null [minAspect] (feed only)
+    // also floors very tall portraits so a single post can't take over the
+    // whole viewport (the feed's "80vh" cap); Moments passes null → no floor.
     val aspect = (aspectRatioFor(payload) ?: 1f)
-        .coerceAtMost(MaxFeedMediaAspect)
+        .coerceAtMost(MaxFeedPhotoAspect)
         .let { if (minAspect != null) it.coerceAtLeast(minAspect) else it }
 
     MomentMediaItem(
@@ -203,14 +206,26 @@ private fun SingleImageLayout(
  * available — caller decides the fallback.
  */
 /**
- * Upper bound on a feed cell's width/height ratio. 0.8 == a 4:5 portrait
- * frame: any photo at least as wide as 4:5 (landscape, square, and mildly
- * portrait shots) is sized to this tall frame and center-cropped
- * (ContentScale.Crop) so it reads as a substantial card instead of a short
- * horizontal strip. Taller portraits (ratio < 0.8) keep their natural height.
- * Detail/full-screen views are unaffected — they size media independently.
+ * Crop cap for the single-**video** feed tile (width/height). 0.8 == a 4:5
+ * portrait frame: a video at least as wide as 4:5 is sized to this tall frame
+ * and center-cropped (ContentScale.Crop) so it reads as a substantial card
+ * instead of a short horizontal strip; tap-to-play then shows the whole frame.
+ * Taller portrait videos (ratio < 0.8) keep their natural height. Photos use
+ * [MaxFeedPhotoAspect] instead (they're drawn Fit, so the cell tracks the real
+ * aspect). Detail/full-screen views size media independently.
  */
 internal const val MaxFeedMediaAspect = 0.8f
+
+/**
+ * Upper bound on a single-**photo** feed cell's width/height ratio.
+ * 1.91 ≈ 1.91:1 (Instagram's widest landscape). The photo is drawn
+ * ContentScale.Fit by the inline zoom wrapper, so the cell is sized to the
+ * photo's real aspect and Fit fills it exactly — no letterbox (#873), no
+ * side-crop (#818). Only panoramas wider than this clamp letterbox slightly
+ * (by design, so they don't render as a sliver); tall portraits are never
+ * clamped and keep their natural height.
+ */
+internal const val MaxFeedPhotoAspect = 1.91f
 
 internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()

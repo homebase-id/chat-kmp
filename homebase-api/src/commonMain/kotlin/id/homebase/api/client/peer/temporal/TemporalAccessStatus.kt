@@ -14,6 +14,10 @@ import kotlinx.serialization.Serializable
  * @property targetDrive the drive that was checked.
  * @property windowSeconds the effective lookback window (seconds) the caller is clamped to, or null
  *   when the caller has unconstrained read access (no time clamp). Only meaningful when [hasAccess].
+ *   NOT a reliable discriminator for "this is an emergency-circle grant" — a real
+ *   `ConditionalTemporalRead` emergency grant has been observed to report `windowSeconds = null` in
+ *   practice, same as a plain full read (see issue #875). Membership decisions must gate on
+ *   [hasAccess] alone.
  * @property newestFileModified the `modified` timestamp of the newest active file on the drive — a
  *   "is data still flowing?" signal (e.g. has tracking been turned off?). It is **not** clamped to
  *   [windowSeconds]: if data stopped longer ago than the window you still get the real last-update

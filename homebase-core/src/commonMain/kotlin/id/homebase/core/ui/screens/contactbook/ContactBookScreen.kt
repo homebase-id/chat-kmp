@@ -50,12 +50,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
+import id.homebase.core.connections.ConnectRequestBottomSheet
+import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
@@ -67,12 +70,15 @@ import id.homebase.resources.clear_input
 import id.homebase.resources.menu_back
 import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ContactBookScreen(
     viewModel: ContactBookViewModel,
+    connectRequestViewModel: ConnectRequestViewModel,
     onProfileClick: () -> Unit,
+    onOpenConversation: (Uuid) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -82,6 +88,7 @@ fun ContactBookScreen(
     val errDelete = stringResource(MR.string.contactbook_error_delete)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errMessage = stringResource(MR.string.contactbook_error_message)
+    val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
 
     LaunchedEffect(Unit) {
@@ -89,6 +96,7 @@ fun ContactBookScreen(
             when (event) {
                 is ContactBookUiEvent.OpenConversation -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.OpenDetail -> { /* navigation handled in AppNavHost */ }
+                ContactBookUiEvent.OpenAddContact -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
@@ -96,6 +104,7 @@ fun ContactBookScreen(
                         ContactBookError.DeleteFailed -> errDelete
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
+                        ContactBookError.ClearUnsupported -> errClearUnsupported
                     }
                     snackbarHostState.showSnackbar(msg)
                 }
@@ -212,6 +221,9 @@ fun ContactBookScreen(
             }
         },
         floatingActionButton = {
+            // Composing a brand-new connection request to any Homebase ID doesn't need its own
+            // FAB entry point — Add Contact already offers "Send connection request" once an
+            // entered ID resolves to someone not yet connected.
             if (onContacts) {
                 FloatingActionButton(onClick = { viewModel.onAction(ContactBookUiAction.AddClicked) }) {
                     Icon(
@@ -259,8 +271,10 @@ fun ContactBookScreen(
     when (val overlay = uiState.overlay) {
         is ContactBookOverlay.Edit -> ContactEditSheet(
             editing = overlay.entry,
-            onSave = { draft, photo ->
-                viewModel.onAction(ContactBookUiAction.SaveContact(draft, overlay.entry, photo))
+            onSave = { draft, addPhones, addEmails, photo ->
+                viewModel.onAction(
+                    ContactBookUiAction.SaveContact(draft, overlay.entry, addPhones, addEmails, photo),
+                )
             },
             onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
             odinIdLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
@@ -271,6 +285,13 @@ fun ContactBookScreen(
     uiState.circleMembers?.let { members ->
         CircleMembersSheet(state = members, onAction = viewModel::onAction)
     }
+
+    // Compose-a-new-request sheet, opened by the FAB while the Requests pill is active.
+    ConnectRequestBottomSheet(
+        viewModel = connectRequestViewModel,
+        snackbarHostState = snackbarHostState,
+        onNavigateToConversation = onOpenConversation,
+    )
 }
 
 private fun ContactTab.labelRes() = when (this) {

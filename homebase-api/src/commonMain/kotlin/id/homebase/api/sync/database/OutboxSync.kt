@@ -11,7 +11,9 @@ import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxReque
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.cleanupHlsScratch
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.eventbus.BackendEvent
@@ -866,6 +868,59 @@ class OutboxSync(
 
         // Plus the parent hls_<uuid>/ dir if any.
         cleanupHlsScratch(payloads)
+    }
+
+    /**
+     * Fire-and-forget self-heal for the durable encrypted-payload temp dir (`outbox-temp/`, #844).
+     * Runs [reapIdleOutboxTemps] on the outbox scope. Wire it from a post-auth hook.
+     */
+    fun scheduleIdleOutboxTempReap(outboxTempDir: String) {
+        scope.launch { runCatching { reapIdleOutboxTemps(outboxTempDir) } }
+    }
+
+    /**
+     * Reap crash-orphaned encrypted payload temps from `outbox-temp/`. The dir is KEEP-protected
+     * from the CacheSweeper (a pending send's payload must survive), so this is its self-heal.
+     *
+     * Two conditions make it provably safe to delete, so we never touch a live payload:
+     *  1. **Outbox idle** (`count() == 0`) — nothing pending or in-flight references any file here,
+     *     so every file is an orphan. A completed row deletes its own temp; a still-pending one
+     *     (incl. an offline send waiting indefinitely) keeps `count() > 0` and skips this entirely.
+     *  2. **Older than [maxAgeMs]** — closes the only race: an enc temp written for a brand-new send
+     *     microseconds before its row is inserted is seconds old, so the age floor never reaps it.
+     *     This is what makes the reap safe to run at ANY time, not just at startup.
+     *
+     * Fail-safe: a file whose mtime can't be read is skipped, never deleted.
+     */
+    suspend fun reapIdleOutboxTemps(
+        outboxTempDir: String,
+        maxAgeMs: Long = 24 * 60 * 60 * 1000L,
+        fileSystem: FileSystem = systemFileSystem,
+        nowMs: Long = UnixTimeUtc.now().milliseconds,
+    ) {
+        if (databaseManager.outbox.count() > 0L) return
+        val dir = outboxTempDir.toPath()
+        if (!fileSystem.exists(dir)) return
+        val cutoff = nowMs - maxAgeMs
+        val files = runCatching { fileSystem.list(dir) }.getOrNull() ?: return
+        var reaped = 0
+        for (f in files) {
+            val meta = fileSystem.metadataOrNull(f) ?: continue
+            val mtime = meta.lastModifiedAtMillis ?: continue
+            if (mtime >= cutoff) continue
+            if (meta.isDirectory) {
+                // Staged HLS payloads are whole hls_<uuid>/ directories (#842) — a flat
+                // delete() fails on a non-empty dir, so they'd leak forever. Recursive-
+                // delete them (age-gated on the dir's own mtime, same idle precondition).
+                // Any OTHER directory shape is unexpected here: skip it, never guess.
+                if (f.name.startsWith("hls_") &&
+                    safeDeleteRecursively(outboxTempDir, f.name, fileSystem)
+                ) reaped++
+            } else {
+                runCatching { fileSystem.delete(f) }.onSuccess { reaped++ }
+            }
+        }
+        if (reaped > 0) Logger.i("OutboxSync: reaped $reaped orphaned outbox-temp entrie(s) (outbox idle, >${maxAgeMs}ms old)")
     }
 
     suspend fun clearCheckout(timeoutMs: Long = 10_000) {

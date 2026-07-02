@@ -69,6 +69,14 @@ expect fun dataUpgradeReturnUrl(): String
 const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
 const val AUTO_CONNECTIONS_CIRCLE_ID = "9e22b42952f74d2580e11250b651d343"
 
+/**
+ * Well-known GUID (N-format) of the circle whose members may see this identity's location in an
+ * emergency. Matching by id rather than name survives a rename; the owner-console "manage" deep link
+ * uses the same id. Granting it server-side gives the member `ConditionalTemporalRead` on the
+ * location drive.
+ */
+const val EMERGENCY_LOCATION_CIRCLE_ID = "8b5383a5927246f8a666f4f3fcb7392b"
+
 // TypeIds
 const val OWNER_FOLLOWER_TYPE_ID = "2cc468af-109b-4216-8119-542401e32f4d"
 const val OWNER_CONNECTION_REQUEST_TYPE_ID = "8ee62e9e-c224-47ad-b663-21851207f768"

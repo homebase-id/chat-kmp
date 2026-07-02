@@ -29,8 +29,12 @@ import okio.Path.Companion.toPath
  * removes the dir; subsequent calls fall through `safeDeleteRecursively`'s
  * "missing target → quiet false" path. A small in-call dedup avoids logging
  * the same path more than once per invocation.
+ *
+ * Public (not internal) because `PayloadBundleEncryptionService` in the
+ * homebase-upload module also calls it from its fail-soft catch — a bundle
+ * that dies mid-encryption must not leave a staged `hls_<uuid>/` dir behind.
  */
-internal fun cleanupHlsScratch(
+fun cleanupHlsScratch(
     payloads: List<PayloadFile>?,
     fileSystem: FileSystem = systemFileSystem,
 ) {

@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
@@ -18,7 +19,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
@@ -670,6 +671,7 @@ internal class MessageActionsHandler(
                         var filePath = attachment.image.file.toUploadPath(fileOperationsProvider)
                         var contentType = resolveContentType(
                             fileName = attachment.image.fileName,
+                            platformMimeType = attachment.image.file.mimeType()?.toString(),
                         )
                         if (contentType == "image/heic" || contentType == "image/heif") {
                             val heicBytes = fileOperationsProvider.readFileBytes(filePath)
@@ -884,7 +886,13 @@ internal class MessageActionsHandler(
                     }
                     sendEvent(
                         ShowErrorMessage(
-                            "Failed to send file(s): ${e.message}"
+                            // Fail soft: a disposable pre-encryption source was swept/evicted (or its
+                            // content://`/`ph:// grant revoked) before send. No outbox row was enqueued
+                            // — the right fix is to re-pick, not retry.
+                            if (e is SourceUnavailableException)
+                                "That attachment is no longer available — please pick it again."
+                            else
+                                "Failed to send file(s): ${e.message}"
                         )
                     )
                 }
@@ -955,6 +963,10 @@ internal class MessageActionsHandler(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: SourceUnavailableException) {
+            // Shared-in source vanished before send (no outbox row enqueued) — re-pick.
+            Logger.w(tag = "ConversationListViewModel") { "Shared content source unavailable: ${e.path}" }
+            sendEvent(ShowErrorMessage("That shared file is no longer available — please share it again."))
         } catch (e: Exception) {
             Logger.e(tag = "ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
             sendEvent(ShowErrorMessage("Failed to send shared content: ${e.message}"))

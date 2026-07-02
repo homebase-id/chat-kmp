@@ -4,17 +4,20 @@ package id.homebase.core.ui.screens.contactbook.model
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactBirthday
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.ContactEmail
 import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
-import id.homebase.api.client.contacts.ContactsProvider
-import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.contacts.ContactSocialNetwork
+import id.homebase.api.client.contacts.resolveDisplayName
+import id.homebase.api.client.contacts.socialHandles
+import id.homebase.core.contactbook.iCanLocate
+import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.util.initials
 import kotlin.io.encoding.Base64
@@ -30,10 +33,10 @@ object ContactBookSource {
 }
 
 /**
- * A contact in the contact-manager UI. Built from one file on the (mandatory)
- * Contacts drive by deserializing its header [ContactContent]. The drive is the
- * read source; writes go through the api-layer ContactsProvider (see
- * [id.homebase.core.ui.screens.contactbook.ContactBookService]).
+ * A contact in the contact-manager UI — the flat projection of the api
+ * [id.homebase.api.client.contacts.Contact] domain model produced by
+ * [id.homebase.api.client.contacts.ContactRepository] (see [Contact.toContactBookEntry]). Both
+ * reads and writes flow through that repository.
  */
 @Immutable
 data class ContactBookEntry(
@@ -47,12 +50,27 @@ data class ContactBookEntry(
     val surname: String? = null,
     val phone: String? = null,
     val email: String? = null,
+    /** Free-form name for the address, e.g. "Home" / "Work"; used as the field label when present. */
+    val locationLabel: String? = null,
+    val addressLine1: String? = null,
+    val addressLine2: String? = null,
+    val postcode: String? = null,
     val city: String? = null,
     val country: String? = null,
     val birthday: String? = null,
+    /** Free-text status/tagline (NOT connection state); rendered under the odinId in the header. */
+    val status: String? = null,
+    /** Short header tagline (~<=160 chars); rendered in its own "Bio" section. */
+    val shortBio: String? = null,
+    /** Known social/gaming handles in render order, resolved from [ContactContent.social]. */
+    val socialHandles: List<Pair<ContactSocialNetwork, String>> = emptyList(),
+    /** Owner-only flag: we can locate this contact in an emergency (they designated us). */
+    val iCanLocate: Boolean = false,
     val source: String? = null,
     /** Pending (optimistic, not yet confirmed by the drive). */
     val isPending: Boolean = false,
+    /** Synthetic entry representing the signed-in user; rendered with a "(you)" suffix. */
+    val isSelf: Boolean = false,
     // Image-display fields (carried so a stored avatar can render without a
     // second drive read). Null when the contact has no uploaded photo.
     val driveId: Uuid? = null,
@@ -60,6 +78,15 @@ data class ContactBookEntry(
     val isEncrypted: Boolean = false,
     val previewThumbnail: EmbeddedThumb? = null,
     val imagePayload: PayloadDescriptor? = null,
+    /**
+     * Present when a user override has been applied (see [withOverride]): holds the *synced*
+     * (peer-profile) original of each overridden field, so the UI can show "their profile says …".
+     * Null when this entry carries no override.
+     */
+    val syncedOverlay: ContactFieldOverlay? = null,
+    /** Extra, app-local phone numbers / emails the user added beyond the single canonical slot. */
+    val additionalPhones: List<String> = emptyList(),
+    val additionalEmails: List<String> = emptyList(),
 ) {
     /** Has a Homebase identity behind it (vs a plain phone/email contact). */
     val hasOdinId: Boolean get() = !odinId.isNullOrBlank()
@@ -79,13 +106,22 @@ data class ContactBookEntry(
             return if (c in 'A'..'Z') c.toString() else "#"
         }
 
-    /** Secondary line under the name in list rows. */
-    val subtitle: String? get() = odinId ?: phone ?: email
+    /** Secondary line under the name in list rows. A phone falls through to a country-aware
+     *  display format; non-E.164 legacy values are shown as stored. */
+    val subtitle: String? get() = odinId ?: phone?.let { formatPhoneForDisplay(it) } ?: email
 
+    /**
+     * The full postal address formatted for display on a single line: street lines, then
+     * "postcode city", then country, joined with commas. Null when nothing is set.
+     */
     val location: String?
-        get() = listOfNotNull(city?.ifBlank { null }, country?.ifBlank { null })
-            .joinToString(", ")
-            .ifBlank { null }
+        get() = listOfNotNull(
+            addressLine1?.ifBlank { null },
+            addressLine2?.ifBlank { null },
+            listOfNotNull(postcode?.ifBlank { null }, city?.ifBlank { null })
+                .joinToString(" ").ifBlank { null },
+            country?.ifBlank { null },
+        ).joinToString(", ").ifBlank { null }
 
     fun matches(query: String): Boolean {
         if (query.isBlank()) return true
@@ -130,8 +166,19 @@ data class ContactBookEntry(
             surname = surname?.ifBlank { null },
         ),
         source = source,
-        location = if (city.isNullOrBlank() && country.isNullOrBlank()) null
-        else ContactLocation(city = city?.ifBlank { null }, country = country?.ifBlank { null }),
+        location = listOfNotNull(
+            locationLabel, addressLine1, addressLine2, postcode, city, country,
+        ).any { it.isNotBlank() }.let { hasAny ->
+            if (!hasAny) null
+            else ContactLocation(
+                label = locationLabel?.ifBlank { null },
+                addressLine1 = addressLine1?.ifBlank { null },
+                addressLine2 = addressLine2?.ifBlank { null },
+                postcode = postcode?.ifBlank { null },
+                city = city?.ifBlank { null },
+                country = country?.ifBlank { null },
+            )
+        },
         phone = phone?.ifBlank { null }?.let { ContactPhone(number = it) },
         email = email?.ifBlank { null }?.let { ContactEmail(email = it) },
         birthday = birthday?.ifBlank { null }?.let { ContactBirthday(date = it) },
@@ -139,35 +186,23 @@ data class ContactBookEntry(
 }
 
 /**
- * Maps a Contacts-drive [HomebaseFile] to a [ContactBookEntry], or null if the
- * header content is absent (e.g. a large contact spilled into a payload — rare;
- * imported/manual contacts always embed) or cannot be parsed.
+ * Projects the server-shaped [Contact] domain model (from `ContactRepository`) into the flat
+ * contact-manager UI model. The display name is resolved via the shared
+ * [id.homebase.api.client.contacts.resolveDisplayName] so it can't drift from other consumers;
+ * null when nothing is renderable. Image-display fields come from [Contact.image].
  */
-fun HomebaseFile.toContactBookEntry(): ContactBookEntry? {
-    val uniqueId = fileMetadata.appData.uniqueId ?: return null
-    val contentJson = fileMetadata.appData.content ?: return null
-    val content = try {
-        OdinSystemSerializer.deserialize<ContactContent>(contentJson)
-    } catch (_: Exception) {
-        return null
-    }
-
+fun Contact.toContactBookEntry(): ContactBookEntry? {
     val name = content.name
-    val display = name?.displayName?.takeIf { it.isNotBlank() }
-        ?: listOfNotNull(name?.givenName, name?.surname)
-            .joinToString(" ").trim().ifBlank { null }
-        ?: content.odinId?.takeIf { it.isNotBlank() }
-        ?: content.phone?.number?.takeIf { it.isNotBlank() }
-        ?: content.email?.email?.takeIf { it.isNotBlank() }
-        ?: return null  // nothing renderable — skip
-
-    val imagePayload = fileMetadata.payloads
-        ?.firstOrNull { it.key == ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY }
+    val display = name.resolveDisplayName(
+        odinId = content.odinId,
+        phone = content.phone?.number,
+        email = content.email?.email,
+    ) ?: return null
 
     return ContactBookEntry(
         uniqueId = uniqueId,
-        fileId = fileId,
-        versionTag = fileMetadata.versionTag,
+        fileId = image?.fileId ?: uniqueId,
+        versionTag = versionTag,
         odinId = content.odinId,
         displayName = display,
         givenName = name?.givenName,
@@ -175,14 +210,22 @@ fun HomebaseFile.toContactBookEntry(): ContactBookEntry? {
         surname = name?.surname,
         phone = content.phone?.number,
         email = content.email?.email,
+        locationLabel = content.location?.label,
+        addressLine1 = content.location?.addressLine1,
+        addressLine2 = content.location?.addressLine2,
+        postcode = content.location?.postcode,
         city = content.location?.city,
         country = content.location?.country,
         birthday = content.birthday?.date,
+        status = content.status,
+        shortBio = content.shortBio,
+        socialHandles = content.socialHandles(),
+        iCanLocate = iCanLocate(),
         source = content.source,
-        driveId = driveId,
-        keyHeader = keyHeader,
-        isEncrypted = fileMetadata.isEncrypted,
-        previewThumbnail = fileMetadata.appData.previewThumbnail,
-        imagePayload = imagePayload,
+        driveId = image?.driveId,
+        keyHeader = image?.keyHeader,
+        isEncrypted = image?.isEncrypted ?: false,
+        previewThumbnail = image?.previewThumbnail,
+        imagePayload = image?.payload,
     )
 }

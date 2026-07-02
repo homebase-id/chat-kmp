@@ -97,6 +97,13 @@ countUnmarkedSince:
 SELECT COUNT(*) FROM LocationPoint
 WHERE t >= ? AND flushedFileUid IS NULL;
 
+-- Un-uploaded rows older than ? (epoch ms). Drives the "upload anyway, even in
+-- battery saver, if there's a >24h un-uploaded backlog" safety override so the
+-- user's history can't sit on-device indefinitely while saver is on.
+countUnmarkedOlderThan:
+SELECT COUNT(*) FROM LocationPoint
+WHERE t < ? AND flushedFileUid IS NULL;
+
 selectLatest:
 SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, steps, bat
 FROM LocationPoint

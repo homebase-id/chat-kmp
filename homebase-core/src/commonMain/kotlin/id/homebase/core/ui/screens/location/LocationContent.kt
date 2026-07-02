@@ -34,6 +34,7 @@ import id.homebase.resources.location_map_osm
 import id.homebase.resources.location_map_section
 import id.homebase.resources.location_perm_always
 import id.homebase.resources.location_perm_always_hint
+import id.homebase.resources.location_perm_always_settings_hint
 import id.homebase.resources.location_perm_grant
 import id.homebase.resources.location_perm_granted
 import id.homebase.resources.location_perm_open_settings
@@ -122,12 +123,23 @@ fun LocationContent(
                         // Android requires foreground location before background
                         // may even be requested; iOS escalation likewise.
                         requestEnabled = uiState.whileInUseGranted,
+                        // After the first ungranted background attempt the runtime dialog won't
+                        // reappear (Android 11+), so route to Settings rather than re-offer Grant.
+                        forceSettings = uiState.alwaysRequestAttempted,
                         onRequest = { onAction(LocationUiAction.RequestAlwaysClicked) },
                         onOpenSettings = { onAction(LocationUiAction.OpenSystemSettingsClicked) },
                     )
                     if (!uiState.alwaysGranted) {
                         Text(
-                            text = stringResource(MR.string.location_perm_always_hint),
+                            // Once the runtime dialog won't reappear, guide the user to the
+                            // "Allow all the time" toggle in system Settings instead.
+                            text = stringResource(
+                                if (uiState.alwaysRequestAttempted) {
+                                    MR.string.location_perm_always_settings_hint
+                                } else {
+                                    MR.string.location_perm_always_hint
+                                }
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
@@ -237,6 +249,7 @@ private fun PermissionRow(
     requestEnabled: Boolean,
     onRequest: () -> Unit,
     onOpenSettings: () -> Unit,
+    forceSettings: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -257,7 +270,7 @@ private fun PermissionRow(
                 color = MaterialTheme.colorScheme.primary,
             )
 
-            permanentlyDenied -> Button(onClick = onOpenSettings) {
+            permanentlyDenied || forceSettings -> Button(onClick = onOpenSettings) {
                 Text(stringResource(MR.string.location_perm_open_settings))
             }
 

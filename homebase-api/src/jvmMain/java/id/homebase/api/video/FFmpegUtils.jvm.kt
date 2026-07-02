@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.file.JvmFileSystemUtil
 import java.io.BufferedReader
 import java.io.File
 import java.util.UUID
@@ -9,6 +10,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 actual object FFmpegUtils {
+
+    // FFmpeg scratch (compressed_/input_/hls_/thumb_) lands in the app cache dir, not
+    // java.io.tmpdir (#844 PR4) — so the desktop Storage screen counts it and the CacheSweeper
+    // reclaims it (as untracked scratch, unlike the KEEP-protected hb-temp upload payloads).
+    private val scratchDirPath: String get() = JvmFileSystemUtil.getCacheDirectory().apply { mkdirs() }.absolutePath
 
     @Volatile private var cachedFfmpegVersion: String? = null
     @Volatile private var ffmpegVersionProbed: Boolean = false
@@ -64,7 +70,7 @@ actual object FFmpegUtils {
             }
 
             val uniqueId = getUniqueId(inputPath)
-            val outputPath = "${System.getProperty("java.io.tmpdir")}/thumb_$uniqueId.jpg"
+            val outputPath = "${scratchDirPath}/thumb_$uniqueId.jpg"
 
             val command =
                 listOf(
@@ -128,7 +134,7 @@ actual object FFmpegUtils {
         val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
 
         val outputPath =
-            "${System.getProperty("java.io.tmpdir")}/compressed_${inputFile.name}"
+            "${scratchDirPath}/compressed_${inputFile.name}"
         val sourceDurationMs = getDurationMs(inputPath)
         val inputBytes = inputFile.length()
         val probe = probeVideoTrackViaFfprobe(inputPath)
@@ -277,7 +283,7 @@ actual object FFmpegUtils {
             }
 
             val outputDir = File(
-                System.getProperty("java.io.tmpdir"),
+                scratchDirPath,
                 "hls_${UUID.randomUUID()}"
             ).apply { mkdirs() }
 
@@ -312,7 +318,7 @@ actual object FFmpegUtils {
             }
 
             val outputDir = File(
-                System.getProperty("java.io.tmpdir"),
+                scratchDirPath,
                 "hls_${UUID.randomUUID()}"
             ).apply { mkdirs() }
 
@@ -436,7 +442,7 @@ actual object FFmpegUtils {
 
     actual suspend fun cacheInputVideo(fileName: String, data: ByteArray): String =
         withContext(Dispatchers.IO) {
-            val cacheFile = File(System.getProperty("java.io.tmpdir"), "input_$fileName")
+            val cacheFile = File(scratchDirPath, "input_$fileName")
             cacheFile.writeBytes(data)
             cacheFile.absolutePath
         }

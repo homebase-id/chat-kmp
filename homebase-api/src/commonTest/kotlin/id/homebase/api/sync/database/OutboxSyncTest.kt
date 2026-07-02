@@ -1,5 +1,8 @@
 package id.homebase.api.sync.database
 
+import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
+import okio.Path.Companion.toPath
+import okio.fakefilesystem.FakeFileSystem
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -33,6 +36,7 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 
 class TestUploader : OutboxUploader {
     var shouldFail = false
@@ -142,6 +146,59 @@ class OutboxSyncTest {
         }
     }
 
+
+    @Test
+    fun reapIdleOutboxTemps_deletesOldOrphansOnlyWhenIdle() = runOutboxTest { db ->
+        val sync = OutboxSync(
+            databaseManager = db, uploader = TestUploader(), eventBus = EventBus(), scope = backgroundScope
+        )
+        val fs = FakeFileSystem()
+        val dir = "/cache/outbox-temp".toPath()
+        fs.createDirectories(dir)
+        fun write(name: String): Long {
+            val p = dir / name
+            fs.write(p) { writeUtf8("x") }
+            return fs.metadata(p).lastModifiedAtMillis!!
+        }
+
+        // Idle + OLDER than maxAge → reaped (a real crash-orphan).
+        val m1 = write("enc_old.encrypted")
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m1 + 5_000)
+        assertFalse(fs.exists(dir / "enc_old.encrypted"), "idle + old orphan must be reaped")
+
+        // Idle + YOUNGER than maxAge → kept (the create-race guard: a just-written temp is safe).
+        val m2 = write("enc_new.encrypted")
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m2 + 500)
+        assertTrue(fs.exists(dir / "enc_new.encrypted"), "a just-written temp must never be reaped")
+
+        // Staged HLS payloads are whole hls_<uuid>/ DIRECTORIES (#842): idle + old → reaped
+        // recursively (a flat delete() would fail on the non-empty dir and leak it forever).
+        val hlsDir = dir / "hls_orphan"
+        fs.createDirectories(hlsDir)
+        fs.write(hlsDir / "index.ts") { writeUtf8("segments") }
+        fs.write(hlsDir / "index.m3u8") { writeUtf8("playlist") }
+        val hlsMtime = fs.metadata(hlsDir).lastModifiedAtMillis!!
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = hlsMtime + 5_000)
+        assertFalse(fs.exists(hlsDir), "idle + old orphan hls_ dir must be reaped recursively")
+
+        // A directory that is NOT hls_-shaped is unexpected here → never touched.
+        val strangeDir = dir / "not-ours"
+        fs.createDirectories(strangeDir)
+        fs.write(strangeDir / "file.bin") { writeUtf8("x") }
+        val strangeMtime = fs.metadata(strangeDir).lastModifiedAtMillis!!
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = strangeMtime + 5_000)
+        assertTrue(fs.exists(strangeDir / "file.bin"), "non-hls directories must never be reaped")
+
+        // NON-EMPTY outbox + old file → kept (a pending/offline row might reference it).
+        sync.tryEnqueue(DeleteFilesByGroupIdOutboxRequest(driveId = Uuid.random(), groupIds = listOf(Uuid.random())))
+        val m3 = write("enc_pending.encrypted")
+        val hlsPending = dir / "hls_pending"
+        fs.createDirectories(hlsPending)
+        fs.write(hlsPending / "index.ts") { writeUtf8("segments") }
+        sync.reapIdleOutboxTemps(dir.toString(), maxAgeMs = 1_000, fileSystem = fs, nowMs = m3 + 5_000)
+        assertTrue(fs.exists(dir / "enc_pending.encrypted"), "must not reap while the outbox is non-empty")
+        assertTrue(fs.exists(hlsPending / "index.ts"), "must not reap hls dirs while the outbox is non-empty")
+    }
 
     @Test
     fun testSuccessfulSend() = runOutboxTest { db ->
@@ -395,7 +452,7 @@ class OutboxSyncTest {
             // ConnectionRequestService / AuthConnectionCoordinator / DriveContactService
             // subscribers do when they call a suspending network fetch on partial
             // connectivity: the first event is picked up, the collect body never returns,
-            // and further emissions pile up in the 11-slot buffer.
+            // and further emissions pile up in the 65-slot buffer (replay 1 + extraBufferCapacity 64).
             val blocker = CompletableDeferred<Unit>()
             val collectorJob = backgroundScope.launch {
                 eventBus.events.collect {
@@ -406,8 +463,9 @@ class OutboxSyncTest {
 
             // Saturate the bus buffer. We launch each emit so emits that can't fit don't
             // suspend the test body itself — they stay parked inside their own launched
-            // coroutine, leaving the bus in a "next emit will suspend" state.
-            repeat(20) { i ->
+            // coroutine, leaving the bus in a "next emit will suspend" state. The count must
+            // exceed the 65-slot buffer with margin; the overflow emits simply park harmlessly.
+            repeat(128) { i ->
                 backgroundScope.launch {
                     eventBus.emit(BackendEvent.OutboxEvent.Failed("saturate-$i"))
                 }
@@ -639,6 +697,55 @@ class OutboxSyncTest {
         assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
         assertEquals(uniqueId, dropped.uniqueId)
         assertEquals(driveId, dropped.driveId)
+        assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
+     * #842: a staged payload file missing at drain time (DriveUploadProvider's
+     * pre-flight throws [StagedPayloadMissingException]) is permanent — the
+     * source bytes are gone, no retry can bring them back. Pre-#842 this
+     * surfaced as a platform IO error wrapped into a transient "Network
+     * failure" and burned 20 retries (~48h) with the message stuck.
+     */
+    @Test
+    fun testPermanentFailure_StagedPayloadMissingDroppedOnFirstAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = StagedPayloadMissingException(
+            path = "/data/outbox-staging/enc123.encrypted",
+            payloadKey = "chat_img",
+        )
+
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
+
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+        }
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+        assertEquals(uniqueId, dropped.uniqueId)
         assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }

@@ -11,12 +11,33 @@ import androidx.compose.animation.togetherWith
 import id.homebase.core.HomebaseConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,10 +66,12 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.core.ui.screens.vault.auth.VaultBiometricGate
 import id.homebase.core.ui.screens.vault.components.VaultAddSectionControl
 import id.homebase.core.ui.screens.vault.components.VaultAddEntrySheet
@@ -65,8 +88,12 @@ import id.homebase.resources.vault_error_create_section
 import id.homebase.resources.vault_error_delete_file
 import id.homebase.resources.vault_error_delete_page
 import id.homebase.resources.vault_error_delete_section
+import id.homebase.resources.vault_editor_add
+import id.homebase.resources.vault_editor_name_hint
 import id.homebase.resources.vault_error_download
 import id.homebase.resources.vault_error_download_page
+import id.homebase.resources.vault_error_edit_page
+import id.homebase.resources.vault_error_open_editor
 import id.homebase.resources.vault_error_outbox_upload
 import id.homebase.resources.vault_error_rename_file
 import id.homebase.resources.vault_error_rename_section
@@ -100,6 +127,8 @@ fun VaultScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToChats: () -> Unit,
     onNavigateToNoteEditor: (sectionId: String, entryId: String?) -> Unit = { _, _ -> },
+    onNavigateToCropper: (Uuid) -> Unit = {},
+    onNavigateToDrawer: (Uuid) -> Unit = {},
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -161,6 +190,8 @@ fun VaultScreen(
                         event.entryId?.toString(),
                     )
                 }
+                is VaultUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
+                is VaultUiEvent.NavigateToDrawer -> onNavigateToDrawer(event.requestId)
                 is VaultUiEvent.Activated,
                 is VaultUiEvent.CloseOnboarding -> { /* handled elsewhere */ }
             }
@@ -176,6 +207,15 @@ fun VaultScreen(
         viewModel.onAction(VaultUiAction.CloseOverlay)
     }
 
+    // Editor overlay is on top of any gallery overlay — composed last so it wins back.
+    @Suppress("DEPRECATION")
+    BackHandler(enabled = uiState.pendingEditor != null) {
+        viewModel.onAction(VaultUiAction.DismissAddEditor)
+    }
+
+    // Editor pager page and batch name live in VM state (VaultPendingEditor), not screen-local
+    // remember{}, so they survive the crop/draw forward-navigation that disposes VaultScreen.
+
     // Section dialog state
     var showNewSectionSheet by remember { mutableStateOf(false) }
     var showImageAddSheet by remember { mutableStateOf(false) }
@@ -188,52 +228,64 @@ fun VaultScreen(
 
     var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
 
-    // Camera picker — dispatches to append or add based on fileForAppend
+    // Camera picker — single image. Initial capture opens the editor; while the
+    // editor is open the same launcher adds another image to the batch.
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
-            val appendFile = fileForAppend
-            if (appendFile != null) {
-                viewModel.onAction(VaultUiAction.AppendPages(appendFile, listOf(it)))
-                fileForAppend = null
+            if (uiState.pendingEditor != null) {
+                viewModel.onAction(VaultUiAction.AddToEditor(listOf(it)))
             } else {
-                activeSectionForEntry?.let { section ->
-                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, listOf(it)))
-                }
+                viewModel.onAction(
+                    VaultUiAction.OpenAddEditor(
+                        files = listOf(it),
+                        sectionId = activeSectionForEntry?.sectionId,
+                        appendTo = fileForAppend,
+                    )
+                )
+                fileForAppend = null
             }
         }
     }
 
-    // Image picker — dispatches to append or add based on fileForAppend
+    // Image picker — images go through the full-screen editor before they're added.
     val imagePicker = rememberFilePickerLauncher(
         type = FileKitType.Image,
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (!files.isNullOrEmpty()) {
-            val appendFile = fileForAppend
-            if (appendFile != null) {
-                viewModel.onAction(VaultUiAction.AppendPages(appendFile, files))
-                fileForAppend = null
+            if (uiState.pendingEditor != null) {
+                viewModel.onAction(VaultUiAction.AddToEditor(files))
             } else {
-                activeSectionForEntry?.let { section ->
-                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
-                }
+                viewModel.onAction(
+                    VaultUiAction.OpenAddEditor(
+                        files = files,
+                        sectionId = activeSectionForEntry?.sectionId,
+                        appendTo = fileForAppend,
+                    )
+                )
+                fileForAppend = null
             }
         }
     }
 
-    // File picker — all file types (PDFs get thumbnail + preview automatically)
+    // File picker — documents skip the image editor (direct add/append), unless the
+    // editor is already open (the in-editor add-file button appends to the batch).
     val documentPicker = rememberFilePickerLauncher(
         type = FileKitType.File(),
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (!files.isNullOrEmpty()) {
-            val appendFile = fileForAppend
-            if (appendFile != null) {
-                viewModel.onAction(VaultUiAction.AppendPages(appendFile, files))
-                fileForAppend = null
+            if (uiState.pendingEditor != null) {
+                viewModel.onAction(VaultUiAction.AddToEditor(files))
             } else {
-                activeSectionForEntry?.let { section ->
-                    viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
+                val appendFile = fileForAppend
+                if (appendFile != null) {
+                    viewModel.onAction(VaultUiAction.AppendPages(appendFile, files))
+                    fileForAppend = null
+                } else {
+                    activeSectionForEntry?.let { section ->
+                        viewModel.onAction(VaultUiAction.AddEntryToSection(section.sectionId, files))
+                    }
                 }
             }
         }
@@ -249,7 +301,7 @@ fun VaultScreen(
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                if (uiState.fullScreenOverlay == null) {
+                if (uiState.fullScreenOverlay == null && uiState.pendingEditor == null) {
                     TopAppBar(
                         title = { Text(stringResource(MR.string.vault_label)) },
                         actions = {
@@ -264,7 +316,7 @@ fun VaultScreen(
                 }
             },
             floatingActionButton = {
-                if (uiState.sections.isNotEmpty() && uiState.fullScreenOverlay == null) {
+                if (uiState.sections.isNotEmpty() && uiState.fullScreenOverlay == null && uiState.pendingEditor == null) {
                     VaultAddSectionControl(onAddSection = { showNewSectionSheet = true })
                 }
             },
@@ -358,6 +410,11 @@ fun VaultScreen(
                             onDeleteEntry = {
                                 viewModel.onAction(VaultUiAction.DeleteFile(overlay.file))
                             },
+                            onEditPage = { payloadKey, tool ->
+                                viewModel.onAction(
+                                    VaultUiAction.EditExistingPage(overlay.file, payloadKey, tool)
+                                )
+                            },
                             sections = uiState.sections,
                             onMoveToSection = { targetSectionId ->
                                 viewModel.onAction(
@@ -369,6 +426,112 @@ fun VaultScreen(
                             animatedVisibilityScope = this@AnimatedContent,
                         )
                     }
+                }
+            }
+
+            // Full-screen media editor for newly-picked images. State-driven (not a
+            // nav destination) so it survives navigating out to the crop/draw screen
+            // and back. The Scaffold body places all content at the origin, so this
+            // opaque, fillMaxSize editor draws on top of the grid/gallery beneath it.
+            uiState.pendingEditor?.let { editor ->
+                // Springs up from the bottom when the editor opens.
+                var editorVisible by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) { editorVisible = true }
+                AnimatedVisibility(
+                    visible = editorVisible,
+                    enter = slideInVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMediumLow,
+                        ),
+                    ) { it } + fadeIn(),
+                ) {
+                MediaAttachmentEditor(
+                    attachments = editor.attachments,
+                    currentPage = editor.currentPage,
+                    onPageChanged = { viewModel.onAction(VaultUiAction.SetEditorPage(it)) },
+                    modifier = Modifier.fillMaxSize(),
+                    onCropImage = { id ->
+                        viewModel.onAction(VaultUiAction.EditStagedImage(id, VaultEditorTool.Crop))
+                    },
+                    onDrawImage = { id ->
+                        viewModel.onAction(VaultUiAction.EditStagedImage(id, VaultEditorTool.Draw))
+                    },
+                    onAddImage = {
+                        isPickerActive = true
+                        imagePicker.launch()
+                    },
+                    onCameraClick = {
+                        isPickerActive = true
+                        cameraLauncher.launch()
+                    },
+                    onAddFile = {
+                        isPickerActive = true
+                        documentPicker.launch()
+                    },
+                    onRemoveFile = { id ->
+                        viewModel.onAction(VaultUiAction.RemoveFromEditor(id))
+                    },
+                    onDismiss = {
+                        viewModel.onAction(VaultUiAction.DismissAddEditor)
+                    },
+                    bottomBar = {
+                        if (editor.appendTo == null) {
+                            // Mirror the chat composer input bar: a rounded filled field on
+                            // surfaceContainerHighest + a circular send button.
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .imePadding(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                OutlinedTextField(
+                                    value = editor.name,
+                                    onValueChange = { viewModel.onAction(VaultUiAction.SetEditorName(it)) },
+                                    singleLine = true,
+                                    placeholder = { Text(stringResource(MR.string.vault_editor_name_hint)) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        focusedBorderColor = Color.Transparent,
+                                        unfocusedBorderColor = Color.Transparent,
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                IconButton(
+                                    onClick = {
+                                        viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
+                                    },
+                                    colors = IconButtonDefaults.iconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    ),
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = stringResource(MR.string.vault_editor_add),
+                                    )
+                                }
+                            }
+                        } else {
+                            // Append to an existing entry — no name, just confirm.
+                            Button(
+                                onClick = {
+                                    viewModel.onAction(VaultUiAction.ConfirmAddEditor(editor.name))
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                                    .imePadding(),
+                            ) {
+                                Text(stringResource(MR.string.vault_editor_add))
+                            }
+                        }
+                    },
+                )
                 }
             }
         }
@@ -532,4 +695,6 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     is VaultError.UpdateLabelFailed -> stringResource(MR.string.vault_error_update_label, error.fileName)
     VaultError.DownloadPageFailed -> stringResource(MR.string.vault_error_download_page)
     VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
+    VaultError.EditPageFailed -> stringResource(MR.string.vault_error_edit_page)
+    VaultError.OpenEditorFailed -> stringResource(MR.string.vault_error_open_editor)
 }

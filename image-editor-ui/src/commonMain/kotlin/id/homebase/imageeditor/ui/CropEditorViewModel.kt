@@ -37,8 +37,19 @@ class CropEditorViewModel(
     private val resultBus: CropResultBus,
 ) : ViewModel() {
 
-    /** Read once from the navigation route — keys both the source and the result. */
-    val requestId: Uuid = Uuid.parse(savedStateHandle.toRoute<Route.Crop>().requestId)
+    /** Keys both the source and the result. Arrives as a nav arg (main app, via
+     *  Route.Crop) or as a directly-seeded handle key (the share editor mounts this
+     *  screen without a NavHost). Read the raw key first, fall back to the typed route. */
+    val requestId: Uuid = (savedStateHandle.get<String>("requestId")
+        ?: savedStateHandle.toRoute<Route.Crop>().requestId).let(Uuid::parse)
+
+    /** Free the bus entry when the cropper screen goes away — confirmed or aborted.
+     *  postResult() closes the channel on the confirm path; this covers the back-out
+     *  path so the caller's resultsFor(requestId) collector can't suspend forever. */
+    override fun onCleared() {
+        resultBus.cancel(requestId)
+        super.onCleared()
+    }
 
     private val _uiState = MutableStateFlow(CropEditorUiState())
     val uiState: StateFlow<CropEditorUiState> = _uiState.asStateFlow()

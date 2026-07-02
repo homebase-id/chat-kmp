@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LocationOn
@@ -42,6 +43,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,15 +80,18 @@ import id.homebase.resources.location_device_this_device
 import id.homebase.resources.location_device_unnamed
 import id.homebase.resources.location_devices_section
 import id.homebase.resources.location_emergency_access_manage
-import id.homebase.resources.location_emergency_access_missing
 import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
-import id.homebase.resources.location_locatable_coming_soon
+import id.homebase.resources.location_locatable_broken_cd
+import id.homebase.resources.location_locatable_none
 import id.homebase.resources.location_locatable_section
+import id.homebase.resources.location_locate_age_days
+import id.homebase.resources.location_locate_age_hours
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
 import id.homebase.resources.stop_sharing
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
@@ -108,6 +113,7 @@ fun LocationDashboardContent(
     onOpenDevice: (Uuid) -> Unit,
     onOpenSetup: () -> Unit,
     onManageEmergencyAccess: () -> Unit,
+    onVerifyLocatable: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -301,24 +307,28 @@ fun LocationDashboardContent(
             }
         }
 
-        // ── Who you can locate (placeholder — reciprocal list, not built yet) ──
+        // ── Who you can locate (contacts carrying our iCanLocate flag) ──
         DashboardSection(title = stringResource(MR.string.location_locatable_section)) {
-            Text(
-                text = stringResource(MR.string.location_locatable_coming_soon),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            PeopleListBody(
+                loaded = uiState.whoICanLocateLoaded,
+                members = uiState.whoICanLocate,
+                emptyText = stringResource(MR.string.location_locatable_none),
+                onExpand = onVerifyLocatable,
+                rowTrailing = { member ->
+                    LocateStatusTrailing(uiState.whoICanLocateStatus[member.odinId.domainName])
+                },
             )
         }
 
-        // ── Who can locate you (members of the Emergency Location Access circle) ──
+        // ── Who can locate you (members of our emergency-location-access circle) ──
         DashboardSection(
             title = stringResource(MR.string.location_emergency_access_section),
             onManage = onManageEmergencyAccess,
         ) {
-            EmergencyAccessBody(
-                circleFound = uiState.emergencyCircleFound,
-                members = uiState.emergencyContacts,
+            PeopleListBody(
+                loaded = uiState.whoCanLocateMeLoaded,
+                members = uiState.whoCanLocateMe,
+                emptyText = stringResource(MR.string.location_emergency_access_none),
             )
         }
 
@@ -431,32 +441,31 @@ private fun DashboardSection(
 }
 
 /**
- * Body of the "Who can locate you" section: the members of the "Emergency Location
- * Access" circle. Collapses to an avatar stack that expands to a named list.
+ * Body of a people-list dashboard section ("Who can locate you" / "Who you can locate"): a loading
+ * spinner, an [emptyText] empty state, or an avatar stack that expands to a named list.
  */
 @Composable
-private fun EmergencyAccessBody(
-    circleFound: Boolean?,
+private fun PeopleListBody(
+    loaded: Boolean,
     members: List<ContactUiModel>,
+    emptyText: String,
+    onExpand: (() -> Unit)? = null,
+    rowTrailing: (@Composable (ContactUiModel) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // Fire the (optional) per-entry preflight each time the section opens; resolved rows are skipped
+    // downstream, so re-expanding is cheap.
+    LaunchedEffect(expanded) { if (expanded) onExpand?.invoke() }
     when {
-        circleFound == null -> Box(
+        !loaded -> Box(
             modifier = Modifier.fillMaxWidth().padding(24.dp),
             contentAlignment = Alignment.Center,
         ) {
             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
         }
 
-        !circleFound -> Text(
-            text = stringResource(MR.string.location_emergency_access_missing),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-        )
-
         members.isEmpty() -> Text(
-            text = stringResource(MR.string.location_emergency_access_none),
+            text = emptyText,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -497,7 +506,9 @@ private fun EmergencyAccessBody(
                                 Text(
                                     text = member.name,
                                     style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.weight(1f),
                                 )
+                                rowTrailing?.invoke(member)
                             }
                         }
                     }
@@ -625,6 +636,51 @@ private fun IncomingShareRowItem(row: IncomingShareRow) {
             )
         }
     }
+}
+
+/**
+ * Trailing content for a "who I can locate" row: a spinner while the temporal-access preflight is in
+ * flight, a broken-link icon when access is gone, or the compact age of the peer's newest data
+ * (warning-colored past a day). A null/absent status (not yet requested, or an inconclusive failure)
+ * renders nothing.
+ */
+@Composable
+private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
+    when (status) {
+        null -> Unit
+
+        LocateVerifyStatus.Loading ->
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+
+        LocateVerifyStatus.Broken ->
+            Icon(
+                imageVector = Icons.Default.LinkOff,
+                contentDescription = stringResource(MR.string.location_locatable_broken_cd),
+                tint = MaterialTheme.colorScheme.error,
+            )
+
+        is LocateVerifyStatus.Active -> status.newestModifiedMs?.let { ms ->
+            val ageMs = Clock.System.now().toEpochMilliseconds() - ms
+            val warn = ageMs > 24L * 60 * 60_000
+            Text(
+                text = formatLocateAge(ageMs),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (warn) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } // Active(null) = access but no data yet → render nothing
+    }
+}
+
+/** Compact "age since newest data" label: minutes, then hours (through 96 h), then days. */
+@Composable
+private fun formatLocateAge(ageMs: Long): String = when {
+    ageMs < 60 * 60_000L ->
+        stringResource(MR.string.live_location_age_minutes, (ageMs / 60_000L).toInt().coerceAtLeast(0))
+    ageMs <= 96 * 60 * 60_000L ->
+        stringResource(MR.string.location_locate_age_hours, (ageMs / 3_600_000L).toInt())
+    else ->
+        stringResource(MR.string.location_locate_age_days, (ageMs / 86_400_000L).toInt())
 }
 
 @Composable

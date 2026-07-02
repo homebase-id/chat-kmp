@@ -1,30 +1,25 @@
 package id.homebase.core.ui.screens.location
+import id.homebase.upload.UploadService
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.MediaUpdateSpec
+import id.homebase.upload.MediaUploadSpec
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
-import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocale
-import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.BufferedLocationPoint
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
-import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptionService
-import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.upload.PayloadBundle
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.location.tracking.LocationDeviceId
@@ -70,9 +65,7 @@ private const val TAG = "LocationTrackUploader"
  *    OutboxEvent.ItemCompleted, and un-marked on ItemFailed for retry.
  */
 class LocationTrackUploaderService(
-    private val outboxSync: OutboxSync,
-    private val optimisticWriter: OptimisticWriter,
-    private val payloadEncryptionService: PayloadBundleEncryptionService,
+    private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
     private val databaseManager: DatabaseManager,
@@ -83,6 +76,10 @@ class LocationTrackUploaderService(
     private val scope: CoroutineScope,
     /** Injectable for tests; production reads the wall clock. */
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** OS battery saver on? Wired in DI to DeviceSensors. Defaults false (always upload). */
+    private val powerSaveMode: () -> Boolean = { false },
+    /** App in the foreground? Wired in DI to the coordinator. Defaults true (always upload). */
+    private val isAppForeground: () -> Boolean = { true },
 ) {
     private val logger = Logger.withTag(TAG)
     private val driveId = locationLabeledDrive.drive.alias
@@ -124,6 +121,22 @@ class LocationTrackUploaderService(
     suspend fun flushIfDue() {
         val now = nowMs()
         if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) return
+        val powerSave = powerSaveMode()
+        val foreground = isAppForeground()
+        // Battery saver + backgrounded → defer uploads to save power; local capture still persists
+        // and drains on the next foreground / saver-off flush (#878 follow-up). Override: never let
+        // un-uploaded history sit longer than STALE_BACKLOG_MS — upload at the next chance regardless
+        // of saver, so the user's track can't be stranded on-device (and can't reach the 7-day sweep
+        // un-uploaded). The backlog query runs only in the would-defer case.
+        val hasStaleBacklog = if (powerSave && !foreground) {
+            runCatching { buffer.countUnmarkedOlderThan(now - STALE_BACKLOG_MS) }.getOrDefault(0L) > 0L
+        } else {
+            false
+        }
+        if (shouldDeferBackgroundFlush(powerSave, foreground, hasStaleBacklog)) {
+            logger.d { "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms un-uploaded backlog" }
+            return
+        }
         flush()
     }
 
@@ -279,22 +292,20 @@ class LocationTrackUploaderService(
                 fileType = LOCATION_DEVICE_FILE_TYPE,
             ),
         )
-        val request = UploadFileRequest(
-            driveId = driveId,
-            keyHeader = keyHeader,
-            metadata = unencryptedMetadata.encryptContent(keyHeader),
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
+                driveId = driveId,
+                uniqueId = uid,
+                keyHeader = keyHeader,
+                bundle = null,
+                metadata = unencryptedMetadata,
+                replace = true,
+                originalRecipientCount = 0,
+                seedCache = false,
+            ),
+            scope = scope,
         )
-        val enqueued = outboxSync.replaceEnqueue(request).enqueued
-        if (enqueued) {
-            runCatching {
-                optimisticWriter.writeNewFile(
-                    driveId = driveId,
-                    keyHeader = keyHeader,
-                    unecryptedMetadata = unencryptedMetadata,
-                    originalRecipientCount = 0,
-                    fileSystemType = FileSystemType.Standard,
-                )
-            }.onFailure { logger.e(it) { "Optimistic write failed (non-fatal) for device profile" } }
+        if (outcome is UploadOutcome.Enqueued) {
             deviceProfileEnsured = true
             logger.i { "Device profile registered: ${profile.name} (${profile.platform})" }
         }
@@ -307,7 +318,7 @@ class LocationTrackUploaderService(
         overflowPoints: List<BufferedLocationPoint>?,
     ): Boolean {
         val keyHeader = KeyHeader.newRandom16()
-        val (payloads, tempPath) = buildOverflowPayload(uid, hourStartMs, overflowPoints, keyHeader)
+        val (bundle, tempPath) = buildOverflowPayload(hourStartMs, overflowPoints)
         try {
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
@@ -319,25 +330,22 @@ class LocationTrackUploaderService(
                     userDate = hourStartMs,
                 ),
             )
-            val request = UploadFileRequest(
-                driveId = driveId,
-                keyHeader = keyHeader,
-                metadata = unencryptedMetadata.encryptContent(keyHeader),
-                payloads = payloads ?: emptyList(),
+            // replace=true → replaceEnqueue: successive flushes of the hour coalesce to one row.
+            // Location doesn't seed the payload cache.
+            val outcome = uploadService.upload(
+                MediaUploadSpec(
+                    driveId = driveId,
+                    uniqueId = uid,
+                    keyHeader = keyHeader,
+                    bundle = bundle,
+                    metadata = unencryptedMetadata,
+                    replace = true,
+                    originalRecipientCount = 0,
+                    seedCache = false,
+                ),
+                scope = scope,
             )
-            val enqueued = outboxSync.replaceEnqueue(request).enqueued
-            if (enqueued) {
-                runCatching {
-                    optimisticWriter.writeNewFile(
-                        driveId = driveId,
-                        keyHeader = keyHeader,
-                        unecryptedMetadata = unencryptedMetadata,
-                        originalRecipientCount = 0,
-                        fileSystemType = FileSystemType.Standard,
-                    )
-                }.onFailure { logger.e(it) { "Optimistic write failed (non-fatal) for $uid" } }
-            }
-            return enqueued
+            return outcome is UploadOutcome.Enqueued
         } finally {
             tempPath?.let { fileOperationsProvider.deleteTempFile(it) }
         }
@@ -356,7 +364,7 @@ class LocationTrackUploaderService(
             iv = ByteArrayUtil.getRndByteArray(16),
             aesKey = existing.keyHeader.aesKey,
         )
-        val (payloads, tempPath) = buildOverflowPayload(uid, hourStartMs, overflowPoints, newKeyHeader)
+        val (bundle, tempPath) = buildOverflowPayload(hourStartMs, overflowPoints)
         try {
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
@@ -369,28 +377,20 @@ class LocationTrackUploaderService(
                 ),
                 versionTag = existing.fileMetadata.versionTag,
             )
-            val request = UpdateFileByUniqueIdRequest(
-                driveId = driveId,
-                uniqueId = uid,
-                keyHeader = newKeyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = UpdateManifest.build(payloads = payloads),
-                ),
-                metadata = unencryptedMetadata.encryptContent(newKeyHeader),
-                payloads = payloads,
-            )
-            // replaceEnqueue keyed on (driveId, uniqueId): successive flushes of
+            // replace=true → replaceEnqueue keyed on (driveId, uniqueId): successive flushes of
             // the same hour collapse to one pending upload.
-            val enqueued = outboxSync.replaceEnqueue(request).enqueued
-            if (enqueued) {
-                runCatching {
-                    optimisticWriter.writeUpdate(driveId, newKeyHeader, unencryptedMetadata)
-                }.onFailure { logger.e(it) { "Optimistic update failed (non-fatal) for $uid" } }
-            }
-            return enqueued
+            val outcome = uploadService.updateFile(
+                MediaUpdateSpec(
+                    driveId = driveId,
+                    uniqueId = uid,
+                    keyHeader = newKeyHeader,
+                    bundle = bundle,
+                    metadata = unencryptedMetadata,
+                    replace = true,
+                ),
+                scope = scope,
+            )
+            return outcome is UploadOutcome.Enqueued
         } finally {
             tempPath?.let { fileOperationsProvider.deleteTempFile(it) }
         }
@@ -400,12 +400,15 @@ class LocationTrackUploaderService(
      * Full-resolution payload for overflow hours. Returns (payloads, tempPath);
      * (null, null) for the common header-only case.
      */
+    /**
+     * Build the plaintext overflow payload bundle for an hour (null for the common header-only
+     * case). UploadService encrypts it — shared by the create and update paths so both let the
+     * pipeline own encryption.
+     */
     private suspend fun buildOverflowPayload(
-        uid: Uuid,
         hourStartMs: Long,
         points: List<BufferedLocationPoint>?,
-        keyHeader: KeyHeader,
-    ): Pair<List<PayloadFile>?, String?> {
+    ): Pair<PayloadBundle?, String?> {
         if (points == null) return null to null
         val json = LocationTrackCodec.encodePayload(deviceId.value, hourStartMs, points)
         val tempPath = fileOperationsProvider.writeBytesToTempFile(
@@ -424,8 +427,7 @@ class LocationTrackUploaderService(
             thumbnails = emptyList(),
             previewThumbs = emptyList(),
         )
-        val encrypted = payloadEncryptionService.encryptBundle(uid, bundle, keyHeader.aesKey, scope)
-        return encrypted.payloads to tempPath
+        return bundle to tempPath
     }
 
     private suspend fun observeOutbox() {
@@ -475,8 +477,22 @@ class LocationTrackUploaderService(
         const val MIN_FLUSH_INTERVAL_MS = 60_000L
         const val RETENTION_MS = 7L * 24 * HOUR_MS
         const val DAY_MS = 24 * HOUR_MS
+
+        /** Un-uploaded backlog older than this forces an upload even in battery saver (24h). */
+        const val STALE_BACKLOG_MS = 24L * HOUR_MS
     }
 }
+
+/**
+ * Whether a flush should be deferred for battery saver. Deferred only while saver is on AND the app
+ * is backgrounded AND there's no un-uploaded backlog past the stale threshold — a foregrounded user
+ * always uploads, and a >24h backlog always uploads (the safety override). Pure for unit testing.
+ */
+internal fun shouldDeferBackgroundFlush(
+    powerSaveMode: Boolean,
+    appForeground: Boolean,
+    hasStaleUnuploaded: Boolean,
+): Boolean = powerSaveMode && !appForeground && !hasStaleUnuploaded
 
 /** What an outbox event means for the location point buffer. */
 internal enum class BufferAction {

@@ -1,4 +1,6 @@
 package id.homebase.chat.services
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.PayloadBundle
 
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -22,6 +24,8 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 /**
@@ -43,13 +47,21 @@ class PayloadCacheSeederTest {
 
     // Returns bytes for a known path; throws for the "missing" path to exercise best-effort.
     private val fileBytes = mutableMapOf<String, ByteArray>()
+    // Overrides what getFileSize reports for a path (defaults to the byte length) —
+    // lets the cap test claim a huge size without allocating it.
+    private val fileSizes = mutableMapOf<String, Long>()
+    // Every readFileBytes call — the cap test asserts the capped payload was never read.
+    private val readPaths = mutableListOf<String>()
     private val fileOps = object : FileOperationsProvider {
         override fun getCacheDirectory() = tempDir
-        override suspend fun readFileBytes(path: String): ByteArray =
-            fileBytes[path] ?: throw IOException("no bytes for $path")
+        override suspend fun readFileBytes(path: String): ByteArray {
+            readPaths += path
+            return fileBytes[path] ?: throw IOException("no bytes for $path")
+        }
         override fun openFileInput(path: String): InputProvider = error("not used")
         override fun deleteTempFile(path: String) = false
-        override fun getFileSize(path: String) = 0L
+        override fun getFileSize(path: String) =
+            fileSizes[path] ?: fileBytes[path]?.size?.toLong() ?: 0L
         override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("not used")
         override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("not used")
         override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("not used")
@@ -141,5 +153,45 @@ class PayloadCacheSeederTest {
         assertContentEquals(goodBytes, good.bytes)
         val thumb = driveCache.getThumbBytesRaw(driveId, fileId, "good", 320, 320)
         assertContentEquals(ByteArray(8) { 7 }, thumb.bytes)
+    }
+
+    /**
+     * #947: a payload above [PayloadCacheSeeder.MAX_SEED_PAYLOAD_BYTES] must not be
+     * read at all (readFileBytes buffers the whole payload in RAM — a full-video-size
+     * allocation per send) and must not land in the cache; its thumbnails are the
+     * critical seed and still land. Small payloads in the same bundle are unaffected.
+     */
+    @Test
+    fun `skips payload seeding above the size cap but still seeds thumbnails`() = runTest {
+        val bigPath = "/tmp/huge-video"
+        fileBytes[bigPath] = ByteArray(4) { 9 }              // present on disk...
+        fileSizes[bigPath] = PayloadCacheSeeder.MAX_SEED_PAYLOAD_BYTES + 1  // ...but reports as huge
+        val smallBytes = ByteArray(16) { 0x21 }
+        fileBytes["/tmp/small"] = smallBytes
+        val videoThumb = ByteArray(12) { 5 }
+
+        val bundle = PayloadBundle(
+            payloads = listOf(
+                PayloadFile(key = "video", filePath = bigPath, contentType = "video/mp2t"),
+                PayloadFile(key = "photo", filePath = "/tmp/small", contentType = "image/jpeg"),
+            ),
+            thumbnails = listOf(
+                ThumbnailFile(pixelWidth = 320, pixelHeight = 180, thumbnailBytes = videoThumb, key = "video"),
+            ),
+            previewThumbs = emptyList(),
+        )
+
+        seeder.seed(driveId, fileId, bundle)
+
+        assertTrue(bigPath !in readPaths, "capped payload must never be readFileBytes'd")
+        // Not seeded → the read escapes the cache and hits the throwing MockEngine.
+        assertFails("capped payload must not be served from the cache") {
+            driveCache.getPayloadBytesRaw(driveId, fileId, "video")
+        }
+        // The video's thumbnail and the sibling small payload are seeded as before.
+        val thumb = driveCache.getThumbBytesRaw(driveId, fileId, "video", 320, 180)
+        assertContentEquals(videoThumb, thumb.bytes)
+        val small = driveCache.getPayloadBytesRaw(driveId, fileId, "photo")
+        assertContentEquals(smallBytes, small.bytes)
     }
 }

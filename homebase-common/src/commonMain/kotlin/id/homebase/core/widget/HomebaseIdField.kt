@@ -8,8 +8,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -33,13 +36,23 @@ fun HomebaseIdField(
     modifier: Modifier = Modifier,
     label: @Composable (() -> Unit)? = null,
     placeholder: @Composable (() -> Unit)? = null,
+    supportingText: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
     isError: Boolean = false,
     enabled: Boolean = true,
+    readOnly: Boolean = false,
     focusRequester: FocusRequester? = null,
     imeAction: ImeAction = ImeAction.Done,
     onImeAction: (() -> Unit)? = null,
 ) {
-    val baseModifier = modifier.fillMaxWidth()
+    val baseModifier = modifier
+        .fillMaxWidth()
+        // Declare this as a username field so password managers (Bitwarden, etc.) recognise
+        // it and offer the inline keyboard suggestion. Compose Multiplatform 1.8 reworked
+        // autofill to require an explicit ContentType — before that the field was matched by
+        // the framework's heuristics, which is why the suggestion silently stopped appearing
+        // after a Compose bump.
+        .semantics { contentType = ContentType.Username }
     val fieldModifier = if (focusRequester != null) {
         baseModifier.focusRequester(focusRequester)
     } else {
@@ -51,9 +64,12 @@ fun HomebaseIdField(
         modifier = fieldModifier,
         label = label,
         placeholder = placeholder,
+        supportingText = supportingText,
+        trailingIcon = trailingIcon,
         singleLine = true,
         isError = isError,
         enabled = enabled,
+        readOnly = readOnly,
         shape = RoundedCornerShape(24.dp),
         visualTransformation = remember {
             VisualTransformation { text ->

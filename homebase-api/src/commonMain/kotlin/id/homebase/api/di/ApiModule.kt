@@ -9,6 +9,7 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.contacts.ContactHeaderReader
+import id.homebase.api.client.contacts.ContactPayloadReader
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.liverelay.LiveRelayProvider
@@ -121,6 +122,16 @@ val apiModule = module {
         val driveFileProvider = get<DriveFileProvider>()
         ContactHeaderReader { driveId, uniqueId ->
             driveFileProvider.getFileHeaderByUid(driveId, uniqueId)
+        }
+    }
+    // Reads + decrypts a contact's on-demand payloads (ext_data bios, appextdata). The list/index
+    // header omits per-payload IVs, so go through the full file header for the IV + file key, then
+    // decrypt via the normal cached payload path. Narrow seam (like ContactHeaderReader) keeps
+    // ContactRepository off the drive-file graph and fakeable in tests.
+    single<ContactPayloadReader> {
+        val driveFileProvider = get<DriveFileProvider>()
+        ContactPayloadReader { driveId, fileId, payloadKey ->
+            driveFileProvider.getPayloadBytesDecryptedViaResponseHeader(driveId, fileId, payloadKey)
         }
     }
     singleOf(::ContactsProvider)

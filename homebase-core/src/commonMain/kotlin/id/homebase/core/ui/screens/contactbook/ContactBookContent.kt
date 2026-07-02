@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.contactbook
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -22,12 +24,11 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.components.ContactBookEmptyState
 import id.homebase.core.ui.screens.contactbook.components.ContactBookRow
 import id.homebase.resources.MR
-import id.homebase.resources.contactbook_confirmed_empty
+import id.homebase.resources.contactbook_circle_unvetted
 import id.homebase.resources.contactbook_filter_all
-import id.homebase.resources.contactbook_filter_confirmed
-import id.homebase.resources.contactbook_filter_introduced
-import id.homebase.resources.contactbook_introduced_empty
 import id.homebase.resources.contactbook_no_results
+import id.homebase.resources.contactbook_requests_header
+import id.homebase.resources.contactbook_unvetted_empty
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -36,14 +37,19 @@ fun ContactBookContent(
     onAction: (ContactBookUiAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val list = when (uiState.filter) {
-        ContactFilter.ALL -> uiState.contacts
-        ContactFilter.INTRODUCED -> uiState.introduced
-        ContactFilter.CONFIRMED -> uiState.confirmed
-    }
-
     Column(modifier = modifier.fillMaxSize()) {
         FilterRow(uiState.filter, onAction)
+
+        // Incoming requests are the actionable set (outgoing has nothing to do here but Cancel,
+        // already reachable from the resolved identity itself) — surfaced as a normal section at
+        // the top of the list, not a separate pill, so it reads like part of the list rather than
+        // a toast that bounces you elsewhere.
+        val incomingRequests = uiState.requests.filter { it.direction == RequestDirection.INCOMING }
+
+        val list = when (uiState.filter) {
+            ContactFilter.ALL -> uiState.contacts
+            ContactFilter.UNVETTED -> uiState.unvetted
+        }
 
         when {
             uiState.isLoading -> Box(
@@ -51,15 +57,12 @@ fun ContactBookContent(
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
 
-            list.isEmpty() && uiState.searchQuery.isNotBlank() ->
+            list.isEmpty() && incomingRequests.isEmpty() && uiState.searchQuery.isNotBlank() ->
                 CenterText(stringResource(MR.string.contactbook_no_results))
 
-            list.isEmpty() -> when (uiState.filter) {
-                ContactFilter.INTRODUCED ->
-                    CenterText(stringResource(MR.string.contactbook_introduced_empty))
-
-                ContactFilter.CONFIRMED ->
-                    CenterText(stringResource(MR.string.contactbook_confirmed_empty))
+            list.isEmpty() && incomingRequests.isEmpty() -> when (uiState.filter) {
+                ContactFilter.UNVETTED ->
+                    CenterText(stringResource(MR.string.contactbook_unvetted_empty))
 
                 ContactFilter.ALL -> ContactBookEmptyState(
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
@@ -73,6 +76,25 @@ fun ContactBookContent(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 88.dp),
                 ) {
+                    if (incomingRequests.isNotEmpty()) {
+                        item(key = "h_requests") {
+                            Text(
+                                text = stringResource(MR.string.contactbook_requests_header),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        items(incomingRequests, key = { "req_${it.entry.uniqueId}" }) { request ->
+                            ContactBookRow(
+                                entry = request.entry,
+                                onClick = { onAction(ContactBookUiAction.ContactClicked(request.entry)) },
+                            )
+                        }
+                    }
                     sections.forEach { section ->
                         val entries = grouped[section].orEmpty()
                         item(key = "h_$section") {
@@ -91,7 +113,7 @@ fun ContactBookContent(
                                 entry = entry,
                                 onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
                                 // Check shows whenever the identity is connected, in every
-                                // filter (an introduced contact is still a connection).
+                                // filter (an unvetted contact is still a connection).
                                 connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
                                 introducedBy = entry.odinId?.lowercase()
                                     ?.let { uiState.introducedByDomain[it] },
@@ -126,6 +148,7 @@ private fun FilterRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -135,14 +158,9 @@ private fun FilterRow(
             label = { Text(stringResource(MR.string.contactbook_filter_all)) },
         )
         FilterChip(
-            selected = filter == ContactFilter.INTRODUCED,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.INTRODUCED)) },
-            label = { Text(stringResource(MR.string.contactbook_filter_introduced)) },
-        )
-        FilterChip(
-            selected = filter == ContactFilter.CONFIRMED,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CONFIRMED)) },
-            label = { Text(stringResource(MR.string.contactbook_filter_confirmed)) },
+            selected = filter == ContactFilter.UNVETTED,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.UNVETTED)) },
+            label = { Text(stringResource(MR.string.contactbook_circle_unvetted)) },
         )
     }
 }
