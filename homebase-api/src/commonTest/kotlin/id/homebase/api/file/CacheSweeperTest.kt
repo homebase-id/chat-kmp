@@ -48,6 +48,20 @@ class CacheSweeperTest {
     }
 
     @Test
+    fun hlsChunkCacheDir_isTracked_keptOnStartupSweep_deletedOnLogout() {
+        // The dedicated HLS chunk cache (#845) is a tracked Coil LRU like the
+        // -v2 dirs: KEEP on the startup / "Clear caches" sweep, DELETE on logout.
+        assertEquals(
+            SweepAction.KEEP,
+            decide(entry("homebase-hls-chunks-v1", known = true), SweepMode.UNTRACKED),
+        )
+        assertEquals(
+            SweepAction.DELETE,
+            decide(entry("homebase-hls-chunks-v1", known = true), SweepMode.ALL),
+        )
+    }
+
+    @Test
     fun outboxTempDir_isKeptOnUntrackedSweep_butDeletedOnLogout() {
         // outbox-temp holds encrypted payloads referenced by pending (incl. offline) outbox rows —
         // a startup / "Clear caches" sweep must NOT delete them (the outbox reaps them on

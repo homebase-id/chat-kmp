@@ -43,6 +43,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -336,10 +337,11 @@ class DriveFileProviderCachedTest {
 
         val stats = provider.getCacheStats()
 
-        assertEquals(2, stats.size, "both rows must be returned even if one ctor failed")
+        assertEquals(3, stats.size, "all rows must be returned even if one ctor failed")
 
         val payload = stats.single { it.id == "drive_payloads" }
         val thumb = stats.single { it.id == "drive_thumbnails" }
+        val chunks = stats.single { it.id == "hls_chunks" }
 
         assertTrue(
             payload.sizeBytes != CacheStats.UNAVAILABLE,
@@ -349,6 +351,10 @@ class DriveFileProviderCachedTest {
             CacheStats.UNAVAILABLE, thumb.sizeBytes,
             "broken thumb cache must be marked unavailable via the sentinel"
         )
+        assertTrue(
+            chunks.sizeBytes != CacheStats.UNAVAILABLE,
+            "healthy chunk cache must NOT be marked unavailable (got sizeBytes=${chunks.sizeBytes})"
+        )
     }
 
     /**
@@ -357,6 +363,116 @@ class DriveFileProviderCachedTest {
      * never-sent (failed) message's media retrievable for retry. The mock
      * engine throws on any request to prove the network is never touched.
      */
+    // ==================== #845 PR2: dedicated HLS chunk cache ====================
+
+    private fun statsSize(stats: List<CacheStats>, id: String): Long =
+        stats.single { it.id == id }.sizeBytes
+
+    @Test
+    fun `range reads land in the chunk cache and never pollute the payload LRU`() = runTest {
+        nextBody = ByteArray(4096) { 3 }
+
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 4096L),
+        )
+
+        val stats = provider.getCacheStats()
+        assertTrue(statsSize(stats, "hls_chunks") > 0L, "chunk must land in the chunk cache: $stats")
+        assertEquals(0L, statsSize(stats, "drive_payloads"), "the payload LRU must contain NO range entries: $stats")
+
+        // Second identical range read → served from the chunk cache, no new fetch.
+        val before = requestCount
+        val again = provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 4096L),
+        )
+        assertEquals(before, requestCount, "warm chunk must be served without the network")
+        assertContentEquals(nextBody, again.bytes)
+    }
+
+    /**
+     * OWNER-REQUIRED (#845): the seg-0 PRELOADER and playback range reads must
+     * converge on the same chunk cache. The preloader warms via
+     * `DriveFileProvider.prefetchPayloadChunk`; iOS's LocalVideoServer reads the
+     * same range via `getPayloadBytesEncryptedChunk` — two different entry
+     * points, ONE network fetch, and zero range entries in the payload LRU.
+     * (If routing were per-caller, prefetch would write the payload LRU while
+     * playback reads the chunk cache: a guaranteed seg-0 double-download plus
+     * pollution.)
+     */
+    @Test
+    fun `prefetched seg0 is served to playback from the chunk cache with no second fetch`() = runTest {
+        nextBody = ByteArray(2048) { 9 }
+        val fileProvider = id.homebase.api.client.drives.files.DriveFileProvider(
+            httpClient, credentialsManager, provider,
+        )
+
+        // 1) Preloader shape: VideoPreloader.preloadFirstHlsSegment → prefetchPayloadChunk.
+        fileProvider.prefetchPayloadChunk(driveId, fileId, key, chunkStart = 0L, chunkLength = 2048L)
+        assertEquals(1, requestCount)
+
+        // 2) Playback shape: iOS LocalVideoServer → getPayloadBytesEncryptedChunk, same range.
+        val bytes = fileProvider.getPayloadBytesEncryptedChunk(driveId, fileId, key, chunkStart = 0L, chunkLength = 2048L)
+
+        assertEquals(1, requestCount, "playback must be served from the prefetch-warmed chunk cache")
+        assertContentEquals(nextBody, assertNotNull(bytes))
+        assertEquals(0L, statsSize(provider.getCacheStats(), "drive_payloads"),
+            "no range entry may leak into the payload LRU")
+    }
+
+    @Test
+    fun `full reads still land in the payload LRU, not the chunk cache`() = runTest {
+        nextBody = ByteArray(1024) { 5 }
+
+        provider.getPayloadBytesRaw(driveId, fileId, key)
+
+        val stats = provider.getCacheStats()
+        assertTrue(statsSize(stats, "drive_payloads") > 0L, "full read must land in the payload LRU: $stats")
+        assertEquals(0L, statsSize(stats, "hls_chunks"), "full read must not leak into the chunk cache: $stats")
+    }
+
+    @Test
+    fun `clearCaches empties the chunk cache and getCacheStats reports its 100 MB cap`() = runTest {
+        nextBody = ByteArray(512) { 1 }
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 512L),
+        )
+        assertTrue(statsSize(provider.getCacheStats(), "hls_chunks") > 0L)
+        assertEquals(100L * 1024 * 1024, provider.getCacheStats().single { it.id == "hls_chunks" }.maxBytes)
+
+        provider.clearCaches()
+
+        assertEquals(0L, statsSize(provider.getCacheStats(), "hls_chunks"))
+        val before = requestCount
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 512L),
+        )
+        assertEquals(before + 1, requestCount, "cleared chunk must be re-fetched")
+    }
+
+    @Test
+    fun `rekey leaves chunk entries alone`() = runTest {
+        nextBody = ByteArray(256) { 2 }
+        provider.getPayloadBytesRaw(
+            driveId, fileId, key,
+            options = PayloadOperationOptions(chunkStart = 0L, chunkLength = 256L),
+        )
+        val chunkBytesBefore = statsSize(provider.getCacheStats(), "hls_chunks")
+
+        provider.rekeyCachedFile(
+            driveId, fileId, Uuid.parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+            payloads = listOf(PayloadDescriptor(key = key, contentType = "video/mp2t")),
+        )
+
+        assertEquals(
+            chunkBytesBefore, statsSize(provider.getCacheStats(), "hls_chunks"),
+            "chunk entries are intentionally not rekeyed — they only exist post-sync",
+        )
+    }
+
     // ==================== #845: render/export size guard ====================
 
     @Test

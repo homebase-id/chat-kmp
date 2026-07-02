@@ -41,13 +41,18 @@ import okio.use
  * [DriveFileHttpProvider] so callers get transparent read-through caching
  * for payloads and thumbnails.
  *
- * Two underlying [coil3.disk.DiskCache] instances back the two
+ * Three underlying [coil3.disk.DiskCache] instances back the three
  * Storage-screen rows:
- * - `drive_payloads`   — media payload bytes (attachments). Directory
+ * - `drive_payloads`   — full media payload bytes (attachments), admission-
+ *   capped at PayloadSizePolicy.RENDER_LIMIT_BYTES (#845). Directory
  *   `homebase-payloads-v2`, cap 200 MB. Fetches are gated by
  *   [payloadSemaphore] (1 concurrent network request).
  * - `drive_thumbnails` — thumbnail bytes. Directory `homebase-thumbs-v2`,
  *   cap 300 MB. Fetches are gated by [thumbnailSemaphore] (30 concurrent).
+ * - `hls_chunks` — HLS playback byte-range entries (#845). Directory
+ *   `homebase-hls-chunks-v1`, cap 100 MB. Isolated so one long video can't
+ *   evict images/attachments and vice versa; routed by request shape in
+ *   [getPayloadBytesRaw].
  *
  * The payload/thumbnail split follows the same "small-hot vs large-cold"
  * stratification as PublicProfileProviderCached — thumbnails render on
@@ -123,6 +128,22 @@ class DriveFileProviderCached(
             .maxSizeBytes(300L * 1024L * 1024L) // 300MB
             .build()
 
+    // HLS playback range-chunks get their OWN cache (#845): every byte-range a
+    // player requests is an independent LRU entry, so one long video used to
+    // flood the shared payload cache and evict every image/attachment — and an
+    // image burst evicted warm chunks mid-playback. Isolation means the two
+    // populations can no longer evict each other. Routing is by request shape
+    // (chunkStart != null) inside getPayloadBytesRaw — NOT per-caller — so the
+    // seg-0 preloader, ExoPlayer's decrypted-range reads, iOS LocalVideoServer's
+    // encrypted-range reads, and desktop VLC range reads all converge here (all
+    // four cache the same encrypted range bytes; decryption is always post-read).
+    private val hlsChunkDir = "$directory/homebase-hls-chunks-v1"
+    private val hlsChunkDiskCache: DiskCache = DiskCache.Builder()
+            .directory(hlsChunkDir.toPath())
+            .fileSystem(fileSystem)
+            .maxSizeBytes(100L * 1024L * 1024L) // 100MB
+            .build()
+
     init {
         // Fire-and-forget reclaim of the pre-migration mayakapps/kache cache
         // directories. Best-effort — a missing dir is fine, and any failure
@@ -166,6 +187,12 @@ class DriveFileProviderCached(
     ): ByteApiResponse {
         val cacheKey =
                 buildPayloadCacheKey(driveId, fileId, key, options.chunkStart, options.chunkLength)
+        // The ONE routing decision (#845): range-shaped requests live in the
+        // dedicated chunk cache, full-payload reads in the payload LRU. Keeping
+        // it here (not per-caller) guarantees prefetch and playback share a
+        // cache — split caches would make every seg-0 prefetch a guaranteed
+        // playback miss AND pollute the payload LRU.
+        val cache = if (options.chunkStart != null) hlsChunkDiskCache else payloadDiskCache
 
         // 1️⃣ Check in-memory 404 cache first
         if (cacheKey in notFoundCache) {
@@ -173,7 +200,7 @@ class DriveFileProviderCached(
         }
 
         // 2️⃣ Peek in disk cache and return result if it's there
-        readCachedPayloadOrLog(cacheKey)?.let { return it }
+        readCachedPayloadOrLog(cache, cacheKey)?.let { return it }
 
         // 2️⃣ Fetch from network but lock to make sure that we don't load the same
         // resource twice over the network
@@ -185,7 +212,7 @@ class DriveFileProviderCached(
             if (cacheKey in notFoundCache) {
                 return@withLock ByteApiResponse.EMPTY_404
             }
-            readCachedPayloadOrLog(cacheKey)?.let { return@withLock it }
+            readCachedPayloadOrLog(cache, cacheKey)?.let { return@withLock it }
 
             // we allow up to 3 concurrent semaphore payloads over the network
             return payloadSemaphore.withPermit {
@@ -196,7 +223,7 @@ class DriveFileProviderCached(
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    writeToDiskCache(payloadDiskCache, cacheKey, "PayloadIO", result)
+                    writeToDiskCache(cache, cacheKey, "PayloadIO", result)
                     result
                 } catch (e: NotFoundException) {
                     // 404 thrown by network layer — cache it so future calls skip the network
@@ -382,9 +409,9 @@ class DriveFileProviderCached(
      * Payload-cache analog of [readCachedThumbOrLog]. Defense-in-depth against
      * parse failures.
      */
-    private fun readCachedPayloadOrLog(cacheKey: String): ByteApiResponse? {
+    private fun readCachedPayloadOrLog(cache: DiskCache, cacheKey: String): ByteApiResponse? {
         return try {
-            payloadDiskCache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
+            cache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
                 readBytesResponse(snap.data.toString())
             }
         } catch (e: Exception) {
@@ -599,6 +626,10 @@ class DriveFileProviderCached(
             newFileId: Uuid,
             payloads: List<PayloadDescriptor>
     ) {
+        // Chunk-cache entries are intentionally NOT rekeyed (#845): range entries
+        // only exist for files already synced under their server fileId (the
+        // sender's own playback uses the local file, and the seeder seeds full
+        // payloads only) — there is nothing under the optimistic fileId to move.
         for (descriptor in payloads) {
             moveCacheEntry(
                     cache = payloadDiskCache,
@@ -703,6 +734,11 @@ class DriveFileProviderCached(
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
         }
+        try {
+            hlsChunkDiskCache.clear()
+        } catch (e: Exception) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "hls chunk cache clear failed" }
+        }
 
         notFoundCache = emptySet()
     }
@@ -724,6 +760,12 @@ class DriveFileProviderCached(
         } catch (e: Throwable) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "drive_thumbnails stats unavailable" }
             out.add(CacheStats(id = "drive_thumbnails", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
+        }
+        try {
+            out.add(CacheStats(id = "hls_chunks", sizeBytes = hlsChunkDiskCache.size, maxBytes = hlsChunkDiskCache.maxSize))
+        } catch (e: Throwable) {
+            Logger.w(tag = "DriveFileProviderCached", throwable = e) { "hls_chunks stats unavailable" }
+            out.add(CacheStats(id = "hls_chunks", sizeBytes = CacheStats.UNAVAILABLE, maxBytes = 0L))
         }
         return out
     }
