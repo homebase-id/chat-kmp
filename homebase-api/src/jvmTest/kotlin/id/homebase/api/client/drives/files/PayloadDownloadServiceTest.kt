@@ -177,6 +177,41 @@ class PayloadDownloadServiceTest {
         assertTrue(seen.zipWithNext().all { (a, b) -> b >= a }, "progress must be monotonic: $seen")
     }
 
+    /**
+     * The small-MP4 pre-cache contract (#845 must not regress it): the preloader
+     * warms the encrypted payload under the FULL cache key; playback's streamed
+     * export must be served from that warm entry with ZERO network — the same
+     * key `streamPayloadDecryptedToPath`'s snapshot lookup reads.
+     */
+    @Test
+    fun `exportToTemp is served from a prefetch-warmed cache entry without touching the network`() = runTest {
+        val keyHeader = KeyHeader.newRandom16()
+        val plaintext = ByteArray(100_000).also { Random.nextBytes(it) }
+        nextBody = keyHeader.encryptDataAes(plaintext)
+
+        // Warm the cache the way VideoPreloader.prefetchPayload does — a full
+        // read through the same provider stack, cached under the :full:full key.
+        val driveCacheWarmup = service.renderBytes(driveId, fileId, key, keyHeader)
+        assertNotNull(driveCacheWarmup)
+        val requestsAfterWarmup = mockEngine.requestHistory.size
+
+        // Kill the network: a cache miss would now fail loudly.
+        nextStatus = HttpStatusCode.InternalServerError
+        nextBody = ByteArray(0)
+
+        val path = service.exportToTemp(
+            driveId, fileId, key, keyHeader,
+            ExportDestination.CacheRoot("hbvid_res_", ".mp4"),
+        )
+
+        assertNotNull(path, "playback export must be served from the warm cache")
+        assertContentEquals(plaintext, File(path).readBytes(), "warm-cache streamed decrypt must be byte-exact")
+        assertEquals(
+            requestsAfterWarmup, mockEngine.requestHistory.size,
+            "a prefetch-warmed payload must play with zero network requests",
+        )
+    }
+
     @Test
     fun `renderBytes refuses an export-sized payload with the typed error`() = runTest {
         // Real oversized body — MockEngine validates the Content-Length header.
