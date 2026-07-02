@@ -33,4 +33,18 @@ interface VideoPrefetchDriveAccess {
         chunkLength: Long? = null,
         onDownloadProgress: ((Float) -> Unit)? = null,
     ): BytesResponse?
+
+    /**
+     * Stream-decrypt a full payload to [outputPath] with bounded memory (#845) —
+     * the export-shaped read [resolveVideoContent] uses for non-segmented MP4s so
+     * a large video is never buffered whole in RAM. Returns false on 404.
+     */
+    suspend fun streamPayloadDecryptedToPath(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        outputPath: String,
+        onProgress: ((Float) -> Unit)? = null,
+    ): Boolean
 }

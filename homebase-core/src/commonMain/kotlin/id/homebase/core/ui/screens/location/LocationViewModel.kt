@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.location
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
@@ -56,6 +57,7 @@ class LocationViewModel(
     private val connectionService: ConnectionService,
     private val contactService: ContactService,
     private val emergencyContactReconciler: EmergencyContactReconciler,
+    private val temporalDriveReadProvider: TemporalDriveReadProvider,
     private val credentialsManager: CredentialsManager,
     private val receiveStore: LiveLocationReceiveStore,
     private val liveShareService: LiveLocationShareService,
@@ -96,6 +98,9 @@ class LocationViewModel(
 
     // Synchronous one-shot guard for the auto-activate collector below — see MomentsViewModel.
     private var activationKicked = false
+
+    // The location drive we preflight per "who I can locate" entry (same alias the reconciler uses).
+    private val locationDrive = locationLabeledDrive.drive.alias
 
     init {
         // "Who can locate you" = the members of our emergency-location-access circle. We host this
@@ -293,6 +298,47 @@ class LocationViewModel(
         }
     }
 
+    /**
+     * Preflight each "who I can locate" entry: does the peer still grant us temporal read access to
+     * their location drive, and how fresh is their newest data? Fired when the section is expanded.
+     * Each member is verified in its own coroutine so the spinners resolve independently. Members
+     * already resolved (or in flight) are skipped, so a re-expand is cheap. A network/parse failure
+     * is inconclusive — we drop the key (row shows nothing) so a re-expand retries, rather than
+     * falsely showing "broken"; this mirrors [EmergencyContactReconciler]'s leave-untouched rule.
+     */
+    fun verifyLocatableAccess() {
+        _uiState.value.whoICanLocate.forEach { member ->
+            val key = member.odinId.domainName
+            when (_uiState.value.whoICanLocateStatus[key]) {
+                LocateVerifyStatus.Loading,
+                LocateVerifyStatus.Broken,
+                is LocateVerifyStatus.Active -> return@forEach // resolved or in flight
+                null -> Unit // (re)issue
+            }
+            _uiState.update {
+                it.copy(whoICanLocateStatus = it.whoICanLocateStatus + (key to LocateVerifyStatus.Loading))
+            }
+            viewModelScope.launch {
+                val status = runCatching {
+                    temporalDriveReadProvider.verifyTemporalAccess(member.odinId, locationDrive)
+                }.getOrNull()
+                _uiState.update {
+                    val next = when {
+                        // Inconclusive (threw) → drop so the next expand retries.
+                        status == null -> it.whoICanLocateStatus - key
+                        // Gate on hasAccess alone (windowSeconds is not a reliable discriminator, #875).
+                        !status.hasAccess -> it.whoICanLocateStatus + (key to LocateVerifyStatus.Broken)
+                        // newestFileModified == 0 (ZeroTime) means no files yet → Active(null) = "no data".
+                        else -> it.whoICanLocateStatus + (key to LocateVerifyStatus.Active(
+                            status.newestFileModified.milliseconds.takeIf { ms -> ms > 0 }
+                        ))
+                    }
+                    it.copy(whoICanLocateStatus = next)
+                }
+            }
+        }
+    }
+
     fun onAction(action: LocationUiAction) {
         when (action) {
             LocationUiAction.SetupClicked -> viewModelScope.launch {
@@ -349,6 +395,8 @@ class LocationViewModel(
             LocationUiAction.StopSharingWithEveryone -> {
                 viewModelScope.launch { liveShareService.stopAll() }
             }
+
+            LocationUiAction.VerifyLocatable -> verifyLocatableAccess()
 
             // Permission requests are dispatched at the screen level (the
             // PermissionsManager is composition-scoped); the VM only receives

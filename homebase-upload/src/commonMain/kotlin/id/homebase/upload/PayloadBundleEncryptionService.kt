@@ -3,9 +3,11 @@ package id.homebase.upload
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.upload.cleanupHlsScratch
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
@@ -116,6 +118,10 @@ class PayloadBundleEncryptionService(
             // swept-mid-bundle race). Reap the encrypted temps produced so far so the
             // failed send leaves no orphaned enc*/video temps, then rethrow to fail soft.
             newPayloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+            // The per-file delete above reaps a staged HLS index.ts but leaves its
+            // hls_<uuid>/ parent (and sibling playlist). In the durable staging dir that
+            // would linger until the idle reap instead of the next startup sweep (#842).
+            runCatching { cleanupHlsScratch(newPayloads) }
             throw e
         }
 
@@ -131,16 +137,32 @@ class PayloadBundleEncryptionService(
         // encryptBundle already rejected a missing source, but it could be swept
         // between that probe and this read. A typed throw keeps the send fail-soft.
         if (!fileOps.sourceExists(inputFile)) throw SourceUnavailableException(inputFile)
-        val plainBytes = fileOps.readFileBytes(inputFile)
 
-        val encrypted = encryptBytes(plainBytes, keyHeader)
-
-        // Encrypted, ready-to-transmit → the DURABLE outbox-temp dir (not the disposable
-        // upload-temp): this file rides an outbox row until the send completes and must survive
-        // the startup/clear CacheSweeper pass. The outbox reaps it on send success / drop. (#844)
-        val path = fileOps.writeBytesToOutboxTempFile(
-            bytes = encrypted, prefix = "enc", suffix = ".encrypted"
-        )
+        // Encrypted, ready-to-transmit → the DURABLE outbox staging dir (not the
+        // disposable upload-temp): this file rides an outbox row until the send
+        // completes and must survive sweeps/OS reclaim; the outbox reaps it on send
+        // success / drop (#842). Encryption is STREAMED — readFileAsFlow →
+        // streamEncryptWithCbc → writeStream — so peak memory is ~one chunk, not
+        // ~2× the file (the same pipeline as VideoPayloadProcessor.encryptVideoFile;
+        // ciphertext is byte-identical to the bulk encryptDataAes path, pinned by
+        // PayloadBundleEncryptFileStreamTest).
+        val path = fileOps.createOutboxStagingPath(prefix = "enc", suffix = ".encrypted")
+        try {
+            fileOps.writeStream(
+                path = path,
+                data = AesCbc.streamEncryptWithCbc(
+                    dataStream = fileOps.readFileAsFlow(inputFile),
+                    key = keyHeader.aesKey,
+                    iv = keyHeader.iv,
+                ),
+            )
+        } catch (t: Throwable) {
+            // A mid-stream failure (source swept, disk full) must not leave a partial
+            // ciphertext in staging — it would be referenced by nothing and, worse,
+            // could be enqueued truncated if anything retried around this throw.
+            runCatching { fileOps.deleteTempFile(path) }
+            throw t
+        }
 
         return path
     }

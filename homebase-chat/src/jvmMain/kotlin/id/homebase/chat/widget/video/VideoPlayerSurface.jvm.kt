@@ -106,10 +106,14 @@ actual fun VideoPlayerSurface(
     // built-in transport UI of its own (host renders controls). Param is
     // accepted for API parity with the mobile actuals.
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<File?>(null) }
+    // Streamed-to-file MP4 temp (hbvid_res_*, #845) — deleted on dispose; the
+    // startup sweep is the backstop.
+    var tempFile by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
 
     DisposableEffect(data) {
@@ -118,6 +122,7 @@ actual fun VideoPlayerSurface(
             tempDir?.let { dir ->
                 dir.parent?.let { parent -> safeDeleteRecursively(parent, dir.name) }
             }
+            tempFile?.delete()
         }
     }
 
@@ -129,7 +134,7 @@ actual fun VideoPlayerSurface(
                     .also { it.mkdirs() }
                 tempDir = dir
 
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
                         // preload, so StateFlow's initial value and every subsequent emit lands.
@@ -208,21 +213,14 @@ actual fun VideoPlayerSurface(
                         progressJob.cancel()
                         state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
                     }
-                    is VideoContent.Mp4 -> {
-                        onProgress(0.5f)
-                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
-                        val mp4Path = if (preloadedPath != null) {
-                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
-                            preloadedPath
-                        } else {
-                            val (mp4File, writeElapsed) = measureTimedValue {
-                                File(dir, "video.mp4").also { it.writeBytes(content.bytes) }
-                            }
-                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
-                            mp4File.absolutePath
-                        }
+                    is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
+                    is VideoContent.Mp4File -> {
+                        // Already streamed to a disposable hbvid_res_* temp by the
+                        // resolver (#845) — no whole-payload RAM buffer, no second
+                        // temp-file write. Deleted on dispose (see tempFile).
                         onProgress(0.8f)
-                        state = VpsState.Playing(mp4Path)
+                        tempFile = File(content.filePath)
+                        state = VpsState.Playing(content.filePath)
                     }
                 }
             } catch (e: Exception) {
