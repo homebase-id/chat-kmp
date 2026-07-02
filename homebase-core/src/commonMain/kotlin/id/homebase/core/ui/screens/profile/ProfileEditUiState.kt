@@ -1,13 +1,18 @@
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 
 /**
- * Flat form state for the owner's standard-profile editor. Every field is a plain string the user
- * edits; the [ProfileEditViewModel] maps each group of fields onto a profile attribute on save.
+ * Form state for the owner's standard-profile editor. Every field has an independent value per
+ * visibility tier — [anonymousValues] shown to everyone, [connectedValues] shown only to connected
+ * contacts — since each tier is backed by its own ACL-gated [id.homebase.api.client.profile.ProfileAttribute]
+ * record (see [ProfileEditViewModel]). A blank Connected value is not a stored override; it falls
+ * back to the Anonymous value at *display* time (see [id.homebase.core.ui.screens.profile.ProfilePreview]),
+ * not here — [value] never substitutes across tiers.
  *
- * The loaded attributes (id / versionTag / visibility / unmodelled data keys) live in the ViewModel,
+ * The loaded attributes (id / versionTag / unmodelled data keys, per tier) live in the ViewModel,
  * not here — this state is purely what the form shows and binds to.
  */
 @Immutable
@@ -17,47 +22,26 @@ data class ProfileEditUiState(
     /** True when the initial attribute read failed (e.g. missing ProfileDrive grant) — show retry. */
     val loadFailed: Boolean = false,
 
-    // Name
-    val givenName: String = "",
-    val surname: String = "",
-    val additionalName: String = "",
-
-    val nickName: String = "",
-    val status: String = "",
-    val birthday: String = "",
-
-    // Email
-    val email: String = "",
-    val emailLabel: String = "",
-
-    // Phone
-    val phone: String = "",
-    val phoneLabel: String = "",
-
-    // Address
-    val addressLabel: String = "",
-    val address1: String = "",
-    val address2: String = "",
-    val postcode: String = "",
-    val city: String = "",
-    val country: String = "",
-
-    // Socials (handle only)
-    val twitter: String = "",
-    val facebook: String = "",
-    val instagram: String = "",
-    val tiktok: String = "",
-    val linkedin: String = "",
+    val anonymousValues: Map<ProfileField, String> = emptyMap(),
+    val connectedValues: Map<ProfileField, String> = emptyMap(),
 ) {
-    val emailValid: Boolean get() = ContactFieldValidation.isValidEmail(email)
-    val phoneValid: Boolean get() = ContactFieldValidation.isValidPhone(phone)
+    /** Raw per-tier lookup — no cross-tier fallback; "" if [field] has no value in [tier]. */
+    fun value(field: ProfileField, tier: ProfileVisibility): String =
+        (if (tier == ProfileVisibility.ANONYMOUS) anonymousValues else connectedValues)[field].orEmpty()
+
+    val emailValid: Boolean get() =
+        ContactFieldValidation.isValidEmail(value(ProfileField.EMAIL, ProfileVisibility.ANONYMOUS)) &&
+            ContactFieldValidation.isValidEmail(value(ProfileField.EMAIL, ProfileVisibility.CONNECTED))
+    val phoneValid: Boolean get() =
+        ContactFieldValidation.isValidPhone(value(ProfileField.PHONE, ProfileVisibility.ANONYMOUS)) &&
+            ContactFieldValidation.isValidPhone(value(ProfileField.PHONE, ProfileVisibility.CONNECTED))
 
     // Legacy data may not be E.164/well-formed; show it but block Save until corrected.
     val canSave: Boolean get() = !isLoading && !isSaving && !loadFailed && emailValid && phoneValid
 }
 
 sealed interface ProfileEditAction {
-    data class FieldChanged(val field: ProfileField, val value: String) : ProfileEditAction
+    data class FieldChanged(val field: ProfileField, val tier: ProfileVisibility, val value: String) : ProfileEditAction
     data object SaveClicked : ProfileEditAction
     data object RetryLoadClicked : ProfileEditAction
     data object BackClicked : ProfileEditAction

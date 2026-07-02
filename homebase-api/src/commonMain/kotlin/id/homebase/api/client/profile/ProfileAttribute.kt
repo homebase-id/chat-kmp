@@ -2,6 +2,8 @@
 
 package id.homebase.api.client.profile
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -17,6 +19,12 @@ import kotlin.uuid.Uuid
  * [versionTag] (a stale tag → 409, re-read and retry). [data] is the attribute's full value object,
  * kept as a raw [JsonObject] so unknown keys we don't model survive a round-trip (writes REPLACE,
  * not merge — see [ProfileProvider.saveAttribute]).
+ *
+ * [fileId]/[driveId]/[keyHeader]/[payloads] are only populated for attributes read via
+ * [ProfileRepository.loadAttributes] (they mirror the underlying `HomebaseFile`) — null when an
+ * instance is hand-constructed elsewhere (e.g. caching a just-written text attribute). They exist
+ * so a [ProfileAttributeTypes.PHOTO] attribute's image payload can be fetched for display; see
+ * `ProfileAttribute.photoImageData()` in homebase-core.
  */
 data class ProfileAttribute(
     val id: Uuid,
@@ -25,6 +33,10 @@ data class ProfileAttribute(
     val versionTag: Uuid,
     val visibility: ProfileVisibility,
     val data: JsonObject,
+    val fileId: Uuid? = null,
+    val driveId: Uuid? = null,
+    val keyHeader: KeyHeader? = null,
+    val payloads: List<PayloadDescriptor>? = null,
 ) {
     /** Reads a string-valued [data] key, or null if absent/non-string. */
     fun string(key: String): String? = (data[key] as? JsonPrimitive)?.contentOrNull
@@ -48,6 +60,34 @@ data class SaveProfileAttributeRequest(
     @Serializable(with = UuidSerializer::class) val expectedVersionTag: Uuid? = null,
     val visibility: String,
     val data: JsonObject,
+)
+
+/**
+ * PUT /api/v2/profile/attributes/photo body. Unlike [SaveProfileAttributeRequest] there is no
+ * `type`/`data` — the server owns the Photo attribute's type and sets `data.profileImageKey`
+ * itself. [content] and every [thumbnails] entry are PLAINTEXT; the server encrypts at rest for
+ * [visibility] CONNECTED/OWNER and stores as-is for ANONYMOUS/AUTHENTICATED. The server does not
+ * resize — generate every rendition you want stored before calling (see
+ * [id.homebase.api.image.createImageThumbnail]). [visibility] must be
+ * [ProfileVisibility.photoWireValue] (PascalCase), not [ProfileVisibility.wireValue].
+ */
+@Serializable
+data class SetPhotoAttributeRequest(
+    @Serializable(with = UuidSerializer::class) val id: Uuid? = null,
+    val priority: Int = 0,
+    val visibility: String,
+    @Serializable(with = UuidSerializer::class) val expectedVersionTag: Uuid? = null,
+    val contentType: String,
+    val content: String,
+    val thumbnails: List<PhotoThumbnailContent> = emptyList(),
+)
+
+@Serializable
+data class PhotoThumbnailContent(
+    val pixelWidth: Int,
+    val pixelHeight: Int,
+    val contentType: String,
+    val content: String,
 )
 
 /** 200 OK body for a profile-attribute write. Keep [versionTag] for the next edit. */

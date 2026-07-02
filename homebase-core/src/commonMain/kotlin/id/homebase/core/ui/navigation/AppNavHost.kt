@@ -114,6 +114,7 @@ import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
@@ -1173,6 +1174,9 @@ fun AppNavHost(
                                     onNavigateToProfileEdit = {
                                         navController.navigate(Route.ProfileEdit)
                                     },
+                                    onNavigateToProfileAvatarEdit = {
+                                        navController.navigate(Route.ProfileAvatarEdit)
+                                    },
                                 )
                             }
                         }
@@ -1182,6 +1186,20 @@ fun AppNavHost(
                                 ProfileEditScreen(
                                     viewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileAvatarEdit> {
+                            if (isAuthenticated) {
+                                ProfileAvatarEditScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(
+                                            Route.Crop(requestId.toString(), lockedAspect = "square")
+                                        )
+                                    },
                                 )
                             }
                         }

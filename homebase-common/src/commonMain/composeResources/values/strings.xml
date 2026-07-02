@@ -1554,7 +1554,6 @@
     <string name="profile_edit_retry">Retry</string>
     <string name="profile_edit_error_forbidden">This app doesn't have permission to edit your profile. Re-grant access by extending permissions in the owner console, then try again.</string>
     <string name="profile_edit_error_save">Couldn't save your profile. Please try again.</string>
-    <string name="profile_edit_section_name">Name</string>
     <string name="profile_edit_given_name">First name</string>
     <string name="profile_edit_surname">Last name</string>
     <string name="profile_edit_additional_name">Middle name</string>
@@ -1562,14 +1561,12 @@
     <string name="profile_edit_status">Status</string>
     <string name="profile_edit_birthday">Birthday</string>
     <string name="profile_edit_birthday_hint">YYYY-MM-DD</string>
-    <string name="profile_edit_section_contact">Contact</string>
     <string name="profile_edit_email">Email</string>
     <string name="profile_edit_email_label">Email label</string>
     <string name="profile_edit_email_label_hint">e.g. Personal, Work</string>
     <string name="profile_edit_phone">Phone</string>
     <string name="profile_edit_phone_label">Phone label</string>
     <string name="profile_edit_phone_label_hint">e.g. Mobile, Home, Work</string>
-    <string name="profile_edit_section_address">Address</string>
     <string name="profile_edit_address_label">Address label</string>
     <string name="profile_edit_address_label_hint">e.g. Home, Work</string>
     <string name="profile_edit_address1">Address line 1</string>
@@ -1577,11 +1574,34 @@
     <string name="profile_edit_postcode">Postcode</string>
     <string name="profile_edit_city">City</string>
     <string name="profile_edit_country">Country</string>
-    <string name="profile_edit_section_social">Social</string>
     <string name="profile_edit_twitter">Twitter</string>
     <string name="profile_edit_facebook">Facebook</string>
     <string name="profile_edit_instagram">Instagram</string>
     <string name="profile_edit_tiktok">TikTok</string>
     <string name="profile_edit_linkedin">LinkedIn</string>
+
+    <string name="profile_edit_visibility_public">Public</string>
+    <string name="profile_edit_visibility_connected">Connected</string>
+    <string name="profile_edit_public_hint">Visible to everyone, including people you haven't connected with.</string>
+    <string name="profile_edit_connected_fallback_hint">Leave blank to show connections your Public value instead.</string>
+    <string name="profile_edit_preview_enter">Preview</string>
+    <string name="profile_edit_preview_exit">Back to editing</string>
+    <string name="profile_edit_preview_tier_public">Public</string>
+    <string name="profile_edit_preview_tier_connected">Connected</string>
+    <string name="profile_edit_preview_connection_only_value">Connection-only</string>
+    <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
+
+    <!-- Avatar editor -->
+    <string name="profile_avatar_edit_title">Change photo</string>
+    <string name="cd_profile_avatar_change_photo">Change photo</string>
+    <string name="profile_avatar_edit_acl_anonymous">Public photo</string>
+    <string name="profile_avatar_edit_acl_connected">Connections photo</string>
+    <string name="profile_avatar_edit_anonymous_desc">Visible to anyone, even people you're not connected to.</string>
+    <string name="profile_avatar_edit_connected_desc">Visible only to your connections — can be a different photo than your public one.</string>
+    <string name="profile_avatar_edit_upload">Save</string>
+    <string name="profile_avatar_edit_remove">Remove</string>
+    <string name="profile_avatar_edit_error_upload">Couldn't upload your photo. Please try again.</string>
+    <string name="profile_avatar_edit_error_too_large">That photo is too large — please choose a smaller one.</string>
+    <string name="profile_avatar_edit_error_delete">Couldn't remove your photo. Please try again.</string>
 
 </resources>

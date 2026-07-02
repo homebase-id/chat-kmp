@@ -27,6 +27,10 @@ object ProfileAttributeTypes {
     const val INSTAGRAM = "345fef7bada5b100001e4c78111c86de"
     const val TIKTOK = "d58890b2f156a0b9413b388773b1b0a7"
     const val LINKEDIN = "a050c5ee4b5139b730cd7eb44e7db69a"
+    /** The owner's profile photo — written via the dedicated `/profile/attributes/photo` endpoint,
+     *  not [ProfileProvider.saveAttribute]. Multiple photo attributes can coexist (one per
+     *  [ProfileVisibility] tier); see [ProfileRepository.uploadPhoto]. */
+    const val PHOTO = "5ae0c1c8a5260bc7b6648f6fbd115c35"
 
     // --- data keys: Name ---
     const val KEY_GIVEN_NAME = "givenName"
@@ -62,6 +66,10 @@ object ProfileAttributeTypes {
     const val KEY_TIKTOK = "tiktok"
     const val KEY_LINKEDIN = "linkedin"
 
+    /** Data key on a [PHOTO] attribute holding the payload key to fetch the image bytes from —
+     *  server-set, never sent on write (see the `/profile/attributes/photo` endpoint docs). */
+    const val KEY_PROFILE_IMAGE = "profileImageKey"
+
     /**
      * Default [ProfileVisibility] for a brand-new attribute of [type] (one the owner has not set
      * before). Identity-public fields (name, nickname, status, social handles) default to
@@ -88,6 +96,11 @@ enum class ProfileVisibility(val wireValue: String) {
     AUTHENTICATED("authenticated"),
     CONNECTED("connected"),
     OWNER("owner");
+
+    /** The `/profile/attributes/photo` endpoint's `visibility` field is PascalCase
+     *  ("Anonymous"/"Authenticated"/"Connected"/"Owner"), unlike [wireValue] used by the generic
+     *  attribute endpoint — see [ProfileRepository.uploadPhoto]. */
+    val photoWireValue: String get() = wireValue.replaceFirstChar { it.uppercaseChar() }
 
     companion object {
         /** Lenient parse from a stored security-group string; unknown/absent → [OWNER] (most private). */

@@ -27,13 +27,22 @@ import kotlin.uuid.ExperimentalUuidApi
 /**
  * Drives the owner's standard-profile editor.
  *
- * Load: reads every standard-profile attribute from the ProfileDrive and prefills the flat form.
- * Save: for each attribute group, rebuilds its `data` object (merging the edited keys over the keys
- * we read so unmodelled fields survive), then writes only the attributes that actually changed via
+ * Every attribute type has up to two independent [ProfileAttribute] records — one at
+ * [ProfileVisibility.ANONYMOUS] (visible to everyone), one at [ProfileVisibility.CONNECTED]
+ * (visible only to connections) — since ACL enforcement is per-record on the server, not per-key
+ * within a record. [loadedAnonymous]/[loadedConnected] track each bucket's currently-known record;
+ * legacy [ProfileVisibility.AUTHENTICATED]/[ProfileVisibility.OWNER] data loads into the Connected
+ * bucket for editing (closest available tab) but is left untouched on the server unless the user
+ * actually edits that tab's content — see [computeAttributeEdit].
+ *
+ * Load: reads every standard-profile attribute from the ProfileDrive and buckets each type's
+ * fields into [ProfileEditUiState.anonymousValues]/[ProfileEditUiState.connectedValues].
+ * Save: for each (type, tier) pair, rebuilds its `data` object (merging the edited keys over the
+ * keys we read so unmodelled fields survive), then writes only the ones that actually changed via
  * [ProfileRepository.save] (which round-trips the versionTag and re-reads on a 409).
  *
- * v1 simplification: a single email / phone / address. If multiple of one type exist on the drive,
- * the first is edited and the rest are left untouched.
+ * v1 simplification: a single attribute per (type, tier). If multiple of one type/tier exist on
+ * the drive, the first is edited and the rest are left untouched.
  */
 class ProfileEditViewModel(
     private val repository: ProfileRepository,
@@ -45,8 +54,12 @@ class ProfileEditViewModel(
     private val _events = MutableSharedFlow<ProfileEditEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ProfileEditEvent> = _events.asSharedFlow()
 
-    /** The attributes as last read/written, keyed by type — the source of id/versionTag/visibility. */
-    private var loaded: Map<String, ProfileAttribute> = emptyMap()
+    /** The Anonymous-tier attribute per type, as last read/written — source of id/versionTag. */
+    private var loadedAnonymous: Map<String, ProfileAttribute> = emptyMap()
+
+    /** The Connected-tier attribute per type, as last read/written (may be a legacy
+     *  Authenticated/Owner record — see class doc). */
+    private var loadedConnected: Map<String, ProfileAttribute> = emptyMap()
 
     init {
         load()
@@ -54,7 +67,7 @@ class ProfileEditViewModel(
 
     fun onAction(action: ProfileEditAction) {
         when (action) {
-            is ProfileEditAction.FieldChanged -> updateField(action.field, action.value)
+            is ProfileEditAction.FieldChanged -> updateField(action.field, action.tier, action.value)
             ProfileEditAction.SaveClicked -> save()
             ProfileEditAction.RetryLoadClicked -> load()
             ProfileEditAction.BackClicked -> _events.tryEmit(ProfileEditEvent.Back)
@@ -74,69 +87,36 @@ class ProfileEditViewModel(
                 return@launch
             }
 
-            // Keep the first attribute of each type (v1 single email/phone/address).
-            loaded = attributes.groupBy { it.type }.mapValues { it.value.first() }
+            val byType = attributes.groupBy { it.type }
+            loadedAnonymous = byType.mapNotNull { (type, attrs) ->
+                attrs.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }?.let { type to it }
+            }.toMap()
+            loadedConnected = byType.mapNotNull { (type, attrs) ->
+                attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
+            }.toMap()
             _state.update { applyLoaded(it) }
         }
     }
 
-    /** Overlays the loaded attribute values onto a fresh form. */
+    /** Overlays each bucket's loaded attribute values onto a fresh form. */
     private fun applyLoaded(base: ProfileEditUiState): ProfileEditUiState {
-        fun v(type: String, key: String): String =
-            loaded[type]?.string(key).orEmpty()
+        fun bucket(loaded: Map<String, ProfileAttribute>): Map<ProfileField, String> =
+            TYPE_FIELDS.flatMap { (type, fields) ->
+                fields.map { (field, key) -> field to loaded[type]?.string(key).orEmpty() }
+            }.toMap()
 
         return base.copy(
             isLoading = false,
             loadFailed = false,
-            givenName = v(ProfileAttributeTypes.NAME, ProfileAttributeTypes.KEY_GIVEN_NAME),
-            surname = v(ProfileAttributeTypes.NAME, ProfileAttributeTypes.KEY_SURNAME),
-            additionalName = v(ProfileAttributeTypes.NAME, ProfileAttributeTypes.KEY_ADDITIONAL_NAME),
-            nickName = v(ProfileAttributeTypes.NICKNAME, ProfileAttributeTypes.KEY_NICKNAME),
-            status = v(ProfileAttributeTypes.STATUS, ProfileAttributeTypes.KEY_STATUS),
-            birthday = v(ProfileAttributeTypes.BIRTHDAY, ProfileAttributeTypes.KEY_BIRTHDAY),
-            email = v(ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.KEY_EMAIL),
-            emailLabel = v(ProfileAttributeTypes.EMAIL, ProfileAttributeTypes.KEY_LABEL),
-            phone = v(ProfileAttributeTypes.PHONE, ProfileAttributeTypes.KEY_PHONE),
-            phoneLabel = v(ProfileAttributeTypes.PHONE, ProfileAttributeTypes.KEY_LABEL),
-            addressLabel = v(ProfileAttributeTypes.ADDRESS, ProfileAttributeTypes.KEY_LABEL),
-            address1 = v(ProfileAttributeTypes.ADDRESS, ProfileAttributeTypes.KEY_ADDRESS1),
-            address2 = v(ProfileAttributeTypes.ADDRESS, ProfileAttributeTypes.KEY_ADDRESS2),
-            postcode = v(ProfileAttributeTypes.ADDRESS, ProfileAttributeTypes.KEY_POSTCODE),
-            city = v(ProfileAttributeTypes.ADDRESS, ProfileAttributeTypes.KEY_CITY),
-            country = v(ProfileAttributeTypes.ADDRESS, ProfileAttributeTypes.KEY_COUNTRY),
-            twitter = v(ProfileAttributeTypes.TWITTER, ProfileAttributeTypes.KEY_TWITTER),
-            facebook = v(ProfileAttributeTypes.FACEBOOK, ProfileAttributeTypes.KEY_FACEBOOK),
-            instagram = v(ProfileAttributeTypes.INSTAGRAM, ProfileAttributeTypes.KEY_INSTAGRAM),
-            tiktok = v(ProfileAttributeTypes.TIKTOK, ProfileAttributeTypes.KEY_TIKTOK),
-            linkedin = v(ProfileAttributeTypes.LINKEDIN, ProfileAttributeTypes.KEY_LINKEDIN),
+            anonymousValues = bucket(loadedAnonymous),
+            connectedValues = bucket(loadedConnected),
         )
     }
 
-    private fun updateField(field: ProfileField, value: String) {
+    private fun updateField(field: ProfileField, tier: ProfileVisibility, value: String) {
         _state.update {
-            when (field) {
-                ProfileField.GIVEN_NAME -> it.copy(givenName = value)
-                ProfileField.SURNAME -> it.copy(surname = value)
-                ProfileField.ADDITIONAL_NAME -> it.copy(additionalName = value)
-                ProfileField.NICKNAME -> it.copy(nickName = value)
-                ProfileField.STATUS -> it.copy(status = value)
-                ProfileField.BIRTHDAY -> it.copy(birthday = value)
-                ProfileField.EMAIL -> it.copy(email = value)
-                ProfileField.EMAIL_LABEL -> it.copy(emailLabel = value)
-                ProfileField.PHONE -> it.copy(phone = value)
-                ProfileField.PHONE_LABEL -> it.copy(phoneLabel = value)
-                ProfileField.ADDRESS_LABEL -> it.copy(addressLabel = value)
-                ProfileField.ADDRESS1 -> it.copy(address1 = value)
-                ProfileField.ADDRESS2 -> it.copy(address2 = value)
-                ProfileField.POSTCODE -> it.copy(postcode = value)
-                ProfileField.CITY -> it.copy(city = value)
-                ProfileField.COUNTRY -> it.copy(country = value)
-                ProfileField.TWITTER -> it.copy(twitter = value)
-                ProfileField.FACEBOOK -> it.copy(facebook = value)
-                ProfileField.INSTAGRAM -> it.copy(instagram = value)
-                ProfileField.TIKTOK -> it.copy(tiktok = value)
-                ProfileField.LINKEDIN -> it.copy(linkedin = value)
-            }
+            if (tier == ProfileVisibility.ANONYMOUS) it.copy(anonymousValues = it.anonymousValues + (field to value))
+            else it.copy(connectedValues = it.connectedValues + (field to value))
         }
     }
 
@@ -157,32 +137,39 @@ class ProfileEditViewModel(
             var failed = false
             for (edit in edits) {
                 try {
-                    val existing = loaded[edit.type]
+                    val existing = if (edit.visibility == ProfileVisibility.ANONYMOUS) {
+                        loadedAnonymous[edit.type]
+                    } else {
+                        loadedConnected[edit.type]
+                    }
                     val response = repository.save(
                         type = edit.type,
                         data = edit.data,
-                        visibility = existing?.visibility
-                            ?: ProfileAttributeTypes.defaultVisibilityFor(edit.type),
+                        visibility = edit.visibility,
                         knownId = existing?.id,
                         knownVersionTag = existing?.versionTag,
                     )
                     // Remember the new id/versionTag so a follow-up save in the same session edits
                     // (not re-creates) this attribute.
-                    loaded = loaded + (edit.type to ProfileAttribute(
+                    val newAttr = ProfileAttribute(
                         id = response.id,
                         type = edit.type,
                         versionTag = response.versionTag,
-                        visibility = existing?.visibility
-                            ?: ProfileAttributeTypes.defaultVisibilityFor(edit.type),
+                        visibility = edit.visibility,
                         data = edit.data,
-                    ))
+                    )
+                    if (edit.visibility == ProfileVisibility.ANONYMOUS) {
+                        loadedAnonymous = loadedAnonymous + (edit.type to newAttr)
+                    } else {
+                        loadedConnected = loadedConnected + (edit.type to newAttr)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: ForbiddenException) {
                     forbidden = true
                     break
                 } catch (e: Exception) {
-                    Logger.w(e) { "Failed to save profile attribute ${edit.type}" }
+                    Logger.w(e) { "Failed to save profile attribute ${edit.type} (${edit.visibility})" }
                     failed = true
                 }
             }
@@ -196,85 +183,149 @@ class ProfileEditViewModel(
         }
     }
 
-    /** One attribute that actually changed, with its full replacement `data`. */
-    private data class AttributeEdit(val type: String, val data: JsonObject)
+    /** See the pure companion overload for the actual logic — this just supplies instance state. */
+    private fun pendingEdits(s: ProfileEditUiState): List<AttributeEdit> =
+        pendingEdits(s, loadedAnonymous, loadedConnected)
 
-    /**
-     * Builds the list of attributes whose data differs from what we loaded. Each attribute's new data
-     * merges the edited keys over the existing object (so unmodelled keys survive); a brand-new
-     * attribute whose fields are all blank is skipped rather than created empty.
-     */
-    private fun pendingEdits(s: ProfileEditUiState): List<AttributeEdit> {
-        val candidates = listOf(
-            edit(ProfileAttributeTypes.NAME, mapOf(
-                ProfileAttributeTypes.KEY_GIVEN_NAME to s.givenName,
-                ProfileAttributeTypes.KEY_SURNAME to s.surname,
-                ProfileAttributeTypes.KEY_ADDITIONAL_NAME to s.additionalName,
-            )),
-            edit(ProfileAttributeTypes.NICKNAME, mapOf(
-                ProfileAttributeTypes.KEY_NICKNAME to s.nickName,
-            )),
-            edit(ProfileAttributeTypes.STATUS, mapOf(
-                ProfileAttributeTypes.KEY_STATUS to s.status,
-            )),
-            edit(ProfileAttributeTypes.BIRTHDAY, mapOf(
-                ProfileAttributeTypes.KEY_BIRTHDAY to s.birthday,
-            )),
-            edit(ProfileAttributeTypes.EMAIL, mapOf(
-                ProfileAttributeTypes.KEY_EMAIL to s.email,
-                ProfileAttributeTypes.KEY_LABEL to s.emailLabel,
-            )),
-            edit(ProfileAttributeTypes.PHONE, mapOf(
-                ProfileAttributeTypes.KEY_PHONE to s.phone,
-                ProfileAttributeTypes.KEY_LABEL to s.phoneLabel,
-            )),
-            edit(ProfileAttributeTypes.ADDRESS, mapOf(
-                ProfileAttributeTypes.KEY_LABEL to s.addressLabel,
-                ProfileAttributeTypes.KEY_ADDRESS1 to s.address1,
-                ProfileAttributeTypes.KEY_ADDRESS2 to s.address2,
-                ProfileAttributeTypes.KEY_POSTCODE to s.postcode,
-                ProfileAttributeTypes.KEY_CITY to s.city,
-                ProfileAttributeTypes.KEY_COUNTRY to s.country,
-            )),
-            edit(ProfileAttributeTypes.TWITTER, mapOf(ProfileAttributeTypes.KEY_TWITTER to s.twitter)),
-            edit(ProfileAttributeTypes.FACEBOOK, mapOf(ProfileAttributeTypes.KEY_FACEBOOK to s.facebook)),
-            edit(ProfileAttributeTypes.INSTAGRAM, mapOf(ProfileAttributeTypes.KEY_INSTAGRAM to s.instagram)),
-            edit(ProfileAttributeTypes.TIKTOK, mapOf(ProfileAttributeTypes.KEY_TIKTOK to s.tiktok)),
-            edit(ProfileAttributeTypes.LINKEDIN, mapOf(ProfileAttributeTypes.KEY_LINKEDIN to s.linkedin)),
+    companion object {
+        /**
+         * The one source of truth for which [ProfileField]s make up each [ProfileAttributeTypes]
+         * type and which data key each maps to — shared by [applyLoaded], [pendingEdits], and the
+         * Screen's per-group "does the Connected tab already have content" indicator.
+         */
+        internal val TYPE_FIELDS: Map<String, List<Pair<ProfileField, String>>> = mapOf(
+            ProfileAttributeTypes.NAME to listOf(
+                ProfileField.GIVEN_NAME to ProfileAttributeTypes.KEY_GIVEN_NAME,
+                ProfileField.SURNAME to ProfileAttributeTypes.KEY_SURNAME,
+                ProfileField.ADDITIONAL_NAME to ProfileAttributeTypes.KEY_ADDITIONAL_NAME,
+            ),
+            ProfileAttributeTypes.NICKNAME to listOf(
+                ProfileField.NICKNAME to ProfileAttributeTypes.KEY_NICKNAME,
+            ),
+            ProfileAttributeTypes.STATUS to listOf(
+                ProfileField.STATUS to ProfileAttributeTypes.KEY_STATUS,
+            ),
+            ProfileAttributeTypes.BIRTHDAY to listOf(
+                ProfileField.BIRTHDAY to ProfileAttributeTypes.KEY_BIRTHDAY,
+            ),
+            ProfileAttributeTypes.EMAIL to listOf(
+                ProfileField.EMAIL to ProfileAttributeTypes.KEY_EMAIL,
+                ProfileField.EMAIL_LABEL to ProfileAttributeTypes.KEY_LABEL,
+            ),
+            ProfileAttributeTypes.PHONE to listOf(
+                ProfileField.PHONE to ProfileAttributeTypes.KEY_PHONE,
+                ProfileField.PHONE_LABEL to ProfileAttributeTypes.KEY_LABEL,
+            ),
+            ProfileAttributeTypes.ADDRESS to listOf(
+                ProfileField.ADDRESS_LABEL to ProfileAttributeTypes.KEY_LABEL,
+                ProfileField.ADDRESS1 to ProfileAttributeTypes.KEY_ADDRESS1,
+                ProfileField.ADDRESS2 to ProfileAttributeTypes.KEY_ADDRESS2,
+                ProfileField.POSTCODE to ProfileAttributeTypes.KEY_POSTCODE,
+                ProfileField.CITY to ProfileAttributeTypes.KEY_CITY,
+                ProfileField.COUNTRY to ProfileAttributeTypes.KEY_COUNTRY,
+            ),
+            ProfileAttributeTypes.TWITTER to listOf(
+                ProfileField.TWITTER to ProfileAttributeTypes.KEY_TWITTER,
+            ),
+            ProfileAttributeTypes.FACEBOOK to listOf(
+                ProfileField.FACEBOOK to ProfileAttributeTypes.KEY_FACEBOOK,
+            ),
+            ProfileAttributeTypes.INSTAGRAM to listOf(
+                ProfileField.INSTAGRAM to ProfileAttributeTypes.KEY_INSTAGRAM,
+            ),
+            ProfileAttributeTypes.TIKTOK to listOf(
+                ProfileField.TIKTOK to ProfileAttributeTypes.KEY_TIKTOK,
+            ),
+            ProfileAttributeTypes.LINKEDIN to listOf(
+                ProfileField.LINKEDIN to ProfileAttributeTypes.KEY_LINKEDIN,
+            ),
         )
-        return candidates.filterNotNull()
-    }
 
-    /**
-     * Produces an [AttributeEdit] for [type] if its merged data differs from what was loaded, else
-     * null. Blank values remove their key; a new attribute that ends up empty is dropped.
-     */
-    private fun edit(type: String, updates: Map<String, String>): AttributeEdit? {
-        val existing = loaded[type]
-        val merged = mergeData(existing?.data, updates)
+        /** One attribute that actually changed, with its full replacement `data` and the tier's
+         *  fixed visibility (Anonymous bucket is always ANONYMOUS; Connected bucket is always
+         *  CONNECTED — see [computeAttributeEdit]). */
+        internal data class AttributeEdit(
+            val type: String,
+            val data: JsonObject,
+            val visibility: ProfileVisibility,
+        )
 
-        if (existing == null && merged.isEmpty()) return null
-        if (existing != null && merged == existing.data) return null
+        /**
+         * Pure, dependency-free computation of whether [type]'s [tier] bucket needs saving given
+         * [updates]. Returns null when nothing changed vs. [existing] — critically, when nothing
+         * changed we never even compute a visibility to send, so a legacy Authenticated/Owner
+         * attribute loaded into the Connected bucket keeps its real stored visibility on the server
+         * for as long as the user leaves that tab untouched. The moment the user *does* edit the
+         * Connected tab's content, the record becomes genuinely [ProfileVisibility.CONNECTED] —
+         * matching exactly what [ProfilePreview] shows the owner, so Preview never promises
+         * visibility the server isn't actually enforcing.
+         */
+        internal fun computeAttributeEdit(
+            existing: ProfileAttribute?,
+            type: String,
+            updates: Map<String, String>,
+            tier: ProfileVisibility,
+        ): AttributeEdit? {
+            val merged = mergeData(existing?.data, updates)
 
-        // Real change. For the Name attribute, drop the server-derived displayName so it gets
-        // recomputed from the (just-changed) name parts; a deliberate explicitDisplayName override,
-        // if present, is left untouched. (Comparison above used the full merged object, so an
-        // unchanged Name still correctly skips.)
-        val toSend = if (type == ProfileAttributeTypes.NAME) {
-            JsonObject(merged - ProfileAttributeTypes.KEY_DISPLAY_NAME)
-        } else {
-            merged
+            if (existing == null && merged.isEmpty()) return null
+            if (existing != null && merged == existing.data) return null
+
+            // Real change. For the Name attribute, drop the server-derived displayName so it gets
+            // recomputed from the (just-changed) name parts; a deliberate explicitDisplayName override,
+            // if present, is left untouched. (Comparison above used the full merged object, so an
+            // unchanged Name still correctly skips.)
+            val toSend = if (type == ProfileAttributeTypes.NAME) {
+                JsonObject(merged - ProfileAttributeTypes.KEY_DISPLAY_NAME)
+            } else {
+                merged
+            }
+            val visibility = if (tier == ProfileVisibility.ANONYMOUS) {
+                ProfileVisibility.ANONYMOUS
+            } else {
+                ProfileVisibility.CONNECTED
+            }
+            return AttributeEdit(type, toSend, visibility)
         }
-        return AttributeEdit(type, toSend)
-    }
 
-    private fun mergeData(existing: JsonObject?, updates: Map<String, String>): JsonObject {
-        val map = LinkedHashMap<String, JsonElement>()
-        existing?.let { map.putAll(it) }
-        for ((key, raw) in updates) {
-            val value = raw.trim()
-            if (value.isEmpty()) map.remove(key) else map[key] = JsonPrimitive(value)
+        /**
+         * Builds the list of (type, tier) attributes whose data actually changed vs. what's loaded —
+         * up to two per type (Anonymous and Connected are independent). Pure and dependency-free
+         * (like [computeAttributeEdit]) so the "an untouched legacy attribute's visibility never
+         * changes" guarantee is directly unit-testable without a live [ProfileRepository].
+         */
+        internal fun pendingEdits(
+            s: ProfileEditUiState,
+            loadedAnonymous: Map<String, ProfileAttribute>,
+            loadedConnected: Map<String, ProfileAttribute>,
+        ): List<AttributeEdit> {
+            fun editForTier(
+                type: String,
+                tier: ProfileVisibility,
+                fields: List<Pair<ProfileField, String>>,
+            ): AttributeEdit? {
+                val existing = if (tier == ProfileVisibility.ANONYMOUS) loadedAnonymous[type] else loadedConnected[type]
+                val updates = fields.associate { (field, key) -> key to s.value(field, tier) }
+                return computeAttributeEdit(existing, type, updates, tier)
+            }
+
+            val candidates = TYPE_FIELDS.flatMap { (type, fields) ->
+                listOf(
+                    editForTier(type, ProfileVisibility.ANONYMOUS, fields),
+                    editForTier(type, ProfileVisibility.CONNECTED, fields),
+                )
+            }
+            return candidates.filterNotNull()
         }
-        return JsonObject(map)
+
+        private fun mergeData(existing: JsonObject?, updates: Map<String, String>): JsonObject {
+            val map = LinkedHashMap<String, JsonElement>()
+            existing?.let { map.putAll(it) }
+            for ((key, raw) in updates) {
+                val value = raw.trim()
+                if (value.isEmpty()) map.remove(key) else map[key] = JsonPrimitive(value)
+            }
+            return JsonObject(map)
+        }
     }
 }

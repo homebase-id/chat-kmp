@@ -46,5 +46,9 @@ internal fun HomebaseFile.toProfileAttribute(): ProfileAttribute? {
         versionTag = versionTag,
         visibility = visibility,
         data = data,
+        fileId = fileId,
+        driveId = driveId,
+        keyHeader = keyHeader,
+        payloads = fileMetadata.payloads,
     )
 }

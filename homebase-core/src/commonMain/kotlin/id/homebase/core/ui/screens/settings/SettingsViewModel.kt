@@ -70,6 +70,10 @@ class SettingsViewModel(
                 sendEvent(SettingsUiEvent.NavigateToProfileEdit)
             }
 
+            SettingsUiAction.AvatarClicked -> {
+                sendEvent(SettingsUiEvent.NavigateToProfileAvatarEdit)
+            }
+
             SettingsUiAction.SecuritySetupClicked -> {
                 uiState.value.ownerSession?.let {
                     sendEvent(SettingsUiEvent.OpenUrl("https://${it.odinId.domainName}/owner/security"))
