@@ -3,6 +3,7 @@ package id.homebase.upload
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
+import id.homebase.api.client.drives.upload.cleanupHlsScratch
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
@@ -116,6 +117,10 @@ class PayloadBundleEncryptionService(
             // swept-mid-bundle race). Reap the encrypted temps produced so far so the
             // failed send leaves no orphaned enc*/video temps, then rethrow to fail soft.
             newPayloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
+            // The per-file delete above reaps a staged HLS index.ts but leaves its
+            // hls_<uuid>/ parent (and sibling playlist). In the durable staging dir that
+            // would linger until the idle reap instead of the next startup sweep (#842).
+            runCatching { cleanupHlsScratch(newPayloads) }
             throw e
         }
 
