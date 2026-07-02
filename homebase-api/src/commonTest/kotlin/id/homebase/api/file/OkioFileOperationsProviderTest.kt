@@ -125,6 +125,35 @@ class OkioFileOperationsProviderTest {
         }
     }
 
+    /**
+     * #845: the streaming seams for export flows — reserve a unique path in an
+     * EXISTING swept dir without writing bytes.
+     */
+    @Test
+    fun createShareOutboundPathReservesUniquePathsUnderShareOutbound() = runTest {
+        val ops = provider()
+
+        val a = ops.createShareOutboundPath(".zip")
+        val b = ops.createShareOutboundPath(".zip")
+
+        assertTrue(a.contains(SHARE_OUTBOUND_DIR_NAME), "must live in the sequestered share dir: $a")
+        assertTrue(a.endsWith(".zip") && a != b, "paths must be unique, suffixed reservations")
+        assertEquals(0L, ops.getFileSize(a), "reservation must not write bytes")
+        ops.writeStream(a, flowOf(byteArrayOf(1, 2)))
+        assertContentEquals(byteArrayOf(1, 2), ops.readFileBytes(a))
+    }
+
+    @Test
+    fun createUploadTempPathReservesUnderUploadTemp() = runTest {
+        val ops = provider()
+
+        val path = ops.createUploadTempPath("share_", ".pdf")
+
+        assertTrue(path.contains(CacheAudit.UPLOAD_TEMP_DIR_NAME), "must live in upload-temp/: $path")
+        assertTrue(path.substringAfterLast('/').startsWith("share_") && path.endsWith(".pdf"))
+        assertEquals(0L, ops.getFileSize(path), "reservation must not write bytes")
+    }
+
     @Test
     fun getFileSizeOfMissingFileIsZero() {
         assertEquals(0L, provider().getFileSize("/tmp/homebase/does-not-exist.bin"))

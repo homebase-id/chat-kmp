@@ -65,22 +65,22 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )
                 )
-                val bytes = chatMessageActionService.getPayloadBytes(
+                val extension = payload.contentType?.let { extensionForMimeType(it) }
+                    ?: payload.contentType?.substringAfter("/")
+                    ?: "bin"
+                // Cleartext copy of an end-to-end-encrypted Homebase payload —
+                // STREAM-decrypted straight into the share_outbound subdir (#845:
+                // bounded RAM for any payload size, LRU untouched; the old
+                // getPayloadBytes path buffered ~2× the payload in RAM). The
+                // subdir keeps the sweep story: reaped as a single unit on
+                // cold start + foreground, bounding its on-disk lifetime.
+                val tempPath = chatMessageActionService.streamPayloadToShareOutbound(
                     message.fileId,
                     action.payloadKey,
-                    KeyHeader(payloadIv, message.keyHeader.aesKey)
+                    KeyHeader(payloadIv, message.keyHeader.aesKey),
+                    ".$extension",
                 )
-                if (bytes != null) {
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
-                    // Cleartext copy of an end-to-end-encrypted Homebase
-                    // payload — sequestered into the share_outbound subdir so
-                    // the cold-start + foreground sweepers can reap it as a
-                    // single unit, bounding its on-disk lifetime.
-                    val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
-                        bytes, ".$extension"
-                    )
+                if (tempPath != null) {
                     sendEvent(ShareFile(tempPath))
                 } else {
                     sendEvent(

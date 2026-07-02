@@ -87,6 +87,12 @@ open class OkioFileOperationsProvider(
     override suspend fun promoteToOutboxStaging(path: String): String =
         promoteIntoStaging(path, getOutboxStagingDirectory(), fileSystem)
 
+    override suspend fun createShareOutboundPath(suffix: String): String =
+        createStagingPathIn("$cacheDir/$SHARE_OUTBOUND_DIR_NAME", "share_", suffix, fileSystem)
+
+    override suspend fun createUploadTempPath(prefix: String, suffix: String): String =
+        createStagingPathIn("$cacheDir/${CacheAudit.UPLOAD_TEMP_DIR_NAME}", prefix, suffix, fileSystem)
+
     // upload-temp is swept every startup (disposable).
     private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
         val dir = cacheDir.toPath() / dirName
