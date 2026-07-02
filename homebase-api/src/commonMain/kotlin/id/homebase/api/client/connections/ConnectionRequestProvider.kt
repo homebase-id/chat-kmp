@@ -221,6 +221,13 @@ class ConnectionRequestProvider(
     // CANCEL (DELETE outgoing)
     // ------------------------------------------------------------
 
+    /**
+     * `notifyRemote=true` (plain, unencrypted query param — not the `ss` encrypted-queryString
+     * mechanism [encryptedGet] uses) asks the server to also transit a best-effort, eventual
+     * withdrawal to the recipient's server, deleting their matching pending incoming request.
+     * Always on: idempotent, safe to send unconditionally for a normal user-initiated cancel
+     * (server-side default stays off for other unrelated callers of the same endpoint).
+     */
     suspend fun cancelOutgoingRequest(
         recipientId: OdinId
     ) {
@@ -228,7 +235,7 @@ class ConnectionRequestProvider(
         val creds = requireCreds()
 
         val endpoint =
-            "/connections/requests/outgoing/$recipientId"
+            "/connections/requests/outgoing/$recipientId?notifyRemote=true"
 
         val response = encryptedDelete(
             url = apiUrl(creds.domain, endpoint),

@@ -17,7 +17,6 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.convo.ConversationService
-import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
@@ -26,6 +25,7 @@ import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
@@ -144,7 +144,6 @@ class ContactBookViewModel(
         val contacts: List<ContactBookEntry>,
         val loaded: Boolean,
         val connections: ConnectionState,
-        val circles: CircleMembershipState,
         val overrides: Map<Uuid, ContactFieldOverlay>,
     )
 
@@ -176,10 +175,9 @@ class ContactBookViewModel(
             entries,
             repo.isLoaded,
             connectionService.connections,
-            connectionService.circles,
             overrideStore.overrides,
-        ) { c, l, conn, circ, overrides ->
-            ContactsBundle(c, l, conn, circ, overrides)
+        ) { c, l, conn, overrides ->
+            ContactsBundle(c, l, conn, overrides)
         },
         combine(_searchQuery, _filter, _selectedTab, _overlay) { q, f, tab, o ->
             UiBits(q, f, tab, o)
@@ -191,31 +189,23 @@ class ContactBookViewModel(
             connectionRequestService.outgoingRequests,
         ) { incoming, outgoing -> RequestsBundle(incoming, outgoing) },
     ) { contactsData, ui, circlesData, header, requestsData ->
-        // Apply user overrides up front so every downstream list (All, Introduced, Confirmed,
-        // Requests, introducer names) shows the user's renamed/edited values, not the synced ones.
+        // Apply user overrides up front so every downstream list (All, Unvetted, Requests,
+        // introducer names) shows the user's renamed/edited values, not the synced ones.
         val overriddenContacts = contactsData.contacts
             .map { it.withOverride(contactsData.overrides[it.uniqueId]) }
         val connectedRegs = contactsData.connections.map
             .filterValues { it.status == ConnectionStatus.Connected }
         val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
 
-        // Introduced and Confirmed are orthogonal, so a contact who was introduced and then
-        // confirmed shows under both pills:
-        //  - Introduced = provenance: the connection originated from an introduction. This is
-        //    permanent (it stays true after confirmation), which is what "we connected via an
-        //    intro" means, and it rides in the connection data so it needs no circle load.
-        //  - Confirmed = membership in the Confirmed Connections system circle (the explicit
-        //    confirm action). Until the circle list loads we fall back to "connected and not
-        //    introduced" so the pill isn't empty on a cold start.
-        val introducedDomains = connectedRegs
-            .filterValues { it.connectionRequestOrigin == ConnectionRequestOrigin.Introduction }
+        // Unvetted = connected but not confirmed. Confirmed is the server-computed `vetted` flag
+        // (connected AND a member of the Confirmed Connections system circle — see issue #919);
+        // it rides with the connection data itself, so this needs no circle load/fallback. This
+        // is a full complement over connected identities, not just auto-connected/introduced —
+        // a plain direct connection that hasn't been explicitly confirmed is unvetted too.
+        val confirmedDomains = connectedRegs.filterValues { it.vetted }
             .keys.map { it.domainName.lowercase() }
             .toSet()
-        val confirmedDomains = if (contactsData.circles.isLoaded) {
-            connectedDomains intersect contactsData.circles.membersOf(CONFIRMED_CONNECTIONS_CIRCLE_ID)
-        } else {
-            connectedDomains - introducedDomains
-        }
+        val unvettedDomains = connectedDomains - confirmedDomains
 
         // contact-domain (lowercase) → introducer display name, resolved to a saved
         // contact's name when we have one, else the raw introducer domain.
@@ -233,11 +223,10 @@ class ContactBookViewModel(
                     (contactsByOdin[introducer.lowercase()]?.displayName ?: introducer)
             }
 
-        // ALL = saved contacts plus every other connection. Auto-connections that were neither
-        // introduced (origin != Introduction) nor confirmed (not in the Confirmed circle) would
-        // otherwise fall through every pill. Connections already in the book show via their saved
-        // entry; the rest get a synthetic display-only entry, the same projection Introduced /
-        // Confirmed use.
+        // ALL = saved contacts plus every other connection. A connection with no saved contact
+        // entry would otherwise fall through both pills. Connections already in the book show via
+        // their saved entry; the rest get a synthetic display-only entry, the same projection
+        // Unvetted uses.
         val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
         val selfEntry = header.ownerSession?.let { selfContact(it) }
         val all = buildList {
@@ -253,17 +242,14 @@ class ContactBookViewModel(
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        val introduced = entriesForDomains(introducedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
-        val confirmed = entriesForDomains(confirmedDomains, overriddenContacts)
+        val unvetted = entriesForDomains(unvettedDomains, overriddenContacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        // Pending connection requests, projected onto contact entries the same way Introduced /
-        // Confirmed are: reuse the saved contact when we have one, else a synthetic display-only
-        // entry for the identity. The service's UI-model names are placeholders ("TODO …"), so we
-        // deliberately resolve names through the contact book / domain, not those fields.
+        // Pending connection requests, projected onto contact entries the same way Unvetted is:
+        // reuse the saved contact when we have one, else a synthetic display-only entry for the
+        // identity. The service's UI-model names are placeholders ("TODO …"), so we deliberately
+        // resolve names through the contact book / domain, not those fields.
         fun pendingEntry(domain: String) = contactsByOdin[domain.lowercase()] ?: syntheticContact(domain)
         val incomingRequests = requestsData.incoming.map { req ->
             PendingRequestEntry(
@@ -288,8 +274,7 @@ class ContactBookViewModel(
             contacts = all,
             totalCount = all.size,
             connectedOdinIds = connectedDomains,
-            introduced = introduced,
-            confirmed = confirmed,
+            unvetted = unvetted,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
             introducedByDomain = introducedByDomain,
@@ -451,7 +436,16 @@ class ContactBookViewModel(
                 Logger.w(e, "ContactBookViewModel") { "getCirclesWithMembers failed" }
                 emptyList()
             }
-            _circles.value = circles.sortedBy { it.circle.name.lowercase() }
+            // Pin the auto-connected ("Unvetted") system circle to the top, sink the confirmed-
+            // connected system circle to the bottom, and keep the user's own circles (including
+            // Emergency Location Access, which is a user circle, not a system one) alphabetical
+            // in between.
+            _circles.value = circles.sortedWith(
+                compareBy(
+                    { it.circle.id.circleSortRank() },
+                    { it.circle.name.lowercase() },
+                ),
+            )
             _circlesLoading.value = false
         }
     }
@@ -514,4 +508,15 @@ private fun CircleWithMembers.matchesQuery(query: String): Boolean {
     val q = query.trim().lowercase()
     return circle.name.lowercase().contains(q) ||
         circle.description?.lowercase()?.contains(q) == true
+}
+
+/**
+ * Sort bucket for the Circles tab: the auto-connected ("Unvetted") system circle first, the
+ * user's own circles (including Emergency Location Access — a user circle, not a system one)
+ * in the middle, and the confirmed-connected system circle last.
+ */
+private fun String.circleSortRank(): Int = when (this) {
+    AUTO_CONNECTIONS_CIRCLE_ID -> 0
+    CONFIRMED_CONNECTIONS_CIRCLE_ID -> 2
+    else -> 1
 }
