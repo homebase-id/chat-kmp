@@ -34,6 +34,9 @@ object CacheAudit {
         "homebase-thumbs-v2",
         "homebase-public-profiles-v2",
         "homebase-public-images-v2",
+        // Dedicated HLS playback-chunk LRU (#845) — isolated so one long video
+        // can't evict images/attachments and vice versa.
+        "homebase-hls-chunks-v1",
     )
 
     /**
