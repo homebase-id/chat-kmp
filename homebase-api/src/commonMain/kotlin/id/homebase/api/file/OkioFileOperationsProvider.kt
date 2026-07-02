@@ -50,14 +50,18 @@ open class OkioFileOperationsProvider(
         return writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
     }
 
-    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
-    override suspend fun writeBytesToOutboxTempFile(
-        bytes: ByteArray,
-        prefix: String,
-        suffix: String
-    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+    // Staging location keeps the interface default (<cacheDir>/outbox-temp — on web the whole
+    // FS is a RAM FakeFileSystem, so true durability is deferred; see the interface KDoc), but
+    // the path/promote operations must run over the INJECTED fileSystem, not the global
+    // systemFileSystem the interface defaults use — otherwise web/test writes would land on the
+    // wrong filesystem.
+    override suspend fun createOutboxStagingPath(prefix: String, suffix: String): String =
+        createStagingPathIn(getOutboxStagingDirectory(), prefix, suffix, fileSystem)
 
-    // upload-temp is swept every startup (disposable); outbox-temp is KEEP-protected until sent.
+    override suspend fun promoteToOutboxStaging(path: String): String =
+        promoteIntoStaging(path, getOutboxStagingDirectory(), fileSystem)
+
+    // upload-temp is swept every startup (disposable).
     private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
         val dir = cacheDir.toPath() / dirName
         fileSystem.createDirectories(dir)

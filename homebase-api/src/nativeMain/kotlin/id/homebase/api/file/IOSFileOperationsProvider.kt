@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.Buffer
+import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSFileHandle
@@ -16,6 +17,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSNumber
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUUID
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.closeFile
@@ -131,16 +133,37 @@ class IOSFileOperationsProvider : FileOperationsProvider {
         suffix: String
     ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
 
-    // Encrypted, ready-to-transmit payloads → outbox-temp/ (KEEP-protected; #844 PR4).
-    override suspend fun writeBytesToOutboxTempFile(
-        bytes: ByteArray,
-        prefix: String,
-        suffix: String
-    ): String = writeBytesIn(CacheAudit.OUTBOX_TEMP_DIR_NAME, bytes, prefix, suffix)
+    // Encrypted, ready-to-transmit payloads live in the durable staging dir (#842) — under
+    // Application Support, NOT Caches: iOS purges Caches under storage pressure, which deleted
+    // staged payloads out from under long-lived outbox rows (the ENOENT retry loop). The dir is
+    // excluded from iCloud backup on every creation (the attribute doesn't survive recreation):
+    // staged payloads are regeneratable and their outbox DB rows don't ride a restore.
+    // The interface default routes writeBytesToOutboxTempFile through this dir.
+    @OptIn(ExperimentalForeignApi::class)
+    override fun getOutboxStagingDirectory(): String {
+        val fm = NSFileManager.defaultManager
+        val supportUrl = fm.URLForDirectory(
+            directory = NSApplicationSupportDirectory,
+            inDomain = NSUserDomainMask,
+            appropriateForURL = null,
+            create = true,
+            error = null
+        )
+        val base = supportUrl?.path ?: return super.getOutboxStagingDirectory()
+        val dir = "${base.trimEnd('/')}/$OUTBOX_STAGING_DIR_NAME"
+        if (!fm.fileExistsAtPath(dir)) {
+            fm.createDirectoryAtPath(dir, true, null, null)
+        }
+        NSURL.fileURLWithPath(dir, isDirectory = true).setResourceValue(
+            value = NSNumber(bool = true),
+            forKey = NSURLIsExcludedFromBackupKey,
+            error = null
+        )
+        return dir
+    }
 
-    // Both temp dirs live under the Caches dir (not NSTemporaryDirectory()), so the Storage
-    // screen counts them and the CacheSweeper governs them (#844 PR4). upload-temp is swept every
-    // startup (disposable); outbox-temp is KEEP-protected until the send completes.
+    // upload-temp lives under the Caches dir (not NSTemporaryDirectory()), so the Storage
+    // screen counts it and the CacheSweeper reaps it on every startup (disposable; #844 PR4).
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     private fun writeBytesIn(dirName: String, bytes: ByteArray, prefix: String, suffix: String): String {
         val cacheDir = getCacheDirectory().trimEnd('/')

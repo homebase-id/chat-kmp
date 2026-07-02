@@ -36,6 +36,7 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 
 class TestUploader : OutboxUploader {
     var shouldFail = false
@@ -674,6 +675,55 @@ class OutboxSyncTest {
         assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
         assertEquals(uniqueId, dropped.uniqueId)
         assertEquals(driveId, dropped.driveId)
+        assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
+        sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
+    }
+
+    /**
+     * #842: a staged payload file missing at drain time (DriveUploadProvider's
+     * pre-flight throws [StagedPayloadMissingException]) is permanent — the
+     * source bytes are gone, no retry can bring them back. Pre-#842 this
+     * surfaced as a platform IO error wrapped into a transient "Network
+     * failure" and burned 20 retries (~48h) with the message stuck.
+     */
+    @Test
+    fun testPermanentFailure_StagedPayloadMissingDroppedOnFirstAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        uploader.failureException = StagedPayloadMissingException(
+            path = "/data/outbox-staging/enc123.encrypted",
+            payloadKey = "chat_img",
+        )
+
+        val sync = OutboxSync(
+            databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope
+        )
+        sync.setOnline(true)
+
+        val droppedDeferred = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.OutboxItemDropped>().first()
+        }
+        testScheduler.runCurrent()
+
+        val driveId = Uuid.random()
+        val uniqueId = Uuid.random()
+        db.outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        try { sync.send() } catch (_: Exception) {}
+        advanceUntilIdle()
+
+        val dropped = droppedDeferred.await()
+
+        assertEquals(0L, db.outbox.count(), "row must be dropped on first attempt")
+        assertEquals(uniqueId, dropped.uniqueId)
         assertEquals(1, dropped.attempts, "drop must happen on attempt 1, not after MAX_RETRIES")
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }

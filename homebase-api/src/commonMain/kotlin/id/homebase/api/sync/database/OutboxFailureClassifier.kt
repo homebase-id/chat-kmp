@@ -3,6 +3,7 @@ package id.homebase.api.sync.database
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 
 /**
  * The single classification point for outbox upload failures: returns a
@@ -20,6 +21,13 @@ import id.homebase.api.client.OdinClientErrorCode
  */
 internal fun classifyPermanentFailure(e: Throwable): String? {
     if (e is NotFoundException) return "404 NotFound"
+    // A staged payload file is gone at drain time (#842). The source bytes no
+    // longer exist locally, so no retry can succeed — drop on attempt 1 instead
+    // of burning ~48h as a phantom "Network failure" (the pre-#842 symptom when
+    // the sweeper/OS reclaimed an enc temp out from under a pending row). Thrown
+    // by DriveUploadProvider's pre-flight BEFORE the network call, so it can't
+    // be wrapped into a transient NetworkException.
+    if (e is StagedPayloadMissingException) return "staged payload missing: ${e.message}"
     if (e is ClientException) {
         when (e.errorCode) {
             OdinClientErrorCode.FileNotFound,

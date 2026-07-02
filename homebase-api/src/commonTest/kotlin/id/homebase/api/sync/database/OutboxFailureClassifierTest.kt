@@ -4,6 +4,7 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
+import id.homebase.api.client.drives.upload.StagedPayloadMissingException
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -37,6 +38,32 @@ class OutboxFailureClassifierTest {
     @Test
     fun notFoundExceptionIsPermanent() {
         assertNotNull(classifyPermanentFailure(NotFoundException()))
+    }
+
+    /**
+     * A staged payload missing at drain time (#842): the source bytes no longer
+     * exist locally, so no retry can succeed. Pre-#842 this surfaced as a
+     * platform IO error wrapped into a transient "Network failure" and burned
+     * 20 retries over ~48h with the message permanently stuck.
+     */
+    @Test
+    fun stagedPayloadMissingIsPermanent() {
+        assertNotNull(
+            classifyPermanentFailure(
+                StagedPayloadMissingException(path = "/data/outbox-staging/enc123.encrypted", payloadKey = "chat_img")
+            )
+        )
+    }
+
+    /**
+     * Guard: ONLY the typed pre-flight exception classifies — a generic
+     * IO-flavored exception (e.g. a real network hiccup whose message happens
+     * to mention a file) must stay retryable, or transient failures would be
+     * dropped permanently.
+     */
+    @Test
+    fun genericIoFlavoredExceptionIsRetryable() {
+        assertNull(classifyPermanentFailure(Exception("open failed: ENOENT (No such file or directory)")))
     }
 
     // ---- permanent: structured error codes ----
