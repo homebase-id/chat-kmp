@@ -12,10 +12,12 @@ import kotlin.uuid.Uuid
 enum class ContactTab { CONTACTS, CIRCLES }
 
 /**
- * People-list pill: everyone, introduced connections, confirmed (direct) connections, or
- * pending connection requests (incoming + outgoing, merged).
+ * People-list pill: everyone, or connections that haven't been explicitly confirmed yet
+ * (auto-connected, introduced-but-not-confirmed, or a plain direct connection never confirmed).
+ * Pending connection requests are no longer a pill — they surface as a section at the top of
+ * the list instead (see [ContactBookUiState.requests]).
  */
-enum class ContactFilter { ALL, INTRODUCED, CONFIRMED, REQUESTS }
+enum class ContactFilter { ALL, UNVETTED }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -26,9 +28,9 @@ enum class RequestDirection {
 }
 
 /**
- * A pending connection request projected onto a [ContactBookEntry] for the Requests pill. The
- * entry resolves to a saved contact when we have one, else a synthetic display-only entry for
- * the identity. [receivedAtMs] drives the newest-first ordering.
+ * A pending connection request projected onto a [ContactBookEntry] for the "Connection requests"
+ * section at the top of the list. The entry resolves to a saved contact when we have one, else a
+ * synthetic display-only entry for the identity. [receivedAtMs] drives the newest-first ordering.
  */
 @Immutable
 data class PendingRequestEntry(
@@ -95,16 +97,12 @@ data class ContactBookUiState(
     val totalCount: Int = 0,
     /** Domains (lowercased) that are connected — drives the "connected" badge. */
     val connectedOdinIds: Set<String> = emptySet(),
-    /** Introduced filter: connections established via an introduction. */
-    val introduced: List<ContactBookEntry> = emptyList(),
-    /** Confirmed filter: direct connections (Connected, not via an introduction). */
-    val confirmed: List<ContactBookEntry> = emptyList(),
-    /** Requests filter: pending connection requests (incoming + outgoing), newest first. */
+    /** Unvetted filter: connected but not confirmed (server-computed `vetted` flag is false). */
+    val unvetted: List<ContactBookEntry> = emptyList(),
+    /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
+     *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
-    /**
-     * Count of incoming connection requests, unfiltered by search — drives the in-list banner
-     * that jumps to the Requests pill.
-     */
+    /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
     /** Lowercased contact-domain → introducer display name, for the "Introduced by" row line. */
     val introducedByDomain: Map<String, String> = emptyMap(),

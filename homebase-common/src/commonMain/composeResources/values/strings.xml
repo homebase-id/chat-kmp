@@ -87,7 +87,6 @@
     <string name="not_connected">Not connected</string>
     <string name="loading">Loading...</string>
     <string name="database_upgrade_snackbar">Database upgraded — restoring your data…</string>
-    <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
     <string name="chat_message_read_more">Read more</string>
     <string name="action_cannot_be_undone">This action can’t be undone.</string>
@@ -1403,8 +1402,7 @@
     <string name="contactbook_tab_contacts">Contacts</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
-    <string name="contactbook_introduced_empty">No introduced connections yet.</string>
-    <string name="contactbook_confirmed_empty">No confirmed connections yet.</string>
+    <string name="contactbook_unvetted_empty">No unvetted connections.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
@@ -1412,13 +1410,7 @@
 
     <string name="contactbook_search_hint">Search</string>
     <string name="contactbook_filter_all">All</string>
-    <string name="contactbook_filter_introduced">Introduced</string>
-    <string name="contactbook_filter_confirmed">Confirmed</string>
-    <string name="contactbook_filter_requests">Requests</string>
-    <string name="contactbook_filter_requests_count">Requests (%1$d)</string>
-    <string name="contactbook_requests_empty">No pending connection requests</string>
-    <string name="contactbook_request_incoming">Wants to connect</string>
-    <string name="contactbook_request_outgoing">Request sent</string>
+    <string name="contactbook_requests_header">Connection requests</string>
     <string name="contactbook_no_results">No contacts match your search</string>
 
     <string name="contactbook_action_add">Add contact</string>
