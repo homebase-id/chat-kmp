@@ -654,7 +654,7 @@ private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
         LocateVerifyStatus.Loading ->
             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
 
-        LocateVerifyStatus.Broken ->
+        is LocateVerifyStatus.Broken ->
             Icon(
                 imageVector = Icons.Default.LinkOff,
                 contentDescription = stringResource(MR.string.location_locatable_broken_cd),
