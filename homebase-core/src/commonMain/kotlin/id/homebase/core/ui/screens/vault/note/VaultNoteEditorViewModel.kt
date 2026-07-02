@@ -194,7 +194,11 @@ class VaultNoteEditorViewModel(
     }
 
     private suspend fun updateNote(fileName: String, markdown: String, preview: String?): Boolean {
-        val entry = editEntry ?: return false
+        // Re-resolve from the reactive stream so a second same-session save picks up the versionTag
+        // the previous save advanced to once it synced — the cached editEntry holds the stale one,
+        // which the server would reject as an optimistic-concurrency conflict (issue #927 culprit #3).
+        val entry = (editEntryId?.let { findEntry(it) } ?: editEntry)?.also { editEntry = it }
+            ?: return false
         return try {
             vaultUploaderService.updateNotePayload(
                 file = entry,

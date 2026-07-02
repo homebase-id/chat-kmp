@@ -5,6 +5,8 @@ package id.homebase.core.ui.screens.contactbook.add
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.identity.PublicIdentityRepository
@@ -160,7 +162,15 @@ class AddContactViewModel(
                     .onFailure {
                         if (it is CancellationException) throw it
                         Logger.w(it) { "Request action failed for $odinId" }
-                        _events.tryEmit(AddContactEvent.RequestActionFailed)
+                        // Accept raced a since-completed cancel-outgoing on the sender's side;
+                        // ConnectionRequestService.acceptIncomingRequest already dropped the
+                        // stale local copy before rethrowing — just show the specific message.
+                        val withdrawn = it is ClientException &&
+                            it.errorCode == OdinClientErrorCode.IncomingRequestNotFound
+                        _events.tryEmit(
+                            if (withdrawn) AddContactEvent.RequestWithdrawn
+                            else AddContactEvent.RequestActionFailed
+                        )
                     }
             } finally {
                 _state.update { it.copy(actionInProgress = false) }

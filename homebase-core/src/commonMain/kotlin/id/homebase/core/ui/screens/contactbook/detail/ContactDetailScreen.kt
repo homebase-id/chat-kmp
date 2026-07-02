@@ -81,6 +81,7 @@ import id.homebase.resources.contactbook_action_blocked
 import id.homebase.resources.contactbook_action_request_accepted
 import id.homebase.resources.contactbook_action_request_cancelled
 import id.homebase.resources.contactbook_action_request_rejected
+import id.homebase.resources.contactbook_action_request_withdrawn
 import id.homebase.resources.contactbook_action_sync_started
 import id.homebase.resources.contactbook_action_disconnected
 import id.homebase.resources.contactbook_detail_emergency_badge
@@ -154,6 +155,7 @@ fun ContactDetailScreen(
     val msgRequestAccepted = stringResource(MR.string.contactbook_action_request_accepted)
     val msgRequestRejected = stringResource(MR.string.contactbook_action_request_rejected)
     val msgRequestCancelled = stringResource(MR.string.contactbook_action_request_cancelled)
+    val msgRequestWithdrawn = stringResource(MR.string.contactbook_action_request_withdrawn)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -178,6 +180,7 @@ fun ContactDetailScreen(
                 ContactDetailEvent.RequestAccepted -> snackbarHostState.showSnackbar(msgRequestAccepted)
                 ContactDetailEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRequestRejected)
                 ContactDetailEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgRequestCancelled)
+                ContactDetailEvent.RequestWithdrawn -> snackbarHostState.showSnackbar(msgRequestWithdrawn)
             }
         }
     }

@@ -7,7 +7,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
@@ -436,12 +438,20 @@ class ContactDetailViewModel(
     /**
      * The server returns 200 for no-ops and never echoes the new state, so we only refresh
      * after a successful call. A 403 means this app wasn't granted manage-connections
-     * permission — surface that distinctly from a generic/transient failure.
+     * permission — surface that distinctly from a generic/transient failure. A withdrawn
+     * request (accept raced a since-completed cancel-outgoing on the sender's side) is also
+     * distinguished — [ConnectionRequestService.acceptIncomingRequest] already dropped the
+     * stale local copy before rethrowing, so we just need the specific message here.
      */
     private fun emitConnectionError(error: Throwable) {
         _events.tryEmit(
-            if (error is ForbiddenException) ContactDetailEvent.ConnectionForbidden
-            else ContactDetailEvent.Error
+            when {
+                error is ForbiddenException -> ContactDetailEvent.ConnectionForbidden
+                error is ClientException &&
+                    error.errorCode == OdinClientErrorCode.IncomingRequestNotFound ->
+                    ContactDetailEvent.RequestWithdrawn
+                else -> ContactDetailEvent.Error
+            }
         )
     }
 

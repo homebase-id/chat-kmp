@@ -31,6 +31,18 @@ data class MediaUpdateSpec(
     /** Plaintext NEW payloads to append/overwrite; the service encrypts them. Null = header-only. */
     val bundle: PayloadBundle? = null,
     /**
+     * The existing file's id. Pass it ONLY when [bundle] is the file's **complete** new payload set
+     * (a full-state overwrite — e.g. a vault note edit whose single payload replaces the note body),
+     * NOT an incremental append/replace-one-page. When set, [UploadService.updateFile] writes the
+     * new payload descriptors THROUGH to the local store and seeds the freshly-encrypted bytes under
+     * this fileId ([seedCache]) — so a read-back *before* the outbox send lands returns the new body
+     * instead of decrypting the stale server bytes with the new IV (issue #927). Leaving it null
+     * keeps the descriptor-preserving optimistic write (header-only edits, appends, add-recipients).
+     */
+    val fileId: Uuid? = null,
+    /** Seed the freshly-encrypted payload bytes under [fileId] so a pre-send read-back is correct. */
+    val seedCache: Boolean = true,
+    /**
      * Already-encrypted payloads to re-attach as-is (the service skips encryption). Mutually
      * exclusive with [bundle]; used when reusing a file's existing payloads (add-recipients).
      */

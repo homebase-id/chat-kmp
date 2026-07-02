@@ -1,6 +1,8 @@
 package id.homebase.chat.services.requests
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.AutoConnectOutcome
 import id.homebase.api.client.connections.ConnectionRequestResult
 import id.homebase.api.client.connections.ConnectionRequestHeader
@@ -261,9 +263,23 @@ class ConnectionRequestService(
      * UI flips "Invited" → (removed) and the conversation's 1:1 status flips to Connected
      * immediately. The server also emits a websocket event for both sides, but we don't want
      * the UI to wait on round-trip latency.
+     *
+     * If the sender already withdrew the request (cancel-outgoing's best-effort remote
+     * withdrawal beat us here — see [ConnectionRequestProvider.cancelOutgoingRequest]), the
+     * accept call fails with [OdinClientErrorCode.IncomingRequestNotFound]. That's authoritative:
+     * drop our stale copy too so it doesn't linger in the UI, then rethrow so the caller can show
+     * a specific "this request was withdrawn" message instead of a generic failure.
      */
     suspend fun acceptIncomingRequest(senderId: OdinId) {
-        connectionRequestProvider.acceptIncomingRequest(senderId)
+        try {
+            connectionRequestProvider.acceptIncomingRequest(senderId)
+        } catch (e: ClientException) {
+            if (e.errorCode == OdinClientErrorCode.IncomingRequestNotFound) {
+                removeFromIncoming(senderId)
+                refresh()
+            }
+            throw e
+        }
         contactRepository.sync(senderId)
         removeFromIncoming(senderId)
         refresh()

@@ -92,7 +92,15 @@ data class RedactedIdentityConnectionRegistration(
     val introducerOdinId: OdinId? = null,
     val connectionRequestOrigin: ConnectionRequestOrigin,
     val hasVerificationHash: Boolean,
-    val rku: Boolean
+    val rku: Boolean,
+    /**
+     * True when this identity is connected AND a member of the Confirmed Connections system
+     * circle — server-computed (see issue #919). False covers everyone else who's connected but
+     * unconfirmed: auto-connected/introduced identities, and any plain direct connection that
+     * hasn't been explicitly confirmed. Defaulted so deserialization stays safe against any
+     * response shape that hasn't rolled this field out yet.
+     */
+    val vetted: Boolean = false
 )
 
 // ------------------------------------------------------------

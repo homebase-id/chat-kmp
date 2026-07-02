@@ -84,6 +84,8 @@ sealed interface AddContactEvent {
     data object RequestCancelled : AddContactEvent
     /** An accept/reject/cancel action failed. */
     data object RequestActionFailed : AddContactEvent
+    /** Accept failed because the sender already withdrew the request (server-confirmed gone). */
+    data object RequestWithdrawn : AddContactEvent
     /** Open the 1:1 conversation with an already-connected identity. */
     data class OpenConversation(val conversationId: Uuid) : AddContactEvent
     data object Back : AddContactEvent
