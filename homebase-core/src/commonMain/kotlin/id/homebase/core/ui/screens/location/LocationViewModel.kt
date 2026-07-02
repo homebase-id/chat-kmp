@@ -300,19 +300,17 @@ class LocationViewModel(
      * Preflight each "who I can locate" entry: does the peer still grant us temporal read access to
      * their location drive, and how fresh is their newest data? Fired when the section is expanded.
      * Each member is verified in its own coroutine so the spinners resolve independently. Members
-     * already resolved (or in flight) are skipped, so a re-expand is cheap. A network/parse failure
-     * is inconclusive — we drop the key (row shows nothing) so a re-expand retries, rather than
+     * with a call in flight, or a result younger than [LOCATE_VERIFY_TTL_MS], are skipped — so a
+     * quick re-expand is cheap, but a later one re-verifies with a visible spinner and a fresh age
+     * instead of showing the first-expand value forever (#950). A network/parse failure is
+     * inconclusive — we drop the key (row shows nothing) so a re-expand retries, rather than
      * falsely showing "broken"; this mirrors [EmergencyContactReconciler]'s leave-untouched rule.
      */
     fun verifyLocatableAccess() {
+        val now = Clock.System.now().toEpochMilliseconds()
         _uiState.value.whoICanLocate.forEach { member ->
             val key = member.odinId.domainName
-            when (_uiState.value.whoICanLocateStatus[key]) {
-                LocateVerifyStatus.Loading,
-                LocateVerifyStatus.Broken,
-                is LocateVerifyStatus.Active -> return@forEach // resolved or in flight
-                null -> Unit // (re)issue
-            }
+            if (!_uiState.value.whoICanLocateStatus[key].needsReverify(now)) return@forEach
             _uiState.update {
                 it.copy(whoICanLocateStatus = it.whoICanLocateStatus + (key to LocateVerifyStatus.Loading))
             }
@@ -320,15 +318,18 @@ class LocationViewModel(
                 val status = runCatching {
                     temporalDriveReadProvider.verifyTemporalAccess(member.odinId, locationDrive)
                 }.getOrNull()
+                val verifiedAt = Clock.System.now().toEpochMilliseconds()
                 _uiState.update {
                     val next = when {
                         // Inconclusive (threw) → drop so the next expand retries.
                         status == null -> it.whoICanLocateStatus - key
                         // Gate on hasAccess alone (windowSeconds is not a reliable discriminator, #875).
-                        !status.hasAccess -> it.whoICanLocateStatus + (key to LocateVerifyStatus.Broken)
+                        !status.hasAccess ->
+                            it.whoICanLocateStatus + (key to LocateVerifyStatus.Broken(verifiedAt))
                         // newestFileModified == 0 (ZeroTime) means no files yet → Active(null) = "no data".
                         else -> it.whoICanLocateStatus + (key to LocateVerifyStatus.Active(
-                            status.newestFileModified.milliseconds.takeIf { ms -> ms > 0 }
+                            newestModifiedMs = status.newestFileModified.milliseconds.takeIf { ms -> ms > 0 },
+                            verifiedAtMs = verifiedAt,
                         ))
                     }
                     it.copy(whoICanLocateStatus = next)

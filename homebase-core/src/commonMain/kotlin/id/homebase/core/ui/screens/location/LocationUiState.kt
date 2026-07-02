@@ -67,16 +67,37 @@ data class LocationUiState(
 /**
  * Result of the per-entry temporal-access preflight for a "who I can locate" row. The row shows a
  * spinner until this resolves, then either a broken-link icon or the age of the peer's newest data.
+ * Resolved results carry [Resolved.verifiedAtMs] so a re-expand within [LOCATE_VERIFY_TTL_MS]
+ * reuses them, while an older result is re-verified (#950).
  */
 sealed interface LocateVerifyStatus {
     /** Preflight in flight → spinner. */
     data object Loading : LocateVerifyStatus
 
+    /** A completed verify; [verifiedAtMs] is when the result landed (epoch ms), for the TTL. */
+    sealed interface Resolved : LocateVerifyStatus {
+        val verifiedAtMs: Long
+    }
+
     /** Verify succeeded but the peer no longer grants us access → broken-link icon. */
-    data object Broken : LocateVerifyStatus
+    data class Broken(override val verifiedAtMs: Long) : Resolved
 
     /** We hold access; [newestModifiedMs] is the peer's newest-file time, or null when no data yet. */
-    data class Active(val newestModifiedMs: Long?) : LocateVerifyStatus
+    data class Active(val newestModifiedMs: Long?, override val verifiedAtMs: Long) : Resolved
+}
+
+/** Freshness window for a resolved locate-verify result: re-expands inside it reuse the cache. */
+const val LOCATE_VERIFY_TTL_MS = 60_000L
+
+/**
+ * Whether an expansion of "Who you can locate" should (re-)issue the temporal verify for a row in
+ * this state: never while one is in flight, not while a resolved result is younger than
+ * [LOCATE_VERIFY_TTL_MS], otherwise yes (never verified, dropped as inconclusive, or gone stale).
+ */
+fun LocateVerifyStatus?.needsReverify(nowMs: Long): Boolean = when (this) {
+    LocateVerifyStatus.Loading -> false
+    is LocateVerifyStatus.Resolved -> nowMs - verifiedAtMs >= LOCATE_VERIFY_TTL_MS
+    null -> true
 }
 
 /** One row in the "Sharing with" list: a person and the latest time my share to them lasts. */
