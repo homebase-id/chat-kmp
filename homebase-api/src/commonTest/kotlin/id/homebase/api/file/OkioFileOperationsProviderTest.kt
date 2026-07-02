@@ -1,6 +1,7 @@
 package id.homebase.api.file
 
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import okio.fakefilesystem.FakeFileSystem
 import kotlin.test.Test
@@ -38,6 +39,27 @@ class OkioFileOperationsProviderTest {
         assertTrue(ops.deleteTempFile(path), "delete must succeed")
         assertEquals(0L, ops.getFileSize(path), "size must be 0 after delete")
         assertTrue(ops.deleteTempFile(path), "deleting a missing file is a no-op success")
+    }
+
+    @Test
+    fun readFileAsFlowEmitsRealChunksThatConcatenateToTheFile() = runTest {
+        val ops = provider()
+        // Non-repeating-ish content larger than two 4 KB chunks so ordering bugs show.
+        val bytes = ByteArray(10_000) { (it % 251).toByte() }
+        val path = ops.writeBytesToTempFile(bytes, "flow_", ".bin")
+
+        val chunks = ops.readFileAsFlow(path, chunkSize = 4096).toList()
+
+        assertTrue(chunks.size >= 3, "must stream in real chunks, not one whole-file emit (got ${chunks.size})")
+        assertTrue(chunks.all { it.size <= 4096 }, "no chunk may exceed the requested size")
+        val concatenated = ByteArray(bytes.size)
+        var off = 0
+        for (c in chunks) {
+            c.copyInto(concatenated, off)
+            off += c.size
+        }
+        assertEquals(bytes.size, off, "chunks must cover the full file")
+        assertContentEquals(bytes, concatenated, "chunks must concatenate to the original bytes")
     }
 
     @Test

@@ -2,9 +2,11 @@ package id.homebase.api.file
 
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.io.Buffer
 import okio.FileSystem
 import okio.buffer
+import okio.use
 import okio.Path.Companion.toPath
 import kotlin.random.Random
 
@@ -27,6 +29,19 @@ open class OkioFileOperationsProvider(
 
     override suspend fun readFileBytes(path: String): ByteArray =
         fileSystem.read(path.toPath()) { readByteArray() }
+
+    // Real chunked streaming (#842) — the interface default emits the whole file as
+    // ONE chunk, defeating streamed encryption's bounded-memory point.
+    override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> = flow {
+        fileSystem.source(path.toPath()).buffer().use { source ->
+            val buf = ByteArray(chunkSize)
+            while (true) {
+                val read = source.read(buf, 0, chunkSize)
+                if (read == -1) break
+                if (read > 0) emit(buf.copyOf(read))
+            }
+        }
+    }
 
     override fun deleteTempFile(path: String): Boolean {
         val p = path.toPath()
