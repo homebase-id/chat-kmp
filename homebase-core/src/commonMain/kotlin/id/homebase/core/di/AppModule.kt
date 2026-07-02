@@ -115,8 +115,6 @@ import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
-import id.homebase.core.ui.screens.feed.ComposerArgs
-import id.homebase.core.ui.screens.feed.PostComposeViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
@@ -916,11 +914,10 @@ val appModule = module {
     viewModelOf(::MomentsFeedViewModel)
 
     // Native Feed ViewModels. PostDetailViewModel is parameterized on the post id.
+    // ponytail: PostComposeViewModel unregistered — the post composer is disabled for now
+    // (PR #802). FeedPostSenderService stays registered (delete-post still uses it). Restore
+    // the composer VM + Route.PostCompose to re-enable compose.
     viewModelOf(::FeedTimelineViewModel)
-    viewModel { params ->
-        val args = params.getOrNull<ComposerArgs>() ?: ComposerArgs()
-        PostComposeViewModel(get(), get(), get(), get(), get(), args.repostOfJson, args.editOfJson)
-    }
     viewModelOf(::FollowingViewModel)
     viewModel { params ->
         PostDetailViewModel(

@@ -91,16 +91,10 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
-import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.core.feed.services.EmbeddedPost
-import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.settings.UserPreferences
-import id.homebase.core.ui.screens.feed.ComposerArgs
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.feed.FeedTimelineScreen
-import id.homebase.core.ui.screens.feed.PostComposeScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
-import id.homebase.core.ui.screens.feed.PostEditSeed
 import id.homebase.core.ui.screens.feed.following.FollowingScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
@@ -773,28 +767,19 @@ fun AppNavHost(
                                 // effect when the user returns to the tab.
                                 val useNativeFeed = koinInject<UserPreferences>().useNativeFeed
                                 if (useNativeFeed) {
+                                    // ponytail: post composer disabled for now (PR #802) — the
+                                    // native feed is read-only for posts (viewing, comments, and
+                                    // reactions stay). Restore the composer nav + the
+                                    // Route.PostCompose destination below to re-enable compose.
                                     FeedTimelineScreen(
                                         viewModel = koinViewModel(),
                                         onNavigateToDetail = {
                                             navController.navigate(Route.PostDetail(it.toString()))
                                         },
-                                        onNavigateToComposer = {
-                                            navController.navigate(Route.PostCompose())
-                                        },
-                                        onRepost = { post ->
-                                            navController.navigate(
-                                                Route.PostCompose(repostOfJson = buildRepostJson(post)),
-                                            )
-                                        },
                                         onNavigateToFollowing = {
                                             navController.navigate(Route.Following)
                                         },
                                         onAuthorClick = { /* identity/profile nav not yet wired */ },
-                                        onEditPost = { post ->
-                                            navController.navigate(
-                                                Route.PostCompose(editOfJson = buildEditJson(post)),
-                                            )
-                                        },
                                     )
                                 } else {
                                     // Legacy WebView feed — user opted out of the native feed.
@@ -812,29 +797,6 @@ fun AppNavHost(
                                     },
                                     onBack = { navController.popBackStack() },
                                     onAuthorClick = {},
-                                    onEdit = { post ->
-                                        navController.navigate(
-                                            Route.PostCompose(editOfJson = buildEditJson(post)),
-                                        )
-                                    },
-                                )
-                            }
-                        }
-
-                        composable<Route.PostCompose>(
-                            // New-post composer rises up from the bottom and drops back down on
-                            // dismiss (sheet-like), instead of the default horizontal slide.
-                            enterTransition = { slideInVertically(initialOffsetY = { it }) },
-                            popExitTransition = { slideOutVertically(targetOffsetY = { it }) },
-                        ) { entry ->
-                            if (isAuthenticated) {
-                                val r = entry.toRoute<Route.PostCompose>()
-                                PostComposeScreen(
-                                    viewModel = koinViewModel(
-                                        key = "post-compose-" +
-                                            (r.repostOfJson?.hashCode() ?: r.editOfJson?.hashCode() ?: 0),
-                                    ) { parametersOf(ComposerArgs(r.repostOfJson, r.editOfJson)) },
-                                    onClose = { navController.popBackStack() },
                                 )
                             }
                         }
@@ -1648,32 +1610,6 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
     return initialState.destination.isTopLevelRoute() && targetState.destination.isTopLevelRoute()
 }
-
-/**
- * Serialize the [EmbeddedPost] quote payload for a repost compose route arg. The navigation
- * library URL-encodes the result for us, so the JSON is passed through as-is.
- */
-private fun buildRepostJson(post: FeedPostItem): String = OdinSystemSerializer.serialize(
-    EmbeddedPost(
-        author = (post.originalAuthor ?: post.senderOdinId)?.domainName,
-        caption = post.caption,
-        type = post.type,
-        fileId = post.fileId.toString(),
-        globalTransitId = post.globalTransitId?.toString(),
-        userDate = post.userDateMs,
-        previewThumbnail = null,
-    ),
-)
-
-private fun buildEditJson(post: FeedPostItem): String = OdinSystemSerializer.serialize(
-    PostEditSeed(
-        postId = post.id.toString(),
-        // updatePost locates the post by DRIVE alias (post.driveId), not the PostContent channelId.
-        channelId = post.driveId.toString(),
-        versionTag = post.versionTag?.toString().orEmpty(),
-        caption = post.caption,
-    ),
-)
 
 private fun NavDestination?.isVerticalSlideRoute(): Boolean {
     return this?.hasRoute(Route.VaultNoteEditor::class) == true

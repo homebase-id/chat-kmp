@@ -1548,6 +1548,7 @@
     <string name="feed_post_to_channel">to %1$s</string>
     <string name="feed_audience_public">Public</string>
 
+    <string name="feed_post_read_more">More</string>
     <string name="feed_post_read_less">Less</string>
     <string name="feed_post_comment">Comment</string>
     <string name="feed_post_comment_count">%1$d</string>
@@ -1572,10 +1573,8 @@
     <!-- Native feed: timeline -->
     <string name="feed_timeline_title">Feed</string>
     <string name="feed_timeline_following_action">Following</string>
-    <string name="feed_timeline_compose_action">New post</string>
     <string name="feed_timeline_empty_title">Your feed is empty</string>
     <string name="feed_timeline_empty_body">Posts from people you follow will show up here. Share something to get started.</string>
-    <string name="feed_timeline_empty_action">Create a post</string>
     <string name="feed_timeline_error_title">Couldn't load your feed</string>
     <string name="feed_timeline_error_retry">Retry</string>
     <string name="feed_reaction_failed">Couldn't add your reaction. Please try again.</string>

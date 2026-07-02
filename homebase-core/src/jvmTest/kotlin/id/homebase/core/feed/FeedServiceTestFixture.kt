@@ -3,6 +3,8 @@ package id.homebase.core.feed
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -11,10 +13,17 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
-import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.services.outbox.OptimisticWriterPort
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.UploadService
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respondError
 import io.ktor.client.request.forms.InputProvider
+import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -70,6 +79,27 @@ class FeedTestEnv(testScope: TestScope) {
     )
 
     val payloadBundleEncryptor: PayloadBundleEncryptor = PassthroughEncryptor()
+
+    /**
+     * A real [UploadService] over the fixture's outbox / optimistic-writer / encryptor, so a
+     * service migrated onto UploadService (issue #844) still enqueues into the same inspectable
+     * in-memory outbox. Mirrors homebase-chat's `buildTestUploadService`: the cache seeder is
+     * wired over a MockEngine that 500s (only reached by a payload-bearing send).
+     */
+    val uploadService: UploadService = run {
+        val http = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
+        val driveFileProvider = DriveFileProvider(
+            httpClient = http,
+            credentialsManager = credentialsManager,
+            driveCache = DriveFileProviderCached(http, credentialsManager, fileOps),
+        )
+        UploadService(
+            encryptor = payloadBundleEncryptor,
+            outboxSync = outboxSync,
+            optimisticWriter = OptimisticWriterPort(optimisticWriter),
+            payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps),
+        )
+    }
 
     suspend fun login(domain: String = "test.example.com") {
         credentialsManager.setActiveCredentials(

@@ -27,9 +27,9 @@ import androidx.compose.ui.unit.dp
  * load-error states so both read with the same calm, centred composition instead of a bare
  * spinner or raw error text.
  *
- * Purely presentational. Strings are resolved by the caller (so the Konsist literal rule sees no
- * `Text("…")` here) and passed in; [onAction] + [actionLabel] are both required for the button to
- * appear.
+ * Purely presentational. Strings are resolved by the caller (so the Konsist hardcoded-literal
+ * rule sees no inline text literal here) and passed in; [onAction] + [actionLabel] are both
+ * required for the button to appear.
  *
  * @param icon the glyph shown inside the tonal medallion.
  * @param iconContentDescription accessibility label for [icon], or null when purely decorative.

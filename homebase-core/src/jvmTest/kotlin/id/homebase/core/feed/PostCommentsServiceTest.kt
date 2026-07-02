@@ -57,7 +57,7 @@ class PostCommentsServiceTest {
         credentialsManager = env.credentialsManager,
         eventBus = env.eventBus,
         outboxSync = env.outboxSync,
-        payloadBundleEncryptor = env.payloadBundleEncryptor,
+        uploadService = env.uploadService,
         optimisticWriter = env.optimisticWriter,
         fileOps = env.fileOps,
         scope = env.scope,

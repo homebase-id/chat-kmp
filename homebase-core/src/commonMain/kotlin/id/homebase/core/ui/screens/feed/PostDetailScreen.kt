@@ -13,7 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -50,7 +49,6 @@ import id.homebase.core.ui.screens.feed.widget.CommentThread
 import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.resources.MR
-import id.homebase.resources.edit
 import id.homebase.resources.feed_post_detail_comments_disabled
 import id.homebase.resources.feed_post_detail_delete
 import id.homebase.resources.feed_post_detail_more_actions
@@ -77,7 +75,6 @@ fun PostDetailScreen(
     viewModel: PostDetailViewModel = koinViewModel(),
     onBack: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
-    onEdit: (FeedPostItem) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val channelService = koinInject<ChannelDefinitionService>()
@@ -140,19 +137,8 @@ fun PostDetailScreen(
                             expanded = menuOpen,
                             onDismissRequest = { menuOpen = false },
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(MR.string.edit)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Filled.Edit,
-                                        contentDescription = null,
-                                    )
-                                },
-                                onClick = {
-                                    menuOpen = false
-                                    onEdit(post)
-                                },
-                            )
+                            // ponytail: post composer disabled for now (PR #802) — the owner Edit
+                            // item is gone; Delete stays. Restore it + Route.PostCompose to re-enable.
                             DropdownMenuItem(
                                 text = { Text(stringResource(MR.string.feed_post_detail_delete)) },
                                 leadingIcon = {

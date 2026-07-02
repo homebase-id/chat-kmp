@@ -2,9 +2,12 @@ package id.homebase.core.ui.screens.feed
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -14,9 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.Group
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TopAppBar
@@ -36,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
@@ -53,8 +55,6 @@ import id.homebase.core.ui.screens.feed.widget.FeedMessageState
 import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.PostSkeleton
 import id.homebase.resources.MR
-import id.homebase.resources.feed_timeline_compose_action
-import id.homebase.resources.feed_timeline_empty_action
 import id.homebase.resources.feed_timeline_empty_body
 import id.homebase.resources.feed_timeline_empty_title
 import id.homebase.resources.feed_timeline_error_body
@@ -71,8 +71,7 @@ import kotlin.uuid.Uuid
  * pull-to-refresh, and skeleton / empty / error states.
  *
  * Navigation is callback-based: the VM emits one-time [FeedTimelineEvent]s collected
- * here and forwarded to [onNavigateToDetail] / [onNavigateToComposer]; the screen never
- * holds a NavController.
+ * here and forwarded to [onNavigateToDetail]; the screen never holds a NavController.
  *
  * @param onAuthorClick opens the tapped post author's profile. [PostCard]'s own
  *   `onAuthorClick` takes no arg, so the author identity (`originalAuthor ?: senderOdinId`)
@@ -83,11 +82,8 @@ import kotlin.uuid.Uuid
 fun FeedTimelineScreen(
     viewModel: FeedTimelineViewModel = koinViewModel(),
     onNavigateToDetail: (Uuid) -> Unit,
-    onNavigateToComposer: () -> Unit,
-    onRepost: (FeedPostItem) -> Unit,
     onNavigateToFollowing: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
-    onEditPost: (FeedPostItem) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     // Opens the author's report intake when a viewer reports someone else's post (web parity).
@@ -111,7 +107,6 @@ fun FeedTimelineScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is FeedTimelineEvent.NavigateToDetail -> onNavigateToDetail(event.postId)
-                FeedTimelineEvent.NavigateToComposer -> onNavigateToComposer()
                 is FeedTimelineEvent.ShowSnackbar ->
                     snackbarHostState.showSnackbar(TranslationUtil.getString(event.messageKey))
             }
@@ -134,18 +129,6 @@ fun FeedTimelineScreen(
                     }
                 },
                 scrollBehavior = scrollBehavior,
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = viewModel::onComposeClick,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Rounded.Edit,
-                        contentDescription = null,
-                    )
-                },
-                text = { Text(stringResource(MR.string.feed_timeline_compose_action)) },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -175,8 +158,6 @@ fun FeedTimelineScreen(
                 iconContentDescription = null,
                 title = stringResource(MR.string.feed_timeline_empty_title),
                 body = stringResource(MR.string.feed_timeline_empty_body),
-                actionLabel = stringResource(MR.string.feed_timeline_empty_action),
-                onAction = viewModel::onComposeClick,
                 modifier = contentModifier,
             )
 
@@ -188,9 +169,7 @@ fun FeedTimelineScreen(
                 onOpenComments = { commentsPostId = it },
                 onShowReactors = viewModel::showReactors,
                 onToggleReaction = viewModel::onToggleReaction,
-                onRepost = onRepost,
                 onAuthorClick = onAuthorClick,
-                onEditPost = onEditPost,
                 onDeletePost = viewModel::deletePost,
                 onReportPost = { uriHandler.openUrl(FEED_REPORT_URL) },
                 selfOdinId = uiState.selfOdinId,
@@ -227,6 +206,37 @@ fun FeedTimelineScreen(
 /** Number of items from the end at which [onLoadMore] is triggered. */
 private const val LOAD_MORE_THRESHOLD = 4
 
+// ponytail: on wide (tablet/desktop) windows the feed column is capped to 80% width and centered
+// so posts don't stretch full-bleed; phone-width (< 600dp, the M3 compact/medium breakpoint) stays
+// full width. Bump FEED_WIDE_FRACTION down (or swap for a widthIn max) if 80% still reads too wide.
+private val FEED_WIDE_BREAKPOINT = 600.dp
+private const val FEED_WIDE_FRACTION = 0.8f
+
+/**
+ * Paints the darker feed band across the full width, then hands [content] a modifier that is
+ * centered and capped at [FEED_WIDE_FRACTION] on wide windows / full width on phones. Shared by the
+ * real list and the loading skeletons so both track the same column width.
+ */
+@Composable
+private fun FeedWidthContainer(
+    modifier: Modifier = Modifier,
+    content: @Composable (Modifier) -> Unit,
+) {
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        val fraction = if (maxWidth >= FEED_WIDE_BREAKPOINT) FEED_WIDE_FRACTION else 1f
+        content(
+            Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction)
+                .align(Alignment.TopCenter),
+        )
+    }
+}
+
 // Reporting intake opened by the post overflow "Report" action on someone else's post.
 // ponytail: the documented web fallback URL; the per-identity `{author}/config/reporting` lookup
 // is the refinement (it needs an HTTP client wired into the feed layer — not worth it yet).
@@ -242,9 +252,7 @@ private fun FeedTimelineList(
     onOpenComments: (Uuid) -> Unit,
     onShowReactors: (FeedPostItem) -> Unit,
     onToggleReaction: (post: FeedPostItem, emoji: String) -> Unit,
-    onRepost: (FeedPostItem) -> Unit,
     onAuthorClick: (OdinId) -> Unit,
-    onEditPost: (FeedPostItem) -> Unit,
     onDeletePost: (FeedPostItem) -> Unit,
     onReportPost: (FeedPostItem) -> Unit,
     selfOdinId: OdinId?,
@@ -273,17 +281,14 @@ private fun FeedTimelineList(
         state = pullState,
         modifier = modifier,
     ) {
+      // The darker surfaceContainerHigh band fills the full width (painted by FeedWidthContainer);
+      // the post column itself is centered and width-capped on wide windows so the gaps between
+      // posts and the side margins read as the same separator colour.
+      FeedWidthContainer { columnModifier ->
         LazyColumn(
             state = listState,
-            // Posts are flat bands on `surface`; the list paints a clearly-darker
-            // surfaceContainerHigh behind them so the gaps read as distinct separators between
-            // posts (surfaceContainerLowest was lighter than `surface`, so the seams vanished).
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-            // Extra bottom inset so the last post's interaction row can scroll clear of the
-            // floating "New post" FAB instead of being covered by it.
-            contentPadding = PaddingValues(top = 10.dp, bottom = 88.dp),
+            modifier = columnModifier,
+            contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->
@@ -307,7 +312,10 @@ private fun FeedTimelineList(
                     channelName = channelNameFor(post.channelId),
                     isPublic = isPublicChannel(post.channelId),
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
-                    onRepost = { onRepost(post) },
+                    // ponytail: post composer disabled for now (PR #802). PostCard hides the
+                    // repost button + overflow Edit item when these are null; Delete/Report stay.
+                    // Restore the FAB + Route.PostCompose (see AppNavHost) to re-enable compose.
+                    onRepost = null,
                     onOpenComments = { onOpenComments(post.id) },
                     onShowReactors = { if (isArticle) onPostClick(post.id) else onShowReactors(post) },
                     onPostClick = { onOpenComments(post.id) },
@@ -316,12 +324,13 @@ private fun FeedTimelineList(
                     embeddedAuthorName = post.embeddedPost?.author
                         ?.let { displayNames[OdinId(it)]?.takeIf { n -> n.isNotBlank() } },
                     isOwnPost = isOwnPost,
-                    onEditPost = { onEditPost(post) },
+                    onEditPost = null,
                     onDeletePost = { onDeletePost(post) },
                     onReportPost = { onReportPost(post) },
                 )
             }
         }
+      }
     }
 }
 
@@ -344,14 +353,16 @@ private fun snapshotFlowShouldLoadMore(
  */
 @Composable
 private fun FeedTimelineLoading(modifier: Modifier = Modifier) {
-    LazyColumn(
-        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
-        contentPadding = PaddingValues(vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        userScrollEnabled = false,
-    ) {
-        items(FEED_SKELETON_COUNT) {
-            PostSkeleton()
+    FeedWidthContainer(modifier) { columnModifier ->
+        LazyColumn(
+            modifier = columnModifier,
+            contentPadding = PaddingValues(vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            userScrollEnabled = false,
+        ) {
+            items(FEED_SKELETON_COUNT) {
+                PostSkeleton()
+            }
         }
     }
 }

@@ -175,10 +175,6 @@ class FeedTimelineViewModel(
         _events.tryEmit(FeedTimelineEvent.NavigateToDetail(postId))
     }
 
-    fun onComposeClick() {
-        _events.tryEmit(FeedTimelineEvent.NavigateToComposer)
-    }
-
     /**
      * Fire-and-forget reaction toggle from a feed card. The optimistic write inside
      * [PostReactionService] updates the UI via the timeline re-emit; a failure rolls back
@@ -257,6 +253,5 @@ class FeedTimelineViewModel(
 /** One-time effects the [FeedTimelineScreen] reacts to (navigation, snackbars). */
 sealed interface FeedTimelineEvent {
     data class NavigateToDetail(val postId: Uuid) : FeedTimelineEvent
-    data object NavigateToComposer : FeedTimelineEvent
     data class ShowSnackbar(val messageKey: StringResource) : FeedTimelineEvent
 }

@@ -32,11 +32,13 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.api.sync.database.enqueued
-import id.homebase.chat.services.PayloadBundleEncryptor
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.feedLabeledDrive
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -70,7 +72,9 @@ class PostCommentsService(
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
     private val outboxSync: OutboxSync,
-    private val payloadBundleEncryptor: PayloadBundleEncryptor,
+    // Encrypted comments upload through the shared pipeline (issue #844); public comments ship
+    // plaintext and enqueue directly (no encryptBundle) below.
+    private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
     private val fileOps: FileOperationsProvider,
     private val scope: CoroutineScope,
@@ -295,25 +299,15 @@ class PostCommentsService(
         )
 
         val attachments = listOfNotNull(attachment)
+        // Plaintext bundle. Encryption preserves payload keys and passes preview thumbs through
+        // unchanged, so `mediaKey` / `previewThumbnail` are derived from this bundle in both paths.
         val bundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,
         ) { _, _ -> FeedProtocol.CommentMediaPayloadKey }
 
-        // Encrypt the bundle only for an encrypted post; a public comment ships plaintext payloads.
-        val outgoing = if (isEncrypted) {
-            payloadBundleEncryptor.encryptBundle(
-                uniqueId = commentUniqueId,
-                bundle = bundle,
-                aesKey = keyHeader.aesKey,
-                scope = scope,
-            )
-        } else {
-            bundle
-        }
-
         val isLocalOnly = recipients.isEmpty()
-        val mediaKey = outgoing.payloads.firstOrNull()?.key
+        val mediaKey = bundle.payloads.firstOrNull()?.key
         val content = OdinSystemSerializer.serialize(
             PostCommentContent(
                 version = FeedProtocol.CommentVersion,
@@ -322,6 +316,7 @@ class PostCommentsService(
             )
         )
 
+        // Unencrypted metadata; the encrypted path lets UploadService apply `encryptContent`.
         val metadata = UploadFileMetadata(
             allowDistribution = !isLocalOnly,
             isEncrypted = isEncrypted,
@@ -332,61 +327,85 @@ class PostCommentsService(
                 fileType = FeedProtocol.CommentFileType,
                 userDate = UnixTimeUtc.now().milliseconds,
                 content = content,
-                previewThumbnail = outgoing.previewThumbs.minByOrNull { it.pixelWidth },
+                previewThumbnail = bundle.previewThumbs.minByOrNull { it.pixelWidth },
             ),
         )
 
-        val request = UploadFileRequest(
-            driveId = drive,
-            keyHeader = keyHeader,
-            metadata = if (isEncrypted) metadata.encryptContent(keyHeader) else metadata,
-            payloads = outgoing.payloads,
-            thumbnails = outgoing.thumbnails,
-            transitOptions = TransitOptions(
-                recipients = recipients,
-                sendContents = SendContents.All,
-                useAppNotification = false,
-            ),
+        val transit = TransitOptions(
+            recipients = recipients,
+            sendContents = SendContents.All,
+            useAppNotification = false,
         )
 
-        val enqueued = outboxSync.tryEnqueue(request)
-        if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
-        Logger.d(tag = TAG) {
-            "postComment: enqueued comment=$commentUniqueId groupId=$groupId encrypted=$isEncrypted"
-        }
-
-        val payloadDescriptors = outgoing.payloads.map { payload ->
-            PayloadDescriptor(
-                key = payload.key,
-                contentType = payload.contentType.ifEmpty { null },
-                iv = payload.iv?.let { Base64.encode(it) },
-                descriptorContent = payload.descriptorContent,
-                previewThumbnail = payload.previewThumbnail?.let {
-                    ThumbnailDescriptor(
-                        pixelWidth = it.pixelWidth,
-                        pixelHeight = it.pixelHeight,
-                        contentType = it.contentType,
-                        content = it.content,
-                    )
-                },
+        if (isEncrypted) {
+            // Encrypted comment → the shared pipeline (issue #844): it encrypts the bundle +
+            // metadata content, enqueues the durable outbox row, seeds the cache, and writes the
+            // optimistic local row.
+            val outcome = uploadService.upload(
+                MediaUploadSpec(
+                    driveId = drive,
+                    uniqueId = commentUniqueId,
+                    keyHeader = keyHeader,
+                    bundle = bundle,
+                    metadata = metadata,
+                    transit = transit,
+                    originalRecipientCount = recipients.size,
+                ),
+                scope = scope,
             )
-        }.ifEmpty { null }
-
-        try {
-            optimisticWriter.writeNewFile(
+            if (outcome !is UploadOutcome.Enqueued) {
+                error("Failed to enqueue comment for upload (outbox: $outcome)")
+            }
+        } else {
+            // Public comment → plaintext payloads, no encryptBundle (so #844-compliant to build the
+            // request directly). Enqueue, then write the optimistic row best-effort.
+            val request = UploadFileRequest(
                 driveId = drive,
                 keyHeader = keyHeader,
-                unecryptedMetadata = metadata,
-                originalRecipientCount = recipients.size,
-                fileSystemType = FileSystemType.Standard,
-                payloadDescriptors = payloadDescriptors,
+                metadata = metadata,
+                payloads = bundle.payloads,
+                thumbnails = bundle.thumbnails,
+                transitOptions = transit,
             )
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) {
-                "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
+            val enqueued = outboxSync.tryEnqueue(request)
+            if (!enqueued.enqueued) error("Failed to enqueue comment for upload (outbox: $enqueued)")
+
+            val payloadDescriptors = bundle.payloads.map { payload ->
+                PayloadDescriptor(
+                    key = payload.key,
+                    contentType = payload.contentType.ifEmpty { null },
+                    iv = payload.iv?.let { Base64.encode(it) },
+                    descriptorContent = payload.descriptorContent,
+                    previewThumbnail = payload.previewThumbnail?.let {
+                        ThumbnailDescriptor(
+                            pixelWidth = it.pixelWidth,
+                            pixelHeight = it.pixelHeight,
+                            contentType = it.contentType,
+                            content = it.content,
+                        )
+                    },
+                )
+            }.ifEmpty { null }
+
+            try {
+                optimisticWriter.writeNewFile(
+                    driveId = drive,
+                    keyHeader = keyHeader,
+                    unecryptedMetadata = metadata,
+                    originalRecipientCount = recipients.size,
+                    fileSystemType = FileSystemType.Standard,
+                    payloadDescriptors = payloadDescriptors,
+                )
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) {
+                    "postComment: optimistic write failed (non-fatal) comment=$commentUniqueId"
+                }
             }
         }
 
+        Logger.d(tag = TAG) {
+            "postComment: enqueued comment=$commentUniqueId groupId=$groupId encrypted=$isEncrypted"
+        }
         return PostCommentResult(uniqueId = commentUniqueId)
     }
 
