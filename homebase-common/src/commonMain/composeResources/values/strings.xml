@@ -1565,10 +1565,13 @@
     <string name="profile_edit_section_contact">Contact</string>
     <string name="profile_edit_email">Email</string>
     <string name="profile_edit_email_label">Email label</string>
+    <string name="profile_edit_email_label_hint">e.g. Personal, Work</string>
     <string name="profile_edit_phone">Phone</string>
     <string name="profile_edit_phone_label">Phone label</string>
+    <string name="profile_edit_phone_label_hint">e.g. Mobile, Home, Work</string>
     <string name="profile_edit_section_address">Address</string>
     <string name="profile_edit_address_label">Address label</string>
+    <string name="profile_edit_address_label_hint">e.g. Home, Work</string>
     <string name="profile_edit_address1">Address line 1</string>
     <string name="profile_edit_address2">Address line 2</string>
     <string name="profile_edit_postcode">Postcode</string>
