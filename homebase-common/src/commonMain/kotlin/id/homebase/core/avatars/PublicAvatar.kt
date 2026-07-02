@@ -18,6 +18,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_public
 import org.jetbrains.compose.resources.stringResource
@@ -30,7 +31,7 @@ fun PublicAvatar(
     options: AvatarOptions,
     modifier: Modifier = Modifier
 ) {
-    val imageUrl = "https://$odinId/pub/image"
+    val imageUrl = odinId.publicImageUrl()
 
     // Defense in depth. SingletonImageLoader is also rewired to this
     // instance in AppModule.{android,desktop,native}.kt, so a caller that

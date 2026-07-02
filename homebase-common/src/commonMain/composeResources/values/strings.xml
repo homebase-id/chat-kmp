@@ -137,7 +137,6 @@
     <string name="avatar_conversation">Conversation avatar</string>
     <string name="avatar_default">Default avatar</string>
     <string name="avatar_public">Public avatar</string>
-    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -1184,7 +1183,6 @@
     <string name="cd_not_selected">Not selected</string>
     <string name="cd_open_externally">Open externally</string>
     <string name="cd_navigate_forward">Navigate forward</string>
-    <string name="cd_group_avatar">Group</string>
     <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>

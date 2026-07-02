@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import coil3.disk.DiskCache
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
@@ -141,7 +142,7 @@ class PublicProfileProviderCached(
         getCached(
             cacheKey = "image:$odinId",
             disk = imageDiskCache,
-            fetch = { httpClient.get("https://${odinId}/pub/image") },
+            fetch = { httpClient.get(odinId.publicImageUrl()) },
             transform = { response ->
                 response.bodyAsBytes()
             },

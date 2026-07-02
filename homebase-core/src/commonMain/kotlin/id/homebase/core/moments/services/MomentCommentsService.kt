@@ -224,10 +224,7 @@ class MomentCommentsService(
             }.getOrNull()
         }
         val sender = file.fileMetadata.senderOdinId
-        val displayName = sender?.let {
-            contactService.resolveByOdinId(it)?.name?.takeIf { n -> n.isNotBlank() }
-                ?: it.domainName
-        }.orEmpty()
+        val displayName = sender?.let { contactService.resolveByOdinId(it).name }.orEmpty()
         return MomentCommentItem(
             id = uniqueId,
             momentId = groupId,

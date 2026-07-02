@@ -8,7 +8,9 @@ import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.initials
 import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.chat.services.convo.contact.ContactConnectionState
+import id.homebase.core.util.initials
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -23,7 +25,20 @@ data class ContactUiModel(
 
     val connection: RedactedIdentityConnectionRegistration? = null,
     val connectionState: ContactConnectionState = ContactConnectionState.Unknown
-)
+) {
+    companion object {
+        /** Identity-only fallback when no saved contact exists — never emits blank avatar fields. */
+        fun fallbackFor(odinId: OdinId): ContactUiModel = ContactUiModel(
+            id = odinId.toHashId(),
+            odinId = odinId,
+            name = odinId.domainName,
+            avatarInitials = odinId.domainName.initials(),
+            avatarUrl = odinId.publicImageUrl(),
+            connection = null,
+            connectionState = ContactConnectionState.NotConnected,
+        )
+    }
+}
 
 /**
  * Projects the server-shaped [Contact] domain model (from `ContactRepository`) into the
@@ -43,6 +58,6 @@ fun Contact.toContactUiModel(): ContactUiModel? {
             email = content.email?.email,
         ) ?: odin.domainName,
         avatarInitials = content.name.initials(),
-        avatarUrl = "https://$odinIdStr/pub/image",
+        avatarUrl = odin.publicImageUrl(),
     )
 }

@@ -85,7 +85,6 @@ data class OutgoingShareRow(
     val odinId: String,
     val name: String,
     val avatarInitials: String,
-    val avatarUrl: String?,
     /** Longest end-time across this person's overlapping shares (UTC epoch-ms). */
     val untilMs: Long,
 )
@@ -95,7 +94,6 @@ data class IncomingShareRow(
     val odinId: String,
     val name: String,
     val avatarInitials: String,
-    val avatarUrl: String?,
     /** Age of their last received fix (ms); the label only shows past AGE_LABEL_AFTER_MS. */
     val ageMs: Long,
 )

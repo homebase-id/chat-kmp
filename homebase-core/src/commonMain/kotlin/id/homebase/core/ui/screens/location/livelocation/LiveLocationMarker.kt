@@ -15,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import id.homebase.core.widget.AvatarImage
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.FallbackAvatar
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.resources.MR
 import id.homebase.resources.live_location_age_minutes
 import id.homebase.resources.live_location_marker_cd
@@ -37,12 +39,23 @@ fun LiveLocationMarker(marker: LiveMarker, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        AvatarImage(
-            modifier = Modifier.border(2.dp, ringColor, CircleShape).clip(CircleShape),
-            avatarUrl = marker.avatarUrl,
-            avatarInitials = marker.initials,
-            size = LiveMarkerSize,
-        )
+        val ringModifier = Modifier.border(2.dp, ringColor, CircleShape).clip(CircleShape)
+        val avatarOptions = AvatarOptions(size = LiveMarkerSize)
+        val odinId = marker.odinId
+        if (odinId != null) {
+            PublicAvatar(
+                odinId = odinId,
+                initials = marker.initials,
+                options = avatarOptions,
+                modifier = ringModifier,
+            )
+        } else {
+            FallbackAvatar(
+                initials = marker.initials,
+                options = avatarOptions,
+                modifier = ringModifier,
+            )
+        }
         val ageMinutes = (marker.ageMs / 60_000L).toInt()
         if (marker.ageMs > AGE_LABEL_AFTER_MS && ageMinutes >= 1) {
             Text(

@@ -52,13 +52,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.ui.screens.location.livelocation.AGE_LABEL_AFTER_MS
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.formatUntilTime
-import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.live_location_age_minutes
@@ -498,10 +500,10 @@ private fun PeopleListBody(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                AvatarImage(
-                                    avatarUrl = member.avatarUrl,
-                                    avatarInitials = member.avatarInitials,
-                                    size = 40.dp,
+                                PublicAvatar(
+                                    odinId = member.odinId,
+                                    initials = member.avatarInitials,
+                                    options = AvatarOptions(size = 40.dp),
                                 )
                                 Text(
                                     text = member.name,
@@ -541,10 +543,10 @@ private fun EmergencyAvatarStack(
                     .background(MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center,
             ) {
-                AvatarImage(
-                    avatarUrl = member.avatarUrl,
-                    avatarInitials = member.avatarInitials,
-                    size = avatarSize,
+                PublicAvatar(
+                    odinId = member.odinId,
+                    initials = member.avatarInitials,
+                    options = AvatarOptions(size = avatarSize),
                 )
             }
         }
@@ -579,10 +581,10 @@ private fun OutgoingShareRowItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AvatarImage(
-            avatarUrl = row.avatarUrl,
-            avatarInitials = row.avatarInitials,
-            size = 40.dp,
+        PublicAvatar(
+            odinId = OdinId(row.odinId),
+            initials = row.avatarInitials,
+            options = AvatarOptions(size = 40.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -618,10 +620,10 @@ private fun IncomingShareRowItem(row: IncomingShareRow) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AvatarImage(
-            avatarUrl = row.avatarUrl,
-            avatarInitials = row.avatarInitials,
-            size = 40.dp,
+        PublicAvatar(
+            odinId = OdinId(row.odinId),
+            initials = row.avatarInitials,
+            options = AvatarOptions(size = 40.dp),
         )
         Text(
             text = row.name,

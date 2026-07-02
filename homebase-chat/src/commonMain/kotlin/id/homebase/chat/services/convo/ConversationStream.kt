@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -395,7 +396,7 @@ class ConversationStream(
                 ?.let { return it }
         }
 
-        return contactService.resolveByOdinId(author)?.name ?: author.domainName
+        return contactService.resolveByOdinId(author).name
     }
 
     private suspend fun dispatchGroupHealRequests(messageFiles: List<HomebaseFile>) {
@@ -1515,7 +1516,7 @@ class ConversationStream(
                     .firstOrNull { it != activeDomain }
 
                 val avatarUrl = if (!convo.isGroupConversation && otherParticipant != null) {
-                    "https://${otherParticipant.domainName}/pub/image"
+                    otherParticipant.publicImageUrl()
                 } else null
 
                 // Resolve contact name using the same contact map pattern as ConversationEnricher
