@@ -6,6 +6,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.Buffer
@@ -23,7 +24,9 @@ import platform.Foundation.NSUserDomainMask
 import platform.Foundation.closeFile
 import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
+import platform.Foundation.fileHandleForReadingAtPath
 import platform.Foundation.fileHandleForWritingAtPath
+import platform.Foundation.readDataOfLength
 import platform.Foundation.seekToEndOfFile
 import platform.Foundation.writeData
 import platform.Foundation.writeToFile
@@ -72,6 +75,44 @@ class IOSFileOperationsProvider : FileOperationsProvider {
             return readPhotoLibraryAsset(path)
         }
         return readFileData(path)
+    }
+
+    /**
+     * Real chunked streaming via [NSFileHandle] (#842) — without this override the
+     * interface default loads the ENTIRE file as one chunk, so "streamed" encryption
+     * of a large payload still spiked memory by the full file size on iOS.
+     *
+     * Photos-library sources (`ph://` / raw PHAsset ids) keep the single-chunk path:
+     * PHImageManager has no byte-stream API for image data, these are photo-sized
+     * (videos never come through here — they're materialized to a real file via
+     * [resolveToFilePath] first), and the bytes must come from the library, not disk.
+     */
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    override fun readFileAsFlow(path: String, chunkSize: Int): Flow<ByteArray> = flow {
+        if (path.startsWith("ph://") || path.contains("/L0/")) {
+            emit(readPhotoLibraryAsset(path))
+            return@flow
+        }
+        val url = NSURL.fileURLWithPath(path)
+        val accessed = url.startAccessingSecurityScopedResource()
+        try {
+            val handle = NSFileHandle.fileHandleForReadingAtPath(path)
+                ?: error("Unable to read file at $path")
+            try {
+                while (true) {
+                    val data = handle.readDataOfLength(chunkSize.toULong())
+                    val len = data.length.toInt()
+                    if (len == 0) break
+                    val bytes = ByteArray(len)
+                    bytes.usePinned { pinned -> memcpy(pinned.addressOf(0), data.bytes, data.length) }
+                    emit(bytes)
+                }
+            } finally {
+                handle.closeFile()
+            }
+        } finally {
+            if (accessed) url.stopAccessingSecurityScopedResource()
+        }
     }
 
     @OptIn(ExperimentalForeignApi::class)
