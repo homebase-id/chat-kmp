@@ -672,12 +672,12 @@ private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
     }
 }
 
-/** Compact "age since newest data" label: minutes, then hours, then days. */
+/** Compact "age since newest data" label: minutes, then hours (through 96 h), then days. */
 @Composable
 private fun formatLocateAge(ageMs: Long): String = when {
     ageMs < 60 * 60_000L ->
         stringResource(MR.string.live_location_age_minutes, (ageMs / 60_000L).toInt().coerceAtLeast(0))
-    ageMs < 24 * 60 * 60_000L ->
+    ageMs <= 96 * 60 * 60_000L ->
         stringResource(MR.string.location_locate_age_hours, (ageMs / 3_600_000L).toInt())
     else ->
         stringResource(MR.string.location_locate_age_days, (ageMs / 86_400_000L).toInt())
