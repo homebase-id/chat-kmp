@@ -6,6 +6,7 @@ import java.io.File
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -42,9 +43,17 @@ class VideoPayloadProcessorStreamEncryptTest {
         for (size in sizes) {
             val plaintext = ByteArray(size).also { Random.nextBytes(it) }
             val inputPath = provider.writeBytesToTempFile(plaintext, "stream_in_", ".bin")
+            var outputPath: String? = null
 
             try {
-                val outputPath = processor.encryptVideoFile(inputPath, key)
+                outputPath = processor.encryptVideoFile(inputPath, key)
+
+                // #842: the encrypted output an outbox row will reference must land in
+                // the durable staging dir, not cacheDir (which gets swept/OS-reclaimed).
+                assertTrue(
+                    outputPath.startsWith(provider.getOutboxStagingDirectory()),
+                    "encrypted video must be staged durably: $outputPath",
+                )
 
                 val bulkCipher = key.encryptDataAes(plaintext)
                 val streamCipher = File(outputPath).readBytes()
@@ -54,9 +63,9 @@ class VideoPayloadProcessorStreamEncryptTest {
                     streamCipher,
                     "Ciphertext mismatch at size=$size — streaming path is incompatible with bulk path",
                 )
-                provider.deleteTempFile(outputPath)
             } finally {
                 provider.deleteTempFile(inputPath)
+                outputPath?.let { provider.deleteTempFile(it) }
             }
         }
     }
@@ -69,14 +78,15 @@ class VideoPayloadProcessorStreamEncryptTest {
         val plaintext = ByteArray(5 * 1024 * 1024 + 123).also { Random.nextBytes(it) }
         val inputPath = provider.writeBytesToTempFile(plaintext, "rt_in_", ".bin")
 
+        var outputPath: String? = null
         try {
-            val outputPath = processor.encryptVideoFile(inputPath, key)
+            outputPath = processor.encryptVideoFile(inputPath, key)
             val cipherBytes = File(outputPath).readBytes()
             val decrypted = key.decrypt(cipherBytes)
             assertContentEquals(plaintext, decrypted)
-            provider.deleteTempFile(outputPath)
         } finally {
             provider.deleteTempFile(inputPath)
+            outputPath?.let { provider.deleteTempFile(it) }
         }
     }
 
