@@ -2,6 +2,7 @@ package id.homebase.core.image
 
 import coil3.toUri
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.core.image.PublicImageFetcher.Companion.resolveOdinId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -109,5 +110,21 @@ class PublicImageFetcherFactoryTest {
     fun resolveOdinId_uriWithSubdomain_preservesOdinId() {
         val uri = "https://sub.frodo.digital/pub/image".toUri()
         assertEquals("sub.frodo.digital", resolveOdinId(uri)?.toString())
+    }
+
+    // =========================================================
+    // Builder ↔ matcher round-trip
+    //
+    // publicImageUrl() (homebase-api) is the single producer of the
+    // /pub/image URL; resolveOdinId() is its consumer-side matcher. If
+    // either side drifts, avatar loads silently fall through to the
+    // plain NetworkFetcher and bypass the homebase-public-images-v2
+    // cache — this locks the two together.
+    // =========================================================
+
+    @Test
+    fun resolveOdinId_roundTripsCanonicalBuilderUrl() {
+        val odinId = OdinId("frodo.digital")
+        assertEquals(odinId, resolveOdinId(odinId.publicImageUrl().toUri()))
     }
 }
