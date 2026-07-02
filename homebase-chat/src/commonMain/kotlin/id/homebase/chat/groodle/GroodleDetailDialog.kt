@@ -169,7 +169,7 @@ private fun GroodleDetailContent(
 
             organizer?.let { host ->
                 Spacer(Modifier.height(4.dp))
-                val resolved = contactService.resolveByOdinId(host)?.name ?: host.domainName
+                val resolved = contactService.resolveByOdinId(host).name
                 Text(
                     text = stringResource(MR.string.chat_event_organized_by) + " " + resolved,
                     style = MaterialTheme.typography.labelMedium,
