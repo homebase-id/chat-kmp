@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.AesCbc
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.contentLength
 import io.ktor.utils.io.readAvailable
 
 private fun ByteReadChannel.asFlow(chunkSize: Int = 64 * 1024): Flow<ByteArray> = flow {
@@ -53,7 +55,8 @@ public class DriveFileHttpProvider(
         key: String,
         keyHeader: KeyHeader,
         outputPath: String,
-        fileOps: FileOperationsProvider
+        fileOps: FileOperationsProvider,
+        onProgress: ((Float) -> Unit)? = null,
     ): Boolean {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -86,8 +89,22 @@ public class DriveFileHttpProvider(
             )
         }
 
+        // Progress from a bytes-read counter over Content-Length (when present) —
+        // needed by the rerouted MP4 render path (#845), which showed real download
+        // progress back when it buffered the whole payload.
+        val totalBytes = response.contentLength()
+        var readSoFar = 0L
         val encryptedFlow =
-            response.bodyAsChannel().asFlow()
+            response.bodyAsChannel().asFlow().let { upstream ->
+                if (onProgress == null || totalBytes == null || totalBytes <= 0L) upstream
+                else flow {
+                    upstream.collect { chunk ->
+                        readSoFar += chunk.size
+                        onProgress((readSoFar.toFloat() / totalBytes.toFloat()).coerceAtMost(1f))
+                        emit(chunk)
+                    }
+                }
+            }
 
         val decryptedFlow =
             AesCbc.streamDecryptWithCbc(
@@ -97,13 +114,19 @@ public class DriveFileHttpProvider(
             )
 
         fileOps.writeStream(outputPath, decryptedFlow)
+        onProgress?.invoke(1f)
 
         return true
     }
 
     // This ought to be private / protected and only used by driveCache but probably rewire it all
-    // TODO: Shouldn't it (always) be streaming?! If it's a 500MB file we dont want it in memory
-    // TODO: Should we discern between HLS needing chunks and payloads not needing chunks? Two different calls?
+    /**
+     * Full (non-range) reads are size-guarded at [PayloadSizePolicy.RENDER_LIMIT_BYTES]
+     * (#845): a payload the app can't render has no business in RAM or the LRU —
+     * export flows must use [streamPayloadDecryptedToPath]. Range reads
+     * (`options.chunkStart != null`) are exempt by shape: they're the HLS playback
+     * path and are bounded by their requested chunkLength.
+     */
     suspend fun getPayloadBytesRawNetwork(
         driveId: Uuid,
         fileId: Uuid,
@@ -139,7 +162,9 @@ public class DriveFileHttpProvider(
 
         val url = apiUrl(creds.domain, path)
 
-        val response = requestBytes {
+        val response = requestBytes(
+            maxBytes = if (options.chunkStart == null) PayloadSizePolicy.RENDER_LIMIT_BYTES else null
+        ) {
             httpClient.get(url) {
                 bearerAuth(creds.accessToken)
 

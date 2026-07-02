@@ -59,6 +59,23 @@ class CacheAuditTest {
     }
 
     @Test
+    fun audit_countsHlsChunkCacheAsKnown() {
+        // The dedicated HLS chunk cache (#845) must be a tracked dir — otherwise
+        // the startup sweep would wipe warm playback chunks on every launch.
+        val fs = FakeFileSystem()
+        fs.createDirectories(cacheDir)
+        fs.writeFile("/cache/homebase-hls-chunks-v1/chunk", 400)
+
+        val report = CacheAudit.audit(cacheDir.toString(), fs)
+
+        assertEquals(400L, report.knownBytes)
+        assertEquals(0L, report.untrackedBytes)
+        val entry = report.entries.single { it.name == "homebase-hls-chunks-v1" }
+        assertTrue(entry.known)
+        assertEquals("tracked Coil disk cache", entry.label)
+    }
+
+    @Test
     fun audit_missingCacheDir_returnsEmptyReport() {
         val fs = FakeFileSystem()
         val report = CacheAudit.audit("/nonexistent".toPath().toString(), fs)

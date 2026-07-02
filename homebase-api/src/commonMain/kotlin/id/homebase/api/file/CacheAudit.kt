@@ -34,6 +34,9 @@ object CacheAudit {
         "homebase-thumbs-v2",
         "homebase-public-profiles-v2",
         "homebase-public-images-v2",
+        // Dedicated HLS playback-chunk LRU (#845) — isolated so one long video
+        // can't evict images/attachments and vice versa.
+        "homebase-hls-chunks-v1",
     )
 
     /**
@@ -208,6 +211,8 @@ object CacheAudit {
         name == "data" -> "Android system: WebView data — sacred"
         name == "Crash Reports" -> "Android system: crash reporter — sacred"
         name == "hbvid_preload" -> "legacy video preload dir"
+        name.startsWith("hbvid_res_") -> "streamed MP4 playback temp (deleted on player dispose; swept as backstop)"
+        name.startsWith("hbvid_") -> "decrypted video playback scratch"
         name == "coil3_disk_cache" -> "orphan Coil disk cache"
         name == UPLOAD_TEMP_DIR_NAME -> "raw pre-encryption upload temps (disposable — swept every startup)"
         name == OUTBOX_TEMP_DIR_NAME -> "encrypted outbox payload temps (kept until sent/dropped to protect pending sends)"
@@ -233,5 +238,7 @@ object CacheAudit {
     private const val TAG = "CacheAudit"
 
     /** Untracked entries at or above this size are logged at WARN. */
-    private const val LOUD_THRESHOLD_BYTES = 50L * 1024L * 1024L
+    // Delegates to the render/export boundary (#845): "large enough to be loud
+    // about" and "too large to render/cache" are deliberately the same number.
+    private val LOUD_THRESHOLD_BYTES = id.homebase.api.client.PayloadSizePolicy.RENDER_LIMIT_BYTES
 }

@@ -83,9 +83,9 @@ open class PayloadCacheSeeder(
          * Payload seeding is a convenience (avoids a server re-download for the
          * sender); thumbnails are the critical seed and are small. Above this size
          * the 200 MB LRU payload cache can't usefully retain the entry anyway, and
-         * `readFileBytes` would spike RAM by the full payload size. Aligned with
-         * `CacheAudit.LOUD_THRESHOLD_BYTES` (the existing "large cache entry" signal).
+         * `readFileBytes` would spike RAM by the full payload size. Delegates to
+         * the render/export boundary (#845) so the numbers can't drift.
          */
-        const val MAX_SEED_PAYLOAD_BYTES: Long = 50L * 1024 * 1024
+        val MAX_SEED_PAYLOAD_BYTES: Long = id.homebase.api.client.PayloadSizePolicy.RENDER_LIMIT_BYTES
     }
 }

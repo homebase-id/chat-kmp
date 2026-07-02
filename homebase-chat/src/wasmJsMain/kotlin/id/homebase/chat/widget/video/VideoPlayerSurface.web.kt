@@ -85,10 +85,16 @@ actual fun VideoPlayerSurface(
                     data.payload.descriptorContent,
                 ),
                 driveFileProvider,
+                // Web builds a Base64 object URL, so it needs bytes (the wasm FS
+                // is RAM-backed anyway). The render-limit guard bounds it: an
+                // oversized MP4 throws PayloadTooLargeException into the catch
+                // below → unplayable message instead of OOM-ing the tab (#845).
+                preferBytes = true,
                 onDownloadProgress = { onProgress(it * 0.9f) },
             )
             when (content) {
-                is VideoContent.Mp4 -> {
+                is VideoContent.Mp4File -> error("Mp4File is the file-backed variant — web passes preferBytes")
+                is VideoContent.Mp4Bytes -> {
                     val mime = content.metadata.mimeType.ifBlank { "video/mp4" }
                     val url = bytesToObjectUrl(Base64.encode(content.bytes), mime)
                     objectUrl = url

@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
@@ -40,6 +42,7 @@ class ChatMessageActionService(
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
     private val fileProvider: DriveFileProvider,
+    private val payloadDownloadService: PayloadDownloadService,
     private val dbm: DatabaseManager,
     private val outboxSync: OutboxSync,
     private val optimisticWriter: OptimisticWriter,
@@ -407,4 +410,21 @@ class ChatMessageActionService(
         )
         return response?.bytes
     }
+
+    /**
+     * Stream-decrypt a chat payload into a fresh `share_outbound/` file and return
+     * its path, or null when the payload 404s. Bounded RAM (~64 KB chunks) for ANY
+     * payload size — the EXPORT-side counterpart of [getPayloadBytes], which is a
+     * RENDER read capped at PayloadSizePolicy.RENDER_LIMIT_BYTES (#845). Sharing a
+     * 1 GB attachment used to buffer ~2× its size in RAM through getPayloadBytes.
+     */
+    suspend fun streamPayloadToShareOutbound(
+        fileId: Uuid, payloadKey: String, keyHeader: KeyHeader, suffix: String
+    ): String? = payloadDownloadService.exportToTemp(
+        driveId = chatTargetDrive.alias,
+        fileId = fileId,
+        key = payloadKey,
+        keyHeader = keyHeader,
+        destination = ExportDestination.ShareOutbound(suffix),
+    )
 }
