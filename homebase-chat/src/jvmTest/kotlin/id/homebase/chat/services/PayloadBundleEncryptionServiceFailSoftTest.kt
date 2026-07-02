@@ -49,8 +49,11 @@ class PayloadBundleEncryptionServiceFailSoftTest {
     private fun imagePayload(key: String, path: String) =
         PayloadFile(key = key, filePath = path, contentType = "image/jpeg")
 
+    // Encrypted temps land in the provider's outbox staging dir (#842) — for the
+    // Okio provider that's <cacheDir>/outbox-temp. Counting the cacheDir root would
+    // make the no-leak assertions pass vacuously.
     private fun FakeFileSystem.encTempCount(): Int =
-        listOrNull(cacheDir.toPath())?.count { it.name.startsWith("enc") } ?: 0
+        listOrNull("$cacheDir/outbox-temp".toPath())?.count { it.name.startsWith("enc") } ?: 0
 
     @Test
     fun missingSourceFailsSoftWithTypedException() = runTest {
