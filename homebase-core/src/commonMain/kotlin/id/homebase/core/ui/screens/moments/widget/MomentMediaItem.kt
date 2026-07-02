@@ -42,6 +42,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoPlayerData
@@ -122,6 +123,11 @@ fun MomentMediaItem(
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
     isUploading: Boolean = false,
+    // When set, this payload's bytes live on the followed author's drive: read over peer by
+    // [globalTransitId] from [driveId] on this identity (a feed post from someone you follow).
+    // Both must be set together. Null on the local path (Moments, own posts).
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio || fitBounds) ContentScale.Fit else ContentScale.Crop
@@ -234,7 +240,10 @@ fun MomentMediaItem(
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
-                    val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                    // A public (unencrypted) post carries no IV — build the source anyway (encrypted
+                    // only when an IV is present). Bailing to null here left public feed images as a
+                    // blank Box that never even requested bytes; matches the non-zoom builder below.
+                    val payloadIv = payload.iv?.let { Base64.decode(it) }
                     val imageData = HomebaseImageData(
                         driveId = driveId,
                         fileId = fileId,
@@ -244,8 +253,12 @@ fun MomentMediaItem(
                         requestedSize = imageSize,
                         availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                         lastModified = payload.lastModified,
-                        isEncrypted = true,
-                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
+                        isEncrypted = payloadIv != null,
+                        keyHeader = payloadIv
+                            ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
+                            ?: KeyHeader.empty(),
+                        remoteOdinId = remoteOdinId,
+                        globalTransitId = globalTransitId,
                         // Zoom needs the original payload so panning into a
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
@@ -330,6 +343,8 @@ fun MomentMediaItem(
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                                 ?: KeyHeader.empty(),
+                            remoteOdinId = remoteOdinId,
+                            globalTransitId = globalTransitId,
                         )
                     }
 
@@ -387,6 +402,8 @@ fun MomentMediaItem(
                         lastModified = payload.lastModified,
                         isEncrypted = true,
                         keyHeader = perPayloadKeyHeader,
+                        remoteOdinId = remoteOdinId,
+                        globalTransitId = globalTransitId,
                     )
                 }
                 val videoLocalContext = localContext as? LocalAttachmentContext.Video

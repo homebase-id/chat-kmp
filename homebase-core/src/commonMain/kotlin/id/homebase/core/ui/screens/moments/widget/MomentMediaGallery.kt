@@ -3,18 +3,23 @@ package id.homebase.core.ui.screens.moments.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.Dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import id.homebase.core.image.ImageSize
 import kotlin.uuid.Uuid
 
@@ -75,6 +80,11 @@ fun MomentMediaGallery(
     // scroll. Null = no floor (Moments keeps natural portrait height); the feed
     // passes [id.homebase.core.ui.screens.feed.widget.FeedMinMediaAspect].
     minAspect: Float? = null,
+    // When set, the media bytes live on this followed author's drive (a feed post from someone you
+    // follow): read them over peer by [globalTransitId] from [driveId] on this identity instead of
+    // the local server. Both must be set together. Feed-only; Moments passes null (local media).
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -96,6 +106,8 @@ fun MomentMediaGallery(
                 isUploading = isUploading,
                 fitToContent = fitToContent,
                 minAspect = minAspect,
+                remoteOdinId = remoteOdinId,
+                globalTransitId = globalTransitId,
             )
         } else {
             MomentMediaCarousel(
@@ -117,6 +129,8 @@ fun MomentMediaGallery(
                 autoplayActive = autoplayActive,
                 onVisiblePayloadChanged = onVisiblePayloadChanged,
                 fitToContent = fitToContent,
+                remoteOdinId = remoteOdinId,
+                globalTransitId = globalTransitId,
             )
         }
     }
@@ -144,6 +158,9 @@ private fun SingleImageLayout(
     // very tall portrait is center-cropped to this ratio instead of rendering at
     // full natural height.
     minAspect: Float? = null,
+    // Over-peer read identity for followed-post media (see [MomentMediaGallery]); null = local.
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     // Compute aspect from the payload's thumbnail metadata so the cell sizes
     // before the (possibly remote, encrypted) full image is decoded. Falls
@@ -160,44 +177,63 @@ private fun SingleImageLayout(
         .coerceAtMost(MaxFeedPhotoAspect)
         .let { if (minAspect != null) it.coerceAtLeast(minAspect) else it }
 
-    MomentMediaItem(
-        payload = payload,
-        fileId = fileId,
-        driveId = driveId,
-        keyHeader = keyHeader,
-        previewThumbnail = previewThumbnail,
-        // Fit-into-host (whole image) when shrunk for comments; otherwise the
-        // aspect-locked crop the feed cell normally uses.
-        modifier = if (fitToContent) Modifier.fillMaxSize()
-        else Modifier.fillMaxWidth().aspectRatio(aspect),
-        imageSize = ImageSize.THUMB_LARGE,
-        // Aspect set on the modifier — let the image fill it (Crop is a no-op
-        // when source aspect matches the box). When shrunk for the comments
-        // band, fill the host box (Fit, whole image) instead of re-imposing the
-        // image's own aspect ratio — without this the intrinsic `.aspectRatio()`
-        // keeps the image at its natural ratio and it never collapses into the
-        // 1/3 band (same fix the carousel and reels detail pager use).
-        preserveAspectRatio = fitToContent,
-        fitBounds = fitToContent,
-        shape = RectangleShape,
-        // Preserve nullability so MomentMediaItem only installs its inner
-        // pointerInput when there's an actual click/long-press handler.
-        // Wrapping a nullable handler in a non-null `{ onMediaClick?.invoke(...) }`
-        // lambda made the item *always* register a pointer detector that
-        // silently consumed taps — which broke the feed's card-level
-        // multi-tap detector. Same pattern at the other layout call sites.
-        onClick = onMediaClick?.let { handler -> { handler(payload) } },
-        onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
-        sharedTransitionScope = sharedTransitionScope,
-        animatedVisibilityScope = animatedVisibilityScope,
-        isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
-        messageId = messageId,
-        isUploading = isUploading,
-        // Inline pinch-zoom for the timeline photo. No pager here (single
-        // image), so no page-swipe to coordinate; at base scale taps still
-        // reach the card's click handler via [onClick]/onTap.
-        enableZoom = true,
-    )
+    // Feed only (minAspect != null): cap the photo's height so a tall post "fits to screen" — the
+    // whole image stays visible (drawn Fit), just scaled down when it would otherwise run past a
+    // screenful. Moments (minAspect == null) keeps the natural-aspect height, no cap.
+    val maxMediaHeight = if (minAspect != null) {
+        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } *
+            FeedMediaMaxScreenFraction
+    } else {
+        Dp.Unspecified
+    }
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        // height = width / aspect, capped so a tall post doesn't run past the screen. When capped,
+        // the whole image is drawn Fit inside (letterboxed at the sides), never cropped.
+        val cellModifier = if (fitToContent) {
+            Modifier.fillMaxSize()
+        } else {
+            val naturalHeight = maxWidth / aspect
+            val cellHeight =
+                if (maxMediaHeight != Dp.Unspecified) minOf(naturalHeight, maxMediaHeight)
+                else naturalHeight
+            Modifier.fillMaxWidth().height(cellHeight)
+        }
+
+        MomentMediaItem(
+            payload = payload,
+            fileId = fileId,
+            driveId = driveId,
+            keyHeader = keyHeader,
+            previewThumbnail = previewThumbnail,
+            modifier = cellModifier,
+            imageSize = ImageSize.THUMB_LARGE,
+            // fitBounds routes MomentMediaItem to ContentScale.Fit and makes it honour [cellModifier]
+            // instead of re-imposing the image's intrinsic aspect ratio — so the whole photo shows
+            // inside the (possibly height-capped) cell. Also the comments-shrink band (fitToContent).
+            preserveAspectRatio = fitToContent,
+            fitBounds = fitToContent || minAspect != null,
+            shape = RectangleShape,
+            // Preserve nullability so MomentMediaItem only installs its inner
+            // pointerInput when there's an actual click/long-press handler.
+            // Wrapping a nullable handler in a non-null `{ onMediaClick?.invoke(...) }`
+            // lambda made the item *always* register a pointer detector that
+            // silently consumed taps — which broke the feed's card-level
+            // multi-tap detector. Same pattern at the other layout call sites.
+            onClick = onMediaClick?.let { handler -> { handler(payload) } },
+            onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+            isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
+            messageId = messageId,
+            isUploading = isUploading,
+            remoteOdinId = remoteOdinId,
+            globalTransitId = globalTransitId,
+            // Feed (minAspect != null) uses the non-zoom Fit path (lighter: loads a thumbnail, not
+            // the full payload); Moments (minAspect == null) keeps inline pinch-zoom.
+            enableZoom = minAspect == null,
+        )
+    }
 }
 
 /**
@@ -226,6 +262,14 @@ internal const val MaxFeedMediaAspect = 0.8f
  * clamped and keep their natural height.
  */
 internal const val MaxFeedPhotoAspect = 1.91f
+
+/**
+ * Feed only: a single photo's height is capped to this fraction of the window height so a tall
+ * post "fits to screen" (the whole image stays visible, drawn Fit, scaled down rather than cropped).
+ * 0.7 leaves room for the post's header/caption/actions so the whole card fits a screenful. Tune
+ * here.
+ */
+internal const val FeedMediaMaxScreenFraction = 0.7f
 
 internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()

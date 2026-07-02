@@ -49,6 +49,7 @@ import androidx.compose.ui.text.withStyle
 import id.homebase.api.client.drives.files.ReactionSummary
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_encrypted
 import id.homebase.resources.feed_view_all_comments
@@ -330,10 +331,11 @@ private fun PostLinkPreview(
  * card's 0-based [onMediaClick] index and forwards the double-tap-to-like gesture.
  * Renders nothing when the post has no media payloads.
  *
- * ponytail: reads payload bytes from the post's local drive ([FeedPostItem.driveId]). A followed
- * identity's media payloads live on the author's drive ("marked as remote"); the feed list still
- * renders from the header's embedded preview thumbnail. Full-res over-peer fetch is deferred until
- * the v2 by-globalTransitId payload route exists (see project_native_feed).
+ * A followed identity's media payloads live on the author's drive, not our local feed drive, so for
+ * a received post (non-null [FeedPostItem.senderOdinId]) the gallery reads them **over peer** by
+ * [FeedPostItem.globalTransitId] from the author's channel drive ([FeedPostItem.channelId]); our own
+ * posts (null senderOdinId) stay on the local [FeedPostItem.driveId]. See
+ * reference_over_peer_media_v2_route / PeerFileByGlobalTransitProvider.
  */
 @Composable
 private fun PostMedia(
@@ -344,7 +346,19 @@ private fun PostMedia(
 ) {
     val mediaPayloads: List<PayloadDescriptor> =
         post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
+
+    // Route peer-authored media over-peer. senderOdinId is non-null only on a received (feed-drive)
+    // copy — our own posts stay local. The peer read targets the author's CHANNEL drive
+    // (post.channelId, a drive-alias GUID) keyed by globalTransitId, NOT the local feed drive.
+    val peerGtid = post.globalTransitId
+    val channelDriveAlias = runCatching { Uuid.parse(post.channelId) }.getOrNull()
+    val isPeerMedia = post.senderOdinId != null && peerGtid != null && channelDriveAlias != null
+
     if (mediaPayloads.isEmpty()) return
+
+    val mediaDriveId = channelDriveAlias?.takeIf { isPeerMedia } ?: post.driveId
+    val mediaRemoteOdinId = post.senderOdinId?.takeIf { isPeerMedia }
+    val mediaGlobalTransitId = peerGtid?.takeIf { isPeerMedia }
 
     // Each double-tap bumps the tick so [DoubleTapHeartBurst] replays its pop-and-fade ❤️.
     var burstTick by remember { mutableIntStateOf(0) }
@@ -353,7 +367,7 @@ private fun PostMedia(
         MomentMediaGallery(
             payloads = mediaPayloads,
             fileId = post.fileId,
-            driveId = post.driveId,
+            driveId = mediaDriveId,
             previewThumbnail = post.previewThumbnail,
             keyHeader = post.keyHeader,
             modifier = Modifier.fillMaxWidth(),
@@ -370,6 +384,8 @@ private fun PostMedia(
             messageId = post.id,
             downloadingFiles = emptySet(),
             minAspect = FeedMinMediaAspect,
+            remoteOdinId = mediaRemoteOdinId,
+            globalTransitId = mediaGlobalTransitId,
         )
         DoubleTapHeartBurst(tick = burstTick)
     }
