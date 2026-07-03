@@ -290,7 +290,8 @@ fun SettingsUi(
                             size = 96.dp,
                         ),
                         sharedTransitionScope = null,
-                        animatedVisibilityScope = null
+                        animatedVisibilityScope = null,
+                        cacheBustKey = ownerSession.profileImageLastModified,
                     )
                     Spacer(modifier = Modifier.width(24.dp))
                     Column {
