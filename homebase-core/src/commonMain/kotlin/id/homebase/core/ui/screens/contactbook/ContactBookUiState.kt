@@ -12,12 +12,13 @@ import kotlin.uuid.Uuid
 enum class ContactTab { CONTACTS, CIRCLES }
 
 /**
- * People-list pill: everyone, or connections that haven't been explicitly confirmed yet
- * (auto-connected, introduced-but-not-confirmed, or a plain direct connection never confirmed).
+ * People-list pill: everyone, connections that haven't been explicitly confirmed yet
+ * (auto-connected, introduced-but-not-confirmed, or a plain direct connection never confirmed),
+ * or connections that have been explicitly confirmed (server-computed `vetted` flag).
  * Pending connection requests are no longer a pill — they surface as a section at the top of
  * the list instead (see [ContactBookUiState.requests]).
  */
-enum class ContactFilter { ALL, UNVETTED }
+enum class ContactFilter { ALL, UNVETTED, VETTED }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -99,13 +100,13 @@ data class ContactBookUiState(
     val connectedOdinIds: Set<String> = emptySet(),
     /** Unvetted filter: connected but not confirmed (server-computed `vetted` flag is false). */
     val unvetted: List<ContactBookEntry> = emptyList(),
+    /** Vetted filter: connected AND confirmed (server-computed `vetted` flag is true). */
+    val vetted: List<ContactBookEntry> = emptyList(),
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
     /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
-    /** Lowercased contact-domain → introducer display name, for the "Introduced by" row line. */
-    val introducedByDomain: Map<String, String> = emptyMap(),
     /** Circles tab. */
     val circles: List<CircleWithMembers> = emptyList(),
     val circlesLoading: Boolean = false,

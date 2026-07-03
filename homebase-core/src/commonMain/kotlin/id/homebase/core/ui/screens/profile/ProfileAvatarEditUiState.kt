@@ -20,7 +20,9 @@ import kotlin.uuid.Uuid
  */
 @Immutable
 data class ProfileAvatarEditUiState(
-    /** The owner's session — used for odinId/initials on the [anonymous] tier's public-avatar preview. */
+    /** The owner's session odinId — after an Anonymous-tier upload/delete, used to refresh the
+     *  odinId-keyed public avatar shown elsewhere in the app (e.g. Settings), which reads from a
+     *  separate public sitedata.json rather than this screen's own [anonymous] tier state. */
     val currentAvatar: OwnerSession? = null,
     val isLoading: Boolean = true,
     val anonymous: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.ANONYMOUS),

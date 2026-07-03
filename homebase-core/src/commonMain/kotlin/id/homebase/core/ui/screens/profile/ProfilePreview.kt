@@ -1,181 +1,209 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package id.homebase.core.ui.screens.profile
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.Cake
+import androidx.compose.material.icons.outlined.Call
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.profile.ProfileAttribute
+import id.homebase.core.image.HomebaseImage
+import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.resources.MR
-import id.homebase.resources.profile_edit_additional_name
-import id.homebase.resources.profile_edit_address1
-import id.homebase.resources.profile_edit_address2
-import id.homebase.resources.profile_edit_address_label
+import id.homebase.resources.contactbook_detail_location
+import id.homebase.resources.contactbook_detail_name
 import id.homebase.resources.profile_edit_birthday
-import id.homebase.resources.profile_edit_city
-import id.homebase.resources.profile_edit_country
 import id.homebase.resources.profile_edit_email
-import id.homebase.resources.profile_edit_email_label
 import id.homebase.resources.profile_edit_facebook
-import id.homebase.resources.profile_edit_given_name
 import id.homebase.resources.profile_edit_instagram
 import id.homebase.resources.profile_edit_linkedin
 import id.homebase.resources.profile_edit_nickname
 import id.homebase.resources.profile_edit_phone
-import id.homebase.resources.profile_edit_phone_label
-import id.homebase.resources.profile_edit_postcode
-import id.homebase.resources.profile_edit_preview_connection_only_value
 import id.homebase.resources.profile_edit_preview_empty
-import id.homebase.resources.profile_edit_preview_tier_public
-import id.homebase.resources.profile_edit_preview_tier_connected
+import id.homebase.resources.profile_edit_preview_section_public
+import id.homebase.resources.profile_edit_preview_section_vetted
 import id.homebase.resources.profile_edit_status
-import id.homebase.resources.profile_edit_surname
 import id.homebase.resources.profile_edit_tiktok
 import id.homebase.resources.profile_edit_twitter
 import org.jetbrains.compose.resources.stringResource
 
-/** One field resolved for the currently-previewed [tier] — [isConnectedOverride] is true only when
- *  a Connected preview is showing a genuinely different value than the Anonymous one. */
-private data class PreviewField(val label: String, val value: String, val isConnectedOverride: Boolean)
-/** One attribute group's fields, rendered together (same grouping as the editor's [FieldGroup] cards). */
-private data class PreviewGroup(val fields: List<PreviewField>)
+/** One resolved field, ready to render the way contact details are: icon, label, single-line value. */
+private data class PreviewRow(val icon: ImageVector, val label: String, val value: String)
 
 /**
- * Read-only simulation of what an Anonymous visitor or a Connected contact sees. Each field
- * resolves independently: Connected preview shows that field's Connected value if non-blank, else
- * falls back to its Anonymous value — the fallback described in the profile editor's design, applied
- * per field rather than per whole attribute group (a single group like Address can have some fields
- * inherited from Anonymous and one overridden for Connected at the same time).
+ * Read-only simulation of the owner's profile, rendered contact-detail style. Public — what
+ * everyone sees — is listed first; Vetted below shows everything a vetted contact sees: their own
+ * Connected value where set, falling back to the Public value for any field left blank on the
+ * Connected side.
  */
 @Composable
 internal fun ProfilePreview(
     uiState: ProfileEditUiState,
-    tier: ProfileVisibility,
-    onTierChange: (ProfileVisibility) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    fun resolve(field: ProfileField): Pair<String, Boolean> {
-        val anon = uiState.anonymousValues[field].orEmpty()
-        if (tier == ProfileVisibility.ANONYMOUS) return anon to false
-        val conn = uiState.connectedValues[field].orEmpty()
-        val useConnected = conn.isNotBlank()
-        return (if (useConnected) conn else anon) to (useConnected && conn != anon)
+    val lblName = stringResource(MR.string.contactbook_detail_name)
+    val lblNickname = stringResource(MR.string.profile_edit_nickname)
+    val lblStatus = stringResource(MR.string.profile_edit_status)
+    val lblBirthday = stringResource(MR.string.profile_edit_birthday)
+    val lblEmail = stringResource(MR.string.profile_edit_email)
+    val lblPhone = stringResource(MR.string.profile_edit_phone)
+    val lblLocation = stringResource(MR.string.contactbook_detail_location)
+    val lblTwitter = stringResource(MR.string.profile_edit_twitter)
+    val lblFacebook = stringResource(MR.string.profile_edit_facebook)
+    val lblInstagram = stringResource(MR.string.profile_edit_instagram)
+    val lblTiktok = stringResource(MR.string.profile_edit_tiktok)
+    val lblLinkedin = stringResource(MR.string.profile_edit_linkedin)
+
+    fun nameValue(values: Map<ProfileField, String>): String? = listOfNotNull(
+        values[ProfileField.GIVEN_NAME]?.ifBlank { null },
+        values[ProfileField.ADDITIONAL_NAME]?.ifBlank { null },
+        values[ProfileField.SURNAME]?.ifBlank { null },
+    ).joinToString(" ").ifBlank { null }
+
+    // Street lines, then "postcode city", then country, comma-joined — same single-line format
+    // ContactBookEntry.location uses for contact addresses.
+    fun addressValue(values: Map<ProfileField, String>): String? = listOfNotNull(
+        values[ProfileField.ADDRESS1]?.ifBlank { null },
+        values[ProfileField.ADDRESS2]?.ifBlank { null },
+        listOfNotNull(values[ProfileField.POSTCODE]?.ifBlank { null }, values[ProfileField.CITY]?.ifBlank { null })
+            .joinToString(" ").ifBlank { null },
+        values[ProfileField.COUNTRY]?.ifBlank { null },
+    ).joinToString(", ").ifBlank { null }
+
+    fun rowsFor(values: Map<ProfileField, String>): List<PreviewRow> = buildList {
+        nameValue(values)?.let { add(PreviewRow(Icons.Outlined.Person, lblName, it)) }
+        values[ProfileField.NICKNAME]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.Badge, lblNickname, it)) }
+        values[ProfileField.STATUS]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.Info, lblStatus, it)) }
+        values[ProfileField.BIRTHDAY]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.Cake, lblBirthday, it)) }
+        values[ProfileField.EMAIL]?.takeIf { it.isNotBlank() }?.let {
+            val label = values[ProfileField.EMAIL_LABEL]?.takeIf { l -> l.isNotBlank() } ?: lblEmail
+            add(PreviewRow(Icons.Outlined.Email, label, it))
+        }
+        values[ProfileField.PHONE]?.takeIf { it.isNotBlank() }?.let {
+            val label = values[ProfileField.PHONE_LABEL]?.takeIf { l -> l.isNotBlank() } ?: lblPhone
+            add(PreviewRow(Icons.Outlined.Call, label, formatPhoneForDisplay(it)))
+        }
+        addressValue(values)?.let {
+            val label = values[ProfileField.ADDRESS_LABEL]?.takeIf { l -> l.isNotBlank() } ?: lblLocation
+            add(PreviewRow(Icons.Outlined.LocationOn, label, it))
+        }
+        values[ProfileField.TWITTER]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.AlternateEmail, lblTwitter, it)) }
+        values[ProfileField.FACEBOOK]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.AlternateEmail, lblFacebook, it)) }
+        values[ProfileField.INSTAGRAM]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.AlternateEmail, lblInstagram, it)) }
+        values[ProfileField.TIKTOK]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.AlternateEmail, lblTiktok, it)) }
+        values[ProfileField.LINKEDIN]?.takeIf { it.isNotBlank() }
+            ?.let { add(PreviewRow(Icons.Outlined.AlternateEmail, lblLinkedin, it)) }
     }
 
-    fun field(field: ProfileField, label: String): PreviewField? {
-        val (value, isOverride) = resolve(field)
-        return if (value.isBlank()) null else PreviewField(label, value, isOverride)
+    val publicRows = rowsFor(uiState.anonymousValues)
+
+    // What a vetted contact actually sees: their own Connected value where set, else the Public one.
+    val resolved = (uiState.anonymousValues.keys + uiState.connectedValues.keys).associateWith { field ->
+        uiState.connectedValues[field]?.takeIf { it.isNotBlank() } ?: uiState.anonymousValues[field].orEmpty()
     }
+    val vettedRows = rowsFor(resolved)
+    // Same fallback as every text field: no Connected-tier photo means a vetted contact just sees
+    // the Public one.
+    val vettedPhoto = uiState.connectedPhoto ?: uiState.anonymousPhoto
 
-    val groups = listOf(
-        PreviewGroup(listOfNotNull(
-            field(ProfileField.GIVEN_NAME, stringResource(MR.string.profile_edit_given_name)),
-            field(ProfileField.SURNAME, stringResource(MR.string.profile_edit_surname)),
-            field(ProfileField.ADDITIONAL_NAME, stringResource(MR.string.profile_edit_additional_name)),
-        )),
-        PreviewGroup(listOfNotNull(field(ProfileField.NICKNAME, stringResource(MR.string.profile_edit_nickname)))),
-        PreviewGroup(listOfNotNull(field(ProfileField.STATUS, stringResource(MR.string.profile_edit_status)))),
-        PreviewGroup(listOfNotNull(field(ProfileField.BIRTHDAY, stringResource(MR.string.profile_edit_birthday)))),
-        PreviewGroup(listOfNotNull(
-            field(ProfileField.EMAIL, stringResource(MR.string.profile_edit_email)),
-            field(ProfileField.EMAIL_LABEL, stringResource(MR.string.profile_edit_email_label)),
-        )),
-        PreviewGroup(listOfNotNull(
-            field(ProfileField.PHONE, stringResource(MR.string.profile_edit_phone)),
-            field(ProfileField.PHONE_LABEL, stringResource(MR.string.profile_edit_phone_label)),
-        )),
-        PreviewGroup(listOfNotNull(
-            field(ProfileField.ADDRESS_LABEL, stringResource(MR.string.profile_edit_address_label)),
-            field(ProfileField.ADDRESS1, stringResource(MR.string.profile_edit_address1)),
-            field(ProfileField.ADDRESS2, stringResource(MR.string.profile_edit_address2)),
-            field(ProfileField.POSTCODE, stringResource(MR.string.profile_edit_postcode)),
-            field(ProfileField.CITY, stringResource(MR.string.profile_edit_city)),
-            field(ProfileField.COUNTRY, stringResource(MR.string.profile_edit_country)),
-        )),
-        PreviewGroup(listOfNotNull(field(ProfileField.TWITTER, stringResource(MR.string.profile_edit_twitter)))),
-        PreviewGroup(listOfNotNull(field(ProfileField.FACEBOOK, stringResource(MR.string.profile_edit_facebook)))),
-        PreviewGroup(listOfNotNull(field(ProfileField.INSTAGRAM, stringResource(MR.string.profile_edit_instagram)))),
-        PreviewGroup(listOfNotNull(field(ProfileField.TIKTOK, stringResource(MR.string.profile_edit_tiktok)))),
-        PreviewGroup(listOfNotNull(field(ProfileField.LINKEDIN, stringResource(MR.string.profile_edit_linkedin)))),
-    ).filter { it.fields.isNotEmpty() }
+    Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+        PreviewSectionHeader(stringResource(MR.string.profile_edit_preview_section_public))
+        PreviewPhoto(uiState.anonymousPhoto)
+        if (publicRows.isEmpty()) {
+            PreviewEmptyMessage(stringResource(MR.string.profile_edit_preview_empty))
+        } else {
+            publicRows.forEach { PreviewRowItem(it) }
+        }
 
-    Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 24.dp),
+        PreviewSectionHeader(stringResource(MR.string.profile_edit_preview_section_vetted))
+        PreviewPhoto(vettedPhoto)
+        if (vettedRows.isEmpty()) {
+            PreviewEmptyMessage(stringResource(MR.string.profile_edit_preview_empty))
+        } else {
+            vettedRows.forEach { PreviewRowItem(it) }
+        }
+    }
+}
+
+@Composable
+private fun PreviewPhoto(photo: ProfileAttribute?) {
+    Box(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).size(96.dp).clip(CircleShape),
+        contentAlignment = Alignment.Center,
     ) {
-        PreviewTierSelector(tier, onTierChange, modifier = Modifier.padding(vertical = 12.dp))
-
-        if (groups.isEmpty()) {
-            Text(
-                text = stringResource(MR.string.profile_edit_preview_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        val imageData = photo?.photoImageData()
+        if (imageData != null) {
+            HomebaseImage(
+                imageData = imageData,
+                modifier = Modifier.fillMaxSize(),
+                contentDescription = null,
             )
         } else {
-            groups.forEach { PreviewGroupCard(it) }
+            Icon(
+                imageVector = Icons.Outlined.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(48.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun PreviewTierSelector(
-    tier: ProfileVisibility,
-    onTierChange: (ProfileVisibility) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
-        SegmentedButton(
-            selected = tier == ProfileVisibility.ANONYMOUS,
-            onClick = { onTierChange(ProfileVisibility.ANONYMOUS) },
-            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-            label = { Text(stringResource(MR.string.profile_edit_preview_tier_public)) },
-        )
-        SegmentedButton(
-            selected = tier == ProfileVisibility.CONNECTED,
-            onClick = { onTierChange(ProfileVisibility.CONNECTED) },
-            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-            label = { Text(stringResource(MR.string.profile_edit_preview_tier_connected)) },
-        )
-    }
+private fun PreviewSectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 @Composable
-private fun PreviewGroupCard(group: PreviewGroup) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        group.fields.forEach { field ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = field.label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (field.isConnectedOverride) {
-                    Text(
-                        text = stringResource(MR.string.profile_edit_preview_connection_only_value),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-            Text(text = field.value, style = MaterialTheme.typography.bodyLarge)
-        }
-    }
+private fun PreviewEmptyMessage(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+private fun PreviewRowItem(row: PreviewRow) {
+    ListItem(
+        leadingContent = { Icon(row.icon, contentDescription = null) },
+        overlineContent = { Text(row.label) },
+        headlineContent = { SelectionContainer { Text(row.value) } },
+    )
 }

@@ -94,7 +94,16 @@ class ProfileEditViewModel(
             loadedConnected = byType.mapNotNull { (type, attrs) ->
                 attrs.firstOrNull { it.visibility != ProfileVisibility.ANONYMOUS }?.let { type to it }
             }.toMap()
-            _state.update { applyLoaded(it) }
+
+            // The same query already returns PHOTO-type attributes (managed by the dedicated avatar
+            // editor) — just pick them out for ProfilePreview rather than issuing a second fetch.
+            val photos = attributes.filter { it.type == ProfileAttributeTypes.PHOTO }
+            val anonymousPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.ANONYMOUS }
+            val connectedPhoto = photos.firstOrNull { it.visibility == ProfileVisibility.CONNECTED }
+
+            _state.update {
+                applyLoaded(it).copy(anonymousPhoto = anonymousPhoto, connectedPhoto = connectedPhoto)
+            }
         }
     }
 

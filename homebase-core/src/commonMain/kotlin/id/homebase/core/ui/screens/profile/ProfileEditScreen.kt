@@ -111,7 +111,6 @@ fun ProfileEditScreen(
     val uiState by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var previewMode by remember { mutableStateOf(false) }
-    var previewTier by remember { mutableStateOf(ProfileVisibility.ANONYMOUS) }
 
     val errForbidden = stringResource(MR.string.profile_edit_error_forbidden)
     val errSave = stringResource(MR.string.profile_edit_error_save)
@@ -163,8 +162,6 @@ fun ProfileEditScreen(
             )
             previewMode -> ProfilePreview(
                 uiState = uiState,
-                tier = previewTier,
-                onTierChange = { previewTier = it },
                 modifier = Modifier.fillMaxSize().padding(padding),
             )
             else -> ProfileForm(

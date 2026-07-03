@@ -1413,7 +1413,9 @@
     <string name="contactbook_tab_contacts">Contacts</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
+    <string name="contactbook_vetted">Vetted</string>
     <string name="contactbook_unvetted_empty">No unvetted connections.</string>
+    <string name="contactbook_vetted_empty">No vetted connections.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
@@ -1588,23 +1590,22 @@
     <string name="profile_edit_linkedin">LinkedIn</string>
 
     <string name="profile_edit_visibility_public">Public</string>
-    <string name="profile_edit_visibility_connected">Connected</string>
+    <string name="profile_edit_visibility_connected">Vetted</string>
     <string name="profile_edit_public_hint">Visible to everyone, including people you haven't connected with.</string>
-    <string name="profile_edit_connected_fallback_hint">Leave blank to show connections your Public value instead.</string>
+    <string name="profile_edit_connected_fallback_hint">Leave blank to show vetted contacts your Public value instead.</string>
     <string name="profile_edit_preview_enter">Preview</string>
     <string name="profile_edit_preview_exit">Back to editing</string>
-    <string name="profile_edit_preview_tier_public">Public</string>
-    <string name="profile_edit_preview_tier_connected">Connected</string>
-    <string name="profile_edit_preview_connection_only_value">Connection-only</string>
+    <string name="profile_edit_preview_section_public">Public</string>
+    <string name="profile_edit_preview_section_vetted">Vetted</string>
     <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
 
     <!-- Avatar editor -->
     <string name="profile_avatar_edit_title">Change photo</string>
     <string name="cd_profile_avatar_change_photo">Change photo</string>
     <string name="profile_avatar_edit_acl_anonymous">Public photo</string>
-    <string name="profile_avatar_edit_acl_connected">Connections photo</string>
+    <string name="profile_avatar_edit_acl_connected">Vetted photo</string>
     <string name="profile_avatar_edit_anonymous_desc">Visible to anyone, even people you're not connected to.</string>
-    <string name="profile_avatar_edit_connected_desc">Visible only to your connections — can be a different photo than your public one.</string>
+    <string name="profile_avatar_edit_connected_desc">Visible only to vetted contacts — can be a different photo than your public one.</string>
     <string name="profile_avatar_edit_upload">Save</string>
     <string name="profile_avatar_edit_remove">Remove</string>
     <string name="profile_avatar_edit_error_upload">Couldn't upload your photo. Please try again.</string>

@@ -9,7 +9,6 @@ import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
-import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.eventbus.BackendEvent
@@ -207,21 +206,10 @@ class ContactBookViewModel(
             .toSet()
         val unvettedDomains = connectedDomains - confirmedDomains
 
-        // contact-domain (lowercase) → introducer display name, resolved to a saved
-        // contact's name when we have one, else the raw introducer domain.
+        // contact-domain (lowercase) → saved contact entry, for resolving requests/introducers.
         val contactsByOdin = overriddenContacts
             .filter { !it.odinId.isNullOrBlank() }
             .associateBy { it.odinId!!.lowercase() }
-        val introducedByDomain = connectedRegs
-            .filterValues {
-                it.connectionRequestOrigin == ConnectionRequestOrigin.Introduction &&
-                    it.introducerOdinId != null
-            }
-            .entries.associate { (odinId, reg) ->
-                val introducer = reg.introducerOdinId!!.domainName
-                odinId.domainName.lowercase() to
-                    (contactsByOdin[introducer.lowercase()]?.displayName ?: introducer)
-            }
 
         // ALL = saved contacts plus every other connection. A connection with no saved contact
         // entry would otherwise fall through both pills. Connections already in the book show via
@@ -243,6 +231,10 @@ class ContactBookViewModel(
             .sortedBy { it.sortKey }
 
         val unvetted = entriesForDomains(unvettedDomains, overriddenContacts)
+            .filter { it.matches(ui.query) }
+            .sortedBy { it.sortKey }
+
+        val vetted = entriesForDomains(confirmedDomains, overriddenContacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
@@ -275,9 +267,9 @@ class ContactBookViewModel(
             totalCount = all.size,
             connectedOdinIds = connectedDomains,
             unvetted = unvetted,
+            vetted = vetted,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
-            introducedByDomain = introducedByDomain,
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
             circleMembers = circlesData.members,

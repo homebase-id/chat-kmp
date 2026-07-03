@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 
@@ -24,6 +25,12 @@ data class ProfileEditUiState(
 
     val anonymousValues: Map<ProfileField, String> = emptyMap(),
     val connectedValues: Map<ProfileField, String> = emptyMap(),
+
+    /** The owner's [id.homebase.api.client.profile.ProfileAttributeTypes.PHOTO] attribute at each
+     *  tier, if one is set — null means no photo uploaded for that tier. Managed by the dedicated
+     *  avatar editor ([ProfileAvatarEditViewModel]); read-only here, just for [ProfilePreview]. */
+    val anonymousPhoto: ProfileAttribute? = null,
+    val connectedPhoto: ProfileAttribute? = null,
 ) {
     /** Raw per-tier lookup — no cross-tier fallback; "" if [field] has no value in [tier]. */
     fun value(field: ProfileField, tier: ProfileVisibility): String =

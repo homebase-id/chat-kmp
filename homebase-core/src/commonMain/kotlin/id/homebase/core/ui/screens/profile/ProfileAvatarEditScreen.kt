@@ -42,11 +42,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
-import id.homebase.api.client.auth.initials
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.chat.widget.MediaAttachmentEditor
-import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
@@ -148,17 +145,12 @@ fun ProfileAvatarEditScreen(
                 onRemove = { viewModel.onAction(ProfileAvatarEditAction.DeleteClicked(ProfileVisibility.ANONYMOUS)) },
                 onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.UploadClicked(ProfileVisibility.ANONYMOUS)) },
             ) {
-                // The public tier has no encrypted payload to fetch — it's the same odinId-keyed
-                // public avatar SettingsScreen already shows.
-                val session = uiState.currentAvatar
-                if (session != null) {
-                    ContactAvatar(
-                        odinId = session.odinId,
-                        profileImageData = null,
-                        initials = session.initials(),
-                        options = AvatarOptions(size = 96.dp),
-                        sharedTransitionScope = null,
-                        animatedVisibilityScope = null,
+                val imageData = uiState.anonymous.existing?.photoImageData()
+                if (imageData != null) {
+                    HomebaseImage(
+                        imageData = imageData,
+                        modifier = Modifier.fillMaxSize(),
+                        contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
                     )
                 } else {
                     EmptyAvatarPlaceholder()
@@ -195,8 +187,9 @@ fun ProfileAvatarEditScreen(
 /**
  * One [ProfileVisibility] tier's photo slot: a circular preview (tap to pick a new photo),
  * a "Remove" action when a photo is currently stored, and a Save button once a crop is pending.
- * [existingPhotoContent] renders the currently-stored photo — its source differs per tier (public
- * odinId avatar vs. an authenticated/decrypted [HomebaseImageData] fetch).
+ * [existingPhotoContent] renders the currently-stored photo (both tiers render the same way — an
+ * authenticated/decrypted [id.homebase.core.image.HomebaseImageData] fetch — the callback just
+ * keeps this composable itself agnostic to that).
  */
 @Composable
 private fun PhotoTierSection(
