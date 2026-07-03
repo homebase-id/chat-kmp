@@ -8,6 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.ExperimentalTime
@@ -49,6 +50,22 @@ class VaultPreferencesAuthSessionTest {
         clock += 31.seconds
 
         assertFalse(prefs.isAuthSessionValid())
+    }
+
+    // (2b) A background recorded within the settle window right after a successful unlock is
+    // ignored (biometric-prompt lifecycle churn on some devices), so it must NOT re-lock.
+    @Test
+    fun `background right after unlock is ignored and does not re-lock`() = runTest {
+        val clock = clock()
+        val prefs = VaultPreferences(createTestDatabaseManager(), clock)
+        prefs.recordAuthSuccess()
+        prefs.setVaultScreenActive(true)
+
+        clock += 100.milliseconds // biometric prompt stops the Activity ~right after auth
+        prefs.recordAppBackgrounded()
+        clock += 5.minutes // later, well past the 30s background threshold
+
+        assertTrue(prefs.isAuthSessionValid())
     }
 
     // (3) When NOT active, the old 5-minute idle auto-lock still applies.

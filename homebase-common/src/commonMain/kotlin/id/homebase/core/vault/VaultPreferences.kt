@@ -29,8 +29,18 @@ class VaultPreferences(
     var isVaultScreenActive: Boolean = false
         private set
 
+    // True while a system picker/camera is presented from the Vault. Leaving to a picker
+    // stops the Activity, which must NOT count as a genuine app-background (it would re-lock
+    // on return). Set true before launching, cleared when the picker is handled.
+    var isPickerActive: Boolean = false
+        private set
+
     fun setVaultScreenActive(active: Boolean) {
         isVaultScreenActive = active
+    }
+
+    fun setPickerActive(active: Boolean) {
+        isPickerActive = active
     }
 
     fun reset() {
@@ -40,6 +50,7 @@ class VaultPreferences(
         lastBackgroundTimeMs = 0L
         lastActionTimeMs = 0L
         isVaultScreenActive = false
+        isPickerActive = false
     }
 
     fun recordAuthSuccess() {
@@ -49,7 +60,13 @@ class VaultPreferences(
     }
 
     fun recordAppBackgrounded() {
-        lastBackgroundTimeMs = clock.now().toEpochMilliseconds()
+        val now = clock.now().toEpochMilliseconds()
+        // The biometric prompt itself stops the Activity briefly right around a successful
+        // unlock on some devices (e.g. MIUI), which would otherwise record a "background"
+        // timestamped just after the auth and re-lock via (B) once you're gone >30s. Churn
+        // within a short settle window of a successful unlock is not a genuine app-background.
+        if (lastAuthTimeMs != 0L && now - lastAuthTimeMs in 0..POST_AUTH_SETTLE_MS) return
+        lastBackgroundTimeMs = now
     }
 
     fun recordUserAction() {
@@ -100,5 +117,6 @@ class VaultPreferences(
 
         private const val AUTH_SESSION_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
         private const val BACKGROUND_THRESHOLD_MS = 30 * 1000L       // 30 seconds
+        private const val POST_AUTH_SETTLE_MS = 2 * 1000L            // ignore bg churn for 2s after unlock
     }
 }

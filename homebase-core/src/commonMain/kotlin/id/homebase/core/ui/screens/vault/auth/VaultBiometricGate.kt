@@ -77,9 +77,13 @@ fun VaultBiometricGate(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
+                    // This observer is bound to the grid's NavBackStackEntry, so ON_STOP also
+                    // fires when navigating to a Vault sub-screen — NOT only on a genuine
+                    // app-background. recordAppBackgrounded() therefore lives in
+                    // VaultSessionTracker (Activity lifecycle); here we only note that the
+                    // grid was stopped so ON_RESUME re-checks the (already-correct) session.
                     if (!isPickerActive) {
                         hasBeenBackgrounded = true
-                        vaultPreferences.recordAppBackgrounded()
                     }
                     if (biometricsEnabled && needsComposePrivacyOverlay) {
                         isPrivacyOverlayVisible = true
