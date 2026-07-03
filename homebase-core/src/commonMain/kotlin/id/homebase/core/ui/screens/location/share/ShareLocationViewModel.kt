@@ -81,24 +81,23 @@ class ShareLocationViewModel(
     private var recenterSeq = 0
     /** Set once the user pans/zooms — a late first fix must not yank the map away anymore. */
     private var userMoved = false
+    /**
+     * Set once the map was seeded on an actual position (cached or fresh). Until then — the
+     * world-view fallback — the viewport center (Null Island) is meaningless: no pin, no
+     * geocode, no send.
+     */
+    private var hasRealPosition = false
 
     init {
-        // Seed the map immediately: the last known position when we have one, else the whole
-        // world — a null bbox leaves the map BLANK (no viewport → no tiles fetched) until the
-        // first fix lands, which on a cold GPS can take many seconds or never come. Then refine
-        // with a fresh fix — but only recenter while the user hasn't taken over.
-        val last = locationService.lastKnown.value
-        if (last != null) {
-            seedBbox(last.lat, last.lon)
-        } else {
-            _uiState.update {
-                it.copy(initialBbox = WORLD_BBOX, initialBboxKey = it.initialBboxKey + 1)
-            }
+        // Seed the map immediately with a world view — a null bbox leaves the map BLANK (no
+        // viewport → no tiles fetched). Then position it in two steps: the best CACHED
+        // coordinate at any age (memory / persisted history / OS last-known — instant, no
+        // radio; a map seed doesn't need freshness), then a fresh fix to refine. Each step
+        // recenters only while the user hasn't taken over.
+        _uiState.update {
+            it.copy(initialBbox = WORLD_BBOX, initialBboxKey = it.initialBboxKey + 1)
         }
-        viewModelScope.launch {
-            val fix = locationService.requestLatestGps(GpsRequestReason.LiveMap)
-            if (fix is GpsFixResult.Success && !userMoved) seedBbox(fix.point.lat, fix.point.lon)
-        }
+        viewModelScope.launch { seedFromCachedThenFresh() }
     }
 
     override fun onCleared() {
@@ -108,19 +107,25 @@ class ShareLocationViewModel(
 
     /**
      * Screen callback when location permission lands — re-arms the GPS hold (LiveMap pattern)
-     * and retries the initial seed: on a first-ever open the init-time fix request fails with
+     * and retries the initial seed: on a first-ever open the init-time attempts fail with
      * PermissionDenied (the prompt is still up), which used to leave the map on the fallback
      * view until the screen was reopened.
      */
     fun onPermissionGranted() {
         locationService.refreshGpsHold()
-        viewModelScope.launch {
-            val fix = locationService.requestLatestGps(GpsRequestReason.LiveMap)
-            if (fix is GpsFixResult.Success && !userMoved) seedBbox(fix.point.lat, fix.point.lon)
+        viewModelScope.launch { seedFromCachedThenFresh() }
+    }
+
+    private suspend fun seedFromCachedThenFresh() {
+        locationService.lastKnownCoordinates()?.let {
+            if (!userMoved) seedBbox(it.lat, it.lon)
         }
+        val fix = locationService.requestLatestGps(GpsRequestReason.LiveMap)
+        if (fix is GpsFixResult.Success && !userMoved) seedBbox(fix.point.lat, fix.point.lon)
     }
 
     private fun seedBbox(lat: Double, lon: Double) {
+        hasRealPosition = true
         val (x, y) = WebMercator.latLonToUnit(lat, lon)
         _uiState.update {
             it.copy(
@@ -137,6 +142,10 @@ class ShareLocationViewModel(
      */
     fun onMapCenterChanged(unitX: Double, unitY: Double, byUser: Boolean) {
         if (byUser) userMoved = true
+        // World-view fallback and the user hasn't picked a spot: the center is Null Island, not
+        // a location anyone means to share. Keep the pin unset (send stays disabled) and don't
+        // geocode — no "0.0, 0.0" chip.
+        if (!userMoved && !hasRealPosition) return
         val (lat, lon) = WebMercator.unitToLatLon(unitX, unitY)
         _uiState.update { it.copy(pinLat = lat, pinLon = lon) }
 
