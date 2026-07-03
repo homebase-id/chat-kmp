@@ -79,6 +79,7 @@ import id.homebase.resources.share_location_recenter_cd
 import id.homebase.resources.share_location_resolving
 import id.homebase.resources.share_location_send_cd
 import id.homebase.resources.share_location_title
+import kotlin.time.Clock
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -296,51 +297,57 @@ fun ShareLocationScreen(
                 tonalElevation = 3.dp,
             ) {
                 Column {
-                    var durationMenuExpanded by remember { mutableStateOf(false) }
-                    Box {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = !uiState.isSending) { durationMenuExpanded = true }
-                                .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp),
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = stringResource(MR.string.share_location_live_banner),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = durationMenuExpanded,
-                            onDismissRequest = { durationMenuExpanded = false },
-                        ) {
-                            Text(
-                                text = stringResource(MR.string.live_share_duration_prompt),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            )
-                            HorizontalDivider()
-                            LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(labelRes)) },
-                                    onClick = {
-                                        durationMenuExpanded = false
-                                        viewModel.startLiveShare(durationMs)
-                                    },
+                    // Hidden while my live share already covers this conversation — no invitation
+                    // to start what's already running (#966 follow-up; app-wide indicator = #816).
+                    val ownShareActive = uiState.ownLiveShareUntilMs
+                        ?.let { Clock.System.now().toEpochMilliseconds() < it } == true
+                    if (!ownShareActive) {
+                        var durationMenuExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !uiState.isSending) { durationMenuExpanded = true }
+                                    .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = stringResource(MR.string.share_location_live_banner),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
                             }
+                            DropdownMenu(
+                                expanded = durationMenuExpanded,
+                                onDismissRequest = { durationMenuExpanded = false },
+                            ) {
+                                Text(
+                                    text = stringResource(MR.string.live_share_duration_prompt),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                )
+                                HorizontalDivider()
+                                LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(labelRes)) },
+                                        onClick = {
+                                            durationMenuExpanded = false
+                                            viewModel.startLiveShare(durationMs)
+                                        },
+                                    )
+                                }
+                            }
                         }
+                        HorizontalDivider()
                     }
-                    HorizontalDivider()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

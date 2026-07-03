@@ -304,6 +304,10 @@ fun LocationPreviewCard(
     val remainingMs = if (until != null) (until - nowMs).coerceAtLeast(0L) else 0L
     // The share-live offer is available only while the pin is fresh (or un-gated when createdAtMs null).
     val canStartShare = shareOfferDeadline == null || nowMs < shareOfferDeadline
+    // My live share already covers this conversation — hide every start offer (inviting the user
+    // to share what they're already sharing is confusing, and a second tap would create a
+    // duplicate live message). The app-wide "you're sharing" indicator + stop lives in #816.
+    val ownShareActive = liveControls?.ownShareUntilMs?.let { nowMs < it } == true
 
     val onCardTap = {
         if (isLive && liveControls != null) liveControls.onOpenMap() else uriHandler.openUri(geoUri)
@@ -402,7 +406,8 @@ fun LocationPreviewCard(
                             isEnded = isEnded,
                             remainingMs = remainingMs,
                             contentColor = contentColor,
-                            canStart = canStartShare,
+                            canStart = canStartShare && !ownShareActive,
+                            showShareBack = !ownShareActive,
                         )
                     }
                     // No caption ⇒ the timestamp (+ delivery status) sits muted at the bottom of the card.
@@ -469,6 +474,8 @@ private fun LiveShareActionArea(
     contentColor: Color,
     /** Whether the static "Share live location" offer is still available (pin fresh enough). */
     canStart: Boolean,
+    /** False while my own share already covers this conversation — hides the share-back link. */
+    showShareBack: Boolean = true,
 ) {
     val mutedColor = contentColor.copy(alpha = 0.7f)
     Box {
@@ -477,6 +484,7 @@ private fun LiveShareActionArea(
                 // Both sides show the live caption + time left; the sender gets the Stop link, the
                 // receiver gets a single-tap "share your live location" — no duration menu; the
                 // share-back mirrors the sender's remaining window (#966) so both end together.
+                // Hidden while my own share already covers this conversation (showShareBack=false).
                 Column {
                     if (controls.sentByYou) {
                         Row(
@@ -498,7 +506,7 @@ private fun LiveShareActionArea(
                                 color = MaterialTheme.colorScheme.error,
                             )
                         }
-                    } else {
+                    } else if (showShareBack) {
                         LiveShareLinkRow(
                             label = stringResource(MR.string.live_share_back),
                             contentColor = contentColor,

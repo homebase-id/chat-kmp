@@ -13,6 +13,7 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
+import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -98,6 +100,20 @@ class ShareLocationViewModel(
             it.copy(initialBbox = WORLD_BBOX, initialBboxKey = it.initialBboxKey + 1)
         }
         viewModelScope.launch { seedFromCachedThenFresh() }
+        // Hide the live banner while my share already covers this conversation (#966 follow-up).
+        viewModelScope.launch {
+            liveLocationShareService.recipients.collectLatest { roster ->
+                val recipients = runCatching {
+                    conversationStream.getRecipients(conversationId, emptyList(), null)
+                }.getOrDefault(emptyList())
+                val untilMs = liveShareCoverageUntilMs(
+                    roster = roster,
+                    recipientIds = recipients.map { it.domainName },
+                    nowMs = Clock.System.now().toEpochMilliseconds(),
+                )
+                _uiState.update { it.copy(ownLiveShareUntilMs = untilMs) }
+            }
+        }
     }
 
     override fun onCleared() {
