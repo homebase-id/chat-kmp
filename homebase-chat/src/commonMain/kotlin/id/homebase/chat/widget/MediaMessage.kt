@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -173,7 +174,7 @@ fun MediaMessage(
             }
         }
 
-        if (uploadStatus != null && uploadStatus.showsMediaOverlay() && !isLinkPreview) {
+        if (uploadStatus != null && uploadStatus.showsMediaOverlay(LocalUploadConnected.current) && !isLinkPreview) {
             UploadProgressOverlay(
                 status = uploadStatus,
                 modifier = Modifier.matchParentSize(),
@@ -182,13 +183,20 @@ fun MediaMessage(
     }
 }
 
-// Only draw the dark scrim + big spinner while real work is in flight (video transcode,
-// active upload) or on the brief completion tick. Preparing/Sending are shown by the
-// bottom-right outbox indicator alone — an offline-queued item durably enqueues as
-// Sending and never progresses, so gating it here stops the endless spinner (#948).
-internal fun UploadStatus.showsMediaOverlay(): Boolean = when (this) {
-    UploadStatus.Preparing, UploadStatus.Sending -> false
-    is UploadStatus.Processing, is UploadStatus.Uploading, UploadStatus.Completed -> true
+internal val LocalUploadConnected = compositionLocalOf { true }
+
+// The dark scrim + big spinner is for real work: local prep (thumbnail/resize/compress/
+// encrypt = Preparing), video transcode (Processing), the active transfer (Uploading — %
+// then Finalizing), and the brief completion tick (Completed). "Sending" is the durably-
+// queued handoff waiting for the network: shown while online, but hidden offline — there
+// it never progresses (airplane mode) and would spin forever, so the bottom-right outbox
+// indicator represents it instead (#948).
+internal fun UploadStatus.showsMediaOverlay(isConnected: Boolean): Boolean = when (this) {
+    UploadStatus.Sending -> isConnected
+    UploadStatus.Preparing,
+    is UploadStatus.Processing,
+    is UploadStatus.Uploading,
+    UploadStatus.Completed -> true
 }
 
 @Composable

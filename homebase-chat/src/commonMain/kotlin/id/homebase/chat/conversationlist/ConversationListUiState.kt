@@ -69,6 +69,7 @@ data class MessageListUiState(
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    val isConnected: Boolean = true,
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
