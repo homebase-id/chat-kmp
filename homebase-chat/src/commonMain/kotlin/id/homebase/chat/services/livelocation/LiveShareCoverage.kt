@@ -29,3 +29,24 @@ fun liveShareCoverageUntilMs(
     }
     return coverageEnd
 }
+
+/**
+ * When my live share reaches ANY of [recipientIds] (or anyone at all when null), and until when:
+ * the latest `endTimeMs` among matching active roster entries, or null when none. A scoped call
+ * with an EMPTY recipient list returns null (a conversation with no participants), distinct from
+ * `null` = unscoped (the chat-list pin: "am I sharing with anyone at all").
+ *
+ * Deliberately a different predicate from [liveShareCoverageUntilMs]: the sharing INDICATOR (#816
+ * pin) answers "am I sharing with anyone here" (ANY), while offer suppression answers "would
+ * starting a share still add someone" (FULL). Don't unify them.
+ */
+fun liveShareAnyUntilMs(
+    roster: List<TimedRecipient>,
+    recipientIds: List<String>? = null,
+    nowMs: Long,
+): Long? {
+    if (recipientIds != null && recipientIds.isEmpty()) return null
+    return roster
+        .filter { it.endTimeMs > nowMs && (recipientIds == null || it.odinId in recipientIds) }
+        .maxOfOrNull { it.endTimeMs }
+}

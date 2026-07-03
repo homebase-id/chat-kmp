@@ -380,5 +380,11 @@ sealed interface ConversationListUiAction {
      *  can't start because location isn't ready. */
     data object OpenLocationSetup : ConversationListUiAction
 
+    /** Tap on the top-bar "you're sharing" pin (#816) — opens the location dashboard, which lists
+     *  every outgoing live share with per-person stop + stop-all. Routes through the same
+     *  navigation as [OpenLocationSetup]; an active share implies the add-on is activated, so it
+     *  lands on the dashboard rather than onboarding. */
+    data object OpenLocationDashboard : ConversationListUiAction
+
     // endregion
 }

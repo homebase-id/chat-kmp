@@ -735,6 +735,12 @@ fun ConversationContent(
                 },
                 actions = {
                     if (!uiState.isSearchActive) {
+                        LiveShareIndicator(
+                            untilMs = uiState.ownLiveShareInConversationUntilMs,
+                            onClick = {
+                                onUiAction(ConversationListUiAction.OpenLocationDashboard)
+                            },
+                        )
                         IconButton(onClick = { showConversationMenu = true }) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
