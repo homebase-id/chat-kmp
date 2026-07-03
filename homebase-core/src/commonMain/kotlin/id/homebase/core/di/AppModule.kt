@@ -805,6 +805,7 @@ val appModule = module {
             stickerPermissionViewModel = get(StickerPermissionQualifier),
             liveLocationShareService = get(),
             liveShareReadiness = get(),
+            locationService = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
