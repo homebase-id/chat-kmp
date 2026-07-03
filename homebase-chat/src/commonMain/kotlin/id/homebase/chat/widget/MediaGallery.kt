@@ -71,6 +71,14 @@ fun MediaGallery(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     isUploading: Boolean = false,
+    /**
+     * When true the gallery fills the width it is given (rather than pinning to a
+     * discrete album width) and derives its cell heights from that laid-out width.
+     * The caption bubble path (#964) sets this so a 2/3/4-up album stretches to the
+     * bubble instead of leaving a blue gap beside a wider caption. Defaults to false
+     * so the media-only / reply gallery keeps its original bounded album width.
+     */
+    fillWidth: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -81,8 +89,12 @@ fun MediaGallery(
             maxWidth >= 360.dp -> 252.dp
             else -> Dimens.Album.totalWidth
         }
+        // Cell heights are derived from the actual laid-out width: the given width
+        // when filling, else the discrete album width.
+        val layoutWidth = if (fillWidth) maxWidth else albumWidth
+        val widthModifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier.width(albumWidth)
 
-        Box(modifier = Modifier.width(albumWidth)) {
+        Box(modifier = widthModifier) {
             when (payloads.size) {
                 1 -> {
                     MediaItem(
@@ -106,7 +118,7 @@ fun MediaGallery(
 
                 2 ->
                     TwoImageLayout(
-                        albumWidth = albumWidth,
+                        albumWidth = layoutWidth,
                         payloads = payloads,
                         fileId = fileId,
                         driveId = driveId,
@@ -122,7 +134,7 @@ fun MediaGallery(
 
                 3 ->
                     ThreeImageLayout(
-                        albumWidth = albumWidth,
+                        albumWidth = layoutWidth,
                         payloads = payloads,
                         fileId = fileId,
                         driveId = driveId,
@@ -138,7 +150,7 @@ fun MediaGallery(
 
                 else ->
                     FourPlusImageLayout(
-                        albumWidth = albumWidth,
+                        albumWidth = layoutWidth,
                         payloads = payloads,
                         fileId = fileId,
                         driveId = driveId,
