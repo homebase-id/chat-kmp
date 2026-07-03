@@ -172,8 +172,10 @@ class LiveLocationShareService(
             val blob = LiveLocationCodec.encode(
                 LiveLocationPoint(lat = p.lat, lon = p.lon, acc = p.acc, spd = p.spd, hdg = p.hdg, ts = p.t)
             )
-            runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds.distinct(), blob) }
+            val ok = runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds.distinct(), blob) }
                 .onFailure { logger.w(it) { "immediate push failed" } }
+                .getOrDefault(false)
+            logger.i { "immediate push ok=$ok to=${recipientIds.distinct().size}" }
             lastSentMs = nowMs()
         }
     }
@@ -195,9 +197,15 @@ class LiveLocationShareService(
             if (live.isEmpty()) onLiveShareChanged()
         }
         if (live.isEmpty()) return
-        if (now - lastSentMs < MIN_INTERVAL_MS) return
+        if (now - lastSentMs < MIN_INTERVAL_MS) {
+            logger.i { "relayLatest throttle-skip sinceLastMs=${now - lastSentMs} live=${live.size} fg=${point.fg}" }
+            return
+        }
         // Skip (don't queue) if a send is already in flight — last-value-wins, the next batch supersedes.
-        if (!sendLock.tryLock()) return
+        if (!sendLock.tryLock()) {
+            logger.i { "relayLatest skip — send already in flight" }
+            return
+        }
         try {
             val t = nowMs()
             if (t - lastSentMs < MIN_INTERVAL_MS) return
@@ -211,8 +219,10 @@ class LiveLocationShareService(
                     spd = point.spd, hdg = point.hdg, ts = point.t,
                 )
             )
-            runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds, blob) }
+            val ok = runCatching { relay(LIVE_LOCATION_CHANNEL_KEY, recipientIds, blob) }
                 .onFailure { logger.w(it) { "relay failed" } }
+                .getOrDefault(false)
+            logger.i { "relay SENT ok=$ok to=${recipientIds.size} fg=${point.fg} t=${point.t}" }
             lastSentMs = t
         } finally {
             sendLock.unlock()
