@@ -52,10 +52,15 @@ class LocationPreviewProvider(
         lat: Double,
         lon: Double,
         zoom: Int = 15,
+        /**
+         * Address the caller already resolved (e.g. the share-location screen's live pan
+         * geocoding) — skips the Nominatim round-trip entirely. Blank/null ⇒ resolve here.
+         */
+        knownAddress: String? = null,
     ): LocationPreview {
         cache[CacheKey(lat, lon, zoom)]?.let { return it }
 
-        val address = try {
+        val address = knownAddress?.takeIf { it.isNotBlank() } ?: try {
             reverseGeocode(lat, lon, zoom) ?: formatLatLon(lat, lon)
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "reverseGeocode threw — falling back to lat/lon" }
@@ -84,7 +89,29 @@ class LocationPreviewProvider(
         return preview
     }
 
-    private suspend fun reverseGeocode(lat: Double, lon: Double, zoom: Int): String? {
+    /**
+     * Reverse-geocode a point to a display address (Nominatim `display_name`), or null when the
+     * lookup fails or the point has no address. Cached by coordinates rounded to ~11 m so pan
+     * jitter (the share-location screen re-resolving as the map settles) doesn't re-query; the
+     * remote call is rate-limited to Nominatim's 1 req/s budget. Callers doing continuous lookups
+     * (address-follows-pan) must ALSO debounce on their side — the rate limiter queues, it
+     * doesn't shed.
+     */
+    suspend fun reverseGeocode(lat: Double, lon: Double, zoom: Int = 18): String? {
+        val key = AddressKey(roundCoord(lat), roundCoord(lon), zoom)
+        addressCacheMutex.withLock { addressCache[key] }?.let { return it }
+        val resolved = reverseGeocodeRemote(lat, lon, zoom) ?: return null
+        addressCacheMutex.withLock {
+            addressCache[key] = resolved
+            // Insertion-order eviction — good enough for a pan cache.
+            while (addressCache.size > ADDRESS_CACHE_MAX) {
+                addressCache.remove(addressCache.keys.first())
+            }
+        }
+        return resolved
+    }
+
+    private suspend fun reverseGeocodeRemote(lat: Double, lon: Double, zoom: Int): String? {
         // Nominatim usage policy: max 1 req/sec, identifying User-Agent. We add a touch of
         // headroom (1.1s) so we never miss the budget if the wall clock is slightly skewed.
         nominatimMutex.withLock {
@@ -211,7 +238,12 @@ class LocationPreviewProvider(
         return "$latStr, $lonStr"
     }
 
+    /** ~11 m grid (4 decimals) — close enough that one address serves the whole cell. */
+    private fun roundCoord(v: Double): Double = (v * 1e4).toLong() / 1e4
+
     private data class CacheKey(val lat: Double, val lon: Double, val zoom: Int)
+
+    private data class AddressKey(val lat: Double, val lon: Double, val zoom: Int)
 
     private data class TileKey(val zoom: Int, val x: Int, val y: Int)
 
@@ -230,6 +262,11 @@ class LocationPreviewProvider(
         private val cache = mutableMapOf<CacheKey, LocationPreview>()
         private val nominatimMutex = Mutex()
         private var lastNominatimCallAt: TimeSource.Monotonic.ValueTimeMark? = null
+
+        // Resolved-address cache for pan-follows-address lookups (share-location screen).
+        private const val ADDRESS_CACHE_MAX = 128
+        private val addressCache = LinkedHashMap<AddressKey, String>()
+        private val addressCacheMutex = Mutex()
 
         // Raw-tile cache for the Location history basemap (~64 tiles ≈ 1-2MB).
         private const val TILE_CACHE_MAX = 64
