@@ -6,14 +6,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.profile.PreviewThumbnail
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfilePhotoTooLargeException
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageFormat
+import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.ThumbnailInstruction
 import id.homebase.api.image.createImageThumbnail
+import id.homebase.api.image.tinyThumbSize
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.imageeditor.ui.CropResultBus
@@ -200,11 +203,21 @@ class ProfileAvatarEditViewModel(
             try {
                 val fullSize = createImageThumbnail(bytes, "avatar_full", AVATAR_FULL_SIZE_INSTRUCTION)
                 val thumbnail = createImageThumbnail(bytes, "avatar_thumb", AVATAR_THUMBNAIL_INSTRUCTION)
+                // Blur-up placeholder for instant paint (HomebaseImage's previewThumbnail bridge
+                // frame) — reported at the source's natural size, not this tiny rendition's own
+                // ~20x20 resized size; see PreviewThumbnail's doc for why.
+                val naturalSize = ImageUtils.getNaturalSize(bytes)
+                val tinyThumb = createImageThumbnail(bytes, "avatar_tiny", tinyThumbSize, isTinyThumb = true)
                 profileRepository.uploadPhoto(
                     contentType = fullSize.contentType,
                     content = fullSize.thumbnailBytes,
                     thumbnails = listOf(thumbnail),
                     visibility = visibility,
+                    previewThumbnail = PreviewThumbnail(
+                        bytes = tinyThumb.thumbnailBytes,
+                        naturalPixelWidth = naturalSize.pixelWidth,
+                        naturalPixelHeight = naturalSize.pixelHeight,
+                    ),
                 )
 
                 pendingCroppedBytes.remove(visibility)

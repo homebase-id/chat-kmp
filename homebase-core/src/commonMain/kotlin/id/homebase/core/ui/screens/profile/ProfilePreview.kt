@@ -24,11 +24,13 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
@@ -162,6 +164,13 @@ private fun PreviewPhoto(photo: ProfileAttribute?) {
         contentAlignment = Alignment.Center,
     ) {
         val imageData = photo?.photoImageData()
+        LaunchedEffect(photo?.id) {
+            when {
+                photo == null -> Logger.d(tag = "ProfilePreview") { "no photo attribute for this tier — placeholder shown" }
+                imageData == null -> // photoImageData() already logged the specific reason.
+                    Logger.w(tag = "ProfilePreview") { "photo attribute ${photo.id} present but not renderable — placeholder shown" }
+            }
+        }
         if (imageData != null) {
             HomebaseImage(
                 imageData = imageData,

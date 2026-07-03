@@ -34,7 +34,21 @@ internal fun HomebaseFile.toProfileAttribute(): ProfileAttribute? {
         return null
     }
 
-    val rawType = (root["type"] as? JsonPrimitive)?.contentOrNull ?: return null
+    val rawType = (root["type"] as? JsonPrimitive)?.contentOrNull
+    if (rawType == null) {
+        // Valid JSON but no `type` key — e.g. ServerFile's decrypt-failure placeholder
+        // ({"message":"Decryption Failure",...}) when appData.content couldn't be decoded/
+        // decrypted for this file. Silent otherwise: log so a dropped attribute (a photo that
+        // "isn't there" in the UI) is traceable back to its fileId/isEncrypted rather than
+        // vanishing without a trace.
+        Logger.w(tag = "ProfileAttributeParse") {
+            // fileMetadata.isEncrypted is always false by this point (ServerFile.withDecryptedContent
+            // forces it after processing, success or soft-fail) — serverFileIsEncrypted is the
+            // original server-reported value, before that.
+            "attribute $id dropped: no `type` key (fileId=$fileId, serverFileIsEncrypted=$serverFileIsEncrypted, content=$content)"
+        }
+        return null
+    }
     val data = (root["data"] as? JsonObject) ?: JsonObject(emptyMap())
     val visibility = ProfileVisibility.fromWire(
         serverMetadata.accessControlList?.requiredSecurityGroup

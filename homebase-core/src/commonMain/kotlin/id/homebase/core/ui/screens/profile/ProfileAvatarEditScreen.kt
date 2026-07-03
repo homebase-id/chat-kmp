@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.chat.widget.MediaAttachmentEditor
@@ -145,7 +146,16 @@ fun ProfileAvatarEditScreen(
                 onRemove = { viewModel.onAction(ProfileAvatarEditAction.DeleteClicked(ProfileVisibility.ANONYMOUS)) },
                 onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.UploadClicked(ProfileVisibility.ANONYMOUS)) },
             ) {
-                val imageData = uiState.anonymous.existing?.photoImageData()
+                val existing = uiState.anonymous.existing
+                val imageData = existing?.photoImageData()
+                LaunchedEffect(existing?.id) {
+                    if (existing != null && imageData == null) {
+                        // photoImageData() already logged the specific reason.
+                        Logger.w(tag = "ProfileAvatarEditScreen") {
+                            "Anonymous photo attribute ${existing.id} present but not renderable — placeholder shown"
+                        }
+                    }
+                }
                 if (imageData != null) {
                     HomebaseImage(
                         imageData = imageData,
@@ -169,7 +179,16 @@ fun ProfileAvatarEditScreen(
                 onRemove = { viewModel.onAction(ProfileAvatarEditAction.DeleteClicked(ProfileVisibility.CONNECTED)) },
                 onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.UploadClicked(ProfileVisibility.CONNECTED)) },
             ) {
-                val imageData = uiState.connected.existing?.photoImageData()
+                val existing = uiState.connected.existing
+                val imageData = existing?.photoImageData()
+                LaunchedEffect(existing?.id) {
+                    if (existing != null && imageData == null) {
+                        // photoImageData() already logged the specific reason.
+                        Logger.w(tag = "ProfileAvatarEditScreen") {
+                            "Connected photo attribute ${existing.id} present but not renderable — placeholder shown"
+                        }
+                    }
+                }
                 if (imageData != null) {
                     HomebaseImage(
                         imageData = imageData,

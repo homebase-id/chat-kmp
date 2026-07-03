@@ -4,6 +4,7 @@ package id.homebase.api.client.profile
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.serialization.UuidSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -70,6 +71,14 @@ data class SaveProfileAttributeRequest(
  * resize — generate every rendition you want stored before calling (see
  * [id.homebase.api.image.createImageThumbnail]). [visibility] must be
  * [ProfileVisibility.photoWireValue] (PascalCase), not [ProfileVisibility.wireValue].
+ *
+ * [previewThumbnail] is the small blur-up placeholder (~20px WebP, capped under 1KB) — optional,
+ * but without it the photo has no instant-paint preview until the real thumbnail loads. Always
+ * PLAINTEXT regardless of [visibility] — unlike [content]/[thumbnails], the server never encrypts
+ * it at rest, even for CONNECTED/OWNER. Report its `pixelWidth`/`pixelHeight` as the *source*
+ * image's natural dimensions, not the tiny thumbnail's actual ~20×20 resized size — matches the
+ * existing odin-js `getEmbeddedThumbOfThumbnailFile` convention ("on the previewThumb we use the
+ * full pixelWidth & -height so the max size can be used").
  */
 @Serializable
 data class SetPhotoAttributeRequest(
@@ -80,6 +89,7 @@ data class SetPhotoAttributeRequest(
     val contentType: String,
     val content: String,
     val thumbnails: List<PhotoThumbnailContent> = emptyList(),
+    val previewThumbnail: EmbeddedThumb? = null,
 )
 
 @Serializable
