@@ -699,6 +699,7 @@ fun ConversationContent(
 
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+        LocalUploadConnected provides uiState.isConnected,
     ) {
     Scaffold(
         modifier = Modifier,
