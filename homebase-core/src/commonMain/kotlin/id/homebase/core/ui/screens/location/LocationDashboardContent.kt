@@ -648,8 +648,8 @@ private fun IncomingShareRowItem(row: IncomingShareRow) {
 }
 
 /**
- * Trailing content for a "who I can locate" row: a spinner while the row's first temporal-access
- * preflight is in flight, a broken-link icon when access is gone, a disconnected icon when the
+ * Trailing content for a "who I can locate" row: a spinner while an expand-triggered temporal-
+ * access preflight is in flight, a broken-link icon when access is gone, a disconnected icon when the
  * peer's server couldn't be reached (inconclusive — not broken), or the compact age of the peer's
  * newest data (warning-orange past [LOCATE_AGE_WARN_MS]). Access with no data yet shows an explicit
  * "no data" label (the GPS-not-reporting case, #875). A null/absent status (section not yet

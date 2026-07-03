@@ -65,15 +65,16 @@ data class LocationUiState(
 }
 
 /**
- * Result of the per-entry temporal-access preflight for a "who I can locate" row. A row with no
- * prior result shows a spinner until its first verify resolves; thereafter re-verifies are silent
- * (the old value stays visible until the new result lands). Resolved results carry
+ * Result of the per-entry temporal-access preflight for a "who I can locate" row. Expand-triggered
+ * verifies show a spinner (visible feedback that the check is running); the periodic follow-up
+ * passes while the section stays open are silent (the old value stays visible until the new result
+ * lands, so the list doesn't flash spinners every minute). Resolved results carry
  * [Resolved.verifiedAtMs] so a re-expand within [LOCATE_VERIFY_TTL_MS] reuses them, while an older
  * result is re-verified (#950) — including [Unreachable], which retries on the next pass instead
  * of blanking the row.
  */
 sealed interface LocateVerifyStatus {
-    /** First-ever preflight in flight (no prior result) → spinner. */
+    /** Preflight in flight with the spinner requested (expand-triggered, or no prior result). */
     data object Loading : LocateVerifyStatus
 
     /** A completed verify; [verifiedAtMs] is when the result landed (epoch ms), for the TTL. */

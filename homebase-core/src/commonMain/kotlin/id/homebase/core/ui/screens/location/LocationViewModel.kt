@@ -300,7 +300,9 @@ class LocationViewModel(
      * Expanded: start the link-freshness loop — an immediate [verifyLocatablePass], then one every
      * [LOCATE_VERIFY_TTL_MS] so ages and states stay current while the section is open. Every
      * expand (re-)starts the loop; the per-row TTL inside the pass is what makes a quick re-expand
-     * cheap. Collapsed: cancel the loop (and any in-flight verifies with it) and sweep Loading
+     * cheap. The expand-triggered pass shows spinners (visible feedback that a verify is running);
+     * the periodic follow-ups are silent so the open list doesn't flash a spinner every minute.
+     * Collapsed: cancel the loop (and any in-flight verifies with it) and sweep Loading
      * placeholders — a cancelled first verify must not leave a stuck Loading that blocks the next
      * expand forever (needsReverify(Loading) == false).
      */
@@ -308,8 +310,10 @@ class LocationViewModel(
         if (expanded) {
             if (locatableVerifyJob?.isActive == true) return
             locatableVerifyJob = viewModelScope.launch {
+                var expandTriggered = true
                 while (true) {
-                    verifyLocatablePass()
+                    verifyLocatablePass(showSpinner = expandTriggered)
+                    expandTriggered = false
                     delay(LOCATE_VERIFY_TTL_MS)
                 }
             }
@@ -330,20 +334,21 @@ class LocationViewModel(
      * read access to their location drive, and how fresh is their newest data? Members are verified
      * in parallel child coroutines and the pass returns once all resolve, so loop iterations never
      * overlap a still-running verify. Members with a verify in flight or a result younger than
-     * [LOCATE_VERIFY_TTL_MS] are skipped (#950). The Loading spinner shows only for a row's
-     * first-ever verify — a re-verify keeps the old value visible until the new result lands (no
-     * spinner flash on the periodic passes). A network/parse failure is inconclusive →
-     * [LocateVerifyStatus.Unreachable] (disconnected icon, retried after the TTL), never [Broken];
-     * this mirrors [EmergencyContactReconciler]'s leave-untouched rule.
+     * [LOCATE_VERIFY_TTL_MS] are skipped (#950). [showSpinner] (the expand-triggered pass) marks
+     * each verifying row Loading so the user sees the verify happen; the periodic follow-up passes
+     * pass false and keep the old value visible until the new result lands, so an open list never
+     * flashes spinners every minute. A row with no prior result always spins. A network/parse
+     * failure is inconclusive → [LocateVerifyStatus.Unreachable] (disconnected icon, retried after
+     * the TTL), never [Broken]; this mirrors [EmergencyContactReconciler]'s leave-untouched rule.
      */
-    private suspend fun verifyLocatablePass() {
+    private suspend fun verifyLocatablePass(showSpinner: Boolean) {
         val now = Clock.System.now().toEpochMilliseconds()
         coroutineScope {
             _uiState.value.whoICanLocate.forEach { member ->
                 val key = member.odinId.domainName
                 val current = _uiState.value.whoICanLocateStatus[key]
                 if (!current.needsReverify(now)) return@forEach
-                if (current == null) {
+                if (showSpinner || current == null) {
                     _uiState.update {
                         it.copy(whoICanLocateStatus = it.whoICanLocateStatus + (key to LocateVerifyStatus.Loading))
                     }
