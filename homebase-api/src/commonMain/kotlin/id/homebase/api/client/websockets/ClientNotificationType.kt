@@ -26,6 +26,7 @@ enum class ClientNotificationType {
     allReactionsByFileDeleted,
     appNotificationAdded,
     liveRelay,
+    publicProfileContentPublished,
     unused,
     error,
     authenticationError
