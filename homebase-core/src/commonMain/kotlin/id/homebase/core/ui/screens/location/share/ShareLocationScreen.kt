@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -288,8 +289,9 @@ fun ShareLocationScreen(
             }
 
             // Bottom controls: live-share banner + the always-present comment/send row.
+            // imePadding lifts the bar above the keyboard while typing a comment.
             Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding(),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 3.dp,
             ) {
