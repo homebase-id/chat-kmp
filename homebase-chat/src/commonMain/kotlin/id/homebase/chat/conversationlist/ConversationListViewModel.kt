@@ -33,6 +33,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.livelocation.ShareBackResult
+import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
 import id.homebase.chat.services.livelocation.shareLiveLocationBack
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.chat.services.convo.ConversationEnricher
@@ -351,6 +352,30 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(ownerSession = session) }
                 _messagesUiState.update { it.copy(ownerSession = session) }
             }
+        }
+
+        // Track whether MY live share already covers the open conversation. While it does, the
+        // bubbles hide their "share live location" offers — inviting the user to start a share
+        // they're already running is confusing, and a second tap would create a duplicate live
+        // message (#966 follow-up; the app-wide "you're sharing" indicator is #816).
+        viewModelScope.launch {
+            combine(
+                ActiveConversation.conversation,
+                liveLocationShareService.recipients,
+            ) { conversationId, roster -> conversationId to roster }
+                .collectLatest { (conversationId, roster) ->
+                    val untilMs = conversationId?.let { id ->
+                        val recipients = runCatching {
+                            conversationStream.getRecipients(id, emptyList(), null)
+                        }.getOrDefault(emptyList())
+                        liveShareCoverageUntilMs(
+                            roster = roster,
+                            recipientIds = recipients.map { it.domainName },
+                            nowMs = Clock.System.now().toEpochMilliseconds(),
+                        )
+                    }
+                    _messagesUiState.update { it.copy(ownLiveShareUntilMs = untilMs) }
+                }
         }
 
         // Post-create preflight collector. CreateConversationGroupViewModel emits the

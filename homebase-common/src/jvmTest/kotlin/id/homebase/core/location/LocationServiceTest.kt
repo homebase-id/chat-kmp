@@ -359,4 +359,60 @@ class LocationServiceTest {
             assertEquals(990_000, store.lastPoint.value?.t) // routed + persisted (history on)
         }
     }
+
+    // ── lastKnownCoordinates (#966): the any-age cached-coordinate primitive ──
+
+    @Test
+    fun lastKnownCoordinatesServesWarmMemoryWithoutTouchingProviders() {
+        val oneShot = FakeOneShot(cached = point(t = now - 500L))
+        runServiceTest(permission = true, oneShot = oneShot) { service, store, _ ->
+            store.publishLastKnown(point(t = now - 3_600_000)) // an hour old — still served
+            val result = service.lastKnownCoordinates()
+            assertEquals(now - 3_600_000, result?.t)
+            assertEquals(0, oneShot.lastKnownCalls) // memory short-circuits
+            assertEquals(0, oneShot.freshCalls)
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesColdStartServesOsFixAtAnyAgeAndHydratesStore() {
+        val osFix = point(t = now - 7_200_000, lon = 9.0) // 2h old — a map seed doesn't care
+        val oneShot = FakeOneShot(cached = osFix)
+        runServiceTest(permission = true, oneShot = oneShot) { service, store, _ ->
+            val result = service.lastKnownCoordinates()
+            assertEquals(osFix, result)
+            assertEquals(0, oneShot.freshCalls) // never powers the radio
+            assertEquals(osFix, store.lastPoint.value) // hydrated for every other consumer
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesPrefersNewestOfPersistedAndOsFix() {
+        val osFix = point(t = now - 10_000, lon = 9.0)
+        val oneShot = FakeOneShot(cached = osFix)
+        runServiceTest(permission = true, oneShot = oneShot, allowHistory = true) { service, store, _ ->
+            store.persistHistory(listOf(point(t = now - 60_000, lon = 8.0))) // older persisted row
+            assertEquals(osFix, service.lastKnownCoordinates())
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesWithoutPermissionUsesPersistedHistoryOnly() {
+        val oneShot = FakeOneShot(cached = point(t = now, lon = 9.0))
+        runServiceTest(permission = false, oneShot = oneShot, allowHistory = true) { service, store, _ ->
+            store.persistHistory(listOf(point(t = now - 60_000, lon = 8.0)))
+            val result = service.lastKnownCoordinates()
+            assertEquals(8.0, result?.lon)
+            assertEquals(0, oneShot.lastKnownCalls) // OS cache not consulted without permission
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesReturnsNullWhenNoSourceHasEverSeenAPosition() {
+        val oneShot = FakeOneShot(cached = null)
+        runServiceTest(permission = true, oneShot = oneShot) { service, _, _ ->
+            assertNull(service.lastKnownCoordinates())
+            assertEquals(0, oneShot.freshCalls)
+        }
+    }
 }

@@ -1110,6 +1110,7 @@ fun ConversationContent(
                                                 searchQuery = uiState.searchQuery,
                                                 isCurrentSearchResult = isFocused,
                                                 chainCap = chainCap,
+                                                ownLiveShareUntilMs = uiState.ownLiveShareUntilMs,
                                             )
                                         }
                                     }

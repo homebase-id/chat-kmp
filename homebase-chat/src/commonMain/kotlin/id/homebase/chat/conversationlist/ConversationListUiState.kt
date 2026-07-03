@@ -102,6 +102,13 @@ data class MessageListUiState(
      *  trim discards the newer slice; drives the bottom spinner, the FAB's
      *  ScrollToLatest branch, and gates auto-follow on incoming messages. */
     val hasNewerMessages: Boolean = false,
+    /**
+     * When MY live share fully covers this conversation's recipients: the absolute end of that
+     * coverage, else null. While set (and in the future), location bubbles hide their "share
+     * live location" offers — no invitations to start a share that's already running (#966
+     * follow-up; the app-wide sharing indicator is #816).
+     */
+    val ownLiveShareUntilMs: Long? = null,
     /** A loadOlder fetch is in flight; suppresses re-entry. */
     val isLoadingOlder: Boolean = false,
     /** A loadNewer fetch is in flight; suppresses re-entry. */

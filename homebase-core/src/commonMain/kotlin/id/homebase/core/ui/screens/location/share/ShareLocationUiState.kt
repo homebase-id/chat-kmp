@@ -26,6 +26,13 @@ data class ShareLocationUiState(
     val isSending: Boolean = false,
     val isAcquiringFix: Boolean = false,
     val showEnableLocationDialog: Boolean = false,
+    /**
+     * When MY live share already fully covers this conversation: the absolute end of that
+     * coverage, else null. While set (and in the future), the "Share live location" banner is
+     * hidden — no invitation to start a share that's already running (#966 follow-up; the
+     * app-wide sharing indicator is #816). Static send + comment stay available.
+     */
+    val ownLiveShareUntilMs: Long? = null,
     /** One-shot camera move (GPS re-center); the screen applies it and calls recenterConsumed(). */
     val recenterTarget: RecenterTarget? = null,
 )
