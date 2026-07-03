@@ -338,7 +338,7 @@ private fun PollVoterRow(
     youLabel: String,
     contactService: ContactService,
 ) {
-    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val resolvedName = contactService.resolveByOdinId(odinId).name
     val avatarOptions = AvatarOptions(size = 32.dp)
     Row(
         modifier = Modifier

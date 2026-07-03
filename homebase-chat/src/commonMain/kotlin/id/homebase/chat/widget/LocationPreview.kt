@@ -51,6 +51,8 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.location.LIVE_SHARE_DURATION_OPTIONS
+import id.homebase.core.location.formatLiveShareRemaining
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
@@ -58,13 +60,9 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_location_pin
 import id.homebase.resources.chat_location_attachment
-import id.homebase.resources.live_share_15m
-import id.homebase.resources.live_share_1h
-import id.homebase.resources.live_share_2h
-import id.homebase.resources.live_share_30m
-import id.homebase.resources.live_share_24h
-import id.homebase.resources.live_share_4h
+import id.homebase.resources.live_location_title
 import id.homebase.resources.live_share_active
+import id.homebase.resources.live_share_back
 import id.homebase.resources.live_share_duration_prompt
 import id.homebase.resources.live_share_ended
 import id.homebase.resources.share_live_location
@@ -306,6 +304,10 @@ fun LocationPreviewCard(
     val remainingMs = if (until != null) (until - nowMs).coerceAtLeast(0L) else 0L
     // The share-live offer is available only while the pin is fresh (or un-gated when createdAtMs null).
     val canStartShare = shareOfferDeadline == null || nowMs < shareOfferDeadline
+    // My live share already covers this conversation — hide every start offer (inviting the user
+    // to share what they're already sharing is confusing, and a second tap would create a
+    // duplicate live message). The app-wide "you're sharing" indicator + stop lives in #816.
+    val ownShareActive = liveControls?.ownShareUntilMs?.let { nowMs < it } == true
 
     val onCardTap = {
         if (isLive && liveControls != null) liveControls.onOpenMap() else uriHandler.openUri(geoUri)
@@ -353,6 +355,27 @@ fun LocationPreviewCard(
                     contentScale = ContentScale.Crop,
                     contentDescription = descriptor.address,
                 )
+            } else if (until != null) {
+                // Lightweight live-share message (share-back): no static map payload by design —
+                // the live map is the position's source of truth. A compact header row instead of
+                // the tall empty pin box; the live-share area below carries the countdown/actions.
+                Row(
+                    modifier = Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = stringResource(MR.string.cd_location_pin),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(modifier = Modifier.size(6.dp))
+                    Text(
+                        text = stringResource(MR.string.live_location_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = contentColor,
+                    )
+                }
             } else {
                 Box(
                     modifier = Modifier.fillMaxWidth().height(100.dp),
@@ -383,7 +406,8 @@ fun LocationPreviewCard(
                             isEnded = isEnded,
                             remainingMs = remainingMs,
                             contentColor = contentColor,
-                            canStart = canStartShare,
+                            canStart = canStartShare && !ownShareActive,
+                            showShareBack = !ownShareActive,
                         )
                     }
                     // No caption ⇒ the timestamp (+ delivery status) sits muted at the bottom of the card.
@@ -450,12 +474,17 @@ private fun LiveShareActionArea(
     contentColor: Color,
     /** Whether the static "Share live location" offer is still available (pin fresh enough). */
     canStart: Boolean,
+    /** False while my own share already covers this conversation — hides the share-back link. */
+    showShareBack: Boolean = true,
 ) {
     val mutedColor = contentColor.copy(alpha = 0.7f)
     Box {
         when {
             isLive -> {
-                // Both sides show the live caption + time left; only the sender gets the Stop link.
+                // Both sides show the live caption + time left; the sender gets the Stop link, the
+                // receiver gets a single-tap "share your live location" — no duration menu; the
+                // share-back mirrors the sender's remaining window (#966) so both end together.
+                // Hidden while my own share already covers this conversation (showShareBack=false).
                 Column {
                     if (controls.sentByYou) {
                         Row(
@@ -477,9 +506,15 @@ private fun LiveShareActionArea(
                                 color = MaterialTheme.colorScheme.error,
                             )
                         }
+                    } else if (showShareBack) {
+                        LiveShareLinkRow(
+                            label = stringResource(MR.string.live_share_back),
+                            contentColor = contentColor,
+                            onClick = { controls.onStartShareBack(null) },
+                        )
                     }
                     Text(
-                        text = stringResource(MR.string.live_share_active, formatRemaining(remainingMs)),
+                        text = stringResource(MR.string.live_share_active, formatLiveShareRemaining(remainingMs)),
                         style = MaterialTheme.typography.labelSmall,
                         color = mutedColor,
                     )
@@ -495,80 +530,92 @@ private fun LiveShareActionArea(
                 )
             }
 
-            controls.sentByYou && canStart -> {
-                // STATIC, my own, still-fresh message: offer to share live. Uses the bubble's content
-                // color so the link is visible on both the grey (received) and tinted (sent) bubble.
-                // Hidden once the pin is stale (canStart=false) — a live share streams the CURRENT
-                // position, which has nothing to do with an old pin.
-                var menuExpanded by remember { mutableStateOf(false) }
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .clickable { menuExpanded = true }
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = null,
-                            tint = contentColor,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.size(6.dp))
-                        Text(
-                            text = stringResource(MR.string.share_live_location),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = contentColor,
-                        )
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        Text(
-                            text = stringResource(MR.string.live_share_duration_prompt),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                        HorizontalDivider()
-                        DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(labelRes)) },
-                                onClick = {
-                                    menuExpanded = false
-                                    controls.onStart(durationMs)
-                                },
-                            )
-                        }
-                    }
+            canStart -> {
+                // STATIC, still-fresh message (either side, #966): offer to share live. My own bubble
+                // upgrades this message in place; someone else's sends a new own live message. Uses
+                // the bubble's content color so the link is visible on both the grey (received) and
+                // tinted (sent) bubble. Hidden once the pin is stale (canStart=false) — a live share
+                // streams the CURRENT position, which has nothing to do with an old pin.
+                if (controls.sentByYou) {
+                    ShareLiveOfferRow(
+                        label = stringResource(MR.string.share_live_location),
+                        contentColor = contentColor,
+                        onPick = { durationMs -> controls.onStart(durationMs) },
+                    )
+                } else {
+                    ShareLiveOfferRow(
+                        label = stringResource(MR.string.live_share_back),
+                        contentColor = contentColor,
+                        onPick = { durationMs -> controls.onStartShareBack(durationMs) },
+                    )
                 }
             }
-            // Receiver + STATIC: no action area.
+            // Stale static pin: no action area (either side).
+        }
+    }
+}
+
+/** The icon + label link row used by every live-share affordance on the bubble. */
+@Composable
+private fun LiveShareLinkRow(
+    label: String,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clickable { onClick() }
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.Send,
+            contentDescription = null,
+            tint = contentColor,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(modifier = Modifier.size(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = contentColor,
+        )
+    }
+}
+
+/** [LiveShareLinkRow] that opens the duration menu and reports the picked duration. */
+@Composable
+private fun ShareLiveOfferRow(
+    label: String,
+    contentColor: Color,
+    onPick: (durationMs: Long) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Column {
+        LiveShareLinkRow(label = label, contentColor = contentColor, onClick = { menuExpanded = true })
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            Text(
+                text = stringResource(MR.string.live_share_duration_prompt),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            HorizontalDivider()
+            LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(labelRes)) },
+                    onClick = {
+                        menuExpanded = false
+                        onPick(durationMs)
+                    },
+                )
+            }
         }
     }
 }
 
 /** How long after a location pin is sent the "Share live location" offer stays available. */
 private const val SHARE_OFFER_WINDOW_MS = 15 * 60_000L
-
-private val DURATION_OPTIONS = listOf(
-    MR.string.live_share_15m to 15 * 60_000L,
-    MR.string.live_share_30m to 30 * 60_000L,
-    MR.string.live_share_1h to 60 * 60_000L,
-    MR.string.live_share_2h to 2 * 60 * 60_000L,
-    MR.string.live_share_4h to 4 * 60 * 60_000L,
-    // All-day sharing (festivals etc.) — #889. Window is absolute-endTime
-    // driven, so this is just a larger value; formatRemaining renders it as
-    // "24h"/"23h". Backgrounded GPS freshness is governed separately by #878.
-    MR.string.live_share_24h to 24L * 60 * 60_000L,
-)
-
-/** Compact "time left" label: "42m", "1h", "1h 20m". */
-private fun formatRemaining(remainingMs: Long): String {
-    val totalMin = (remainingMs / 60_000L).coerceAtLeast(0L)
-    if (totalMin < 60) return "${totalMin}m"
-    val h = totalMin / 60
-    val m = totalMin % 60
-    return if (m == 0L) "${h}h" else "${h}h ${m}m"
-}
 
 // ─── Compact list row (the "See all" locations tab) ──────────────────────────
 

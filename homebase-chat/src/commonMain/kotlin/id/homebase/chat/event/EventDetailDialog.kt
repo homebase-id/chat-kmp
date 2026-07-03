@@ -446,7 +446,7 @@ private fun OrganizerRow(
     organizedByLabel: String,
     contactService: ContactService,
 ) {
-    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val resolvedName = contactService.resolveByOdinId(odinId).name
     val avatarOptions = AvatarOptions(size = 32.dp)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -492,7 +492,7 @@ private fun ReactorRow(
     contactService: ContactService,
 ) {
     // Same resolution path as MessageInfoViewModel.
-    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val resolvedName = contactService.resolveByOdinId(odinId).name
     val avatarOptions = AvatarOptions(size = 32.dp)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),

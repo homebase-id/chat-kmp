@@ -1154,8 +1154,7 @@ internal class MessageActionsHandler(
             try {
                 val rawReactions = chatMessageActionService.getReactions(messageId)
                 val reactions = rawReactions.map { reaction ->
-                    val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
-                        ?: reaction.odinId.domainName
+                    val displayName = contactService.resolveByOdinId(reaction.odinId).name
                     ReactionDisplayItem(
                         odinId = reaction.odinId.domainName,
                         displayName = displayName,

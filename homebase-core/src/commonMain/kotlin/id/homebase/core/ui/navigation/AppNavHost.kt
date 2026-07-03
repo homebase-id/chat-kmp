@@ -113,12 +113,14 @@ import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
 import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
+import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
+import id.homebase.core.ui.screens.vault.auth.VaultSessionTracker
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
@@ -294,6 +296,10 @@ fun AppNavHost(
             }
         }
     }
+
+    // Keeps the Vault biometric session alive across every Vault sub-screen — owned by
+    // the vault feature, not this nav host.
+    VaultSessionTracker(navController)
 
     // Track active conversation + auth guard + notification permission
     LaunchedEffect(authState, currentDestination) {
@@ -903,6 +909,9 @@ fun AppNavHost(
                                     // the add-on isn't activated, else the dashboard (which requests
                                     // permission) — covers both "not set up" gate-fail cases.
                                     onNavigateToLocationSetup = openLocation,
+                                    onNavigateToShareLocation = { conversationId ->
+                                        navController.navigate(Route.LocationShare(conversationId))
+                                    },
                                     onNavigateToContactInfo = {
                                         // 1:1 contact info is the full contact-detail screen
                                         // (keyed by the contact uniqueId = md5(odinId)).
@@ -1365,6 +1374,26 @@ fun AppNavHost(
                                     onNavigateBack = { navController.popBackStack() },
                                     // Maps-off CTA → location/maps setup (Route.Location when
                                     // activated, else onboarding), reusing the shared nav lambda.
+                                    onOpenSetup = openLocation,
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationShare> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationShare>()
+                                ShareLocationScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.conversationId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parse(route.conversationId)
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    // Maps-off / enable-location CTA → location setup (dashboard or
+                                    // onboarding), reusing the shared nav lambda.
                                     onOpenSetup = openLocation,
                                 )
                             }

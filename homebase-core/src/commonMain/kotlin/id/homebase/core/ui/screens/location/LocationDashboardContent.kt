@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LinkOff
@@ -43,6 +44,7 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,13 +54,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.ui.screens.location.livelocation.AGE_LABEL_AFTER_MS
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.formatUntilTime
-import id.homebase.core.widget.AvatarImage
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.live_location_age_minutes
@@ -86,8 +91,10 @@ import id.homebase.resources.location_emergency_access_section
 import id.homebase.resources.location_locatable_broken_cd
 import id.homebase.resources.location_locatable_none
 import id.homebase.resources.location_locatable_section
+import id.homebase.resources.location_locatable_unreachable_cd
 import id.homebase.resources.location_locate_age_days
 import id.homebase.resources.location_locate_age_hours
+import id.homebase.resources.location_locate_no_data
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
 import id.homebase.resources.stop_sharing
@@ -113,7 +120,7 @@ fun LocationDashboardContent(
     onOpenDevice: (Uuid) -> Unit,
     onOpenSetup: () -> Unit,
     onManageEmergencyAccess: () -> Unit,
-    onVerifyLocatable: () -> Unit,
+    onLocatableExpandedChange: (Boolean) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -313,7 +320,7 @@ fun LocationDashboardContent(
                 loaded = uiState.whoICanLocateLoaded,
                 members = uiState.whoICanLocate,
                 emptyText = stringResource(MR.string.location_locatable_none),
-                onExpand = onVerifyLocatable,
+                onExpandedChange = onLocatableExpandedChange,
                 rowTrailing = { member ->
                     LocateStatusTrailing(uiState.whoICanLocateStatus[member.odinId.domainName])
                 },
@@ -449,13 +456,15 @@ private fun PeopleListBody(
     loaded: Boolean,
     members: List<ContactUiModel>,
     emptyText: String,
-    onExpand: (() -> Unit)? = null,
+    onExpandedChange: ((Boolean) -> Unit)? = null,
     rowTrailing: (@Composable (ContactUiModel) -> Unit)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // Fire the (optional) per-entry preflight each time the section opens; resolved rows are skipped
-    // downstream, so re-expanding is cheap.
-    LaunchedEffect(expanded) { if (expanded) onExpand?.invoke() }
+    // Report every open/close so the (optional) per-entry preflight loop starts on each expand and
+    // stops on collapse; per-row results younger than the TTL are skipped downstream, so a quick
+    // re-expand is cheap. Leaving composition (navigating away) counts as a close.
+    LaunchedEffect(expanded) { onExpandedChange?.invoke(expanded) }
+    DisposableEffect(Unit) { onDispose { onExpandedChange?.invoke(false) } }
     when {
         !loaded -> Box(
             modifier = Modifier.fillMaxWidth().padding(24.dp),
@@ -498,10 +507,10 @@ private fun PeopleListBody(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                AvatarImage(
-                                    avatarUrl = member.avatarUrl,
-                                    avatarInitials = member.avatarInitials,
-                                    size = 40.dp,
+                                PublicAvatar(
+                                    odinId = member.odinId,
+                                    initials = member.avatarInitials,
+                                    options = AvatarOptions(size = 40.dp),
                                 )
                                 Text(
                                     text = member.name,
@@ -541,10 +550,10 @@ private fun EmergencyAvatarStack(
                     .background(MaterialTheme.colorScheme.surface),
                 contentAlignment = Alignment.Center,
             ) {
-                AvatarImage(
-                    avatarUrl = member.avatarUrl,
-                    avatarInitials = member.avatarInitials,
-                    size = avatarSize,
+                PublicAvatar(
+                    odinId = member.odinId,
+                    initials = member.avatarInitials,
+                    options = AvatarOptions(size = avatarSize),
                 )
             }
         }
@@ -579,10 +588,10 @@ private fun OutgoingShareRowItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AvatarImage(
-            avatarUrl = row.avatarUrl,
-            avatarInitials = row.avatarInitials,
-            size = 40.dp,
+        PublicAvatar(
+            odinId = OdinId(row.odinId),
+            initials = row.avatarInitials,
+            options = AvatarOptions(size = 40.dp),
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -618,10 +627,10 @@ private fun IncomingShareRowItem(row: IncomingShareRow) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AvatarImage(
-            avatarUrl = row.avatarUrl,
-            avatarInitials = row.avatarInitials,
-            size = 40.dp,
+        PublicAvatar(
+            odinId = OdinId(row.odinId),
+            initials = row.avatarInitials,
+            options = AvatarOptions(size = 40.dp),
         )
         Text(
             text = row.name,
@@ -639,10 +648,12 @@ private fun IncomingShareRowItem(row: IncomingShareRow) {
 }
 
 /**
- * Trailing content for a "who I can locate" row: a spinner while the temporal-access preflight is in
- * flight, a broken-link icon when access is gone, or the compact age of the peer's newest data
- * (warning-colored past a day). A null/absent status (not yet requested, or an inconclusive failure)
- * renders nothing.
+ * Trailing content for a "who I can locate" row: a spinner while an expand-triggered temporal-
+ * access preflight is in flight, a broken-link icon when access is gone, a disconnected icon when the
+ * peer's server couldn't be reached (inconclusive — not broken), or the compact age of the peer's
+ * newest data (warning-orange past [LOCATE_AGE_WARN_MS]). Access with no data yet shows an explicit
+ * "no data" label (the GPS-not-reporting case, #875). A null/absent status (section not yet
+ * expanded) renders nothing.
  */
 @Composable
 private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
@@ -652,35 +663,48 @@ private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
         LocateVerifyStatus.Loading ->
             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
 
-        LocateVerifyStatus.Broken ->
+        is LocateVerifyStatus.Broken ->
             Icon(
                 imageVector = Icons.Default.LinkOff,
                 contentDescription = stringResource(MR.string.location_locatable_broken_cd),
                 tint = MaterialTheme.colorScheme.error,
             )
 
-        is LocateVerifyStatus.Active -> status.newestModifiedMs?.let { ms ->
-            val ageMs = Clock.System.now().toEpochMilliseconds() - ms
-            val warn = ageMs > 24L * 60 * 60_000
-            Text(
-                text = formatLocateAge(ageMs),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (warn) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+        is LocateVerifyStatus.Unreachable ->
+            Icon(
+                imageVector = Icons.Default.CloudOff,
+                contentDescription = stringResource(MR.string.location_locatable_unreachable_cd),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        } // Active(null) = access but no data yet → render nothing
+
+        is LocateVerifyStatus.Active -> {
+            val ms = status.newestModifiedMs
+            if (ms == null) {
+                // Access but no data yet — their GPS isn't reporting; warn rather than stay blank.
+                Text(
+                    text = stringResource(MR.string.location_locate_no_data),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = HomebaseTheme.extendedColors.warning,
+                )
+            } else {
+                val ageMs = Clock.System.now().toEpochMilliseconds() - ms
+                Text(
+                    text = formatLocateAge(ageMs),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (locateAgeWarn(ageMs)) HomebaseTheme.extendedColors.warning
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
 /** Compact "age since newest data" label: minutes, then hours (through 96 h), then days. */
 @Composable
-private fun formatLocateAge(ageMs: Long): String = when {
-    ageMs < 60 * 60_000L ->
-        stringResource(MR.string.live_location_age_minutes, (ageMs / 60_000L).toInt().coerceAtLeast(0))
-    ageMs <= 96 * 60 * 60_000L ->
-        stringResource(MR.string.location_locate_age_hours, (ageMs / 3_600_000L).toInt())
-    else ->
-        stringResource(MR.string.location_locate_age_days, (ageMs / 86_400_000L).toInt())
+private fun formatLocateAge(ageMs: Long): String = when (val bucket = locateAgeBucket(ageMs)) {
+    is LocateAgeBucket.Minutes -> stringResource(MR.string.live_location_age_minutes, bucket.minutes)
+    is LocateAgeBucket.Hours -> stringResource(MR.string.location_locate_age_hours, bucket.hours)
+    is LocateAgeBucket.Days -> stringResource(MR.string.location_locate_age_days, bucket.days)
 }
 
 @Composable

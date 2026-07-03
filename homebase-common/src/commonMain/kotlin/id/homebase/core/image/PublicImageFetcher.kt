@@ -10,6 +10,7 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.PUB_IMAGE_PATH
 import okio.Buffer
 
 class PublicImageFetcher(
@@ -60,9 +61,9 @@ class PublicImageFetcher(
                 is String -> data
                 else -> return null
             }
-            if (!url.contains("/pub/image")) return null
+            if (!url.contains(PUB_IMAGE_PATH)) return null
             return OdinId(
-                url.removePrefix("https://").removeSuffix("/pub/image")
+                url.removePrefix("https://").removeSuffix(PUB_IMAGE_PATH)
             )
         }
     }

@@ -225,6 +225,10 @@ fun VaultScreen(
 
     // Picker active tracking (passed to biometric gate to suppress background detection)
     var isPickerActive by remember { mutableStateOf(false) }
+    // Mirror to VaultPreferences so VaultSessionTracker (Activity lifecycle) skips the
+    // background re-lock while a picker is presented — leaving to a picker stops the Activity
+    // but isn't "leaving the app" (#936).
+    LaunchedEffect(isPickerActive) { vaultPreferences.setPickerActive(isPickerActive) }
 
     var fileForAppend by remember { mutableStateOf<VaultEntry?>(null) }
 

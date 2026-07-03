@@ -175,6 +175,7 @@ import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
+import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
@@ -551,9 +552,10 @@ val appModule = module {
                     emergencyContactReceive.onRevoked(sender, file)
                 }
                 // Background backstop: the live status-message handlers above only fire on the
-                // WS-push path, so a designation/revocation that arrived during cold sync (or a
-                // dropped event) is never applied. Reconcile both directions against the
-                // authoritative temporal-access grant in the background — no screen required.
+                // WS-push path, so a designation that arrived during cold sync (or a dropped
+                // event) is never applied. Recover missed SETs against the temporal-access
+                // preflight in the background — no screen required. Set-only: the reconciler
+                // never clears; revocation is applied solely by onRevoked above (issue #961).
                 get<EmergencyContactReconciler>().start()
                 // endregion
 
@@ -806,6 +808,7 @@ val appModule = module {
             stickerPermissionViewModel = get(StickerPermissionQualifier),
             liveLocationShareService = get(),
             liveShareReadiness = get(),
+            locationService = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -851,7 +854,6 @@ val appModule = module {
             contactRepository = get(),
             connectionService = get(),
             contactService = get(),
-            emergencyContactReconciler = get(),
             temporalDriveReadProvider = get(),
             credentialsManager = get(),
             tracker = get(),
@@ -870,6 +872,19 @@ val appModule = module {
             pointStore = get(),
             credentialsManager = get(),
             locationService = get(),
+        )
+    }
+    viewModel { params ->
+        ShareLocationViewModel(
+            conversationId = params.get(),
+            previewProvider = get(),
+            locationService = get(),
+            locationPreferences = get(),
+            liveShareReadiness = get(),
+            liveLocationShareService = get(),
+            chatMessageSenderService = get(),
+            conversationStream = get(),
+            fileOperationsProvider = get(),
         )
     }
     viewModelOf(::ContactBookViewModel)

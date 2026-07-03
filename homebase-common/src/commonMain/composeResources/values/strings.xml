@@ -137,7 +137,6 @@
     <string name="avatar_conversation">Conversation avatar</string>
     <string name="avatar_default">Default avatar</string>
     <string name="avatar_public">Public avatar</string>
-    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -1184,7 +1183,6 @@
     <string name="cd_not_selected">Not selected</string>
     <string name="cd_open_externally">Open externally</string>
     <string name="cd_navigate_forward">Navigate forward</string>
-    <string name="cd_group_avatar">Group</string>
     <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
@@ -1322,6 +1320,8 @@
     <string name="location_locate_age_hours">%1$dh</string>
     <string name="location_locate_age_days">%1$dd</string>
     <string name="location_locatable_broken_cd">No longer connected</string>
+    <string name="location_locate_no_data">no data</string>
+    <string name="location_locatable_unreachable_cd">Can't reach their server</string>
     <string name="location_emergency_access_section">Who can locate you</string>
     <string name="location_emergency_access_manage">Add emergency contacts</string>
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
@@ -1366,6 +1366,7 @@
     <string name="location_dashboard_stop_confirm_title">Stop all sharing?</string>
     <string name="location_dashboard_stop_confirm_body">This ends every live location share you've started.</string>
     <string name="share_live_location">Share live location</string>
+    <string name="live_share_back">Share your live location</string>
     <string name="live_share_duration_prompt">Share live location for</string>
     <string name="stop_sharing">Stop sharing</string>
     <string name="live_share_active">Live location · %1$s left</string>
@@ -1376,6 +1377,12 @@
     <string name="live_share_2h">2 hours</string>
     <string name="live_share_4h">4 hours</string>
     <string name="live_share_24h">24 hours</string>
+    <string name="share_location_title">Share location</string>
+    <string name="share_location_recenter_cd">Center on your current location</string>
+    <string name="share_location_resolving">Finding address…</string>
+    <string name="share_location_comment_hint">Add a comment</string>
+    <string name="share_location_live_banner">Share live location</string>
+    <string name="share_location_send_cd">Send location</string>
     <string name="live_share_enable_location_title">Turn on location to share</string>
     <string name="live_share_enable_location_body">To share your live location, set up location on this device first so it can send your position.</string>
     <string name="live_share_enable_location_cta">Set up location</string>
