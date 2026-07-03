@@ -12,10 +12,22 @@ private const val TAG = "ProfileAvatarImageData"
 
 /**
  * Builds the [HomebaseImageData] for a [ProfileAttributeTypes.PHOTO] attribute's image payload,
- * or null if it isn't decodable (missing fileId/keyHeader/payload/IV — e.g. the attribute was
- * hand-constructed rather than read via [id.homebase.api.client.profile.ProfileRepository.loadAttributes]).
- * Mirrors `VaultEntry.imageDataFor`/`ContactBookEntry.profileImageData`: the IV is per-payload,
- * the AES key is the file's.
+ * or null if it isn't decodable (missing fileId/keyHeader/payload, or a present-but-corrupt IV —
+ * e.g. the attribute was hand-constructed rather than read via
+ * [id.homebase.api.client.profile.ProfileRepository.loadAttributes]).
+ *
+ * A payload with **no** `iv` at all is not an error: per [SetPhotoAttributeRequest]'s doc, the
+ * server stores the payload unencrypted ("as-is") for ANONYMOUS/AUTHENTICATED visibility, so it
+ * never gets one — that's permanent, not a transient "still uploading" state (unlike Vault, whose
+ * payloads are always eventually encrypted, where the same null-iv shape means "pending"; see
+ * `VaultEntry`/`VaultStream`'s `isPending` checks). We still request through the same authenticated
+ * drive-payload endpoint — Anonymous doesn't mean unauthenticated at the HTTP layer, only unencrypted
+ * at rest — with a zero IV; [DriveFileHttpProvider.decryptBytes][id.homebase.api.client.drives.files.DriveFileHttpProvider.decryptBytes]
+ * skips decryption entirely based on the server's own `payloadencrypted` response header, ignoring
+ * whatever [KeyHeader] we pass when that header is false, so the placeholder IV is never used.
+ *
+ * Mirrors `VaultEntry.imageDataFor`/`ContactBookEntry.profileImageData`, except for that one
+ * divergence (they both still require a real IV — every Vault/contact-sync payload is encrypted).
  *
  * Logs which specific check failed on a null return — this attribute did parse (it has an [id]/
  * [type]/[visibility]), so a null here means the photo silently won't render; the reason is
@@ -30,8 +42,12 @@ fun ProfileAttribute.photoImageData(): HomebaseImageData? {
         ?: return dropped("data.${ProfileAttributeTypes.KEY_PROFILE_IMAGE} missing (data=$data)")
     val descriptor = payloads?.firstOrNull { it.keyEquals(payloadKey) }
         ?: return dropped("no payload descriptor matching key '$payloadKey' (payloads=${payloads?.map { it.key }})")
-    val iv = descriptor.iv?.let { runCatching { Base64.decode(it) }.getOrNull() }
-        ?: return dropped("payload '$payloadKey' has no/undecodable iv (raw=${descriptor.iv})")
+    val iv = when (val rawIv = descriptor.iv) {
+        null -> ByteArray(16) // unencrypted payload (Anonymous/Authenticated) — never decrypted, see above
+        else -> runCatching { Base64.decode(rawIv) }.getOrElse {
+            return dropped("payload '$payloadKey' iv present but undecodable (raw=$rawIv)")
+        }
+    }
 
     return HomebaseImageData(
         driveId = drive,
