@@ -173,6 +173,7 @@ import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
+import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
@@ -869,6 +870,19 @@ val appModule = module {
             pointStore = get(),
             credentialsManager = get(),
             locationService = get(),
+        )
+    }
+    viewModel { params ->
+        ShareLocationViewModel(
+            conversationId = params.get(),
+            previewProvider = get(),
+            locationService = get(),
+            locationPreferences = get(),
+            liveShareReadiness = get(),
+            liveLocationShareService = get(),
+            chatMessageSenderService = get(),
+            conversationStream = get(),
+            fileOperationsProvider = get(),
         )
     }
     viewModelOf(::ContactBookViewModel)
