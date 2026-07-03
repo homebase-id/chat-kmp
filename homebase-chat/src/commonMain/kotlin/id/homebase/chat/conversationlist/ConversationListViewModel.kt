@@ -33,6 +33,7 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.livelocation.ShareBackResult
+import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
 import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
 import id.homebase.chat.services.livelocation.shareLiveLocationBack
 import id.homebase.core.location.GpsRequestReason
@@ -354,27 +355,37 @@ class ConversationListViewModel(
             }
         }
 
-        // Track whether MY live share already covers the open conversation. While it does, the
-        // bubbles hide their "share live location" offers — inviting the user to start a share
-        // they're already running is confusing, and a second tap would create a duplicate live
-        // message (#966 follow-up; the app-wide "you're sharing" indicator is #816).
+        // Track MY live-share state against the open conversation and globally. FULL coverage
+        // hides the bubbles' "share live location" offers (starting a share that's already
+        // running is confusing, and a second tap would create a duplicate live message — #966
+        // follow-up). ANY coverage + the global value drive the purple sharing pins in the
+        // conversation and chat-list top bars (#816). No ticker here: the pin/bubble composables
+        // derive visibility from `now < untilMs` with their own exact-deadline tickers.
         viewModelScope.launch {
             combine(
                 ActiveConversation.conversation,
                 liveLocationShareService.recipients,
             ) { conversationId, roster -> conversationId to roster }
                 .collectLatest { (conversationId, roster) ->
-                    val untilMs = conversationId?.let { id ->
-                        val recipients = runCatching {
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    _uiState.update {
+                        it.copy(ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs))
+                    }
+                    var fullUntilMs: Long? = null
+                    var anyUntilMs: Long? = null
+                    conversationId?.let { id ->
+                        val recipientIds = runCatching {
                             conversationStream.getRecipients(id, emptyList(), null)
-                        }.getOrDefault(emptyList())
-                        liveShareCoverageUntilMs(
-                            roster = roster,
-                            recipientIds = recipients.map { it.domainName },
-                            nowMs = Clock.System.now().toEpochMilliseconds(),
+                        }.getOrDefault(emptyList()).map { it.domainName }
+                        fullUntilMs = liveShareCoverageUntilMs(roster, recipientIds, nowMs)
+                        anyUntilMs = liveShareAnyUntilMs(roster, recipientIds, nowMs)
+                    }
+                    _messagesUiState.update {
+                        it.copy(
+                            ownLiveShareUntilMs = fullUntilMs,
+                            ownLiveShareInConversationUntilMs = anyUntilMs,
                         )
                     }
-                    _messagesUiState.update { it.copy(ownLiveShareUntilMs = untilMs) }
                 }
         }
 
@@ -903,6 +914,12 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.OpenLocationSetup -> {
+                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
+            }
+
+            is ConversationListUiAction.OpenLocationDashboard -> {
+                // Same navigation as setup: openLocation routes to the dashboard when the add-on
+                // is activated — always true while a share is running (the pin's only tap path).
                 sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
             }
 
