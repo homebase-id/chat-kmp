@@ -56,4 +56,17 @@ class LocateVerifyFreshnessTest {
         val justUnder = now - LOCATE_VERIFY_TTL_MS + 1
         assertFalse(LocateVerifyStatus.Active(newestModifiedMs = 123L, verifiedAtMs = justUnder).needsReverify(now))
     }
+
+    // Unreachable (verify threw, #879) is Resolved: a network blip is retried after the TTL like
+    // any other result, instead of the old drop-the-key-and-blank behavior.
+
+    @Test
+    fun freshUnreachableIsNotRetriedYet() {
+        assertFalse(LocateVerifyStatus.Unreachable(verifiedAtMs = now - 1_000).needsReverify(now))
+    }
+
+    @Test
+    fun staleUnreachableRetries() {
+        assertTrue(LocateVerifyStatus.Unreachable(verifiedAtMs = now - LOCATE_VERIFY_TTL_MS).needsReverify(now))
+    }
 }
