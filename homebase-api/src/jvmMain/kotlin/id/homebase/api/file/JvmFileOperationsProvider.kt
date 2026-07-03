@@ -67,13 +67,35 @@ class JvmFileOperationsProvider : FileOperationsProvider {
         return if (file.exists() && file.isFile) file.length() else 0L
     }
 
+    override suspend fun sourceExists(path: String): Boolean =
+        withContext(Dispatchers.IO) { File(path).exists() }
+
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray,
         prefix: String,
         suffix: String
     ): String =
+        writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Encrypted, ready-to-transmit payloads live in the durable app-data staging dir (#842),
+    // NOT the OS-reclaimable cache dir — see getOutboxStagingDirectory(). The interface
+    // default routes writeBytesToOutboxTempFile through it.
+    override fun getOutboxStagingDirectory(): String =
+        File(JvmFileSystemUtil.getAppDataDirectory(), OUTBOX_STAGING_DIR_NAME)
+            .apply { mkdirs() }
+            .absolutePath
+
+    // upload-temp lives under the app cache dir (not java.io.tmpdir), so the Storage screen
+    // counts it and the CacheSweeper reaps it on every startup (disposable; #844 PR4).
+    private suspend fun writeBytesIn(
+        dirName: String,
+        bytes: ByteArray,
+        prefix: String,
+        suffix: String
+    ): String =
         withContext(Dispatchers.IO) {
-            val file = File.createTempFile(prefix, suffix)
+            val tempDir = File(getCacheDirectory(), dirName).apply { mkdirs() }
+            val file = File.createTempFile(prefix, suffix, tempDir)
             file.writeBytes(bytes)
             file.absolutePath
         }

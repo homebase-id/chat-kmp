@@ -4,7 +4,7 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.lib.image.ImageFormatDetector
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 
 object MessageAttachmentBuilder {
 
@@ -89,6 +89,25 @@ object MessageAttachmentBuilder {
                                         descriptorContent = DescriptorContent.descriptorContentFromAudioFile(
                                             name = attachment.displayName ?: attachment.filePath,
                                             lengthSeconds = attachment.audioLengthSeconds ?: 0)
+                                    )
+                                ),
+                            thumbnails = thumbs?.thumbnails ?: emptyList(),
+                            previewThumbs = listOfNotNull(thumbs?.preview)
+                        )
+                    }
+                    attachment.contentType == "application/pdf" -> {
+                        val thumbs =
+                            MessageThumbnailGenerator.generateFromPdf(attachment.filePath, payloadKey)
+
+                        PayloadBundle(
+                            payloads =
+                                listOf(
+                                    PayloadFile(
+                                        key = payloadKey,
+                                        filePath = attachment.filePath,
+                                        contentType = attachment.contentType,
+                                        previewThumbnail = thumbs?.preview,
+                                        descriptorContent = attachment.displayName,
                                     )
                                 ),
                             thumbnails = thumbs?.thumbnails ?: emptyList(),

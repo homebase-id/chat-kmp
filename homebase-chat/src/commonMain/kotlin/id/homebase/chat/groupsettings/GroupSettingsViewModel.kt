@@ -12,7 +12,6 @@ import id.homebase.api.client.drives.files.RecipientTransferHistoryEntry
 import id.homebase.api.client.drives.files.TransferStatus
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
-import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Back
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Error
@@ -39,7 +38,6 @@ import id.homebase.chat.services.toErrorDetailRes
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.util.buildConnectToIdentityUrl
-import id.homebase.core.util.initials
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -393,15 +391,7 @@ class GroupSettingsViewModel(
 
                 val contacts = conversation.participants
                     .filter { it != domain }
-                    .map { odinId ->
-                        contactService.resolveByOdinId(odinId) ?: ContactUiModel(
-                            id = Uuid.random(),
-                            odinId = odinId,
-                            name = odinId.domainName,
-                            avatarInitials = odinId.domainName.initials(),
-                            connectionState = ContactConnectionState.NotConnected
-                        )
-                    }
+                    .map { odinId -> contactService.resolveByOdinId(odinId) }
 
                 _uiState.update {
                     it.copy(

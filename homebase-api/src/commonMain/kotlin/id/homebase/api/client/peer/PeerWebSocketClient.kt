@@ -3,6 +3,7 @@ package id.homebase.api.client.peer
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.createPlatformHttpClient
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -24,7 +25,6 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveWebSocketUpsertWorker
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.toBase64
-import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -82,7 +82,7 @@ class PeerWebSocketClient(
     private val maxReconnectDelayMs = 30_000L
     private var closed = false
 
-    private val client = HttpClient { install(WebSockets) }
+    private val client = createPlatformHttpClient { install(WebSockets) }
 
     // Per-drive upsert workers, keyed by drive alias. Lazily created on the first file event.
     private val wsUpsertWorkers = mutableMapOf<Uuid, DriveWebSocketUpsertWorker>()

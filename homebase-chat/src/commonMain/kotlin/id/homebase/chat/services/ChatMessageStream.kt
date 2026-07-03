@@ -835,7 +835,7 @@ class ChatMessageStream(
                 ?.let { return it }
         }
 
-        return contactService.resolveByOdinId(author)?.name ?: author.domainName
+        return contactService.resolveByOdinId(author).name
     }
 
 }

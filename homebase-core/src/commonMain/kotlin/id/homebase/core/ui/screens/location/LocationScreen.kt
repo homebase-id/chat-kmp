@@ -243,6 +243,7 @@ fun LocationScreen(
                 onManageEmergencyAccess = {
                     uiState.emergencyManageUrl?.let { uriHandler.openUrl(it) }
                 },
+                onLocatableExpandedChange = { execute(LocationUiAction.SetLocatableExpanded(it)) },
             )
         } else {
             LocationContent(

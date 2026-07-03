@@ -69,6 +69,7 @@ data class MessageListUiState(
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    val isConnected: Boolean = true,
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
@@ -318,6 +319,15 @@ sealed interface FullScreenOverlay {
         val payload: PayloadDescriptor,
         val localFilePath: String? = null,
         val uploadMessageId: Uuid? = null,
+    ) : FullScreenOverlay
+
+    @Immutable
+    data class PdfViewerData(
+        val messageId: Uuid,
+        val fileId: Uuid,
+        val payloadKey: String,
+        val title: String,
+        val userDate: Instant,
     ) : FullScreenOverlay
 }
 

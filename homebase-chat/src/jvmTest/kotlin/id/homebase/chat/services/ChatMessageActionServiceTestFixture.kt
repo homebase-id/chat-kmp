@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -226,6 +227,7 @@ class ChatMessageActionServiceTestFixture(
         val conversationService = ConversationService(
             credentialsManager = credentialsManager,
             payloadBundleEncryptionService = FakePayloadBundleEncryptor(),
+            uploadService = buildTestUploadService(outboxSync, optimisticWriter, FakePayloadBundleEncryptor(), credentialsManager),
             dbm = dbm,
             introductionProvider = FakeIntroductionSender(),
             scope = scope,
@@ -244,6 +246,7 @@ class ChatMessageActionServiceTestFixture(
             reactionProvider = reactionProvider,
             credentialsManager = credentialsManager,
             fileProvider = fileProvider,
+            payloadDownloadService = PayloadDownloadService(fileProvider, NoopFileOperationsProvider()),
             dbm = dbm,
             outboxSync = outboxSync,
             optimisticWriter = optimisticWriter,

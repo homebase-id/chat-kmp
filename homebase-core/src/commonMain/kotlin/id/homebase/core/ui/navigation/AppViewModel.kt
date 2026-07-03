@@ -8,8 +8,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
-import id.homebase.chat.data.IncomingConnectionRequestUiModel
-import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
@@ -39,10 +37,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.coroutines.cancellation.CancellationException
 
 class AppViewModel(
-    private val connectionRequestService: ConnectionRequestService,
     private val credentialsManager: CredentialsManager,
     private val notificationService: NotificationService,
     private val shareContentProcessor: ShareContentProcessor,
@@ -62,7 +58,6 @@ class AppViewModel(
     val navigationEvents: Flow<NotificationNavigationEvent> = _navigationEvents.receiveAsFlow()
 
     private var credentialsJob: Job? = null
-    private var listenForConnectionRequestsJob: Job? = null
     private var upgradeCheckJob: Job? = null
 
     init {
@@ -108,10 +103,7 @@ class AppViewModel(
             credentialsManager.credentialsFlow.collect { credentials ->
                 if (credentials != null) {
                     _uiState.update { it.copy(currentOdinId = credentials.domain) }
-                    listenForConnectionRequests()
                     checkPendingUpgrade()
-                } else {
-                    listenForConnectionRequestsJob?.cancel()
                 }
             }
         }
@@ -235,30 +227,11 @@ class AppViewModel(
         _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
     }
 
-    private fun listenForConnectionRequests() {
-        listenForConnectionRequestsJob?.cancel()
-        listenForConnectionRequestsJob = viewModelScope.launch {
-            try {
-                connectionRequestService.start()
-                connectionRequestService.incomingRequests.collect { incomingRequests ->
-                    _uiState.update { it.copy(incomingRequests = incomingRequests) }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.e(
-                    throwable = e,
-                    tag = "AppViewModel"
-                ) { "Failed to collect incoming requests: ${e.message}" }
-            }
-        }
-    }
 }
 
 @Immutable
 data class AppUiState(
     val currentOdinId: OdinId? = null,
-    val incomingRequests: List<IncomingConnectionRequestUiModel> = listOf(),
     val inAppNotification: RichNotificationData? = null,
     val updateAvailable: Boolean = false,
     val updateAvailableVersion: String = "",

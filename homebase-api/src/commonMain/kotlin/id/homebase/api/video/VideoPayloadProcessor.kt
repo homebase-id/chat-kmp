@@ -13,9 +13,9 @@ import id.homebase.api.file.withResolvedFile
 import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.utils.io.core.toByteArray
+import okio.Path.Companion.toPath
 import kotlin.time.Duration
 import kotlin.time.measureTimedValue
-import kotlin.uuid.Uuid
 
 
 class VideoPayloadProcessor(
@@ -238,7 +238,32 @@ class VideoPayloadProcessor(
                         "segments=${fileOperationsProvider.getFileSize(segmented.segmentsPath)}B"
                 }
 
-                Triple(segmented.playlistPath, segmented.segmentsPath, true)
+                // Promote the finished hls_<uuid>/ dir out of cacheDir scratch into the
+                // durable outbox staging dir (#842): the segment file rides an outbox row
+                // (possibly for days) and cacheDir scratch is swept on every startup.
+                // FFmpeg keeps writing into cacheDir (failure partials stay owned by
+                // FfmpegOutputCleanup / the startup sweep); this promote at the
+                // segmentation-success boundary IS the durability boundary. Key material
+                // (enc.key/keyinfo.txt) is already deleted by segmentAndEncrypt. The
+                // playlist references segments by bare filename, so moving the dir
+                // wholesale keeps it valid; cleanupHlsScratch keys off the hls_ dir-name
+                // prefix, which the promote preserves.
+                val scratchHlsDir = segmented.segmentsPath.toPath().parent
+                    ?: error("HLS segments path has no parent: ${segmented.segmentsPath}")
+                // Every FFmpegUtils actual writes into its own hls_<uuid>/ dir; promoting
+                // anything else wholesale (e.g. a shared scratch root) would drag sibling
+                // files along — fail loudly instead.
+                check(scratchHlsDir.name.startsWith("hls_")) {
+                    "expected an hls_<uuid> segment dir, got $scratchHlsDir"
+                }
+                val stagedHlsDir =
+                    fileOperationsProvider.promoteToOutboxStaging(scratchHlsDir.toString()).toPath()
+
+                Triple(
+                    (stagedHlsDir / segmented.playlistPath.toPath().name).toString(),
+                    (stagedHlsDir / segmented.segmentsPath.toPath().name).toString(),
+                    true,
+                )
             } else {
                 Triple(null, compressedPath, false)
             }
@@ -340,7 +365,10 @@ class VideoPayloadProcessor(
                     PayloadFile(
                         key = descriptorContentPayloadKey,
                         filePath =
-                            fileOperationsProvider.writeBytesToTempFile(
+                            // Encrypted, ready-to-transmit and referenced by the outbox row —
+                            // belongs in the durable staging bucket, NOT the disposable
+                            // upload-temp/ that gets swept every startup (#842).
+                            fileOperationsProvider.writeBytesToOutboxTempFile(
                                 keyHeader.encryptDataAes(metadataJson.toByteArray()),
                                 "payload",
                                 ".metadata"
@@ -377,8 +405,11 @@ class VideoPayloadProcessor(
         inputPath: String,
         keyHeader: KeyHeader
     ): String {
+        // Encrypted output goes straight into the durable outbox staging dir (#842) —
+        // writing it to cacheDir root left it untracked, so the startup sweep / OS
+        // cache reclaim deleted it out from under a pending outbox row (ENOENT retries).
         val outputPath =
-            "${fileOperationsProvider.getCacheDirectory()}/video-encrypted-${Uuid.random()}.bin"
+            fileOperationsProvider.createOutboxStagingPath("video-encrypted-", ".bin")
         fileOperationsProvider.writeStream(
             path = outputPath,
             data = AesCbc.streamEncryptWithCbc(

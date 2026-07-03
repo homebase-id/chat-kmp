@@ -46,6 +46,9 @@ data class LocationUiState(
     val whoICanLocate: List<ContactUiModel> = emptyList(),
     /** False until the locatable-contacts list has loaded at least once (drives the spinner). */
     val whoICanLocateLoaded: Boolean = false,
+    /** Per-entry temporal-verify status for the "who I can locate" list, keyed by odinId.domainName.
+     *  Absent key = not yet requested (renders nothing until the section is expanded). */
+    val whoICanLocateStatus: Map<String, LocateVerifyStatus> = emptyMap(),
     /** Owner-console deep link to manage the Emergency Location Access circle (the actual location
      *  drive grant); null until the identity is known. */
     val emergencyManageUrl: String? = null,
@@ -61,13 +64,79 @@ data class LocationUiState(
     val showMapTiles: Boolean get() = mapProvider == LocationMapProvider.OpenStreetMap
 }
 
+/**
+ * Result of the per-entry temporal-access preflight for a "who I can locate" row. Expand-triggered
+ * verifies show a spinner (visible feedback that the check is running); the periodic follow-up
+ * passes while the section stays open are silent (the old value stays visible until the new result
+ * lands, so the list doesn't flash spinners every minute). Resolved results carry
+ * [Resolved.verifiedAtMs] so a re-expand within [LOCATE_VERIFY_TTL_MS] reuses them, while an older
+ * result is re-verified (#950) — including [Unreachable], which retries on the next pass instead
+ * of blanking the row.
+ */
+sealed interface LocateVerifyStatus {
+    /** Preflight in flight with the spinner requested (expand-triggered, or no prior result). */
+    data object Loading : LocateVerifyStatus
+
+    /** A completed verify; [verifiedAtMs] is when the result landed (epoch ms), for the TTL. */
+    sealed interface Resolved : LocateVerifyStatus {
+        val verifiedAtMs: Long
+    }
+
+    /** Verify succeeded but the peer no longer grants us access → broken-link icon. */
+    data class Broken(override val verifiedAtMs: Long) : Resolved
+
+    /** We hold access; [newestModifiedMs] is the peer's newest-file time, or null when no data yet. */
+    data class Active(val newestModifiedMs: Long?, override val verifiedAtMs: Long) : Resolved
+
+    /**
+     * The verify threw (network/parse failure) — the peer's server is unreachable and access is
+     * unknown → disconnected icon. Inconclusive, so it must never look like [Broken]; being
+     * [Resolved] it is retried after the TTL like any other result.
+     */
+    data class Unreachable(override val verifiedAtMs: Long) : Resolved
+}
+
+/** Freshness window for a resolved locate-verify result: re-expands inside it reuse the cache. */
+const val LOCATE_VERIFY_TTL_MS = 60_000L
+
+/** Age past which a locate row's freshness label renders in the warning (orange) color (#879). */
+const val LOCATE_AGE_WARN_MS = 2 * 60 * 60_000L
+
+/**
+ * Whether a verify pass over "Who you can locate" should (re-)issue the temporal verify for a row
+ * in this state: never while one is in flight, not while a resolved result is younger than
+ * [LOCATE_VERIFY_TTL_MS], otherwise yes (never verified, or gone stale — including a stale
+ * [LocateVerifyStatus.Unreachable], so a network blip retries instead of sticking).
+ */
+fun LocateVerifyStatus?.needsReverify(nowMs: Long): Boolean = when (this) {
+    LocateVerifyStatus.Loading -> false
+    is LocateVerifyStatus.Resolved -> nowMs - verifiedAtMs >= LOCATE_VERIFY_TTL_MS
+    null -> true
+}
+
+/** Compact age-label bucket for a locate row: the unit to render and its (non-negative) value. */
+sealed interface LocateAgeBucket {
+    data class Minutes(val minutes: Int) : LocateAgeBucket
+    data class Hours(val hours: Int) : LocateAgeBucket
+    data class Days(val days: Int) : LocateAgeBucket
+}
+
+/** Buckets an age into the compact label unit: minutes under 1 h, hours through 96 h, then days. */
+fun locateAgeBucket(ageMs: Long): LocateAgeBucket = when {
+    ageMs < 60 * 60_000L -> LocateAgeBucket.Minutes((ageMs / 60_000L).toInt().coerceAtLeast(0))
+    ageMs <= 96 * 60 * 60_000L -> LocateAgeBucket.Hours((ageMs / 3_600_000L).toInt())
+    else -> LocateAgeBucket.Days((ageMs / 86_400_000L).toInt())
+}
+
+/** Whether a locate freshness label should render in the warning color: strictly older than 2 h. */
+fun locateAgeWarn(ageMs: Long): Boolean = ageMs > LOCATE_AGE_WARN_MS
+
 /** One row in the "Sharing with" list: a person and the latest time my share to them lasts. */
 data class OutgoingShareRow(
     /** Identity domain string (OdinId.domainName) — stable list key and stop target. */
     val odinId: String,
     val name: String,
     val avatarInitials: String,
-    val avatarUrl: String?,
     /** Longest end-time across this person's overlapping shares (UTC epoch-ms). */
     val untilMs: Long,
 )
@@ -77,7 +146,6 @@ data class IncomingShareRow(
     val odinId: String,
     val name: String,
     val avatarInitials: String,
-    val avatarUrl: String?,
     /** Age of their last received fix (ms); the label only shows past AGE_LABEL_AFTER_MS. */
     val ageMs: Long,
 )
@@ -116,6 +184,10 @@ sealed interface LocationUiAction {
     data class StopSharingWith(val odinId: String) : LocationUiAction
     /** Stop every outgoing live share (Dashboard "stop sharing with everyone"). */
     data object StopSharingWithEveryone : LocationUiAction
+    /** "Who you can locate" section expanded/collapsed. Expanded starts the periodic per-entry
+     *  link-freshness verify loop (immediate first pass, then every [LOCATE_VERIFY_TTL_MS]);
+     *  collapsed cancels it. */
+    data class SetLocatableExpanded(val expanded: Boolean) : LocationUiAction
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction

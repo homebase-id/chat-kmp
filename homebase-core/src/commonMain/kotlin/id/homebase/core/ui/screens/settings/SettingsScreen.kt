@@ -74,7 +74,6 @@ import id.homebase.resources.cancel
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
-import id.homebase.resources.settings_connections
 import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
@@ -101,7 +100,6 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBackClick: () -> Unit,
-    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
@@ -161,7 +159,6 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             onBackClick = onBackClick,
-            onNavigateToConnections = onNavigateToConnections,
             onNavigateToNotifications = onNavigateToNotifications,
             onNavigateToAppearance = onNavigateToAppearance,
            onNavigateToVaultSettings = onNavigateToVaultSettings,
@@ -224,7 +221,6 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
-    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
@@ -294,12 +290,6 @@ fun SettingsUi(
             }
             Spacer(modifier = Modifier.height(8.dp))
             SettingsSectionHeader(stringResource(MR.string.settings_section_general))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.People,
-                text = stringResource(MR.string.settings_connections),
-                onClick = onNavigateToConnections
-            )
-            Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
                 imageVector = Icons.Outlined.Person,
                 text = stringResource(MR.string.settings_profile_info),
@@ -452,7 +442,6 @@ fun SettingsUiPreview() {
             uiState = SettingsUiState(),
             onAction = {},
             onBackClick = {},
-            onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
             onNavigateToVaultSettings = {},

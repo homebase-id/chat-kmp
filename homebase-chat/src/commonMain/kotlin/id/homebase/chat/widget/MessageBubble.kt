@@ -578,6 +578,7 @@ fun ReceivedMessageBubble(
                             color = finalAuthorColor,
                             modifier = Modifier.padding(start = 12.dp, bottom = 2.dp),
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     Box {

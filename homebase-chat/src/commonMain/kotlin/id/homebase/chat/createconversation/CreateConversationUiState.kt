@@ -1,6 +1,7 @@
 package id.homebase.chat.createconversation
 
 import androidx.compose.runtime.Immutable
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
@@ -16,8 +17,17 @@ data class CreateConversationUiState(
 sealed interface CreateConversationListItem {
     data class Contacts(val contactGroups: List<ContactGroup>) : CreateConversationListItem
     data object NewGroup : CreateConversationListItem
-    data object NoteToSelf : CreateConversationListItem
-    data object ConnectionRequest : CreateConversationListItem
+
+    /**
+     * [self] is non-null only when surfaced by a self-name search → render as a contact row with the
+     * user's own avatar + "Name (you)". Null = the idle "Note to Self" action (sticky-note icon).
+     */
+    data class NoteToSelf(val self: SelfRef? = null) : CreateConversationListItem
+
+    /** The signed-in user, as needed to render their search-result row (avatar + name). */
+    @Immutable
+    data class SelfRef(val odinId: OdinId, val name: String, val initials: String)
+    data object NewContact : CreateConversationListItem
 }
 
 data class ContactGroup(

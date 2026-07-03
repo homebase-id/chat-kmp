@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,10 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.ui.assets.Apk
 import id.homebase.core.ui.assets.Excel
 import id.homebase.core.ui.assets.File
@@ -40,6 +44,7 @@ import id.homebase.core.util.formatFileSize
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_download_file
 import id.homebase.resources.chat_message_file_type_icon
+import id.homebase.resources.chat_message_pdf_preview
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -48,7 +53,9 @@ fun DocumentMediaItem(
     modifier: Modifier = Modifier,
     onDownloadClick: () -> Unit,
     onLongPress: () -> Unit,
-    isDownloading: Boolean = false
+    isDownloading: Boolean = false,
+    previewImageData: HomebaseImageData? = null,
+    showDownloadButton: Boolean = true,
 ) {
     val contentType = payload.contentType ?: ""
     val fileName = payload.descriptorContent ?: payload.key
@@ -65,67 +72,81 @@ fun DocumentMediaItem(
         else -> HomebaseIcons.File
     }
 
-    Row(
+    Column(
         modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(Dimens.Message.cornerRadius))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .combinedClickable(
                 onClick = onDownloadClick,
                 onLongClick = onLongPress
             )
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        // File Icon
-        Box(
-            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = fileIcon,
-                contentDescription = stringResource(MR.string.chat_message_file_type_icon),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(24.dp)
+        if (previewImageData != null) {
+            HomebaseImage(
+                imageData = previewImageData,
+                modifier = Modifier.fillMaxWidth().height(180.dp),
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
+                contentDescription = stringResource(MR.string.chat_message_pdf_preview),
             )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // File Details
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = fileName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (fileSize.isNotEmpty()) {
-                Text(
-                    text = fileSize,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // File Icon
+            Box(
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = fileIcon,
+                    contentDescription = stringResource(MR.string.chat_message_file_type_icon),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp)
                 )
             }
-        }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-        // Download Action (always visible)
-        IconButton(onClick = { onDownloadClick() }, modifier = Modifier.size(40.dp).testTag("downloadButton")) {
-            if (isDownloading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    strokeWidth = 2.dp
+            // File Details
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = fileName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-            } else {
-                Icon(
-                    modifier = Modifier.testTag("downloadButtonIcon"),
-                    imageVector = Icons.Default.Download,
-                    contentDescription = stringResource(MR.string.chat_message_download_file),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                if (fileSize.isNotEmpty()) {
+                    Text(
+                        text = fileSize,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (showDownloadButton) {
+                Spacer(modifier = Modifier.width(8.dp))
+
+                IconButton(onClick = { onDownloadClick() }, modifier = Modifier.size(40.dp).testTag("downloadButton")) {
+                    if (isDownloading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            modifier = Modifier.testTag("downloadButtonIcon"),
+                            imageVector = Icons.Default.Download,
+                            contentDescription = stringResource(MR.string.chat_message_download_file),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
     }

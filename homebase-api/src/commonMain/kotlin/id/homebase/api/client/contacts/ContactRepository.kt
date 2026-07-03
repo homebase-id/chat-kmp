@@ -200,21 +200,10 @@ class ContactRepository(
     suspend fun loadExtData(contact: Contact): ContactExtData? {
         if (ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY !in contact.payloadKeys) return null
         val fileId = contact.fileId ?: return null
-        val keyHeader = contact.keyHeader ?: return null
 
-        val bytes = try {
-            contactPayloadReader.getPayloadBytes(
-                driveId = driveId,
-                fileId = fileId,
-                key = ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY,
-                keyHeader = keyHeader,
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "loadExtData fetch failed for ${contact.uniqueId}" }
-            return null
-        } ?: return null
+        val bytes = contactPayloadReader.fetchPayload(
+            driveId, fileId, ContactsProvider.CONTACT_EXT_DATA_PAYLOAD_KEY,
+        ) ?: return null
 
         return runCatching {
             OdinSystemSerializer.deserialize<ContactExtData>(bytes.decodeToString())
@@ -222,6 +211,18 @@ class ContactRepository(
             Logger.w(it, TAG) { "loadExtData parse failed for ${contact.uniqueId}" }
             null
         }
+    }
+
+    /**
+     * Fetches and decrypts an arbitrary named payload from a contact file (e.g. the image referenced
+     * by an Experience attribute's `experience_image` key). Returns the raw decrypted bytes, or null
+     * when the [payloadKey] isn't present, the row is optimistic (no [Contact.fileId]), or the
+     * fetch fails. Like [loadExtData], call only on demand.
+     */
+    suspend fun loadPayloadBytes(contact: Contact, payloadKey: String): ByteArray? {
+        if (payloadKey.isBlank() || payloadKey !in contact.payloadKeys) return null
+        val fileId = contact.fileId ?: return null
+        return contactPayloadReader.fetchPayload(driveId, fileId, payloadKey)
     }
 
     // ------------------------------------------------------------
@@ -391,21 +392,10 @@ class ContactRepository(
     suspend fun loadAppExtData(contact: Contact, appId: String): String? {
         if (ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY !in contact.payloadKeys) return null
         val fileId = contact.fileId ?: return null
-        val keyHeader = contact.keyHeader ?: return null
 
-        val bytes = try {
-            contactPayloadReader.getPayloadBytes(
-                driveId = driveId,
-                fileId = fileId,
-                key = ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY,
-                keyHeader = keyHeader,
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "loadAppExtData fetch failed for ${contact.uniqueId}" }
-            return null
-        } ?: return null
+        val bytes = contactPayloadReader.fetchPayload(
+            driveId, fileId, ContactsProvider.CONTACT_APP_EXT_DATA_PAYLOAD_KEY,
+        ) ?: return null
 
         return runCatching {
             OdinSystemSerializer.deserialize<ContactAppExtData>(bytes.decodeToString())

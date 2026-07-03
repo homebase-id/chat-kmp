@@ -10,7 +10,6 @@ import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.LocationService
 import id.homebase.core.location.tracking.DemandReason
 import id.homebase.core.location.tracking.LocationPointStore
-import id.homebase.core.util.initials
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -82,9 +81,8 @@ class LiveLocationViewModel(
                         key = lp.senderOdinId.domainName,
                         lat = lp.point.lat,
                         lon = lp.point.lon,
-                        avatarUrl = contact?.avatarUrl?.ifEmpty { null },
-                        initials = contact?.avatarInitials?.ifEmpty { null }
-                            ?: lp.senderOdinId.domainName.initials(),
+                        odinId = lp.senderOdinId,
+                        initials = contact.avatarInitials,
                         ageMs = now - lp.receivedAtMs,
                     )
                 }
@@ -128,9 +126,8 @@ class LiveLocationViewModel(
             key = "self",
             lat = lat,
             lon = lon,
-            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
-            initials = contact?.avatarInitials?.ifEmpty { null }
-                ?: ownId?.domainName?.initials().orEmpty(),
+            odinId = ownId,
+            initials = contact?.avatarInitials.orEmpty(),
             ageMs = if (fixTimeMs != null) now - fixTimeMs else 0L,
             isSelf = true,
         )

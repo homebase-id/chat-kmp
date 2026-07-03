@@ -38,8 +38,11 @@ import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import id.homebase.chat.services.GroupHealCleanupInfo
 import id.homebase.chat.services.GroupHealInfo
 import id.homebase.chat.services.StatusMessage
@@ -77,6 +80,12 @@ import kotlin.uuid.Uuid
 class ConversationService(
     private val credentialsManager: CredentialsManager,
     private val payloadBundleEncryptionService: PayloadBundleEncryptor,
+    // Shared upload pipeline — the conversation-CREATE file (writeConversationFile) routes its
+    // encrypt+enqueue through here (#844). The conversation-UPDATE path (updateConversationInternal)
+    // deliberately stays a documented guard exception: it's a hot, multi-purpose mutation method
+    // (archival/participants/leaveGroup/heal) where the encrypt-new-avatar branch is rare, so
+    // routing it all through UploadService is high blast radius for little benefit.
+    private val uploadService: UploadService,
     private val dbm: DatabaseManager,
     private val introductionProvider: IntroductionSender,
     private val scope: CoroutineScope,
@@ -489,13 +498,6 @@ class ConversationService(
         }
         // ---- end DEBUG ----
 
-        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
-            conversationId,
-            payloadBundle,
-            keyHeader.aesKey,
-            scope
-        )
-
         val metadata = UploadFileMetadata(
             allowDistribution = true,
             isEncrypted = true,
@@ -504,20 +506,10 @@ class ConversationService(
                 tags = if (isGroup) listOf(ChatProtocol.ConversationGroupTag) else null,
                 fileType = ChatProtocol.ConversationFileType,
                 content = OdinSystemSerializer.serialize(content),
-                previewThumbnail = encryptedBundle.previewThumbs.minByOrNull { it.pixelWidth }
+                // previewThumbs pass through encryption unchanged, so derive the header's preview
+                // from the plaintext bundle — UploadService encrypts the bundle internally.
+                previewThumbnail = payloadBundle?.previewThumbs?.minByOrNull { it.pixelWidth }
             ),
-        )
-
-        val request = UploadFileRequest(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            metadata = metadata.encryptContent(keyHeader),
-            transitOptions = TransitOptions(
-                recipients = transitRecipients,
-                useAppNotification = false
-            ),
-            payloads = encryptedBundle.payloads,
-            thumbnails = encryptedBundle.thumbnails
         )
 
         // ---- DEBUG instrumentation ----
@@ -570,14 +562,32 @@ class ConversationService(
                 audit.finish("ABORTED at conversationStream.loadConversation")
                 throw e   // original code did not catch — preserve propagation
             }
-        audit.step(3, "outboxSync.tryEnqueue(UploadFileRequest)")
-        val enqueued = outboxSync.tryEnqueue(request)
-        audit.info("STEP 3 returned $enqueued")
-        audit.check("outboxEnqueue", enqueued.enqueued, "outboxSync.tryEnqueue → $enqueued — file will not be uploaded; conversation creation effectively failed")
+        // Encrypt + build request + enqueue via the shared pipeline. writeOptimistic=false: the
+        // optimistic writeNewFile above already ran (this method's write→readback→loadConversation→
+        // enqueue ordering is deliberate, opposite of UploadService's enqueue→write). seedCache=false:
+        // a conversation file has no chat-bubble thumbnail to seed.
+        audit.step(3, "uploadService.upload (encrypt + enqueue)")
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
+                driveId = chatDrive,
+                uniqueId = conversationId,
+                keyHeader = keyHeader,
+                bundle = payloadBundle,
+                metadata = metadata,
+                transit = TransitOptions(recipients = transitRecipients, useAppNotification = false),
+                originalRecipientCount = transitRecipients.size,
+                writeOptimistic = false,
+                seedCache = false,
+            ),
+            scope = scope,
+        )
+        val enqueued = outcome is UploadOutcome.Enqueued
+        audit.info("STEP 3 outcome=$outcome")
+        audit.check("outboxEnqueue", enqueued, "uploadService.upload → $outcome — file will not be uploaded; conversation creation effectively failed")
         val outboxAfter = dbm.outbox.count()
         audit.post("counts: outboxRows=$outboxAfter (delta=${outboxAfter - outboxBefore}, expected ≥+1 if enqueue succeeded)")
         audit.finish("returned $enqueued")
-        return enqueued.enqueued
+        return enqueued
         // ---- end DEBUG ----
     }
 

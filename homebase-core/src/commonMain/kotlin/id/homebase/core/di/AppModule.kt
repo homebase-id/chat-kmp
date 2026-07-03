@@ -9,6 +9,7 @@ import id.homebase.api.file.CacheAudit
 import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.file.wipeOutboxStaging
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.core.config.dataUpgradeReturnUrl
 
@@ -46,9 +47,13 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContentParser
-import id.homebase.chat.services.PayloadBundleEncryptionService
-import id.homebase.chat.services.PayloadCacheSeeder
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.VideoEncodePolicy
+import id.homebase.upload.OptimisticLocalWriter
+import id.homebase.upload.UploadService
+import id.homebase.chat.services.outbox.OptimisticWriterPort
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.api.client.drives.HomebaseFile
@@ -73,9 +78,11 @@ import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
@@ -118,7 +125,6 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
-import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
@@ -177,6 +183,14 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    // Adapter so the upload pipeline's encoding policy doesn't couple homebase-common's
+    // UserPreferences to homebase-upload. Reads the live preference value on each access.
+    single<VideoEncodePolicy> {
+        val prefs: UserPreferences = get()
+        object : VideoEncodePolicy {
+            override val allowTenBitVideo: Boolean get() = prefs.allowTenBitVideo
+        }
+    }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
@@ -223,6 +237,8 @@ val appModule = module {
     single { ContactBookPreferences(get()) }
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
+    // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
+    singleOf(::ContactOverrideStore)
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -271,9 +287,7 @@ val appModule = module {
     single<LocationTracker> { createLocationTracker(get<LocationFixRouter>()) }
     single {
         LocationTrackUploaderService(
-            outboxSync = get(),
-            optimisticWriter = get(),
-            payloadEncryptionService = get(),
+            uploadService = get(),
             fileOperationsProvider = get(),
             driveFileProvider = get(),
             databaseManager = get(),
@@ -418,6 +432,17 @@ val appModule = module {
                         "logout cache sweep failed"
                     }
                 }
+                // The durable outbox staging dir (#842) sits OUTSIDE cacheDir, so the
+                // sweep above can't reach it — wipe it explicitly. Pairs with the
+                // outbox-table wipe (driveSyncManager.clearStorage()): rows and staged
+                // payloads leave together.
+                runCatching {
+                    wipeOutboxStaging(fileOps.getOutboxStagingDirectory())
+                }.onFailure {
+                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                        "logout outbox-staging wipe failed"
+                    }
+                }
                 runCatching { imageLoader.memoryCache?.clear() }
                     .onFailure {
                         Logger.w(tag = "YouAuthFlowManager", throwable = it) {
@@ -461,6 +486,20 @@ val appModule = module {
                 // consumer from existing when relay packets arrive (bug #824). The collector is
                 // never cancelled here; logout clears it in-stream via SessionEnded.
                 get<LiveLocationReceiveStore>().reset()
+
+                // Self-heal crash-orphaned encrypted payload temps. Two dirs (#842):
+                // the durable staging dir (outside cacheDir, invisible to the
+                // CacheSweeper — this reap is its only safety net) and the legacy
+                // <cacheDir>/outbox-temp (KEEP-protected; still referenced by outbox
+                // rows enqueued before the app update — drains itself, then only this
+                // reap empties leftovers). Fire-and-forget.
+                get<OutboxSync>().scheduleIdleOutboxTempReap(
+                    get<FileOperationsProvider>().getOutboxStagingDirectory()
+                )
+                get<OutboxSync>().scheduleIdleOutboxTempReap(
+                    get<FileOperationsProvider>().getCacheDirectory().trimEnd('/') +
+                        "/" + CacheAudit.OUTBOX_TEMP_DIR_NAME
+                )
 
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
@@ -517,9 +556,10 @@ val appModule = module {
                     emergencyContactReceive.onRevoked(sender, file)
                 }
                 // Background backstop: the live status-message handlers above only fire on the
-                // WS-push path, so a designation/revocation that arrived during cold sync (or a
-                // dropped event) is never applied. Reconcile both directions against the
-                // authoritative temporal-access grant in the background — no screen required.
+                // WS-push path, so a designation that arrived during cold sync (or a dropped
+                // event) is never applied. Recover missed SETs against the temporal-access
+                // preflight in the background — no screen required. Set-only: the reconciler
+                // never clears; revocation is applied solely by onRevoked above (issue #961).
                 get<EmergencyContactReconciler>().start()
                 // endregion
 
@@ -567,6 +607,11 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)
+    // Adapts chat's OptimisticWriter onto the upload pipeline's OptimisticLocalWriter port, so
+    // the shared UploadService writes optimistic rows without homebase-upload depending on chat.
+    single<OptimisticLocalWriter> { OptimisticWriterPort(get()) }
+    // The one shared, feature-agnostic upload pipeline (#844 Deliverable B).
+    singleOf(::UploadService)
     // Shared optimistic-send cache seeder — used by Chat, Moments, Vault, Stickers
     // so a just-sent image shows its sharp thumbnail through "finalizing".
     singleOf(::PayloadCacheSeeder)
@@ -592,6 +637,7 @@ val appModule = module {
         ConversationService(
             credentialsManager = get(),
             payloadBundleEncryptionService = get(),
+            uploadService = get(),
             dbm = get(),
             introductionProvider = get(),
             scope = get(),
@@ -766,6 +812,7 @@ val appModule = module {
             stickerPermissionViewModel = get(StickerPermissionQualifier),
             liveLocationShareService = get(),
             liveShareReadiness = get(),
+            locationService = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -811,7 +858,7 @@ val appModule = module {
             contactRepository = get(),
             connectionService = get(),
             contactService = get(),
-            emergencyContactReconciler = get(),
+            temporalDriveReadProvider = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),
@@ -833,6 +880,7 @@ val appModule = module {
     }
     viewModelOf(::ContactBookViewModel)
     viewModelOf(::ContactDetailViewModel)
+    viewModelOf(::AddContactViewModel)
     viewModelOf(::ContactBookSettingsViewModel)
     singleOf(::LocationDeviceDirectory)
     viewModel { params ->
@@ -888,7 +936,6 @@ val appModule = module {
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
-    viewModelOf(::ConnectionsViewModel)
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)

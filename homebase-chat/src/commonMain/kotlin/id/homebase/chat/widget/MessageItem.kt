@@ -67,6 +67,9 @@ fun MessageItem(
                 onUiAction(ConversationListUiAction.StartLiveLocationShare(message.id, durationMs))
             },
             onStop = { onUiAction(ConversationListUiAction.StopLiveLocationShare(message.id)) },
+            onStartShareBack = { durationMs ->
+                onUiAction(ConversationListUiAction.ShareLiveLocationBack(message.id, durationMs))
+            },
             onOpenMap = { onUiAction(ConversationListUiAction.OpenLiveLocationMap) },
         )
     }
