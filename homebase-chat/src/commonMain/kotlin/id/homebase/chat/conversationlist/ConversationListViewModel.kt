@@ -44,6 +44,7 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.config.stickerLabeledDrive
@@ -658,7 +659,10 @@ class ConversationListViewModel(
         viewModelScope.launch {
             authConnectionCoordinator.connectionState
                 .collectLatest { state ->
-                    _uiState.update { it.copy(connectionStatus = state.toConnectionStatus()) }
+                    val status = state.toConnectionStatus()
+                    _uiState.update { it.copy(connectionStatus = status) }
+                    // Drives the media upload overlay's online-only "Sending" spinner (#948).
+                    _messagesUiState.update { it.copy(isConnected = status == AppConnectionStatus.Connected) }
                 }
         }
 

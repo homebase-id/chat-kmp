@@ -69,6 +69,11 @@ data class MessageListUiState(
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    /** True once the app is online. Gates the media upload overlay's "Sending" spinner:
+     *  offline a queued item shows only the corner outbox icon, never a perpetual spinner
+     *  (#948). Defaults true so legitimate online feedback isn't hidden before the first
+     *  connection-state emission arrives. */
+    val isConnected: Boolean = true,
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
