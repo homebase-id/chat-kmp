@@ -173,13 +173,22 @@ fun MediaMessage(
             }
         }
 
-        if (uploadStatus != null && !isLinkPreview) {
+        if (uploadStatus != null && uploadStatus.showsMediaOverlay() && !isLinkPreview) {
             UploadProgressOverlay(
                 status = uploadStatus,
                 modifier = Modifier.matchParentSize(),
             )
         }
     }
+}
+
+// Only draw the dark scrim + big spinner while real work is in flight (video transcode,
+// active upload) or on the brief completion tick. Preparing/Sending are shown by the
+// bottom-right outbox indicator alone — an offline-queued item durably enqueues as
+// Sending and never progresses, so gating it here stops the endless spinner (#948).
+internal fun UploadStatus.showsMediaOverlay(): Boolean = when (this) {
+    UploadStatus.Preparing, UploadStatus.Sending -> false
+    is UploadStatus.Processing, is UploadStatus.Uploading, UploadStatus.Completed -> true
 }
 
 @Composable
