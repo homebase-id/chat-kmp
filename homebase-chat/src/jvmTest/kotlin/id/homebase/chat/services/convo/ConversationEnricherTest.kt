@@ -100,4 +100,22 @@ class ConversationEnricherTest {
         assertEquals("O", result.conversation.avatarModel.initials)
         assertEquals(null, result.conversation.avatarModel.imageData)
     }
+
+    @Test
+    fun enrich_withSelf_ownerAvatar_hasNoSyntheticImageData_evenWithPreview() {
+        // Regression for #956: even when the owner has a profile preview, the
+        // self avatar must NOT carry a synthetic 20px imageData. Leaving it null
+        // routes OwnerAvatar -> PublicAvatar -> /pub/image (full-res), matching
+        // the sharp header avatar instead of a blurry blown-up preview.
+        val enricher = ConversationEnricher()
+
+        val result = enricher.enrich(
+            convo = selfOwnerConvo(),
+            contactMap = emptyMap(),
+            ownerSession = session.copy(profileImagePreviewThumbnail = "d2hhdGV2ZXI="),
+        )
+
+        assertEquals(null, result.conversation.avatarModel.imageData)
+        assertEquals("O", result.conversation.avatarModel.initials)
+    }
 }
