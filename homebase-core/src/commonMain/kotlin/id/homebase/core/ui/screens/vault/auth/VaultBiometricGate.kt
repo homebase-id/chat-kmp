@@ -50,12 +50,10 @@ fun VaultBiometricGate(
 
     val biometricsEnabled by vaultPreferences.biometricsEnabled.collectAsStateWithLifecycle()
 
-    DisposableEffect(biometricsEnabled) {
-        vaultPreferences.setVaultScreenActive(biometricsEnabled)
-        onDispose {
-            vaultPreferences.setVaultScreenActive(false)
-        }
-    }
+    // NOTE: `isVaultScreenActive` (the foreground-active flag that suppresses the idle
+    // auto-lock and drives the iOS privacy overlay) is owned by AppNavHost, which tracks
+    // the whole Vault back stack — this gate is disposed when a sub-screen (e.g. the note
+    // editor) is pushed on top, so it can't span the flow.
 
     var isPrivacyOverlayVisible by remember { mutableStateOf(false) }
 

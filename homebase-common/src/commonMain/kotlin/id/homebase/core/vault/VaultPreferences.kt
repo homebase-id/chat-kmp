@@ -7,7 +7,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
-class VaultPreferences(private val databaseManager: DatabaseManager) {
+class VaultPreferences(
+    private val databaseManager: DatabaseManager,
+    private val clock: Clock = Clock.System,
+) {
 
     private val keyValue get() = databaseManager.keyValue
 
@@ -40,26 +43,30 @@ class VaultPreferences(private val databaseManager: DatabaseManager) {
     }
 
     fun recordAuthSuccess() {
-        val now = Clock.System.now().toEpochMilliseconds()
+        val now = clock.now().toEpochMilliseconds()
         lastAuthTimeMs = now
         lastActionTimeMs = now
     }
 
     fun recordAppBackgrounded() {
-        lastBackgroundTimeMs = Clock.System.now().toEpochMilliseconds()
+        lastBackgroundTimeMs = clock.now().toEpochMilliseconds()
     }
 
     fun recordUserAction() {
-        lastActionTimeMs = Clock.System.now().toEpochMilliseconds()
+        lastActionTimeMs = clock.now().toEpochMilliseconds()
     }
 
     fun isAuthSessionValid(): Boolean {
         if (lastAuthTimeMs == 0L) return false
-        val now = Clock.System.now().toEpochMilliseconds()
-        if (now - lastActionTimeMs > AUTH_SESSION_DURATION_MS) return false
+        val now = clock.now().toEpochMilliseconds()
+        // (B) Genuine app-background re-lock — always applies, even mid-session.
         if (lastBackgroundTimeMs > lastAuthTimeMs &&
             now - lastBackgroundTimeMs > BACKGROUND_THRESHOLD_MS
         ) return false
+        // (A) Idle auto-lock — suppressed while the user is actively inside the Vault
+        // (any sub-screen). Uninterrupted foreground work never idle-locks; a real
+        // background still re-locks via (B) above.
+        if (!isVaultScreenActive && now - lastActionTimeMs > AUTH_SESSION_DURATION_MS) return false
         return true
     }
 

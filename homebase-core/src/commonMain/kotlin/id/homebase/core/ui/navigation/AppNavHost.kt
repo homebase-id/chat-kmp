@@ -34,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
@@ -291,6 +293,32 @@ fun AppNavHost(
                 viewModel.onPaused()
             }
         }
+    }
+
+    // --- Vault biometric session lifecycle (spans the whole Vault flow) ---
+    // Each Vault sub-screen (grid, note editor, …) is its own nav route, so
+    // VaultBiometricGate is disposed whenever one is pushed. Owning these signals here,
+    // off the back stack, keeps them alive across every sub-screen.
+    val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+    val inVaultFlow = backStack.any { it.destination.hasRoute(Route.Vault::class) }
+    // Foreground-active flag: suppresses the 5-minute idle auto-lock while the user is
+    // anywhere in the Vault. A genuine app-background still re-locks (trigger B).
+    LaunchedEffect(inVaultFlow) {
+        vaultPreferences.setVaultScreenActive(inVaultFlow)
+    }
+    // Record a genuine background while on a gate-less Vault sub-screen (VaultBiometricGate
+    // does this for Route.Vault, guarded by its picker check). Without this, backgrounding
+    // mid note-edit would not re-lock now that idle is suppressed.
+    val onGatelessVaultScreen = inVaultFlow && currentDestination?.hasRoute(Route.Vault::class) != true
+    DisposableEffect(lifecycleOwner, onGatelessVaultScreen) {
+        if (!onGatelessVaultScreen) return@DisposableEffect onDispose { }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && vaultPreferences.biometricsEnabled.value) {
+                vaultPreferences.recordAppBackgrounded()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Track active conversation + auth guard + notification permission
