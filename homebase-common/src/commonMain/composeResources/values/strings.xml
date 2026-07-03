@@ -1596,7 +1596,9 @@
     <string name="profile_edit_preview_enter">Preview</string>
     <string name="profile_edit_preview_exit">Back to editing</string>
     <string name="profile_edit_preview_section_public">Public</string>
+    <string name="profile_edit_preview_section_public_desc">Visible to everyone, including people you haven't connected with.</string>
     <string name="profile_edit_preview_section_vetted">Vetted</string>
+    <string name="profile_edit_preview_section_vetted_desc">Visible to your vetted (confirmed) connections.</string>
     <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
 
     <!-- Avatar editor -->

@@ -26,6 +26,12 @@ import kotlin.uuid.Uuid
  * instance is hand-constructed elsewhere (e.g. caching a just-written text attribute). They exist
  * so a [ProfileAttributeTypes.PHOTO] attribute's image payload can be fetched for display; see
  * `ProfileAttribute.photoImageData()` in homebase-core.
+ *
+ * [isEncrypted] mirrors `HomebaseFile.serverFileIsEncrypted` — the server's own per-file flag for
+ * whether this attribute (AppData *and* its payload) is encrypted at rest, straight from
+ * `query-batch`, unlike `FileMetadata.isEncrypted` which [id.homebase.api.client.drives.ServerFile]
+ * unconditionally resets to `false` after processing every file. Defaults to `false` for the same
+ * hand-constructed case as [fileId] et al.
  */
 data class ProfileAttribute(
     val id: Uuid,
@@ -38,6 +44,7 @@ data class ProfileAttribute(
     val driveId: Uuid? = null,
     val keyHeader: KeyHeader? = null,
     val payloads: List<PayloadDescriptor>? = null,
+    val isEncrypted: Boolean = false,
 ) {
     /** Reads a string-valued [data] key, or null if absent/non-string. */
     fun string(key: String): String? = (data[key] as? JsonPrimitive)?.contentOrNull

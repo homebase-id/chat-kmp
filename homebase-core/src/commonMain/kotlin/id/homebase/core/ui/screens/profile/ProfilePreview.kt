@@ -2,8 +2,10 @@ package id.homebase.core.ui.screens.profile
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -46,7 +48,9 @@ import id.homebase.resources.profile_edit_nickname
 import id.homebase.resources.profile_edit_phone
 import id.homebase.resources.profile_edit_preview_empty
 import id.homebase.resources.profile_edit_preview_section_public
+import id.homebase.resources.profile_edit_preview_section_public_desc
 import id.homebase.resources.profile_edit_preview_section_vetted
+import id.homebase.resources.profile_edit_preview_section_vetted_desc
 import id.homebase.resources.profile_edit_status
 import id.homebase.resources.profile_edit_tiktok
 import id.homebase.resources.profile_edit_twitter
@@ -139,7 +143,10 @@ internal fun ProfilePreview(
     val vettedPhoto = uiState.connectedPhoto ?: uiState.anonymousPhoto
 
     Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        PreviewSectionHeader(stringResource(MR.string.profile_edit_preview_section_public))
+        PreviewSectionHeader(
+            title = stringResource(MR.string.profile_edit_preview_section_public),
+            description = stringResource(MR.string.profile_edit_preview_section_public_desc),
+        )
         PreviewPhoto(uiState.anonymousPhoto)
         if (publicRows.isEmpty()) {
             PreviewEmptyMessage(stringResource(MR.string.profile_edit_preview_empty))
@@ -147,7 +154,12 @@ internal fun ProfilePreview(
             publicRows.forEach { PreviewRowItem(it) }
         }
 
-        PreviewSectionHeader(stringResource(MR.string.profile_edit_preview_section_vetted))
+        Spacer(modifier = Modifier.height(32.dp))
+
+        PreviewSectionHeader(
+            title = stringResource(MR.string.profile_edit_preview_section_vetted),
+            description = stringResource(MR.string.profile_edit_preview_section_vetted_desc),
+        )
         PreviewPhoto(vettedPhoto)
         if (vettedRows.isEmpty()) {
             PreviewEmptyMessage(stringResource(MR.string.profile_edit_preview_empty))
@@ -160,42 +172,53 @@ internal fun ProfilePreview(
 @Composable
 private fun PreviewPhoto(photo: ProfileAttribute?) {
     Box(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).size(96.dp).clip(CircleShape),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        val imageData = photo?.photoImageData()
-        LaunchedEffect(photo?.id) {
-            when {
-                photo == null -> Logger.d(tag = "ProfilePreview") { "no photo attribute for this tier — placeholder shown" }
-                imageData == null -> // photoImageData() already logged the specific reason.
-                    Logger.w(tag = "ProfilePreview") { "photo attribute ${photo.id} present but not renderable — placeholder shown" }
+        Box(
+            modifier = Modifier.size(96.dp).clip(CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            val imageData = photo?.photoImageData()
+            LaunchedEffect(photo?.id) {
+                when {
+                    photo == null -> Logger.d(tag = "ProfilePreview") { "no photo attribute for this tier — placeholder shown" }
+                    imageData == null -> // photoImageData() already logged the specific reason.
+                        Logger.w(tag = "ProfilePreview") { "photo attribute ${photo.id} present but not renderable — placeholder shown" }
+                }
             }
-        }
-        if (imageData != null) {
-            HomebaseImage(
-                imageData = imageData,
-                modifier = Modifier.fillMaxSize(),
-                contentDescription = null,
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Outlined.Person,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(48.dp),
-            )
+            if (imageData != null) {
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = Modifier.fillMaxSize(),
+                    contentDescription = null,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(48.dp),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun PreviewSectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-    )
+private fun PreviewSectionHeader(title: String, description: String) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

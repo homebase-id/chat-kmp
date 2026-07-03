@@ -64,5 +64,6 @@ internal fun HomebaseFile.toProfileAttribute(): ProfileAttribute? {
         driveId = driveId,
         keyHeader = keyHeader,
         payloads = fileMetadata.payloads,
+        isEncrypted = serverFileIsEncrypted,
     )
 }
