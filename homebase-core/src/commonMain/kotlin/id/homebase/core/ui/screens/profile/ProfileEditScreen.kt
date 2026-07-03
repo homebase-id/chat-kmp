@@ -26,10 +26,10 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -263,7 +263,7 @@ private fun ProfileForm(
 
 @Composable
 private fun DetailsFields(uiState: ProfileEditUiState, onAction: (ProfileEditAction) -> Unit) {
-    FieldGroup(ProfileAttributeTypes.NAME, uiState) { tier ->
+    FieldGroup(ProfileAttributeTypes.NAME, uiState, showDividerAbove = false) { tier ->
         val v: (ProfileField) -> String = { uiState.value(it, tier) }
         ProfileField(
             v(ProfileField.GIVEN_NAME),
@@ -398,7 +398,7 @@ private fun DetailsFields(uiState: ProfileEditUiState, onAction: (ProfileEditAct
 
 @Composable
 private fun AboutFields(uiState: ProfileEditUiState, onAction: (ProfileEditAction) -> Unit) {
-    FieldGroup(ProfileAttributeTypes.STATUS, uiState) { tier ->
+    FieldGroup(ProfileAttributeTypes.STATUS, uiState, showDividerAbove = false) { tier ->
         ProfileField(
             uiState.value(ProfileField.STATUS, tier),
             stringResource(MR.string.profile_edit_status),
@@ -480,15 +480,16 @@ private fun ProfileField(
 
 /**
  * Groups a profile attribute's fields (e.g. email + its "Personal"/"Work" label, or an address's
- * parts) in a bordered card so the set reads as one unit. Each attribute is backed by up to two
- * independent records — Anonymous and Connected — so this owns which tier's values [content] is
- * currently showing/editing via a tab control; switching tabs is a pure display choice, not
- * something that itself needs saving.
+ * parts) so the set reads as one unit, separated from its neighbors by a divider line rather than
+ * a bordered card. Each attribute is backed by up to two independent records — Anonymous and
+ * Connected — so this owns which tier's values [content] is currently showing/editing via a tab
+ * control; switching tabs is a pure display choice, not something that itself needs saving.
  */
 @Composable
 private fun FieldGroup(
     type: String,
     uiState: ProfileEditUiState,
+    showDividerAbove: Boolean = true,
     content: @Composable ColumnScope.(tier: ProfileVisibility) -> Unit,
 ) {
     var activeTier by remember(type) { mutableStateOf(ProfileVisibility.ANONYMOUS) }
@@ -496,27 +497,28 @@ private fun FieldGroup(
         ProfileEditViewModel.TYPE_FIELDS[type].orEmpty()
             .any { (field, _) -> uiState.connectedValues[field]?.isNotBlank() == true }
     }
-    OutlinedCard(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TierTabs(
-                selected = activeTier,
-                hasConnectedContent = hasConnectedContent,
-                onSelect = { activeTier = it },
-                modifier = Modifier.align(Alignment.End),
-            )
-            Text(
-                text = stringResource(
-                    if (activeTier == ProfileVisibility.ANONYMOUS) MR.string.profile_edit_public_hint
-                    else MR.string.profile_edit_connected_fallback_hint
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            content(activeTier)
-        }
+    if (showDividerAbove) {
+        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TierTabs(
+            selected = activeTier,
+            hasConnectedContent = hasConnectedContent,
+            onSelect = { activeTier = it },
+            modifier = Modifier.align(Alignment.End),
+        )
+        Text(
+            text = stringResource(
+                if (activeTier == ProfileVisibility.ANONYMOUS) MR.string.profile_edit_public_hint
+                else MR.string.profile_edit_connected_fallback_hint
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        content(activeTier)
     }
 }
 
