@@ -83,9 +83,18 @@ class ShareLocationViewModel(
     private var userMoved = false
 
     init {
-        // Seed the map on the last known position immediately (no flash of world view), then
-        // refine with a fresh fix — but only recenter while the user hasn't taken over.
-        locationService.lastKnown.value?.let { seedBbox(it.lat, it.lon) }
+        // Seed the map immediately: the last known position when we have one, else the whole
+        // world — a null bbox leaves the map BLANK (no viewport → no tiles fetched) until the
+        // first fix lands, which on a cold GPS can take many seconds or never come. Then refine
+        // with a fresh fix — but only recenter while the user hasn't taken over.
+        val last = locationService.lastKnown.value
+        if (last != null) {
+            seedBbox(last.lat, last.lon)
+        } else {
+            _uiState.update {
+                it.copy(initialBbox = WORLD_BBOX, initialBboxKey = it.initialBboxKey + 1)
+            }
+        }
         viewModelScope.launch {
             val fix = locationService.requestLatestGps(GpsRequestReason.LiveMap)
             if (fix is GpsFixResult.Success && !userMoved) seedBbox(fix.point.lat, fix.point.lon)
@@ -97,8 +106,19 @@ class ShareLocationViewModel(
         super.onCleared()
     }
 
-    /** Screen callback when location permission lands — re-arms the GPS hold (LiveMap pattern). */
-    fun onPermissionGranted() = locationService.refreshGpsHold()
+    /**
+     * Screen callback when location permission lands — re-arms the GPS hold (LiveMap pattern)
+     * and retries the initial seed: on a first-ever open the init-time fix request fails with
+     * PermissionDenied (the prompt is still up), which used to leave the map on the fallback
+     * view until the screen was reopened.
+     */
+    fun onPermissionGranted() {
+        locationService.refreshGpsHold()
+        viewModelScope.launch {
+            val fix = locationService.requestLatestGps(GpsRequestReason.LiveMap)
+            if (fix is GpsFixResult.Success && !userMoved) seedBbox(fix.point.lat, fix.point.lon)
+        }
+    }
 
     private fun seedBbox(lat: Double, lon: Double) {
         val (x, y) = WebMercator.latLonToUnit(lat, lon)
@@ -258,6 +278,8 @@ class ShareLocationViewModel(
 
     private companion object {
         const val TAG = "ShareLocationViewModel"
+        /** Unit-space bbox of the whole world — the no-fix fallback so the map never opens blank. */
+        val WORLD_BBOX = listOf(0.0, 0.0, 1.0, 1.0)
         const val GEOCODE_DEBOUNCE_MS = 700L
         const val RESOLVE_MIN_MOVE_METERS = 30.0
         const val METERS_PER_DEGREE = 111_320.0
