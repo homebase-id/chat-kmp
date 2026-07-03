@@ -183,9 +183,6 @@ fun MediaMessage(
     }
 }
 
-/** True when the app is online. Provided by [ConversationContent]; gates the "Sending"
- *  overlay so an offline-queued item shows only the bottom-right outbox indicator, never
- *  a perpetual spinner (#948). Defaults to true (online) when no provider is present. */
 internal val LocalUploadConnected = compositionLocalOf { true }
 
 // The dark scrim + big spinner is for real work: local prep (thumbnail/resize/compress/
