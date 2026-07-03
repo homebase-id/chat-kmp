@@ -113,6 +113,7 @@ import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
 import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
+import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
@@ -901,6 +902,9 @@ fun AppNavHost(
                                     // the add-on isn't activated, else the dashboard (which requests
                                     // permission) — covers both "not set up" gate-fail cases.
                                     onNavigateToLocationSetup = openLocation,
+                                    onNavigateToShareLocation = { conversationId ->
+                                        navController.navigate(Route.LocationShare(conversationId))
+                                    },
                                     onNavigateToContactInfo = {
                                         // 1:1 contact info is the full contact-detail screen
                                         // (keyed by the contact uniqueId = md5(odinId)).
@@ -1334,6 +1338,26 @@ fun AppNavHost(
                                     onNavigateBack = { navController.popBackStack() },
                                     // Maps-off CTA → location/maps setup (Route.Location when
                                     // activated, else onboarding), reusing the shared nav lambda.
+                                    onOpenSetup = openLocation,
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationShare> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationShare>()
+                                ShareLocationScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.conversationId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parse(route.conversationId)
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    // Maps-off / enable-location CTA → location setup (dashboard or
+                                    // onboarding), reusing the shared nav lambda.
                                     onOpenSetup = openLocation,
                                 )
                             }

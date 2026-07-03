@@ -112,7 +112,6 @@ import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
-import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
 import id.homebase.chat.dice.BattleRollSheet
 import id.homebase.chat.dice.DiceRollComposerSheet
@@ -124,13 +123,7 @@ import id.homebase.chat.groodle.GroodleComposerSheet
 import id.homebase.chat.poll.PollComposerSheet
 import id.homebase.chat.event.EventDetailDialog
 import id.homebase.chat.event.EventRsvp
-import id.homebase.core.location.rememberCurrentGps
-import id.homebase.core.location.tracking.GpsFixResult
-import id.homebase.resources.chat_location_map_preview_unavailable
-import id.homebase.resources.chat_location_permission_denied
-import id.homebase.resources.chat_location_unavailable
 import id.homebase.chat.services.renderer.PayloadRenderer
-import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
@@ -265,54 +258,7 @@ fun ConversationContent(
     // too, via `MessageInputBar`'s onPayloadRenderersChange callback.
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
-    // Location-share flow. Triggered from the AttachmentOptions sheet → GPS launcher → fetch
-    // a static map preview from the (dev-stub) provider → append a LocationPreviewRenderer to
-    // the composer's staging slot. The composer renders/cancels it via the same path as link
-    // previews; nothing here knows the bubble shape.
-    val locationPreviewProvider: LocationPreviewProvider = koinInject()
-    var isFetchingLocation by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val locationPermissionDeniedMsg = stringResource(MR.string.chat_location_permission_denied)
-    val locationUnavailableMsg = stringResource(MR.string.chat_location_unavailable)
-    val locationMapPreviewUnavailableMsg = stringResource(MR.string.chat_location_map_preview_unavailable)
-    val currentLocationLauncher = rememberCurrentGps { result ->
-        isFetchingLocation = false
-        when (result) {
-            is GpsFixResult.Success -> {
-                Logger.d(tag = "LocationShare") {
-                    "fix received lat=${result.point.lat} lon=${result.point.lon} → fetching preview"
-                }
-                coroutineScope.launch {
-                    isFetchingLocation = true
-                    try {
-                        val preview = locationPreviewProvider.getLocationPreview(
-                            result.point.lat, result.point.lon,
-                        )
-                        // Always stage — coordinates alone are useful even without a map image.
-                        payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
-                            LocationPreviewRenderer(preview)
-                        if (preview.imageUrl == null) {
-                            Logger.w(tag = "LocationShare") {
-                                "preview returned with no image (map service down or offline) — coords-only"
-                            }
-                            snackbarHostState.showSnackbar(locationMapPreviewUnavailableMsg)
-                        }
-                    } finally {
-                        isFetchingLocation = false
-                    }
-                }
-            }
-            is GpsFixResult.PermissionDenied -> {
-                Logger.d(tag = "LocationShare") { "permission denied" }
-                coroutineScope.launch { snackbarHostState.showSnackbar(locationPermissionDeniedMsg) }
-            }
-            is GpsFixResult.Unavailable,
-            is GpsFixResult.Timeout -> {
-                Logger.d(tag = "LocationShare") { "fix unavailable" }
-                coroutineScope.launch { snackbarHostState.showSnackbar(locationUnavailableMsg) }
-            }
-        }
-    }
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -1502,7 +1448,7 @@ fun ConversationContent(
                             editExistingMode = uiState.isEditingMessageId != null,
                             showSendButton = showSendButton,
                             isRecordingActive = isRecordingActive,
-                            isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
+                            isSendingMessage = uiState.isSendingMessage,
                             onSendMessage = {
                                 performSend(textFieldState.toMarkdown(), payloadRenderers)
                             },
@@ -1518,7 +1464,7 @@ fun ConversationContent(
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
-                                isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
+                                isSendingMessage = uiState.isSendingMessage,
                                 showActionButtons = false,
                                 onSendStateChanged = { showSendButton = it },
                                 onRecordingStateChanged = { isRecordingActive = it },
@@ -1637,8 +1583,9 @@ fun ConversationContent(
                     }, onLocationClick = {
                         Logger.d(tag = "LocationShare") { "share location clicked" }
                         showAttachmentSheet = false
-                        isFetchingLocation = true
-                        currentLocationLauncher.launch()
+                        onUiAction(
+                            ConversationListUiAction.OpenShareLocation(conversation.conversation.id)
+                        )
                     }, onEventClick = {
                         showAttachmentSheet = false
                         showEventComposer = true

@@ -51,6 +51,8 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.location.LIVE_SHARE_DURATION_OPTIONS
+import id.homebase.core.location.formatLiveShareRemaining
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
@@ -58,12 +60,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_location_pin
 import id.homebase.resources.chat_location_attachment
-import id.homebase.resources.live_share_15m
-import id.homebase.resources.live_share_1h
-import id.homebase.resources.live_share_2h
-import id.homebase.resources.live_share_30m
-import id.homebase.resources.live_share_24h
-import id.homebase.resources.live_share_4h
 import id.homebase.resources.live_location_title
 import id.homebase.resources.live_share_active
 import id.homebase.resources.live_share_back
@@ -510,7 +506,7 @@ private fun LiveShareActionArea(
                         )
                     }
                     Text(
-                        text = stringResource(MR.string.live_share_active, formatRemaining(remainingMs)),
+                        text = stringResource(MR.string.live_share_active, formatLiveShareRemaining(remainingMs)),
                         style = MaterialTheme.typography.labelSmall,
                         color = mutedColor,
                     )
@@ -597,7 +593,7 @@ private fun ShareLiveOfferRow(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             HorizontalDivider()
-            DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
+            LIVE_SHARE_DURATION_OPTIONS.forEach { (labelRes, durationMs) ->
                 DropdownMenuItem(
                     text = { Text(stringResource(labelRes)) },
                     onClick = {
@@ -612,27 +608,6 @@ private fun ShareLiveOfferRow(
 
 /** How long after a location pin is sent the "Share live location" offer stays available. */
 private const val SHARE_OFFER_WINDOW_MS = 15 * 60_000L
-
-private val DURATION_OPTIONS = listOf(
-    MR.string.live_share_15m to 15 * 60_000L,
-    MR.string.live_share_30m to 30 * 60_000L,
-    MR.string.live_share_1h to 60 * 60_000L,
-    MR.string.live_share_2h to 2 * 60 * 60_000L,
-    MR.string.live_share_4h to 4 * 60 * 60_000L,
-    // All-day sharing (festivals etc.) — #889. Window is absolute-endTime
-    // driven, so this is just a larger value; formatRemaining renders it as
-    // "24h"/"23h". Backgrounded GPS freshness is governed separately by #878.
-    MR.string.live_share_24h to 24L * 60 * 60_000L,
-)
-
-/** Compact "time left" label: "42m", "1h", "1h 20m". */
-private fun formatRemaining(remainingMs: Long): String {
-    val totalMin = (remainingMs / 60_000L).coerceAtLeast(0L)
-    if (totalMin < 60) return "${totalMin}m"
-    val h = totalMin / 60
-    val m = totalMin % 60
-    return if (m == 0L) "${h}h" else "${h}h ${m}m"
-}
 
 // ─── Compact list row (the "See all" locations tab) ──────────────────────────
 

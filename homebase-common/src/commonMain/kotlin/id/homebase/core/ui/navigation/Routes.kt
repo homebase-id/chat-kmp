@@ -203,6 +203,10 @@ sealed class Route {
     data class LocationFindDevice(val deviceId: String? = null) : Route()
 
     @Serializable
+    @SerialName("location-share")
+    data class LocationShare(val conversationId: String) : Route()
+
+    @Serializable
     @SerialName("crop")
     data class Crop(val requestId: String) : Route()
 
