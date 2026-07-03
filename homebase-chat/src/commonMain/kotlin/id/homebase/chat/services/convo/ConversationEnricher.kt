@@ -1,18 +1,14 @@
 package id.homebase.chat.services.convo
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.initials
 import id.homebase.api.client.connections.ConnectionStatus
-import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.*
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.core.avatars.ConversationAvatarModel
-import id.homebase.core.image.HomebaseImageData
-import kotlin.uuid.Uuid
 
 class ConversationEnricher {
 
@@ -99,51 +95,46 @@ class ConversationEnricher {
 }
 
 /**
- * Patches the note-to-self conversation's [ConversationAvatarModel] so the
- * Owner avatar renders the user's own profile photo.
+ * Patches the note-to-self conversation's [ConversationAvatarModel] with the
+ * owner's initials.
  *
- * [ConversationMapper.buildConversationAvatarModel] builds the self avatar with
- * `imageData = null`, which makes [id.homebase.core.avatars.OwnerAvatar] fall
- * through to [id.homebase.core.avatars.PublicAvatar] — and the owner's own
- * `https://{odinId}/pub/image` is empty, so the avatar shows blank. The owner's
- * profile-image bytes never live on the chat drive, but [OwnerSession] already
- * carries the base64 [OwnerSession.profileImagePreviewThumbnail] that renders
- * without any decryption keys. We attach it as the avatar's
- * [HomebaseImageData.previewThumbnail] so the photo shows immediately.
- *
- * The synthetic image data is deliberately preview-only: [HomebaseImageData.fileId]
- * is [Uuid.NIL] so [OwnerAvatar] paints the embedded preview directly instead of
- * attempting a server fetch on the chat drive (which has no such file). When the
- * owner has no profile photo (preview is null), the avatar is left untouched so
- * the existing [PublicAvatar] fallback still applies.
+ * imageData is deliberately left null so [id.homebase.core.avatars.OwnerAvatar]
+ * falls through to [id.homebase.core.avatars.PublicAvatar] →
+ * `https://{odinId}/pub/image`, the full-res source the chat header already
+ * renders successfully. Attaching the tiny base64
+ * [OwnerSession.profileImagePreviewThumbnail] here instead blew a 20px preview up
+ * into the avatar circle — blurry (#956). Initials remain the fallback until the
+ * photo loads (or when the owner has none).
  */
 internal fun ConversationUiModel.withOwnerProfileAvatar(
     ownerSession: OwnerSession,
 ): ConversationUiModel {
     if (avatarModel.type != ConversationAvatarModel.Type.Owner) return this
+    return copy(avatarModel = avatarModel.copy(initials = ownerSession.initials()))
 
-    // Owner's /pub/image is empty: without initials a missing/late photo shows blank.
-    val withInitials = copy(avatarModel = avatarModel.copy(initials = ownerSession.initials()))
-
-    val previewContent = ownerSession.profileImagePreviewThumbnail?.takeIf { it.isNotBlank() }
-        ?: return withInitials
-
-    val ownerImageData = HomebaseImageData(
-        driveId = Uuid.NIL,
-        fileId = Uuid.NIL,
-        payloadKey = "",
-        isEncrypted = false,
-        previewThumbnail = EmbeddedThumb(
-            pixelWidth = 0,
-            pixelHeight = 0,
-            contentType = "image/webp",
-            content = previewContent,
-        ),
-        lastModified = ownerSession.profileImageLastModified,
-        keyHeader = KeyHeader.newRandom16(),
-    )
-
-    return withInitials.copy(
-        avatarModel = withInitials.avatarModel.copy(imageData = ownerImageData)
-    )
+    // TODO(#956, option 2): once we fetch the owner's real profile image data
+    // (real profileImageFileId/profileImageFileKey with an upgrade path), attach
+    // it here so the preview is only a placeholder that upgrades to full-res —
+    // instead of relying solely on /pub/image. The synthetic preview-only shape
+    // that produced the 20px blur is kept below for reference; it must NOT ship as-is.
+    // Restore imports KeyHeader, EmbeddedThumb, HomebaseImageData, kotlin.uuid.Uuid when reviving.
+    //
+    // val ownerImageData = HomebaseImageData(
+    //     driveId = Uuid.NIL,
+    //     fileId = Uuid.NIL,
+    //     payloadKey = "",
+    //     isEncrypted = false,
+    //     previewThumbnail = EmbeddedThumb(
+    //         pixelWidth = 0,
+    //         pixelHeight = 0,
+    //         contentType = "image/webp",
+    //         content = ownerSession.profileImagePreviewThumbnail.orEmpty(),
+    //     ),
+    //     lastModified = ownerSession.profileImageLastModified,
+    //     keyHeader = KeyHeader.newRandom16(),
+    // )
+    // return copy(avatarModel = avatarModel.copy(
+    //     initials = ownerSession.initials(),
+    //     imageData = ownerImageData,
+    // ))
 }
