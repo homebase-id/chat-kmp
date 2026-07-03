@@ -1,9 +1,11 @@
 package id.homebase.api.client.location
 
 import kotlin.math.PI
+import kotlin.math.atan
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.ln
+import kotlin.math.sinh
 import kotlin.math.tan
 
 /**
@@ -23,6 +25,13 @@ object WebMercator {
         val latRad = lat * PI / 180.0
         val y = (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0
         return x to y
+    }
+
+    /** Inverse of [latLonToUnit]: unit-space world position back to (lat, lon) degrees. */
+    fun unitToLatLon(x: Double, y: Double): Pair<Double, Double> {
+        val lon = x * 360.0 - 180.0
+        val lat = atan(sinh(PI * (1.0 - 2.0 * y))) * 180.0 / PI
+        return lat to lon
     }
 
     /** Tile index along one axis for a unit coordinate at [zoom], clamped to the grid. */

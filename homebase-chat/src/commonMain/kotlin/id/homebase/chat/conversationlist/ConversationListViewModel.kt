@@ -873,6 +873,10 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
             }
 
+            is ConversationListUiAction.OpenShareLocation -> {
+                sendEvent(ConversationListUiEvent.NavigateToShareLocation(action.conversationId.toString()))
+            }
+
             is ConversationListUiAction.OpenLocationSetup -> {
                 sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
             }
