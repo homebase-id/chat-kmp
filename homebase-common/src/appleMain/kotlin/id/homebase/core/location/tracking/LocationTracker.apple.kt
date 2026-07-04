@@ -63,6 +63,7 @@ private class AppleLocationTracker(
         CLLocationManager().apply {
             delegate = this@AppleLocationTracker.delegate
             allowsBackgroundLocationUpdates = true
+            // Battery-friendly default; applyProfile() flips this to false while live-sharing.
             pausesLocationUpdatesAutomatically = true
             activityType = CLActivityTypeOther
         }
@@ -94,6 +95,15 @@ private class AppleLocationTracker(
     }
 
     private fun applyProfile(profile: TrackingProfile) {
+        // Keep the app alive and streaming in the background ONLY while live-sharing. Leaving
+        // pausesLocationUpdatesAutomatically on lets iOS pause updates when it deems the device
+        // stationary, which drops the active-location assertion so the backgrounded app is
+        // suspended/killed within minutes — it then only revives on a coarse significant-location
+        // change, making a live share appear to update "only in the foreground". Passive history
+        // keeps auto-pause on to save battery (a stationary user simply records fewer points).
+        val liveSharing = profile == TrackingProfile.LiveForeground ||
+            profile == TrackingProfile.LiveBackground
+        manager.pausesLocationUpdatesAutomatically = !liveSharing
         when (profile) {
             // Live (share / live-map view): best accuracy, tight filter — fresh fixes matter.
             TrackingProfile.LiveForeground -> {

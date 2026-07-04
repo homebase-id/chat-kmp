@@ -1,6 +1,7 @@
 import UserNotifications
 import Intents
 import FirebaseCore
+import os
 #if canImport(HomebaseNotifKit)
 import HomebaseNotifKit
 #endif
@@ -21,6 +22,14 @@ class NotificationService: UNNotificationServiceExtension {
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()
         }
+
+        // Push-chain breadcrumb (#988), Console.app-only by design: the NSE is a separate
+        // process — Kermit/homebase.log is not initialized here and two-process writes to
+        // the rolling log file are unsafe. The NSE only decorates the visible notification;
+        // the capture chain (onPushArrived → forceCapture → upload) runs in the main app's
+        // didReceiveRemoteNotification, whose hops DO land in homebase.log.
+        os_log("NSE didReceive: mutable-content push arrived (dataKeys=%d)",
+               (request.content.userInfo.count))
 
         self.contentHandler = contentHandler
         bestAttemptContent = request.content.mutableCopy() as? UNMutableNotificationContent

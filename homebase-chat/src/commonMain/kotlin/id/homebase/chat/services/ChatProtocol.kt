@@ -22,6 +22,13 @@ object ChatProtocol {
     const val ConversationAdminFileType = 8890
     const val ChatStatusMessageDataType = 202
 
+    /** Ambush embargo on [StatusMessage.EmergencyLocateRequested]: how long the recipient's
+     *  client hides the request notice (see StatusMessageData.emergencyLocateEmbargoUntilMs). */
+    const val EMERGENCY_LOCATE_AMBUSH_DELAY_MS = 24L * 60 * 60 * 1000
+
+    /** Cap on the requester's free-text justification riding the status-message header. */
+    const val EMERGENCY_LOCATE_EXPLANATION_MAX_CODEPOINTS = 280
+
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch

@@ -2,6 +2,7 @@ package id.homebase.core.location.tracking
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.location.GpsRequestReason
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -28,6 +29,7 @@ class LocationFixRouterTest {
 
     private class Captured {
         val persisted = mutableListOf<List<RawLocationPoint>>()
+        val persistReasons = mutableListOf<GpsRequestReason?>()
         val relayed = mutableListOf<RawLocationPoint>()
     }
 
@@ -47,7 +49,10 @@ class LocationFixRouterTest {
             val router = LocationFixRouter(
                 store = store,
                 allowHistory = { allowHistory },
-                persistAsHistory = { cap.persisted += it },
+                persistAsHistory = { points, reason ->
+                    cap.persisted += points
+                    cap.persistReasons += reason
+                },
                 relayLatest = { cap.relayed += it },
             )
             body(router, store, cap)
@@ -96,5 +101,20 @@ class LocationFixRouterTest {
         router.submit(emptyList())
         assertTrue(cap.persisted.isEmpty())
         assertTrue(cap.relayed.isEmpty())
+    }
+
+    @Test
+    fun oneShotReason_isForwardedToPersist() = runRouterTest(allowHistory = true) { router, _, cap ->
+        // #988: the capture reason threads through persist so the uploader can tag its
+        // hop lines (and log skip-gates at Info for push-triggered flushes).
+        router.submit(listOf(point(t = 1_000)), GpsRequestReason.PushReceived)
+        assertEquals(listOf<GpsRequestReason?>(GpsRequestReason.PushReceived), cap.persistReasons)
+    }
+
+    @Test
+    fun interfaceSubmit_forwardsNullReason() = runRouterTest(allowHistory = true) { router, _, cap ->
+        // The continuous-tracker path (LocationPointSink interface) carries no reason.
+        router.submit(listOf(point(t = 1_000)))
+        assertEquals(listOf<GpsRequestReason?>(null), cap.persistReasons)
     }
 }

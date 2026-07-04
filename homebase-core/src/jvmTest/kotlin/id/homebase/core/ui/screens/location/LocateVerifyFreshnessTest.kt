@@ -5,14 +5,18 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Pins the 60s freshness contract for the "who I can locate" temporal verify (#950).
+ * Pins the 60s freshness contract for the "who I can locate" temporal verify (#950, refined by
+ * #985).
  *
- * Regression: the expand guard skipped every already-resolved row for the ViewModel's whole
+ * #950 regression: the expand guard skipped every already-resolved row for the ViewModel's whole
  * lifetime, so the verify only ever ran once per contact — a re-expand showed no spinner and a
- * frozen first-expand age. The guard now keys on [needsReverify]: in-flight still short-circuits
- * (no double-fire), a resolved result younger than [LOCATE_VERIFY_TTL_MS] is reused (instant
- * re-expand by design), and anything older — or never verified / dropped as inconclusive —
- * re-issues the verify.
+ * frozen first-expand age. The guard keys on [needsReverify]: in-flight still short-circuits
+ * (no double-fire), and a never-verified row always fires.
+ *
+ * #985 refinement: the TTL cache applies ONLY to a successful, DATA-BEARING [LocateVerifyStatus.Active]
+ * ("they sent data back within 60s"). [LocateVerifyStatus.Broken], [LocateVerifyStatus.Unreachable],
+ * and a no-data Active re-verify on EVERY pass — previously a broken-cloud row was cached like a
+ * success and stuck across collapse/expand within the TTL.
  */
 class LocateVerifyFreshnessTest {
 
@@ -31,11 +35,19 @@ class LocateVerifyFreshnessTest {
     }
 
     @Test
-    fun freshResultsAreReused() {
+    fun freshDataBearingActiveIsReused() {
         val justVerified = now - 1_000
         assertFalse(LocateVerifyStatus.Active(newestModifiedMs = 123L, verifiedAtMs = justVerified).needsReverify(now))
-        assertFalse(LocateVerifyStatus.Active(newestModifiedMs = null, verifiedAtMs = justVerified).needsReverify(now))
-        assertFalse(LocateVerifyStatus.Broken(verifiedAtMs = justVerified).needsReverify(now))
+    }
+
+    @Test
+    fun freshErrorAndNoDataStatesReverify() {
+        // #985: only "they sent data back" earns the cache — a fresh Broken/Unreachable/no-data
+        // result re-verifies on the very next expansion so it clears the moment access returns.
+        val justVerified = now - 1_000
+        assertTrue(LocateVerifyStatus.Broken(verifiedAtMs = justVerified).needsReverify(now))
+        assertTrue(LocateVerifyStatus.Unreachable(verifiedAtMs = justVerified).needsReverify(now))
+        assertTrue(LocateVerifyStatus.Active(newestModifiedMs = null, verifiedAtMs = justVerified).needsReverify(now))
     }
 
     @Test
@@ -43,6 +55,7 @@ class LocateVerifyFreshnessTest {
         val stale = now - LOCATE_VERIFY_TTL_MS - 1
         assertTrue(LocateVerifyStatus.Active(newestModifiedMs = 123L, verifiedAtMs = stale).needsReverify(now))
         assertTrue(LocateVerifyStatus.Broken(verifiedAtMs = stale).needsReverify(now))
+        assertTrue(LocateVerifyStatus.Unreachable(verifiedAtMs = stale).needsReverify(now))
     }
 
     @Test
@@ -55,18 +68,5 @@ class LocateVerifyFreshnessTest {
     fun justUnderTtlIsReused() {
         val justUnder = now - LOCATE_VERIFY_TTL_MS + 1
         assertFalse(LocateVerifyStatus.Active(newestModifiedMs = 123L, verifiedAtMs = justUnder).needsReverify(now))
-    }
-
-    // Unreachable (verify threw, #879) is Resolved: a network blip is retried after the TTL like
-    // any other result, instead of the old drop-the-key-and-blank behavior.
-
-    @Test
-    fun freshUnreachableIsNotRetriedYet() {
-        assertFalse(LocateVerifyStatus.Unreachable(verifiedAtMs = now - 1_000).needsReverify(now))
-    }
-
-    @Test
-    fun staleUnreachableRetries() {
-        assertTrue(LocateVerifyStatus.Unreachable(verifiedAtMs = now - LOCATE_VERIFY_TTL_MS).needsReverify(now))
     }
 }
