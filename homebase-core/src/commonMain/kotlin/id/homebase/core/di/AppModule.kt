@@ -257,10 +257,11 @@ val appModule = module {
             // persist iff history on; a live share's fixes relay but aren't recorded (#823).
             allowHistory = { get<LocationPreferences>().allowLocationHistory.value },
             // History: persist + drain to hour files (rate-gated). Lazy get() avoids the
-            // construction-time cycle; runs only when history is on.
-            persistAsHistory = { points ->
+            // construction-time cycle; runs only when history is on. The reason is log-only
+            // context (#988): push-triggered flushes log their skip-gates at Info.
+            persistAsHistory = { points, reason ->
                 get<LocationPointStore>().persistHistory(points)
-                get<LocationTrackUploaderService>().flushIfDue()
+                get<LocationTrackUploaderService>().flushIfDue(reason)
             },
             // Live: relay the latest fix. Rides this same background-capable seam (NOT a UI Flow) so
             // it fires on cold-woken background points; self-gates on the share roster.
