@@ -78,6 +78,17 @@ internal fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
         return ChatDeliveryStatus.Sent
     }
 
+    // KNOWN, ACCEPTED limitation: this guard also catches LEGACY messages. The server
+    // only started stamping originalRecipientCount in Feb 2025 (odin-core #888); older
+    // headers decode to the Kotlin default 0 and render a single tick here even when
+    // transferHistory.summary shows the recipient read the message (message-info stays
+    // truthful — it fetches the live per-recipient history). Deliberately not fixed:
+    // affects only pre-Feb-2025 messages, a population that never grows. If it ever
+    // must be fixed, treat the summary as POSITIVE EVIDENCE ONLY when count == 0
+    // (read > 0 → Read, delivered > 0 → Delivered, else Sent) — do NOT fall through
+    // to the >= comparisons below: with count == 0 an all-zero summary satisfies
+    // `totalReadByRecipient >= count` (0 >= 0) and resurrects the #934 lying double
+    // tick this guard exists to prevent.
     val count = header.serverMetadata.originalRecipientCount
     if (count == 0) {
         return ChatDeliveryStatus.Sent
