@@ -55,6 +55,8 @@ data class LocationUiState(
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
     val liveSharingVisible: Boolean = false,
+    /** An emergency locate request (notice + fetch) is running — the panel's Confirm is disabled. */
+    val locateSubmitInFlight: Boolean = false,
     /** People I'm sharing my live location with — deduped by identity, longest end-time. */
     val outgoingShares: List<OutgoingShareRow> = emptyList(),
     /** People sharing their live location with me — with the age of their last fix. */
@@ -191,9 +193,25 @@ sealed interface LocationUiAction {
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction
+
+    /** Confirm on the emergency locate panel: send the request notice (embargoed 24h when
+     *  [ambush]) and fetch [windowHours] of the peer's history over the temporal API. */
+    data class ConfirmEmergencyLocate(
+        val odinId: String,
+        val name: String,
+        val explanation: String,
+        val windowHours: Int,
+        val ambush: Boolean,
+    ) : LocationUiAction
 }
 
 sealed interface LocationUiEvent {
     data object Activated : LocationUiEvent
     data object CloseOnboarding : LocationUiEvent
+
+    /** Emergency retrieval succeeded — open the history viewer in peer mode. */
+    data class OpenPeerHistory(val peerDomain: String, val peerName: String) : LocationUiEvent
+
+    /** Emergency retrieval failed (the request notice was still sent) — snackbar. */
+    data object LocateFetchFailed : LocationUiEvent
 }

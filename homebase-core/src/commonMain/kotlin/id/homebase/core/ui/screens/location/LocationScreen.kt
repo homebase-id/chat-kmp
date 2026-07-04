@@ -24,6 +24,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
@@ -42,6 +43,7 @@ import id.homebase.resources.location_menu_more
 import id.homebase.resources.location_menu_setup
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,6 +128,18 @@ fun LocationScreen(
     // before the first location permission request or tracking enable. Holds
     // the intercepted action and replays it on Agree.
     var pendingConsentAction by remember { mutableStateOf<LocationUiAction?>(null) }
+
+    // Emergency locate: the contact whose request panel is open (tap on an Active
+    // "who you can locate" row). Closed on dismiss and on the VM's terminal events
+    // (navigate-to-viewer / fetch-failed snackbar, both handled in AppNavHost).
+    var pendingLocate by remember { mutableStateOf<ContactUiModel?>(null) }
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            if (event is LocationUiEvent.OpenPeerHistory || event is LocationUiEvent.LocateFetchFailed) {
+                pendingLocate = null
+            }
+        }
+    }
 
     fun execute(action: LocationUiAction) {
         when (action) {
@@ -244,6 +258,7 @@ fun LocationScreen(
                     uiState.emergencyManageUrl?.let { uriHandler.openUrl(it) }
                 },
                 onLocatableExpandedChange = { execute(LocationUiAction.SetLocatableExpanded(it)) },
+                onLocateContact = { pendingLocate = it },
             )
         } else {
             LocationContent(
@@ -254,6 +269,30 @@ fun LocationScreen(
                 },
             )
         }
+    }
+
+    pendingLocate?.let { contact ->
+        val status = uiState.whoICanLocateStatus[contact.odinId.domainName]
+        val newestMs = (status as? LocateVerifyStatus.Active)?.newestModifiedMs
+        EmergencyLocateSheet(
+            contact = contact,
+            lastPointAgeMs = newestMs?.let {
+                (Clock.System.now().toEpochMilliseconds() - it).coerceAtLeast(0)
+            },
+            submitting = uiState.locateSubmitInFlight,
+            onDismiss = { pendingLocate = null },
+            onConfirm = { explanation, windowHours, ambush ->
+                viewModel.onAction(
+                    LocationUiAction.ConfirmEmergencyLocate(
+                        odinId = contact.odinId.domainName,
+                        name = contact.name,
+                        explanation = explanation,
+                        windowHours = windowHours,
+                        ambush = ambush,
+                    )
+                )
+            },
+        )
     }
 
     pendingConsentAction?.let { pending ->
