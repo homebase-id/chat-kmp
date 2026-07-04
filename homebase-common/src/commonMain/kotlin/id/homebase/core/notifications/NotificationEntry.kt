@@ -2,16 +2,14 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import id.homebase.core.auth.AuthConnectionCoordinator
-import id.homebase.core.location.GpsRequestReason
-import id.homebase.core.location.LocationService
-import id.homebase.core.location.tracking.GpsFixResult
+import id.homebase.core.location.DEFAULT_PUSH_CAPTURE_BUDGET_MS
+import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.sync.SyncOutcome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatformTools
-import kotlin.time.Clock
 
 /**
  * Single shared entry point that every platform glue funnels into for the two
@@ -41,7 +39,7 @@ class NotificationEntry(
     private val notificationService: NotificationService,
     private val orchestrator: BackgroundSyncOrchestrator,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
-    private val locationService: LocationService,
+    private val pushLocationCapture: PushLocationCapture,
 ) {
 
     /**
@@ -61,23 +59,15 @@ class NotificationEntry(
         notificationService.onFcmMessageReceived(title, body, data)
         val outcome = orchestrator.syncIfAuthenticated()
         // A push briefly wakes the process — an opportunistic free moment to record a fresh point if
-        // tracking is on and the last one is stale (#878). Best-effort within the short FCM window
-        // (the primitive uses a short background timeout + last-known fallback); never fail the push
-        // sync over it. Won't help the no-signal case (no cell → no push), but adds samples whenever
-        // the user is reachable. The result is logged here (#988) so the push tag alone answers
-        // "did this push produce a point" without cross-referencing LocationService lines.
-        runCatching { locationService.forceCaptureIfTracking(GpsRequestReason.PushReceived) }
-            .onSuccess { fix ->
-                Logger.i(tag = "PushCapture") {
-                    "capture(PushReceived): " + when (fix) {
-                        null -> "skipped (gate closed — see forceCaptureIfTracking line)"
-                        is GpsFixResult.Success ->
-                            "fix src=${fix.point.src} ageMs=${Clock.System.now().toEpochMilliseconds() - fix.point.t}"
-                        else -> "$fix"
-                    }
-                }
-            }
-            .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "push force-capture failed" } }
+        // tracking is on and the last one is stale (#878), AND to make the resulting hour-file
+        // upload actually land before the wake ends (#987: the websocket never connects in a
+        // background wake, so without the bounded forced drain inside captureAndUpload the
+        // enqueued row would sit until the next foreground connect). Awaited (bounded by the
+        // budget) so iOS's completionHandler fires after the upload attempt, not before.
+        // Best-effort — never fail the push sync over it. The capture result + drain outcome
+        // are logged under the PushCapture tag (#988).
+        runCatching { pushLocationCapture.captureAndUpload(DEFAULT_PUSH_CAPTURE_BUDGET_MS) }
+            .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "push capture+upload failed" } }
         return outcome
     }
 

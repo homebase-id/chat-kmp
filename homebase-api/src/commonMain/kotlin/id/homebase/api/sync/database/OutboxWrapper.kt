@@ -108,6 +108,18 @@ class OutboxWrapper(
         }
     }
 
+    /** Check a row back in WITHOUT incrementing checkOutCount (#987): used for
+     *  connectivity-class failures so hopeless offline probes never burn the
+     *  MAX_RETRIES drop budget. Same named-args caution as [checkInFailed]. */
+    suspend fun checkInUncharged(
+        checkOutStamp: Long,
+        nextRunTime: Long,
+    ): Long {
+        return databaseManager.withWriteValue {
+            delegate.checkInUncharged(nextRunTime = nextRunTime, checkOutStamp = checkOutStamp).value
+        }
+    }
+
     /** Reset a queued row's next-attempt time (ms epoch). Returns the number of
      *  rows changed: 0 when the row is missing or currently checked out — an
      *  in-flight row's nextRunTime is owned by [checkInFailed]. */
