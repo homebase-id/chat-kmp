@@ -4,12 +4,14 @@ import co.touchlab.kermit.Logger
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.LocationService
+import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.sync.SyncOutcome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatformTools
+import kotlin.time.Clock
 
 /**
  * Single shared entry point that every platform glue funnels into for the two
@@ -62,8 +64,19 @@ class NotificationEntry(
         // tracking is on and the last one is stale (#878). Best-effort within the short FCM window
         // (the primitive uses a short background timeout + last-known fallback); never fail the push
         // sync over it. Won't help the no-signal case (no cell → no push), but adds samples whenever
-        // the user is reachable.
+        // the user is reachable. The result is logged here (#988) so the push tag alone answers
+        // "did this push produce a point" without cross-referencing LocationService lines.
         runCatching { locationService.forceCaptureIfTracking(GpsRequestReason.PushReceived) }
+            .onSuccess { fix ->
+                Logger.i(tag = "PushCapture") {
+                    "capture(PushReceived): " + when (fix) {
+                        null -> "skipped (gate closed — see forceCaptureIfTracking line)"
+                        is GpsFixResult.Success ->
+                            "fix src=${fix.point.src} ageMs=${Clock.System.now().toEpochMilliseconds() - fix.point.t}"
+                        else -> "$fix"
+                    }
+                }
+            }
             .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "push force-capture failed" } }
         return outcome
     }
@@ -94,8 +107,15 @@ class NotificationEntry(
         onComplete: (success: Boolean) -> Unit,
     ) {
         CoroutineScope(Dispatchers.Default).launch {
+            Logger.i(tag = "PushCapture") { "handler: onPushArrivedAsync entered dataKeys=${data.size}" }
             val outcome = runCatching { onPushArrived(title, body, data) }
                 .getOrElse { SyncOutcome.Failed(it) }
+            // Ordering of this line vs LocationTrackUploader's "Hour-file upload confirmed"
+            // answers "did the upload land before iOS suspended us" (#988): a confirm line
+            // AFTER this one means the outbox was still draining past the fetch window.
+            Logger.i(tag = "PushCapture") {
+                "handler: complete success=${outcome is SyncOutcome.Success} outcome=${outcome::class.simpleName}"
+            }
             onComplete(outcome is SyncOutcome.Success)
         }
     }

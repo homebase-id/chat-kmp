@@ -227,7 +227,8 @@ class OutboxSync(
 
                 // if successful we remove it from the database
                 databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
-                Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()}")
+                // driveId included so a location-drive completion is directly greppable (#988).
+                Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()} driveId=${outboxRecord.driveId}")
 
                 // We sent the item, send an event
                 eventBus.emit(

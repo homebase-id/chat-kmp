@@ -22,6 +22,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.upload.PayloadBundle
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.deviceDisplayName
 import id.homebase.core.location.tracking.devicePlatform
@@ -117,10 +118,23 @@ class LocationTrackUploaderService(
         deviceProfileEnsured = false
     }
 
-    /** Rate-gated flush — the entry point for tickers and background batch wakes. */
-    suspend fun flushIfDue() {
+    /**
+     * Rate-gated flush — the entry point for tickers and background batch wakes.
+     *
+     * [reason] is log-only (#988): a one-shot capture reason (e.g. PushReceived) promotes the
+     * skip-gate lines to Info so a dropped push-capture upload is diagnosable from the log,
+     * while the steady-state tracker/ticker path (null) keeps them at debug — this method runs
+     * on every persisted point batch, so unconditional Info would spam.
+     */
+    suspend fun flushIfDue(reason: GpsRequestReason? = null) {
         val now = nowMs()
-        if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) return
+        if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) {
+            logSkip(reason) {
+                "flushIfDue(${reason ?: "periodic"}): rate-gated " +
+                    "(nextEligibleInMs=${MIN_FLUSH_INTERVAL_MS - (now - lastFlushAttemptMs)})"
+            }
+            return
+        }
         val powerSave = powerSaveMode()
         val foreground = isAppForeground()
         // Battery saver + backgrounded → defer uploads to save power; local capture still persists
@@ -134,23 +148,31 @@ class LocationTrackUploaderService(
             false
         }
         if (shouldDeferBackgroundFlush(powerSave, foreground, hasStaleBacklog)) {
-            logger.d { "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms un-uploaded backlog" }
+            logSkip(reason) {
+                "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms " +
+                    "un-uploaded backlog (reason=${reason ?: "periodic"})"
+            }
             return
         }
-        flush()
+        flush(reason)
     }
 
-    suspend fun flush() {
+    /** Info for one-shot (push) triggered flushes, debug for the steady-state path (#988). */
+    private inline fun logSkip(reason: GpsRequestReason?, crossinline message: () -> String) {
+        if (reason != null) logger.i { message() } else logger.d { message() }
+    }
+
+    suspend fun flush(reason: GpsRequestReason? = null) {
         flushMutex.withLock {
             val now = nowMs()
             lastFlushAttemptMs = now
             if (!optionalDriveActivation.isActivated(locationLabeledDrive)) {
-                logger.d { "Flush skipped: Location add-on not activated (drive not mounted)" }
+                logSkip(reason) { "Flush skipped: Location add-on not activated (drive not mounted) reason=${reason ?: "periodic"}" }
                 return
             }
             if (credentialsManager.getActiveCredentials() == null) {
                 // Logged out / not yet logged in: points stay buffered.
-                logger.d { "Flush skipped: no active credentials — points stay buffered" }
+                logSkip(reason) { "Flush skipped: no active credentials — points stay buffered reason=${reason ?: "periodic"}" }
                 return
             }
             val hours = runCatching { buffer.selectPendingHours() }
@@ -172,7 +194,7 @@ class LocationTrackUploaderService(
                 // viewer devices (desktop/web) never reach this branch.
                 runCatching { ensureDeviceProfile() }
                     .onFailure { logger.e(it) { "ensureDeviceProfile failed" } }
-                logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize" }
+                logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize reason=${reason ?: "periodic"}" }
             }
             for (hourBucket in hours + finalizeHours) {
                 runCatching { flushHour(hourBucket * HOUR_MS) }
