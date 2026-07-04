@@ -150,10 +150,22 @@ class OutboxSync(
     // another thread is already processing.
     // Then the call immediately knows if a worker thread has been spawned.
     //
-    suspend fun send(): Boolean {
-        if (!isOnline) {
+    /**
+     * @param force bypass the offline gate for THIS drain only (#987): a background push wake
+     *   has provably-working network but the websocket never connects, so [isOnline] stays
+     *   false and enqueued rows would otherwise sit until the next foreground WS connect.
+     *   [isOnline] itself is NOT touched (the connection coordinator owns it), and every
+     *   internal re-entry (the post-backoff re-kick below, the parallel-worker spawn in
+     *   [outboxSend]) calls plain send() — so the bypass never outlives the wake. A failed
+     *   attempt on a genuinely dead network takes the normal checkInFailed backoff.
+     */
+    suspend fun send(force: Boolean = false): Boolean {
+        if (!isOnline && !force) {
             Logger.d("OutboxSync: send() skipped — offline")
             return false
+        }
+        if (force && !isOnline) {
+            Logger.i("OutboxSync: send(force=true) — bypassing offline gate (push wake); isOnline stays false")
         }
         if (!semaphore.tryAcquire()) {
             return false
