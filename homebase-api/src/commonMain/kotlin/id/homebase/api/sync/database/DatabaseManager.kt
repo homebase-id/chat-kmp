@@ -181,15 +181,26 @@ class DatabaseManager(
         val journalMode = readPragmaString("PRAGMA journal_mode") ?: "?"
         val busyTimeoutMs = readPragmaLong("PRAGMA busy_timeout") ?: -1L
         val synchronous = readPragmaLong("PRAGMA synchronous") ?: -1L
+        // schemaAtOpen: the '-- Version: N' stamp found on disk BEFORE any rebuild
+        // (-1 = fresh install). Logged unconditionally so a field crash report shows
+        // which schema shape the install was actually running — the stale-rebuild
+        // line above only fires when the versions differ.
         logger.i {
             "DB pragmas: journal_mode=$journalMode busy_timeout=${busyTimeoutMs}ms " +
-                "synchronous=$synchronous readParallelism=$READ_PARALLELISM"
+                "synchronous=$synchronous readParallelism=$READ_PARALLELISM " +
+                "schemaAtOpen=v$schemaVersionAtOpen current=v$DATABASE_VERSION"
         }
     }
 
     companion object {
-        private const val DATABASE_VERSION =
-            5  // Increase to wipe the database and rebuild all tables
+        // Increase to wipe the database and rebuild all tables. MUST be bumped together
+        // with the `-- Version: N` stamp in DriveMainIndex.sq WHENEVER any .sq CREATE
+        // TABLE shape changes: Schema.create() is CREATE IF NOT EXISTS, so on existing
+        // installs an un-bumped column addition leaves the old table in place while the
+        // generated queries reference the new columns — "no such column" crash at the
+        // first query (fileState on v5; LocationPoint.steps/bat on v6). SchemaVersionGuardTest
+        // pins both the stamp equality and the CREATE TABLE shapes.
+        internal const val DATABASE_VERSION = 6L
 
         // Max concurrent reads on [readDispatcher]. Kept in step with iOS
         // NativeSqliteDriver.maxReaderConnections=4 so the dispatcher doesn't admit more
