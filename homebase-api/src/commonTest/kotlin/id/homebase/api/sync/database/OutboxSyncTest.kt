@@ -1388,6 +1388,41 @@ class OutboxSyncTest {
     }
 
     @Test
+    fun connectivityFailure_circuitBreaksPassAndDoesNotChargeAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader().apply {
+            // Transport-level failure (no HTTP response) — what airplane mode produces.
+            failureException = id.homebase.api.client.NetworkException(kotlinx.io.IOException("no route"))
+        }
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+
+        val itemFailed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().first()
+        }
+        testScheduler.runCurrent()
+
+        // 50-items scenario in miniature: only the FIRST popped row may be probed.
+        val (driveA, uidA) = db.insertRow(priority = 0)
+        val (driveB, uidB) = db.insertRow(priority = 1)
+
+        assertTrue(sync.send(force = true))
+        val failed = itemFailed.await()
+        assertEquals(uidA, failed.uniqueId)
+        sync.clearCheckout(timeoutMs = 5_000) // pass aborted; wait for the worker to finish
+
+        val rowA = db.outbox.selectByDriveAndUnique(driveA, uidA)
+        val rowB = db.outbox.selectByDriveAndUnique(driveB, uidB)
+        assertNotNull(rowA); assertNotNull(rowB)
+        // Probe row: checked back in UNCHARGED (attempt budget untouched), backoff stamped.
+        assertEquals(0L, rowA.checkOutCount, "connectivity failure must not charge the retry budget")
+        assertTrue(rowA.nextRunTime > 0, "probe row still gets a rate-bound nextRunTime")
+        // Second row: never popped — the circuit breaker aborted the pass.
+        assertEquals(0L, rowB.checkOutCount)
+        assertEquals(0L, rowB.nextRunTime, "row B must be untouched — pass aborted after the first probe")
+        assertEquals(0, uploader.uploaded.size)
+    }
+
+    @Test
     fun forcedDrain_lowerPriorityNumberDrainsFirst() = runOutboxTest { db ->
         val eventBus = EventBus()
         val uploader = TestUploader()

@@ -2,6 +2,7 @@ package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
@@ -261,6 +262,35 @@ class OutboxSync(
                 // first suspension point happens to rethrow cancellation).
                 throw e
             } catch (e: Exception) {
+                // Connectivity circuit-breaker (#987): no network reaching the server means
+                // every remaining row would fail identically — check THIS row back in
+                // WITHOUT charging an attempt (a hopeless offline probe must not burn the
+                // ~48h MAX_RETRIES budget toward a permanent drop; before forced drains,
+                // offline rows were never attempted at all) and abort the whole drain pass.
+                // The next drain (WS connect, next wake, backoff re-kick) re-probes. Uses
+                // the same isTransientNetworkFailure classifier as the crash handlers —
+                // HTTP-response exceptions (server reached) never match, so poison rows
+                // still take the charged path below and eventually drop.
+                if (e.isTransientNetworkFailure()) {
+                    Logger.i(
+                        "OutboxSync: network unreachable (${e.message}) — uniqueId=${outboxRecord.uniqueId} " +
+                            "checked back in uncharged (attempt count stays ${outboxRecord.checkOutCount}); aborting drain pass"
+                    )
+                    databaseManager.outbox.checkInUncharged(
+                        outboxRecord.checkOutStamp!!,
+                        UnixTimeUtc.now().addSeconds(BASE_DELAY_SECONDS).milliseconds
+                    )
+                    recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
+                    eventBus.emit(
+                        BackendEvent.OutboxEvent.ItemFailed(
+                            outboxRecord.driveId,
+                            outboxRecord.uniqueId
+                        )
+                    )
+                    eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Network unreachable"))
+                    break // the finally below runs markCheckoutDone
+                }
+
                 val attempts = outboxRecord.checkOutCount + 1
 
                 val permanentReason = classifyPermanentFailure(e)
