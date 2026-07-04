@@ -1494,12 +1494,25 @@ class ConversationStream(
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
-        val base = recipientOverride
-            ?: getConversationById(conversationId)?.participants
-            ?: return listOf()
-        val recipients =
-            (base + additionalRecipients).filter { it != domain }.distinct()
-        return recipients
+        fun compute(): List<OdinId>? {
+            val base = recipientOverride
+                ?: getConversationById(conversationId)?.participants
+                ?: return null
+            return (base + additionalRecipients).filter { it != domain }.distinct()
+        }
+
+        val first = compute()
+        if (recipientOverride == null &&
+            conversationId != ChatProtocol.ConversationWithYourselfId &&
+            first.isNullOrEmpty()
+        ) {
+            // The in-memory row may be a placeholder/Invalid map (participants=[]) or
+            // missing entirely (e.g. an archived 1:1 opened via Contacts) while the DB
+            // conversation file maps fine — re-map it into memory and try once more (#934).
+            loadConversation(conversationId)
+            return compute() ?: emptyList()
+        }
+        return first ?: emptyList()
     }
 
     private suspend fun updateShareCache(

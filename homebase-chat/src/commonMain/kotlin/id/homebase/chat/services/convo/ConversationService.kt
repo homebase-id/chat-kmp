@@ -269,6 +269,13 @@ class ConversationService(
             } else {
                 audit.info("existing file is in usable state, no revive needed")
             }
+            // Re-map the DB file into the in-memory list: the row may be missing or a
+            // participants=[] placeholder (e.g. archived 1:1 opened via Contacts), and
+            // an immediate send would otherwise resolve zero recipients (#934).
+            runCatching { conversationStream.loadConversation(newConversationId) }
+                .onFailure { e ->
+                    Logger.w(e) { "createConversation: loadConversation($newConversationId) failed after existing-file return" }
+                }
             audit.checkPass("existingFileBranch")
             audit.finish("returned wasNewlyCreated=false (path=existing-file)")
             return CreateConversationResult(newConversationId, wasNewlyCreated = false)
