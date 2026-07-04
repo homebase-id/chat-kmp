@@ -10,6 +10,7 @@ import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.toContactUiModel
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.livelocation.LiveLocationShareService
@@ -17,6 +18,7 @@ import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
@@ -62,6 +64,8 @@ class LocationViewModel(
     private val credentialsManager: CredentialsManager,
     private val receiveStore: LiveLocationReceiveStore,
     private val liveShareService: LiveLocationShareService,
+    private val conversationService: ConversationService,
+    private val emergencyLocateService: EmergencyLocateService,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -442,12 +446,49 @@ class LocationViewModel(
 
             is LocationUiAction.SetLocatableExpanded -> setLocatableExpanded(action.expanded)
 
+            is LocationUiAction.ConfirmEmergencyLocate -> confirmEmergencyLocate(action)
+
             // Permission requests are dispatched at the screen level (the
             // PermissionsManager is composition-scoped); the VM only receives
             // status updates via updatePermissionStatus.
             LocationUiAction.RequestWhileInUseClicked,
             LocationUiAction.RequestAlwaysClicked,
             LocationUiAction.OpenSystemSettingsClicked -> Unit
+        }
+    }
+
+    /**
+     * Emergency locate confirm: send the request notice FIRST (durable accountability — the
+     * peer is told even if the subsequent read fails, deliberately), then fetch their history
+     * over the temporal API into the memory-only store, then navigate to the peer viewer.
+     */
+    private fun confirmEmergencyLocate(action: LocationUiAction.ConfirmEmergencyLocate) {
+        if (_uiState.value.locateSubmitInFlight) return
+        val status = _uiState.value.whoICanLocateStatus[action.odinId]
+        if (status !is LocateVerifyStatus.Active) return
+        _uiState.update { it.copy(locateSubmitInFlight = true) }
+        viewModelScope.launch {
+            try {
+                val peer = OdinId(action.odinId)
+                conversationService.sendEmergencyLocateRequest(
+                    recipient = peer,
+                    explanation = action.explanation,
+                    windowHours = action.windowHours,
+                    ambush = action.ambush,
+                )
+                val result = emergencyLocateService.fetch(
+                    peer = peer,
+                    displayName = action.name,
+                    windowMs = action.windowHours * 3_600_000L,
+                )
+                when (result) {
+                    is EmergencyLocateService.FetchResult.Success ->
+                        _events.tryEmit(LocationUiEvent.OpenPeerHistory(action.odinId, action.name))
+                    else -> _events.tryEmit(LocationUiEvent.LocateFetchFailed)
+                }
+            } finally {
+                _uiState.update { it.copy(locateSubmitInFlight = false) }
+            }
         }
     }
 

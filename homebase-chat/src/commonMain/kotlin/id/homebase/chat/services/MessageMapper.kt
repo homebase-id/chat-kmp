@@ -50,6 +50,10 @@ import id.homebase.resources.system_emergency_contact_designated_you_unknown
 import id.homebase.resources.system_emergency_contact_revoked
 import id.homebase.resources.system_emergency_contact_revoked_you
 import id.homebase.resources.system_emergency_contact_revoked_you_unknown
+import id.homebase.resources.system_emergency_locate_requested
+import id.homebase.resources.system_emergency_locate_requested_unknown
+import id.homebase.resources.system_emergency_locate_requested_you
+import id.homebase.resources.system_emergency_locate_requested_you_unknown
 import id.homebase.resources.chat_poll_ended_other
 import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
@@ -213,6 +217,18 @@ suspend fun mapToMessageData(
                 // never lands in our chat as if our own copy had auto-healed.
                 if (status.statusMessage == StatusMessage.GroupHealLocalCleanup &&
                     metadata.originalAuthor != domain
+                ) {
+                    return null
+                }
+                // Ambush embargo (#EmergencyLocateRequested): the RECIPIENT must not see the
+                // request notice until the embargo passes — a captor inspecting the victim's
+                // phone sees nothing for 24h. The sender's own copy always renders. Decode-time
+                // check means there is no ticker: the message appears on the next conversation
+                // load after the deadline.
+                val embargoUntil = status.emergencyLocateEmbargoUntilMs
+                if (embargoUntil != null &&
+                    metadata.originalAuthor != domain &&
+                    UnixTimeUtc.now().milliseconds < embargoUntil
                 ) {
                     return null
                 }
@@ -573,5 +589,30 @@ internal suspend fun renderStatusMessage(
                 else ->
                     TranslationUtil.getString(MR.string.system_emergency_contact_revoked, name)
             }
+
+        StatusMessage.EmergencyLocateRequested -> {
+            val explanation = status.emergencyLocateExplanation?.takeIf { it.isNotBlank() }
+            when {
+                authorIsYou && explanation != null ->
+                    TranslationUtil.getString(
+                        MR.string.system_emergency_locate_requested_you,
+                        subject ?: TranslationUtil.getString(MR.string.someone),
+                        explanation
+                    )
+                authorIsYou ->
+                    TranslationUtil.getString(
+                        MR.string.system_emergency_locate_requested_you_unknown,
+                        subject ?: TranslationUtil.getString(MR.string.someone)
+                    )
+                explanation != null ->
+                    TranslationUtil.getString(
+                        MR.string.system_emergency_locate_requested,
+                        name,
+                        explanation
+                    )
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_locate_requested_unknown, name)
+            }
+        }
     }
 }

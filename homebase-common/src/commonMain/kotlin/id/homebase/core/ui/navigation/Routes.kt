@@ -194,6 +194,12 @@ sealed class Route {
     @SerialName("location-history")
     data object LocationHistory : Route()
 
+    /** Read-only history viewer for a contact's emergency-retrieved location data
+     *  (memory-only store; see EmergencyLocateStore). */
+    @Serializable
+    @SerialName("location-peer-history")
+    data class LocationPeerHistory(val peerDomain: String, val peerName: String) : Route()
+
     @Serializable
     @SerialName("location-live")
     data object LocationLive : Route()

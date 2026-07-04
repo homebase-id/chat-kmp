@@ -39,6 +39,8 @@ import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.permissions.isLocationPermissionGranted
+import id.homebase.core.location.emergency.EmergencyLocateService
+import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -277,6 +279,8 @@ val appModule = module {
         )
     }
     single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    single { EmergencyLocateStore(eventBus = get(), scope = get()) }
+    single { EmergencyLocateService(temporalDriveReadProvider = get(), store = get()) }
     // Readiness gate for "Share live location": activated add-on + location permission, so the chat
     // layer can prompt to set up location instead of starting a share that captures nothing.
     single<LiveShareReadiness> {
@@ -488,6 +492,9 @@ val appModule = module {
                 // consumer from existing when relay packets arrive (bug #824). The collector is
                 // never cancelled here; logout clears it in-stream via SessionEnded.
                 get<LiveLocationReceiveStore>().reset()
+                // Emergency-retrieved peer location history is memory-only and per-identity —
+                // clear any prior identity's retrievals (same in-stream SessionEnded backstop).
+                get<EmergencyLocateStore>().reset()
 
                 // Self-heal crash-orphaned encrypted payload temps. Two dirs (#842):
                 // the durable staging dir (outside cacheDir, invisible to the
@@ -858,9 +865,20 @@ val appModule = module {
             tracker = get(),
             receiveStore = get(),
             liveShareService = get(),
+            conversationService = get(),
+            emergencyLocateService = get(),
         )
     }
-    viewModelOf(::LocationHistoryViewModel)
+    // Manual block: the optional peerDomain (emergency-locate peer mode) arrives as a Koin
+    // runtime parameter from the LocationPeerHistory route; the own-history call site passes none.
+    viewModel { params ->
+        LocationHistoryViewModel(
+            deviceDirectory = get(),
+            locationPreferences = get(),
+            emergencyLocateStore = get(),
+            peerDomain = params.getOrNull(),
+        )
+    }
     // Manual block (not viewModelOf): the constructor has a `nowMs: () -> Long` param with a default;
     // viewModelOf would try to autowire that Function0 from Koin and fail at creation time.
     viewModel {
