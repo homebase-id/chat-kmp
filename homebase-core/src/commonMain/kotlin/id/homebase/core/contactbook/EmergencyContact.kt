@@ -43,7 +43,17 @@ fun Contact.iCanLocate(): Boolean = chatAppData()?.iCanLocate == true
  * (e.g. `collectAsStateWithLifecycle`) or `stateIn` it yourself. Consumers sort.
  */
 val ContactRepository.locatableContacts: Flow<List<Contact>>
-    get() = contacts.map { list -> list.filter { it.iCanLocate() } }
+    get() = contacts.map { it.filterLocatable() }
+
+/**
+ * Filters to contacts carrying the `iCanLocate` flag, then dedups by odinId (issue #982): the same
+ * person can hold two [Contact] rows with different `uniqueId`s (e.g. a manual contact created before
+ * an identity link, later joined by a second, identity-keyed row) — [ContactRepository.contacts] only
+ * dedups by `uniqueId`, so both rows can independently end up flagged. Assumes `NewestFirst` order
+ * (mirroring [ContactRepository.contacts]'s own order), so `distinctBy` keeps the freshest row.
+ */
+internal fun List<Contact>.filterLocatable(): List<Contact> =
+    filter { it.iCanLocate() }.distinctBy { it.content.odinId }
 
 private fun Contact.chatAppData(): ChatContactAppData? =
     appDataFor(AppConfig.APP_ID)?.let {
