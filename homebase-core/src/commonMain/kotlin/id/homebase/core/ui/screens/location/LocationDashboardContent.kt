@@ -461,8 +461,9 @@ private fun PeopleListBody(
 ) {
     var expanded by remember { mutableStateOf(false) }
     // Report every open/close so the (optional) per-entry preflight loop starts on each expand and
-    // stops on collapse; per-row results younger than the TTL are skipped downstream, so a quick
-    // re-expand is cheap. Leaving composition (navigating away) counts as a close.
+    // stops on collapse; successful data-bearing results younger than the TTL are skipped
+    // downstream, so a quick re-expand is cheap — error/no-data rows re-verify on every expand
+    // so a broken cloud can't stick (#985). Leaving composition (navigating away) counts as a close.
     LaunchedEffect(expanded) { onExpandedChange?.invoke(expanded) }
     DisposableEffect(Unit) { onDispose { onExpandedChange?.invoke(false) } }
     when {
