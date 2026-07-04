@@ -191,7 +191,7 @@ class LocationService(
             nowMs = nowMs,
         )
         if (result is GpsFixResult.Success) {
-            router.submit(listOf(result.point)) // route so the fetched fix isn't wasted
+            router.submit(listOf(result.point), reason) // route so the fetched fix isn't wasted
             logger.i { "requestLatestGps($reason): fetched & routed (src=${result.point.src})" }
         } else {
             logger.i { "requestLatestGps($reason): fetch did not yield a fix ($result)" }
@@ -206,10 +206,14 @@ class LocationService(
      * Returns null when nothing wants a capture.
      */
     suspend fun forceCaptureIfTracking(reason: GpsRequestReason): GpsFixResult? {
+        // Info (not debug): a closed gate is the most common reason a push produced no fresh
+        // point (#988), and only Info+ lines mirror into Crashlytics breadcrumbs. Frequency is
+        // bounded by the triggers (push arrival, app-open) — no spam risk.
         if (!coordinator.isCaptureWanted()) {
-            logger.d { "forceCaptureIfTracking($reason): skipped — no persistent consumer wants GPS" }
+            logger.i { "forceCaptureIfTracking($reason): skipped — ${coordinator.captureGateExplanation()}" }
             return null
         }
+        logger.i { "forceCaptureIfTracking($reason): gate open — requesting fix" }
         return requestLatestGps(reason)
     }
 
