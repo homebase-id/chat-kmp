@@ -11,10 +11,12 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Pure-function coverage for [getDeliveryStatus]. The 5 branches:
- *  - groupId == ConversationWithYourselfId → Read (chat with yourself never
- *    has a wire delivery story).
- *  - originalRecipientCount == 0 → Read (no one to deliver to).
+ * Pure-function coverage for [getDeliveryStatus]. The branches:
+ *  - groupId == ConversationWithYourselfId → Sent (chat with yourself never
+ *    has a wire delivery story — a double tick would contradict the empty
+ *    per-recipient transfer history, #934).
+ *  - originalRecipientCount == 0 → Sent (uploaded, nothing on the wire —
+ *    never double-tick).
  *  - transferHistory.summary == null → Sent (no information yet, optimistic).
  *  - summary.totalFailed > 0 → Failed (one failure poisons the whole
  *    message; the bubble shows the error).
@@ -25,25 +27,28 @@ import kotlin.uuid.Uuid
 class MessageMapperDeliveryStatusTest {
 
     @Test
-    fun groupIdIsConversationWithYourself_returnsRead() {
+    fun groupIdIsConversationWithYourself_returnsSent() {
         val header = buildHeader(
             groupId = ChatProtocol.ConversationWithYourselfId,
             originalRecipientCount = 0,
             transferHistoryJson = "null",
         )
-        assertEquals(ChatDeliveryStatus.Read, getDeliveryStatus(header))
+        assertEquals(ChatDeliveryStatus.Sent, getDeliveryStatus(header))
     }
 
     @Test
-    fun zeroRecipients_returnsRead() {
+    fun zeroRecipients_returnsSent() {
         // Some 1:1 conversations with self end up here too via originalRecipientCount=0
-        // even when groupId differs — the function falls through to this guard.
+        // even when groupId differs — the function falls through to this guard. A
+        // zero-recipient upload has an empty per-recipient transfer history, so the
+        // honest ceiling is a single tick: Read/Delivered here would render a double
+        // tick that message-info can never corroborate (#934).
         val header = buildHeader(
             groupId = Uuid.random(),
             originalRecipientCount = 0,
             transferHistoryJson = "null",
         )
-        assertEquals(ChatDeliveryStatus.Read, getDeliveryStatus(header))
+        assertEquals(ChatDeliveryStatus.Sent, getDeliveryStatus(header))
     }
 
     @Test

@@ -71,13 +71,16 @@ import kotlin.uuid.Uuid
 
 internal fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
+    // Self/no-recipient uploads never transit, so the honest ceiling is Sent (single
+    // tick): a double tick must always be corroborated by a non-empty per-recipient
+    // transfer history, which these files can never have (#934).
     if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
-        return ChatDeliveryStatus.Read
+        return ChatDeliveryStatus.Sent
     }
 
     val count = header.serverMetadata.originalRecipientCount
     if (count == 0) {
-        return ChatDeliveryStatus.Read
+        return ChatDeliveryStatus.Sent
     }
     val transferSummary =
         header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
