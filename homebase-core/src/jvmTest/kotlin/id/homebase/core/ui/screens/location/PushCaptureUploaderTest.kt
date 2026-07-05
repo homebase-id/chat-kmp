@@ -55,20 +55,42 @@ class PushCaptureUploaderTest {
         )
 
     @Test
-    fun gateClosed_returnsFast_noDrain() = runTest {
+    fun gateClosed_stillKicksBacklogDrain() = runTest {
         val h = Harness()
         h.captureResult = null
         buildUploader(h).captureAndUpload(budgetMs = 10_000)
-        assertEquals(0, h.drainCalls)
+        // The wake-start backlog kick fires even with the capture gate closed — a user
+        // with tracking off and chat stranded from an offline evening still drains.
+        assertEquals(1, h.drainCalls)
     }
 
     @Test
-    fun noPendingRow_returnsFast_noDrain() = runTest {
+    fun noPendingRow_stillKicksBacklogDrain() = runTest {
         val h = Harness()
         h.captureResult = fix(nowFixed - 1_000)
-        // pending stays empty: rate-gated / served-from-cache / already sent.
+        // pending stays empty: rate-gated / served-from-cache / already sent — the
+        // wake-start kick still ran; only the confirm-path drain is skipped.
         buildUploader(h).captureAndUpload(budgetMs = 10_000)
-        assertEquals(0, h.drainCalls)
+        assertEquals(1, h.drainCalls)
+    }
+
+    @Test
+    fun backlogKick_firesBeforeCapture() = runTest {
+        val h = Harness()
+        var drainsSeenAtCapture = -1
+        val uploader = PushCaptureUploader(
+            capture = { drainsSeenAtCapture = h.drainCalls; null },
+            pendingRow = { uid -> uid in h.pending },
+            drain = { h.drainCalls++; h.onDrain() },
+            events = h.events,
+            locationDriveId = driveId,
+            hourUid = ::uidFor,
+            nowMs = { nowFixed },
+        )
+        uploader.captureAndUpload(budgetMs = 10_000)
+        // Ordering pin: the backlog kick is launched before capture() runs, so the GPS
+        // wait overlaps the network drain instead of serializing in front of it.
+        assertEquals(1, drainsSeenAtCapture)
     }
 
     @Test
@@ -87,7 +109,8 @@ class PushCaptureUploaderTest {
 
         buildUploader(h).captureAndUpload(budgetMs = 10_000)
 
-        assertEquals(1, h.drainCalls)
+        // Wake-start backlog kick + the confirm-path re-kick.
+        assertEquals(2, h.drainCalls)
         assertFalse(uid in h.pending)
     }
 
@@ -171,7 +194,10 @@ class PushCaptureUploaderTest {
 
         buildUploader(h, nowMs = prevHourStart + HOUR_MS + 10_000).captureAndUpload(budgetMs = 10_000)
 
-        assertEquals(1, h.drainCalls, "the previous hour's pending row must be found and drained")
+        // 2 = wake-start backlog kick + confirm-path re-kick: the previous hour's
+        // pending row was found (otherwise no re-kick) and confirmed via the events.
+        assertEquals(2, h.drainCalls, "the previous hour's pending row must be found and drained")
+        assertFalse(prevUid in h.pending)
     }
 
     @Test
