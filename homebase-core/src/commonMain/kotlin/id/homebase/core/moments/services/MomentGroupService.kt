@@ -24,6 +24,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
@@ -123,8 +124,9 @@ class MomentGroupService(
             thumbnails = emptyList(),
         )
 
-        if (!outboxSync.tryEnqueue(request, priority = 1, dependencyUniqueId = null)) {
-            error("Failed to enqueue group create")
+        val createResult = outboxSync.tryEnqueue(request, priority = 1, dependencyUniqueId = null)
+        if (!createResult.enqueued) {
+            error("Failed to enqueue group create (outbox: $createResult)")
         }
 
         try {
@@ -207,8 +209,9 @@ class MomentGroupService(
             thumbnails = emptyList(),
         )
 
-        if (!outboxSync.replaceEnqueue(request, priority = 1, dependencyUniqueId = null)) {
-            error("Failed to enqueue group update")
+        val updateResult = outboxSync.replaceEnqueue(request, priority = 1, dependencyUniqueId = null)
+        if (!updateResult.enqueued) {
+            error("Failed to enqueue group update (outbox: $updateResult)")
         }
 
         try {
@@ -274,8 +277,9 @@ class MomentGroupService(
             payloads = emptyList(),
             thumbnails = emptyList(),
         )
-        if (!outboxSync.tryEnqueue(noticeRequest, priority = 1, dependencyUniqueId = null)) {
-            error("Failed to enqueue group leave notice")
+        val noticeResult = outboxSync.tryEnqueue(noticeRequest, priority = 1, dependencyUniqueId = null)
+        if (!noticeResult.enqueued) {
+            error("Failed to enqueue group leave notice (outbox: $noticeResult)")
         }
 
         // Local-only soft-delete of the group file; the leaver's `groups`

@@ -19,8 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.QuestionMark
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,21 +43,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.widget.MediaItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.image.ImageSize
 import id.homebase.core.util.initials
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
@@ -99,6 +109,10 @@ fun EventDetailDialog(
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
     organizer: OdinId? = null,
+    coverPayload: PayloadDescriptor? = null,
+    coverFileId: Uuid? = null,
+    coverKeyHeader: KeyHeader? = null,
+    coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -112,6 +126,10 @@ fun EventDetailDialog(
             counts = counts,
             onDismiss = onDismiss,
             organizer = organizer,
+            coverPayload = coverPayload,
+            coverFileId = coverFileId,
+            coverKeyHeader = coverKeyHeader,
+            coverPreviewThumbnail = coverPreviewThumbnail,
         )
     }
 }
@@ -126,6 +144,10 @@ private fun EventDetailContent(
     counts: EventRsvp.Counts,
     onDismiss: () -> Unit,
     organizer: OdinId?,
+    coverPayload: PayloadDescriptor? = null,
+    coverFileId: Uuid? = null,
+    coverKeyHeader: KeyHeader? = null,
+    coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     val actionService: ChatMessageActionService = koinInject()
     val contactService: ContactService = koinInject()
@@ -174,6 +196,25 @@ private fun EventDetailContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
+            if (coverPayload != null && coverFileId != null && coverKeyHeader != null) {
+                MediaItem(
+                    payload = coverPayload,
+                    fileId = coverFileId,
+                    driveId = chatTargetDrive.alias,
+                    previewThumbnail = coverPreviewThumbnail,
+                    keyHeader = coverKeyHeader,
+                    imageSize = ImageSize.THUMB_LARGE,
+                    preserveAspectRatio = true,
+                    shape = RoundedCornerShape(16.dp),
+                    // ponytail: static cover in the dialog — no nested full-screen
+                    // viewer. Add tap-to-zoom if a viewer is ever hoisted above this Dialog.
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+
             HeroHeader(descriptor = descriptor, times = times)
 
             organizer?.let { host ->
@@ -282,21 +323,21 @@ private fun EventDetailContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 RsvpButton(
-                    emoji = EventRsvp.GOING,
+                    icon = Icons.Default.Check,
                     label = stringResource(MR.string.chat_event_rsvp_yes),
                     selected = currentRsvp == EventRsvp.GOING,
                     onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.GOING) } },
                     modifier = Modifier.weight(1f),
                 )
                 RsvpButton(
-                    emoji = EventRsvp.MAYBE,
+                    icon = Icons.Default.QuestionMark,
                     label = stringResource(MR.string.chat_event_rsvp_maybe),
                     selected = currentRsvp == EventRsvp.MAYBE,
                     onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.MAYBE) } },
                     modifier = Modifier.weight(1f),
                 )
                 RsvpButton(
-                    emoji = EventRsvp.NOT_GOING,
+                    icon = Icons.Default.Close,
                     label = stringResource(MR.string.chat_event_rsvp_no),
                     selected = currentRsvp == EventRsvp.NOT_GOING,
                     onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.NOT_GOING) } },
@@ -333,21 +374,21 @@ private fun RsvpRoster(
     Column {
         RsvpSection(
             sectionLabel = stringResource(MR.string.chat_event_rsvp_yes),
-            emoji = EventRsvp.GOING,
+            icon = Icons.Default.Check,
             reactors = reactions.filter { it.emoji == EventRsvp.GOING },
             contactService = contactService,
             selfOdinId = selfOdinId,
         )
         RsvpSection(
             sectionLabel = stringResource(MR.string.chat_event_rsvp_maybe),
-            emoji = EventRsvp.MAYBE,
+            icon = Icons.Default.QuestionMark,
             reactors = reactions.filter { it.emoji == EventRsvp.MAYBE },
             contactService = contactService,
             selfOdinId = selfOdinId,
         )
         RsvpSection(
             sectionLabel = stringResource(MR.string.chat_event_rsvp_no),
-            emoji = EventRsvp.NOT_GOING,
+            icon = Icons.Default.Close,
             reactors = reactions.filter { it.emoji == EventRsvp.NOT_GOING },
             contactService = contactService,
             selfOdinId = selfOdinId,
@@ -358,18 +399,26 @@ private fun RsvpRoster(
 @Composable
 private fun RsvpSection(
     sectionLabel: String,
-    emoji: String,
+    icon: ImageVector,
     reactors: List<EmojiReaction>,
     contactService: ContactService,
     selfOdinId: OdinId?,
 ) {
     if (reactors.isEmpty()) return
     val youLabel = stringResource(MR.string.you)
-    // Format: "<emoji> <localized label> · <count>". The pieces are already
-    // localized; this is a presentational concat, not a translatable string.
-    val headerText = emoji + " " + sectionLabel + " · " + reactors.size.toString()
+    // "<localized label> · <count>", with a small leading vector icon. The
+    // pieces are already localized; this is a presentational concat, not a
+    // translatable string.
+    val headerText = sectionLabel + " · " + reactors.size.toString()
     Spacer(Modifier.height(12.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(6.dp))
         Text(
             text = headerText,
             style = MaterialTheme.typography.labelLarge,
@@ -397,7 +446,7 @@ private fun OrganizerRow(
     organizedByLabel: String,
     contactService: ContactService,
 ) {
-    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val resolvedName = contactService.resolveByOdinId(odinId).name
     val avatarOptions = AvatarOptions(size = 32.dp)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -443,7 +492,7 @@ private fun ReactorRow(
     contactService: ContactService,
 ) {
     // Same resolution path as MessageInfoViewModel.
-    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val resolvedName = contactService.resolveByOdinId(odinId).name
     val avatarOptions = AvatarOptions(size = 32.dp)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -629,7 +678,7 @@ private fun ActionRow(
 
 @Composable
 private fun RsvpButton(
-    emoji: String,
+    icon: ImageVector,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -651,8 +700,13 @@ private fun RsvpButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(text = emoji, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(2.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = onContainer,
+                modifier = Modifier.size(26.dp),
+            )
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,

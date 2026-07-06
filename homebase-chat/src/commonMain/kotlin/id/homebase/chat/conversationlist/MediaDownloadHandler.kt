@@ -2,6 +2,7 @@ package id.homebase.chat.conversationlist
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.FileOperationsProvider
@@ -64,22 +65,22 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )
                 )
-                val bytes = chatMessageActionService.getPayloadBytes(
+                val extension = payload.contentType?.let { extensionForMimeType(it) }
+                    ?: payload.contentType?.substringAfter("/")
+                    ?: "bin"
+                // Cleartext copy of an end-to-end-encrypted Homebase payload —
+                // STREAM-decrypted straight into the share_outbound subdir (#845:
+                // bounded RAM for any payload size, LRU untouched; the old
+                // getPayloadBytes path buffered ~2× the payload in RAM). The
+                // subdir keeps the sweep story: reaped as a single unit on
+                // cold start + foreground, bounding its on-disk lifetime.
+                val tempPath = chatMessageActionService.streamPayloadToShareOutbound(
                     message.fileId,
                     action.payloadKey,
-                    KeyHeader(payloadIv, message.keyHeader.aesKey)
+                    KeyHeader(payloadIv, message.keyHeader.aesKey),
+                    ".$extension",
                 )
-                if (bytes != null) {
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
-                    // Cleartext copy of an end-to-end-encrypted Homebase
-                    // payload — sequestered into the share_outbound subdir so
-                    // the cold-start + foreground sweepers can reap it as a
-                    // single unit, bounding its on-disk lifetime.
-                    val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
-                        bytes, ".$extension"
-                    )
+                if (tempPath != null) {
                     sendEvent(ShareFile(tempPath))
                 } else {
                     sendEvent(
@@ -315,7 +316,23 @@ internal class MediaDownloadHandler(
                     action.message.payloads?.firstOrNull { it.key == action.payloadKey }
                         ?: return@launch
                 val contentType = selectedPayload.contentType ?: ""
+                // A sticker tap (WhatsApp-style) opens the sticker-options bottom sheet — add/
+                // remove from the user's library + save to device — instead of the fullscreen
+                // viewer. Detected the same way the bubble decides to render bare (PR #664
+                // descriptorContent {"isSticker":true}). Regular images fall through to the
+                // fullscreen path unchanged.
+                val isSticker =
+                    (selectedPayload.descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
                 when {
+                    contentType.startsWith("image/") && isSticker -> {
+                        dispatch(
+                            ConversationListUiAction.ShowStickerOptions(
+                                message = action.message,
+                                payloadKey = action.payloadKey,
+                            )
+                        )
+                    }
+
                     contentType.startsWith("image/") -> {
                         Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
 
@@ -362,6 +379,28 @@ internal class MediaDownloadHandler(
                     }
 
                     contentType.startsWith("audio/") -> {}
+                    contentType == "application/pdf" -> {
+                        val alreadyDecrypted = messagesUiState.value.decryptedFiles
+                            .containsKey(DecryptedFileKey(action.message.fileId, action.payloadKey))
+                        if (!alreadyDecrypted) {
+                            dispatch(
+                                ConversationListUiAction.DecryptFile(
+                                    action.message.id, action.payloadKey
+                                )
+                            )
+                        }
+                        messagesUiState.update {
+                            it.copy(
+                                fullScreenOverlay = FullScreenOverlay.PdfViewerData(
+                                    messageId = action.message.id,
+                                    fileId = action.message.fileId,
+                                    payloadKey = action.payloadKey,
+                                    title = action.message.originalAuthor?.domainName ?: "null",
+                                    userDate = action.message.userDate,
+                                )
+                            )
+                        }
+                    }
                     contentType.startsWith("application/") || contentType.startsWith("text/") || contentType.startsWith(
                         "message/"
                     ) -> {

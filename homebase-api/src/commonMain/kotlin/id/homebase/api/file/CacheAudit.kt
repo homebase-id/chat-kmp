@@ -34,7 +34,31 @@ object CacheAudit {
         "homebase-thumbs-v2",
         "homebase-public-profiles-v2",
         "homebase-public-images-v2",
+        // Dedicated HLS playback-chunk LRU (#845) — isolated so one long video
+        // can't evict images/attachments and vice versa.
+        "homebase-hls-chunks-v1",
     )
+
+    /**
+     * The two upload-pipeline temp subdirectories of the cache dir (#844 PR4). They straddle the
+     * #844 durability boundary ("everything before encryption is disposable") and are swept
+     * DIFFERENTLY:
+     *
+     * - [UPLOAD_TEMP_DIR_NAME] — the RAW, pre-encryption source temps ([writeBytesToTempFile]).
+     *   Disposable: if one is gone at send time the pipeline fails soft (re-pick). Left "untracked"
+     *   so the CacheSweeper reaps it on every startup / "Clear caches" — it self-heals and can't
+     *   grow. This is the biggest leak source (picker-resolved inputs).
+     * - [OUTBOX_TEMP_DIR_NAME] — the ENCRYPTED, ready-to-transmit payloads
+     *   ([writeBytesToOutboxTempFile]), each referenced by an outbox row until the send completes
+     *   (a long time when offline). Durable: the CacheSweeper KEEPs it on the startup / "Clear
+     *   caches" sweep so an in-flight upload's payload is never deleted mid-flight, and only wipes
+     *   it on full logout. It's reaped along the outbox's own lifecycle — on success
+     *   (cleanupPayloadTempFiles) and on drop after ~48h (cleanupPayloadsForDroppedRow).
+     *
+     * Both are counted in the Storage screen total.
+     */
+    const val UPLOAD_TEMP_DIR_NAME: String = "upload-temp"
+    const val OUTBOX_TEMP_DIR_NAME: String = "outbox-temp"
 
     /**
      * Top-level entries Android places inside our `cacheDir` that are owned by
@@ -187,7 +211,11 @@ object CacheAudit {
         name == "data" -> "Android system: WebView data — sacred"
         name == "Crash Reports" -> "Android system: crash reporter — sacred"
         name == "hbvid_preload" -> "legacy video preload dir"
+        name.startsWith("hbvid_res_") -> "streamed MP4 playback temp (deleted on player dispose; swept as backstop)"
+        name.startsWith("hbvid_") -> "decrypted video playback scratch"
         name == "coil3_disk_cache" -> "orphan Coil disk cache"
+        name == UPLOAD_TEMP_DIR_NAME -> "raw pre-encryption upload temps (disposable — swept every startup)"
+        name == OUTBOX_TEMP_DIR_NAME -> "encrypted outbox payload temps (kept until sent/dropped to protect pending sends)"
         name == "homebase-payloads" || name == "homebase-thumbs" ||
             name == "homebase-public-profiles" || name == "homebase-public-images" ->
             "legacy kache dir (pre-v2)"
@@ -210,5 +238,7 @@ object CacheAudit {
     private const val TAG = "CacheAudit"
 
     /** Untracked entries at or above this size are logged at WARN. */
-    private const val LOUD_THRESHOLD_BYTES = 50L * 1024L * 1024L
+    // Delegates to the render/export boundary (#845): "large enough to be loud
+    // about" and "too large to render/cache" are deliberately the same number.
+    private val LOUD_THRESHOLD_BYTES = id.homebase.api.client.PayloadSizePolicy.RENDER_LIMIT_BYTES
 }

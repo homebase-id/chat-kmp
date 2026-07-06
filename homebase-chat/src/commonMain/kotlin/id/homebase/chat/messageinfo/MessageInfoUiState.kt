@@ -97,6 +97,36 @@ data class MessageInfoUiState(
     /** Whole minutes until the queued message's next attempt; null = no
      *  meaningful deadline (fresh row / in-flight) → render "shortly". */
     val nextAttemptInMinutes: Long? = null,
+    /** Attempt about to run (= failed attempts + 1). Null until at least one
+     *  attempt has failed, so a normal first send shows no attempt counter. */
+    val attemptNumber: Int? = null,
+    /** Cap shown next to [attemptNumber] before the row is dropped. */
+    val maxAttempts: Int = OutboxSync.MAX_ATTEMPTS,
+    /** Absolute ms-epoch the next attempt is due — the target a live countdown
+     *  ticks toward; null = no meaningful deadline (in-flight / fresh / legacy
+     *  row) → render "shortly". */
+    val nextAttemptAtMs: Long? = null,
+    /** True when this queued message is blocked behind an earlier unsent one. */
+    val waitingOnEarlierMessage: Boolean = false,
+    /** Reason the last send attempt failed — the "why it's stuck" line. */
+    val stuckReason: String? = null,
+    /** Snapshot of the earlier message this one is blocked on (when
+     *  [waitingOnEarlierMessage]) — its progress is what's shown, since it's the
+     *  message that actually has to send before this one can. */
+    val blockingRow: OutboxSync.PendingRowSnapshot? = null,
+    /** The effective row (this message, or the blocker when waiting) is checked
+     *  out in the DB. Note: this alone doesn't mean it's uploading — see
+     *  [isActivelyUploading]. */
+    val isCheckedOut: Boolean = false,
+    /** A live worker is genuinely uploading the effective row right now (exact,
+     *  no time guess). `isCheckedOut && !isActivelyUploading` ⇒ a stuck zombie. */
+    val isActivelyUploading: Boolean = false,
+    /** The message reads Sent/Delivered, yet a (dead/lingering) outbox row still
+     *  exists for it — surfaced honestly with a Try-now to clear it. */
+    val hasLingeringOutboxRow: Boolean = false,
+    /** The outbox is offline (no connection), so a queued message can't even
+     *  attempt — show "waiting for connection" instead of a backoff countdown. */
+    val outboxIsOffline: Boolean = false,
 )
 
 sealed interface MessageInfoUiEvent {
@@ -179,10 +209,14 @@ private const val MIN_PLAUSIBLE_MS_EPOCH = 100_000_000_000L // 2001-09-09 in ms
  * the item may be hours of backoff away).
  *
  * - No row → [base] passes through untouched.
- * - Row checked out → the upload is literally running: Queued with
- *   `nextAttemptInMinutes = null` ("sending now"-ish copy) and no Try-now
- *   (resetting an in-flight row is meaningless; [id.homebase.api.sync.database.OutboxSync.runNow]
- *   would no-op anyway).
+ * - Base already settled (Sent / DeliveryFailed) but a row lingers → DON'T
+ *   relabel it "Queued": a delivered message can still carry a dead/zombie
+ *   outbox row (the row lifecycle is decoupled from server-confirmed delivery).
+ *   Keep the settled status and just expose **Try now** to clear the row.
+ * - Otherwise (a not-yet-settled send) → **Queued** with the next-attempt time.
+ * - Row genuinely uploading ([isActivelyUploading]) → no Try-now (resetting a
+ *   live upload is a no-op). A checked-out row that is NOT uploading is a zombie
+ *   → Try-now is offered (it revives it).
  * - Row waiting → minutes until [nextRunTimeRaw], floored at 0; raw values
  *   below [MIN_PLAUSIBLE_MS_EPOCH] (insert sentinels, legacy seconds-epoch
  *   rows) normalize to "shortly" (null is reserved for checked-out).
@@ -191,6 +225,7 @@ fun retryUiState(
     base: SendStatusResult,
     inOutbox: Boolean,
     isCheckedOut: Boolean,
+    isActivelyUploading: Boolean,
     nextRunTimeRaw: Long?,
     nowMs: Long,
 ): RetryUiState {
@@ -202,11 +237,28 @@ fun retryUiState(
         nextRunTimeRaw == null || nextRunTimeRaw < MIN_PLAUSIBLE_MS_EPOCH -> 0L
         else -> ((nextRunTimeRaw - nowMs).coerceAtLeast(0L)) / 60_000L
     }
+    // Try-now helps unless a worker is genuinely uploading the row right now.
+    val canTryNow = !isActivelyUploading
+    val settled = base.sendState == OutgoingSendState.Sent ||
+        base.sendState == OutgoingSendState.DeliveryFailed
     return RetryUiState(
-        sendState = OutgoingSendState.Queued,
+        sendState = if (settled) base.sendState else OutgoingSendState.Queued,
         retryMode = null,
-        canRetry = false,
-        canTryNow = !isCheckedOut,
+        canRetry = if (settled) base.canRetry else false,
+        canTryNow = canTryNow,
         nextAttemptInMinutes = minutes,
     )
+}
+
+/**
+ * Absolute ms-epoch deadline for the queued message's next attempt — the target
+ * a live countdown ticks toward — or null when there's no meaningful deadline:
+ * the row is in flight (checked out), or [nextRunTimeRaw] is a fresh-insert
+ * sentinel / legacy seconds-epoch value below [MIN_PLAUSIBLE_MS_EPOCH]. Null
+ * renders as "shortly", matching [retryUiState]'s minutes==null/0 copy.
+ */
+fun nextAttemptDeadlineMs(isCheckedOut: Boolean, nextRunTimeRaw: Long?): Long? = when {
+    isCheckedOut -> null
+    nextRunTimeRaw == null || nextRunTimeRaw < MIN_PLAUSIBLE_MS_EPOCH -> null
+    else -> nextRunTimeRaw
 }

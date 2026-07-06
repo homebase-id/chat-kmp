@@ -115,14 +115,20 @@ class DriveRegistry(
         loadDrives().any { it.drive.alias == driveId }
 
     /**
-     * Resolve the registry on login: try the local index first (fast, offline-safe,
-     * covers cold boot of returning users), then fall back to a single
-     * `getFileHeaderByUid` HTTP call (covers fresh login on a new device or one whose
-     * local DB was wiped). On both-empty or any fetch failure, returns an empty list
-     * so the caller proceeds with mandatory drives only — the observer will pick the
-     * file up on the next chat-drive sync.
+     * Resolve the registry on login by reconciling the local index with the server.
+     * Reads the local index (fast, offline-safe) AND issues a single `getFileHeaderByUid`
+     * HTTP call for the authoritative server copy, returning the **union** of the two.
+     * On any fetch failure (offline) or when the server has no registry file, falls back
+     * to the local list — so a failed fetch never drops the user's drives.
      *
-     * This eliminates the "first WS connect subscribes to mandatory only, then
+     * Reconciling on every login (not just when local is empty) is what lets a drive
+     * activated on ANOTHER device be mounted here at login: it's in the server registry
+     * file but not necessarily in this device's local index yet. Returning the local list
+     * whenever it was non-empty left such a device stuck on its stale cache until some
+     * later chat-drive sync happened to redeliver the registry file — the reconciliation
+     * bug this method now fixes.
+     *
+     * This also eliminates the "first WS connect subscribes to mandatory only, then
      * reconnects after the first sync delivers the registry file" race on fresh
      * login. Callers should pass the result to both [AuthConnectionCoordinator.connect]
      * (so the WS subscribes to the full set on the first connect) and [start]'s
@@ -171,29 +177,55 @@ class DriveRegistry(
         Logger.i(tag = TAG) { "bootstrap() begin" }
         val local = loadDrives()
         Logger.i(tag = TAG) { "bootstrap local-DB returned ${local.size} drive(s)" }
-        if (local.isNotEmpty()) {
-            Logger.i(tag = TAG) { "bootstrap() end (local, ${local.size} drive(s))" }
-            return local
-        }
+
+        // Always reconcile against the server, even when the local cache is non-empty.
+        // The local index is only as fresh as the last chat-drive sync delivered: a drive
+        // activated on ANOTHER device lives in the server registry file but may not be in
+        // this device's local index yet, and nothing would mount it at login. (Returning
+        // local-when-non-empty was the reconciliation bug — a stale cache never caught up
+        // until some later chat-drive sync happened to redeliver the registry file.)
         val chatDriveId = SystemDriveConstants.chatDrive.alias
-        Logger.i(tag = TAG) { "bootstrap falling back to server fetch" }
-        val server = try {
-            getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID)
+        val server: List<LabeledDrive>? = try {
+            getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID)?.let { parseRegistryContent(it) }
         } catch (e: CancellationException) {
             // Don't swallow cancellation — let the caller's scope tear down cleanly.
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) {
-                "bootstrap server fetch failed — falling back to empty (observer will pick up after first sync)"
+                "bootstrap server fetch failed — using local registry only (${local.size} drive(s))"
             }
-            return emptyList()
-        } ?: run {
-            Logger.i(tag = TAG) { "bootstrap() end (server returned no registry file, 0 drives)" }
-            return emptyList()
+            null
         }
-        val parsed = parseRegistryContent(server)
-        Logger.i(tag = TAG) { "bootstrap() end (server, ${parsed.size} drive(s))" }
-        return parsed
+
+        if (server == null) {
+            // Offline / fetch error / no registry file on the server yet. Trust the local
+            // cache (empty on a fresh install — the observer picks the file up on the first
+            // chat-drive sync). Offline-safe: a failed fetch never drops the user's drives.
+            Logger.i(tag = TAG) { "bootstrap() end (local-only, ${local.size} drive(s))" }
+            return local
+        }
+
+        // Union local with the server list so a drive activated elsewhere (server-only, not
+        // yet synced locally) is mounted at login, while a drive just activated on THIS
+        // device (local-only, not yet reflected by a stale server replica read) is never
+        // dropped. The post-login observer ([start]/[reconcile]) keeps the two converging
+        // thereafter, including propagating removals once the local index catches up.
+        val merged = unionByAlias(local, server)
+        Logger.i(tag = TAG) {
+            "bootstrap() end (reconciled local=${local.size} + server=${server.size} -> ${merged.size} drive(s))"
+        }
+        return merged
+    }
+
+    private fun unionByAlias(
+        primary: List<LabeledDrive>,
+        secondary: List<LabeledDrive>,
+    ): List<LabeledDrive> {
+        val seen = HashSet<Uuid>(primary.size + secondary.size)
+        val result = ArrayList<LabeledDrive>(primary.size + secondary.size)
+        for (drive in primary) if (seen.add(drive.drive.alias)) result.add(drive)
+        for (drive in secondary) if (seen.add(drive.drive.alias)) result.add(drive)
+        return result
     }
 
     /**

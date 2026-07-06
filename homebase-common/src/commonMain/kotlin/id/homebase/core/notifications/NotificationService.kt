@@ -102,6 +102,12 @@ internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_
 private val COMPANION_AUTH_RESTORE_TIMEOUT = 2.seconds
 
 /**
+ * Sender-side placeholder body for chat pushes (ChatMessageSenderService) — not real
+ * content. Keep in sync with the same literal in the iOS NotificationServiceExtension.
+ */
+private const val CONTENTLESS_PLACEHOLDER = "You have a new message"
+
+/**
  * Resolves the companion-app redirect event, AWAITING auth restoration so a tap
  * from a killed app isn't dropped while `YouAuthFlowManager.restoreSession()` is
  * still loading credentials — the cold-start counterpart of the background-sync
@@ -383,6 +389,11 @@ class NotificationService(
                 // Attempt to decrypt notification body (placeholder for future encrypted support)
                 val decryptedMessage = decryptNotificationBody(notification)
 
+                // Real content only — not the sender-side placeholder (and not the
+                // NotificationBodyFormer fallback used when decryptedMessage is null).
+                val hasContent = !decryptedMessage.isNullOrEmpty() &&
+                        decryptedMessage != CONTENTLESS_PLACEHOLDER
+
                 val appName = notification.appDisplayName ?: "Homebase"
 
                 // Use decrypted message if available, otherwise format from payload
@@ -436,6 +447,7 @@ class NotificationService(
                     timestamp = notification.created,
                     payloadData = payloadMap,
                     silent = !shouldAlert,
+                    hasContent = hasContent,
                 )
 
                 if (isAppInForeground) {
@@ -905,8 +917,9 @@ internal const val SUMMARY_ID_OFFSET = 100_000
  * without touching any other. Must reproduce exactly what the display path used:
  *  - per-message id = [PushNotificationPayloadOptions.conversationNotificationId]
  *    (the raw, unmasked `typeId.hashCode()`), and
- *  - summary id = [SUMMARY_ID_OFFSET] + the masked hash (see
- *    RichNotificationDisplayer.postSummaryNotification).
+ *  - summary id = [SUMMARY_ID_OFFSET] + the masked hash reduced modulo
+ *    (Int.MAX_VALUE - [SUMMARY_ID_OFFSET]) so the offset can't overflow Int (see
+ *    RichNotificationDisplayer.postSummaryNotification, which delegates here).
  *
  * Degenerate case: if `conversationId.hashCode() == 0` the display path posts the
  * per-message notification under a random id instead, so a derived cancel would
@@ -914,6 +927,11 @@ internal const val SUMMARY_ID_OFFSET = 100_000
  */
 fun conversationNotificationIds(conversationId: String): Pair<Int, Int> {
     val messageId = conversationId.hashCode()
-    val summaryId = SUMMARY_ID_OFFSET + (conversationId.hashCode() and 0x7FFFFFFF)
+    // Reduce the (non-negative) masked hash into [0, Int.MAX_VALUE - SUMMARY_ID_OFFSET)
+    // so the offset can never overflow Int into a negative summary id. Without the
+    // modulo, `SUMMARY_ID_OFFSET + maskedHash` wrapped past Int.MAX_VALUE for the ~0.005%
+    // of hashes within SUMMARY_ID_OFFSET of the top, producing a negative id.
+    val maskedHash = (conversationId.hashCode() and 0x7FFFFFFF) % (Int.MAX_VALUE - SUMMARY_ID_OFFSET)
+    val summaryId = SUMMARY_ID_OFFSET + maskedHash
     return messageId to summaryId
 }

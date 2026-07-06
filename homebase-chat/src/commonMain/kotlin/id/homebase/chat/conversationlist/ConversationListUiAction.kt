@@ -319,8 +319,72 @@ sealed interface ConversationListUiAction {
         val sticker: id.homebase.chat.services.sticker.SavedSticker,
     ) : ConversationListUiAction
 
+    /**
+     * Tapping a sticker message bubble. Opens the sticker-options bottom sheet (Add/Remove +
+     * Save to device) instead of the fullscreen media viewer.
+     */
+    data class ShowStickerOptions(
+        val message: MessageUiModel,
+        val payloadKey: String,
+    ) : ConversationListUiAction
+
+    /** Dismiss the sticker-options bottom sheet. */
+    data object DismissStickerOptions : ConversationListUiAction
+
+    /**
+     * "Remove from my stickers" in the sticker-options sheet. Deletes the saved copy created
+     * from the given source message file; does NOT delete the chat message.
+     */
+    data class RemoveStickerFromMessage(
+        val sourceFileId: Uuid,
+    ) : ConversationListUiAction
+
     /** Ensure the optional Stickers drive is mounted (first tray open). */
     data object EnsureStickerDriveMounted : ConversationListUiAction
+
+    // endregion
+
+    // region Live location sharing
+
+    /** Start (or extend) a live share on [messageId]'s location: sets liveShareUntilMs = now + duration. */
+    data class StartLiveLocationShare(
+        val messageId: Uuid,
+        val durationMs: Long,
+    ) : ConversationListUiAction
+
+    /** Stop the live share on [messageId]'s location: sets liveShareUntilMs = now (ENDED). */
+    data class StopLiveLocationShare(
+        val messageId: Uuid,
+    ) : ConversationListUiAction
+
+    /**
+     * Share your live location back from someone ELSE's location bubble. Never touches their
+     * message — sends a NEW lightweight live location message of your own (no map payload) and
+     * starts the relay. [messageId] is the received bubble, used to resolve the conversation and,
+     * when [durationMs] is null, the sender's own live end-time to mirror: a single tap on a LIVE
+     * bubble shares back for exactly the sender's remaining window so both shares end together.
+     * Non-null [durationMs] comes from the duration menu on a received static (fresh) bubble.
+     */
+    data class ShareLiveLocationBack(
+        val messageId: Uuid,
+        val durationMs: Long?,
+    ) : ConversationListUiAction
+
+    /** Open the Live Location map (tap a live location bubble's map). */
+    data object OpenLiveLocationMap : ConversationListUiAction
+
+    /** Open the full-screen share-location screen (attachment sheet → Location). */
+    data class OpenShareLocation(val conversationId: Uuid) : ConversationListUiAction
+
+    /** Open the location setup screen — from the "set up location" prompt shown when a live share
+     *  can't start because location isn't ready. */
+    data object OpenLocationSetup : ConversationListUiAction
+
+    /** Tap on the top-bar "you're sharing" pin (#816) — opens the location dashboard, which lists
+     *  every outgoing live share with per-person stop + stop-all. Routes through the same
+     *  navigation as [OpenLocationSetup]; an active share implies the add-on is activated, so it
+     *  lands on the dashboard rather than onboarding. */
+    data object OpenLocationDashboard : ConversationListUiAction
 
     // endregion
 }

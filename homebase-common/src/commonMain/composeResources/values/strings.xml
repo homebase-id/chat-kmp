@@ -17,6 +17,7 @@
     <string name="share">Share</string>
     <string name="ok">Ok</string>
     <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
     <string name="replying_to">Replying to %1$s</string>
     <string name="cancel_reply">Cancel reply</string>
     <string name="backspace">Backspace</string>
@@ -53,7 +54,14 @@
     <string name="msg_retry_failed">Couldn’t retry — check your connection</string>
     <string name="msg_still_in_outbox">Still sending — next attempt %1$s</string>
     <string name="msg_next_attempt_minutes">in about %1$d min</string>
+    <string name="msg_next_attempt_countdown">in %1$s</string>
     <string name="msg_next_attempt_shortly">shortly</string>
+    <string name="msg_send_attempt">Attempt %1$d of %2$d</string>
+    <string name="msg_waiting_on_earlier_message">Waiting for an earlier message to send first</string>
+    <string name="msg_stuck_reason">Couldn’t send: %1$s</string>
+    <string name="msg_outbox_checked_out_stuck">Stuck — the upload didn’t finish and is still checked out</string>
+    <string name="msg_outbox_entry_lingering">A pending outbox entry is still present for this message</string>
+    <string name="msg_waiting_for_connection">Waiting for connection</string>
     <string name="action_try_now">Try now</string>
     <string name="label_edited">Edited: %1$s</string>
     <string name="label_size">Size: %1$s</string>
@@ -79,7 +87,6 @@
     <string name="not_connected">Not connected</string>
     <string name="loading">Loading...</string>
     <string name="database_upgrade_snackbar">Database upgraded — restoring your data…</string>
-    <string name="connection_requests_banner">%1$s connection request(s)</string>
     <string name="show_more">Show more</string>
     <string name="chat_message_read_more">Read more</string>
     <string name="action_cannot_be_undone">This action can’t be undone.</string>
@@ -130,7 +137,6 @@
     <string name="avatar_conversation">Conversation avatar</string>
     <string name="avatar_default">Default avatar</string>
     <string name="avatar_public">Public avatar</string>
-    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -178,7 +184,12 @@
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
     <string name="login_error_invalid_id">Please enter a valid Homebase ID</string>
-    <string name="login_error_ping_failed">Unable to reach %1$s — are you sure it\'s a Homebase ID?</string>
+    <string name="login_error_unreachable">Couldn't reach %1$s — check your connection and try again.</string>
+    <string name="login_error_not_homebase">%1$s doesn't look like a Homebase identity.</string>
+    <string name="login_error_tls">Couldn't establish a secure connection to %1$s. A VPN, ad blocker, or antivirus may be intercepting HTTPS — try turning it off, then retry. Tap "Show error details" for the exact error.</string>
+    <string name="login_error_details_show">Show error details</string>
+    <string name="login_error_details_hide">Hide error details</string>
+    <string name="login_error_details_copy">Copy</string>
     <string name="login_error_generic">Login failed</string>
     <string name="login_popup_blocked">Your browser blocked the sign-in window.</string>
     <string name="login_continue_button">Continue to sign in</string>
@@ -223,6 +234,7 @@
     <string name="storage_cache_profile_images">Profile images</string>
     <string name="storage_cache_payloads">Media payloads</string>
     <string name="storage_cache_thumbnails">Thumbnails</string>
+    <string name="storage_cache_hls_chunks">Video stream cache</string>
     <string name="storage_cache_unknown">Other</string>
     <string name="storage_cache_size_format">%1$s / %2$s</string>
     <string name="storage_drive_count_format">%1$d items</string>
@@ -354,7 +366,7 @@
     <string name="moments_create_action">Create a new moment</string>
     <string name="moments_post_open">Open moment</string>
     <string name="moments_push_new_post">A moment has been shared with you...</string>
-    <string name="moments_push_new_comment">Commented on a moment you\'re in</string>
+    <string name="moments_push_new_comment">Commented on a moment you're in</string>
     <string name="moments_view_menu">Change view</string>
     <string name="moments_view_timeline">Timeline</string>
     <string name="moments_view_album">Album</string>
@@ -390,7 +402,7 @@
     <string name="moments_add_people_confirm">Add</string>
     <string name="moments_add_people_already_shared">Already shared</string>
     <string name="moments_add_people_added">Shared with %1$d more</string>
-    <string name="moments_add_people_failed">Couldn\'t add people. Please try again.</string>
+    <string name="moments_add_people_failed">Couldn't add people. Please try again.</string>
     <string name="moments_add_people_still_posting">Moment is still being posted — try again in a moment.</string>
     <string name="moments_detail_delete_dialog_title">Delete this moment?</string>
     <string name="moments_detail_comment_delete">Delete</string>
@@ -474,6 +486,16 @@
     <string name="system_group_conversation_member_declined_rejoin_you">You declined to rejoin the conversation</string>
     <string name="system_group_heal_requested">%1$s requested a group heal</string>
     <string name="system_group_heal_requested_you">You requested a group heal</string>
+    <string name="system_emergency_contact_designated">%1$s added you as an emergency contact</string>
+    <string name="system_emergency_contact_designated_you">You added %1$s as an emergency contact</string>
+    <string name="system_emergency_contact_designated_you_unknown">You added an emergency contact</string>
+    <string name="system_emergency_contact_revoked">%1$s removed you as an emergency contact</string>
+    <string name="system_emergency_contact_revoked_you">You removed %1$s as an emergency contact</string>
+    <string name="system_emergency_contact_revoked_you_unknown">You removed an emergency contact</string>
+    <string name="system_emergency_locate_requested">%1$s activated the emergency function and requested your location data: %2$s</string>
+    <string name="system_emergency_locate_requested_unknown">%1$s activated the emergency function and requested your location data</string>
+    <string name="system_emergency_locate_requested_you">You requested %1$s's emergency location data: %2$s</string>
+    <string name="system_emergency_locate_requested_you_unknown">You requested %1$s's emergency location data</string>
     <string name="system_group_heal_local_cleanup_both">Removed broken local copies (group + admins) as part of heal</string>
     <string name="system_group_heal_local_cleanup_main">Removed broken local copy (group) as part of heal</string>
     <string name="system_group_heal_local_cleanup_admin">Removed broken local copy (admins) as part of heal</string>
@@ -501,13 +523,13 @@
     <string name="chat_no_gallery_items">No items</string>
     <string name="chat_select_more_photos">Select more photos</string>
     <string name="chat_gallery_selection_index">%1$d</string>
-    <string name="chat_gallery_send_count">Send (%1$d)</string>
+    <string name="chat_gallery_next_count">Next (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">New conversation</string>
     <string name="chat_new_conversation_search_placeholder">Search contacts</string>
     <string name="chat_new_conversation_new_group">New group</string>
-    <string name="chat_new_conversation_connection_request">New connection request</string>
+    <string name="chat_new_conversation_new_contact">New contact</string>
     <string name="chat_no_contacts_found">No contacts found</string>
     <string name="chat_group_select_members">Select members</string>
 
@@ -670,9 +692,10 @@
     <string name="share_picker_new_moment_subtitle">Share to your Moments</string>
     <string name="chat_message_emoji_options">Emoji options</string>
     <string name="chat_message_edited">Edited</string>
-    <string name="chat_message_deleted">🚫 This message was deleted</string>
+    <string name="chat_message_deleted">This message was deleted</string>
 
     <string name="chat_message_image">Image</string>
+    <string name="chat_message_gif">👾 GIF</string>
     <string name="chat_preview_sticker">Sticker</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
@@ -680,6 +703,8 @@
     <string name="chat_message_file">File</string>
     <string name="chat_message_location">Location</string>
     <string name="chat_message_multiple_media">Media</string>
+    <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
+    <string name="chat_preview_sender_label">%1$s:</string>
 
     <string name="chat_location_share">Location</string>
     <string name="chat_location_attachment">Location map</string>
@@ -714,8 +739,20 @@
     <string name="chat_event_unparseable">Unable to display this event. Please update the app.</string>
     <string name="chat_event_send">Send event</string>
     <string name="chat_event_scheduled_in_zone">Scheduled: %1$s %2$s</string>
-    <string name="chat_event_add_end_time">Add end time</string>
-    <string name="chat_event_remove_end_time">Remove end time</string>
+    <string name="chat_event_error_end_before_start">End time must be after the start time</string>
+    <string name="chat_event_duration_hours_minutes">%1$dh %2$dm</string>
+    <string name="chat_event_duration_hours">%1$dh</string>
+    <string name="chat_event_duration_minutes">%1$dm</string>
+    <string name="chat_event_ends_at">Ends %1$s</string>
+    <string name="chat_event_duration_title">Duration</string>
+    <string name="chat_event_duration_custom_end">Set end date and time</string>
+    <string name="chat_event_title_hint">Add title</string>
+    <string name="chat_event_location_hint">Add location</string>
+    <string name="chat_event_meeting_url_hint">Add meeting link</string>
+    <string name="chat_event_description_hint">Add description</string>
+    <string name="chat_event_add_photo">Add photo</string>
+    <string name="chat_event_remove_photo">Remove photo</string>
+    <string name="chat_event_cover_photo">Event photo</string>
     <string name="chat_event_organized_by">Organized by</string>
     <string name="chat_event_tz_picker_title">Time zone</string>
     <string name="chat_event_tz_picker_search">Search city or zone</string>
@@ -770,14 +807,14 @@
     <string name="chat_sticker_share">Stickers</string>
     <string name="chat_save_sticker">Save sticker</string>
     <string name="chat_sticker_saved">Sticker saved</string>
-    <string name="chat_sticker_save_failed">Couldn\'t save sticker</string>
-    <string name="chat_sticker_send_failed">Couldn\'t send sticker</string>
+    <string name="chat_sticker_save_failed">Couldn't save sticker</string>
+    <string name="chat_sticker_send_failed">Couldn't send sticker</string>
     <string name="chat_sticker_import">Import sticker</string>
     <string name="chat_stickers_empty">No saved stickers yet</string>
     <string name="chat_sticker_remove">Remove sticker</string>
     <string name="chat_sticker_remove_confirm">Remove this sticker from your library?</string>
     <string name="chat_sticker_removed">Sticker removed</string>
-    <string name="chat_sticker_remove_failed">Couldn\'t remove sticker</string>
+    <string name="chat_sticker_remove_failed">Couldn't remove sticker</string>
     <string name="chat_sticker_tray_title">My Stickers</string>
     <string name="cd_sticker_thumbnail">Saved sticker</string>
     <string name="cd_import_sticker">Import a sticker</string>
@@ -788,6 +825,14 @@
     <string name="cd_sticker_variant_original">Original photo version</string>
     <string name="cd_tab_emoji">Emoji</string>
     <string name="cd_tab_stickers">Stickers</string>
+    <!-- Sticker-tap bottom sheet (tap a sticker message) -->
+    <string name="chat_sticker_options_title">Sticker</string>
+    <string name="chat_sticker_add_to_library">Add to my stickers</string>
+    <string name="chat_sticker_remove_from_library">Remove from my stickers</string>
+    <string name="chat_sticker_save_to_device">Save to device</string>
+    <string name="cd_sticker_options_add">Add to my stickers</string>
+    <string name="cd_sticker_options_remove">Remove from my stickers</string>
+    <string name="cd_sticker_options_save">Save to device</string>
 
     <!-- Groodle (group-scheduling poll) -->
     <string name="chat_groodle_share">Groodle</string>
@@ -796,16 +841,19 @@
     <string name="chat_groodle_field_title">Title</string>
     <string name="chat_groodle_field_description">Description (optional)</string>
     <string name="chat_groodle_field_timezone">Time zone</string>
-    <string name="chat_groodle_allow_maybe">Allow \"Maybe\"</string>
+    <string name="chat_groodle_allow_maybe">Allow “Maybe”</string>
     <string name="chat_groodle_deadline">Voting deadline</string>
     <string name="chat_groodle_deadline_24h">24 hours</string>
     <string name="chat_groodle_deadline_48h">48 hours</string>
     <string name="chat_groodle_deadline_week">1 week</string>
     <string name="chat_groodle_deadline_none">No deadline</string>
     <string name="chat_groodle_add_time">Add a time</string>
+    <string name="chat_groodle_add_another_time">Add another time</string>
     <string name="chat_groodle_set_time">Set time</string>
     <string name="chat_groodle_duration">Duration</string>
     <string name="chat_groodle_duration_minutes">%1$d min</string>
+    <string name="chat_groodle_duration_decrease">Decrease duration</string>
+    <string name="chat_groodle_duration_increase">Increase duration</string>
     <string name="chat_groodle_remove_option">Remove option</string>
     <string name="chat_groodle_option_count">%1$d options</string>
     <string name="chat_groodle_option_count_one">1 option</string>
@@ -823,6 +871,41 @@
     <string name="chat_groodle_err_times_missing">Set a time for every option.</string>
     <string name="chat_groodle_err_duplicate">Two options have the same date and time.</string>
     <string name="chat_groodle_send">Send Groodle</string>
+
+    <!-- Shared by the Groodle/Event/Poll composer discard-confirmation guard. -->
+    <string name="composer_discard_title">Discard changes?</string>
+    <string name="composer_discard_message">Your entries will be lost if you leave now.</string>
+    <string name="composer_discard_confirm">Discard</string>
+    <string name="composer_discard_keep">Keep editing</string>
+
+    <!-- Poll composer -->
+    <string name="chat_poll_share">Poll</string>
+    <string name="chat_poll_question_hint">Ask a question</string>
+    <string name="chat_poll_option_hint">Option %1$d</string>
+    <string name="chat_poll_add_option">Add option</string>
+    <string name="chat_poll_remove_option">Remove option</string>
+    <string name="chat_poll_reorder_option">Reorder option</string>
+    <string name="chat_poll_allow_multiple">Allow multiple votes</string>
+
+    <!-- Poll bubble -->
+    <string name="chat_poll_subtitle_single">Poll · Select one</string>
+    <string name="chat_poll_subtitle_multiple">Poll · Select one or more</string>
+    <string name="chat_poll_subtitle_closed">Poll · Final results</string>
+    <string name="chat_poll_no_votes">No votes</string>
+    <string name="chat_poll_view_votes">View votes</string>
+    <string name="chat_poll_view_results">View results</string>
+    <string name="chat_poll_one_vote">1 vote</string>
+    <string name="chat_poll_vote_count">%1$d votes</string>
+    <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
+
+    <!-- Poll detail dialog -->
+    <string name="chat_poll_details_title">Poll details</string>
+    <string name="chat_poll_question_section">Question</string>
+    <string name="chat_poll_you">You</string>
+    <string name="chat_poll_end">End poll</string>
+    <string name="chat_poll_end_failed">Couldn't end the poll. Please try again.</string>
+    <string name="chat_poll_ended_self">You ended the poll: "%1$s"</string>
+    <string name="chat_poll_ended_other">%1$s ended the poll: "%2$s"</string>
 
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
@@ -848,6 +931,7 @@
     <string name="moment_video_fit_screen">Fit to screen</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
+    <string name="chat_message_pdf_preview">PDF preview</string>
     <string name="chat_message_microphone">Microphone</string>
     <string name="chat_message_emoji">Emoji</string>
 
@@ -896,7 +980,7 @@
     <string name="upload_retrying">Retrying\u2026</string>
     <string name="upload_failed">Upload failed</string>
     <string name="upload_failed_sheet_title">Upload failed</string>
-    <string name="upload_failed_sheet_body">This moment couldn\'t be uploaded. Recipients didn\'t receive it.</string>
+    <string name="upload_failed_sheet_body">This moment couldn't be uploaded. Recipients didn't receive it.</string>
     <string name="upload_failed_action_delete">Delete moment</string>
     <string name="upload_failed_action_dismiss">Dismiss</string>
 
@@ -1004,6 +1088,20 @@
     <string name="vault_gallery_delete_file">Delete file</string>
     <string name="vault_gallery_delete_all">Delete all</string>
 
+    <!-- Vault image editor -->
+    <string name="vault_edit_picture">Edit picture</string>
+    <string name="vault_edit_crop">Crop</string>
+    <string name="vault_edit_draw">Draw</string>
+    <string name="vault_editor_name_hint">Label (optional)</string>
+    <string name="vault_editor_add">Add</string>
+    <string name="vault_error_edit_page">Couldn't save the edited picture.</string>
+    <string name="vault_error_open_editor">Couldn't open the picture editor.</string>
+
+    <!-- Vault Move to section -->
+    <string name="vault_move_to_section">Move to section…</string>
+    <string name="vault_move_to_section_target">Move to %1$s</string>
+    <string name="vault_move_to_section_failed">Couldn't move the file. Please try again.</string>
+
     <!-- Vault Notes -->
     <string name="vault_notes_label">Notes</string>
     <string name="vault_notes_placeholder">Add notes about this entry…</string>
@@ -1056,7 +1154,7 @@
     <string name="crop">Crop</string>
     <string name="draw">Draw</string>
     <string name="chat_remove_background">Remove background</string>
-    <string name="chat_remove_background_failed">Couldn\'t remove the background</string>
+    <string name="chat_remove_background_failed">Couldn't remove the background</string>
     <string name="chat_removing_background">Removing background…</string>
     <string name="send_as_sticker">Send as sticker</string>
     <string name="cd_send_as_sticker">Toggle send as sticker</string>
@@ -1089,10 +1187,9 @@
     <string name="cd_not_selected">Not selected</string>
     <string name="cd_open_externally">Open externally</string>
     <string name="cd_navigate_forward">Navigate forward</string>
-    <string name="cd_group_avatar">Group</string>
     <string name="cd_connection_succeeded">Connection succeeded</string>
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
-    <string name="video_web_large_playback_unsupported">Large videos can\'t be played in the browser yet</string>
+    <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
     <!-- Settings section headers -->
     <string name="settings_section_general">General</string>
@@ -1118,6 +1215,7 @@
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
+    <string name="dev_menu_test_temporal_read">Test temporal location read (Frodo)</string>
     <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
     <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
@@ -1165,7 +1263,7 @@
 
     <!-- Conversation media album + groups in common -->
     <string name="conversation_media_see_all">See all</string>
-    <string name="conversation_groups_in_common">Groups in common</string>
+    <string name="conversation_groups_in_common">Chat Groups in common</string>
     <string name="conversation_media_album_title">Shared media</string>
     <string name="conversation_media_empty">Nothing here yet</string>
     <string name="conversation_media_tab_media">Media</string>
@@ -1185,5 +1283,352 @@
     <string name="file_save_failed">Failed to save: %1$s</string>
     <string name="file_share_failed">Failed to share: %1$s</string>
     <string name="error_unknown">Unknown error</string>
+
+    <!-- Location add-on -->
+    <string name="location_label">Location</string>
+    <string name="location_home_subtitle">Your private location history</string>
+    <string name="location_onboarding_title">Your places, only yours</string>
+    <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you've been — stored on your own drive, visible to no one but you.</string>
+    <string name="location_onboarding_body_2">Set it up to mount the Location drive on this device. You choose when tracking is on.</string>
+    <string name="location_onboarding_setup">Set it up</string>
+    <string name="location_onboarding_dismiss">Not now</string>
+    <string name="location_settings_section">Location</string>
+    <string name="location_settings_show_icon">Show Location icon in bottom bar</string>
+    <string name="location_map_section">Map</string>
+    <string name="location_map_none">No map</string>
+    <string name="location_map_osm">Open maps</string>
+    <string name="location_tracking_switch">Track my location</string>
+    <string name="location_tracking_unavailable">Tracking isn't available on this device. Enable it on your phone to record location history.</string>
+    <string name="location_perm_section">Permissions</string>
+    <string name="location_perm_while_in_use">Location while using the app</string>
+    <string name="location_perm_always">Allow all the time</string>
+    <string name="location_perm_granted">Granted</string>
+    <string name="location_perm_grant">Grant</string>
+    <string name="location_perm_open_settings">Open settings</string>
+    <string name="location_perm_always_hint">Needed to record your location when the app is in the background or closed.</string>
+    <string name="location_perm_always_settings_hint">Android won't ask again — tap Open settings, then choose "Allow all the time" for Location.</string>
+    <string name="location_status_section">Status</string>
+    <string name="location_status_last_fix">Last fix</string>
+    <string name="location_status_points_today">Points today</string>
+    <string name="location_status_pending">Waiting to upload</string>
+    <string name="location_status_last_flush">Last upload</string>
+    <string name="location_status_never">Never</string>
+    <string name="location_menu_more">More options</string>
+    <string name="location_menu_find_device">Find device</string>
+    <string name="location_menu_setup">Location setup</string>
+    <string name="location_menu_dashboard">Dashboard</string>
+    <string name="location_dashboard_history_section">Location History</string>
+    <string name="location_devices_section">Find my device</string>
+    <string name="location_locatable_section">Who you can locate</string>
+    <string name="location_locatable_none">You can't locate anyone yet. People appear here when they add you to their emergency circle.</string>
+    <string name="location_locate_age_hours">%1$dh</string>
+    <string name="location_locate_age_days">%1$dd</string>
+    <string name="location_locatable_broken_cd">No longer connected</string>
+    <string name="location_locate_no_data">no data</string>
+    <string name="location_locatable_unreachable_cd">Can't reach their server</string>
+    <string name="location_locate_panel_title">Emergency location request</string>
+    <string name="location_locate_panel_explainer">You're about to activate an emergency function for %1$s and you will receive their location data. %1$s will be made aware you made this request — if you abuse it, expect to be removed as an emergency contact.</string>
+    <string name="location_locate_reason_hint">Describe why you need to retrieve the emergency location data.</string>
+    <string name="location_locate_window_label">How far back</string>
+    <string name="location_locate_last_point">Their last data point is from %1$s ago</string>
+    <string name="location_locate_last_point_none">They have no data points yet</string>
+    <string name="location_locate_window_hours">Last %1$d hours</string>
+    <string name="location_locate_window_days">Last %1$d days</string>
+    <string name="location_locate_ambush_label">Ambush</string>
+    <string name="location_locate_ambush_explainer">If you believe the person might be held hostage, check this box to delay the notification to the person for 24 hours.</string>
+    <string name="location_locate_confirm">Request location data</string>
+    <string name="location_locate_fetch_failed">Couldn't retrieve their location data. The request notice was still sent.</string>
+    <string name="location_emergency_access_section">Who can locate you</string>
+    <string name="location_emergency_access_manage">Add emergency contacts</string>
+    <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
+    <string name="location_emergency_access_none">No one can locate you yet. Tap + to add people.</string>
+    <string name="location_emergency_access_more">+%1$d</string>
+    <string name="location_device_this_device">This device</string>
+    <string name="location_device_no_fix">No recent location</string>
+    <string name="location_device_unnamed">Device %1$s</string>
+    <string name="location_find_title">Find device</string>
+    <string name="location_find_last_seen">Last seen %1$s</string>
+    <string name="location_find_battery">🔋 %1$s</string>
+    <string name="location_find_no_location">No known location for this device</string>
+    <string name="location_find_freshness">Position is as of the device's last upload and this device's last sync.</string>
+    <string name="location_find_refresh">Refresh</string>
+    <string name="location_dashboard_perm_banner">Location permission needs attention — tap to fix</string>
+    <string name="location_dashboard_empty_today">No locations recorded yet today</string>
+    <string name="location_consent_title">Your private location history</string>
+    <string name="location_consent_text">Your app will collect location data — and, while tracking, your step count and battery level — to record your private location history and store it on your private Homebase Location drive, even when this app is closed or not in use. Your history is end-to-end encrypted to your personal drive; no one but you, not even your cloud operator, can read it.</string>
+    <string name="location_consent_agree">Agree</string>
+    <string name="location_consent_decline">No thanks</string>
+    <string name="location_history_title">History</string>
+    <string name="location_history_you">(you)</string>
+    <string name="live_location_title">Live location</string>
+    <string name="live_location_empty">No one is sharing their live location right now.</string>
+    <string name="live_location_enable_gps_title">Show your location?</string>
+    <string name="live_location_enable_gps_text">Allow location access so your position appears on the map alongside the people sharing with you.</string>
+    <string name="live_location_enable_gps_confirm">Allow</string>
+    <string name="live_location_enable_gps_dismiss">Not now</string>
+    <string name="live_location_marker_cd">%1$s's live location</string>
+    <string name="live_location_you">You</string>
+    <string name="live_location_age_minutes">%1$dm</string>
+    <string name="location_sharing_indicator_cd">You're sharing your live location</string>
+    <string name="location_dashboard_live_section">Live location sharing</string>
+    <string name="location_dashboard_live_open">Open live map</string>
+    <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
+    <string name="location_maps_off_title">Maps are turned off</string>
+    <string name="location_maps_off_cta">Turn on maps</string>
+    <string name="location_dashboard_sharing_with">Sharing with</string>
+    <string name="location_dashboard_sharing_with_you">Sharing with you</string>
+    <string name="location_dashboard_share_until">until %1$s</string>
+    <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>
+    <string name="location_dashboard_stop_everyone">Stop sharing with everyone</string>
+    <string name="location_dashboard_stop_confirm_title">Stop all sharing?</string>
+    <string name="location_dashboard_stop_confirm_body">This ends every live location share you've started.</string>
+    <string name="share_live_location">Share live location</string>
+    <string name="live_share_back">Share your live location</string>
+    <string name="live_share_duration_prompt">Share live location for</string>
+    <string name="stop_sharing">Stop sharing</string>
+    <string name="live_share_active">Live location · %1$s left</string>
+    <string name="live_share_ended">Live share ended</string>
+    <string name="live_share_15m">15 minutes</string>
+    <string name="live_share_30m">30 minutes</string>
+    <string name="live_share_1h">1 hour</string>
+    <string name="live_share_2h">2 hours</string>
+    <string name="live_share_4h">4 hours</string>
+    <string name="live_share_24h">24 hours</string>
+    <string name="share_location_title">Share location</string>
+    <string name="share_location_recenter_cd">Center on your current location</string>
+    <string name="share_location_resolving">Finding address…</string>
+    <string name="share_location_comment_hint">Add a comment</string>
+    <string name="share_location_live_banner">Share live location</string>
+    <string name="share_location_send_cd">Send location</string>
+    <string name="live_share_enable_location_title">Turn on location to share</string>
+    <string name="live_share_enable_location_body">To share your live location, set up location on this device first so it can send your position.</string>
+    <string name="live_share_enable_location_cta">Set up location</string>
+    <string name="location_history_empty">No locations recorded on this day</string>
+    <string name="location_history_enable_tracking">Turn on location tracking</string>
+    <string name="location_history_map_disclosure">Map tiles are fetched from OpenStreetMap — the viewed area becomes visible to their servers.</string>
+    <string name="location_history_previous_day">Previous day</string>
+    <string name="location_history_next_day">Next day</string>
+    <string name="location_history_pick_date">Pick a date</string>
+    <string name="location_history_delete_day">Delete history this day</string>
+    <string name="location_history_delete_title">Delete this day?</string>
+    <string name="location_history_delete_text">This permanently removes all location history recorded for this day. This can't be undone.</string>
+    <string name="location_history_distance">%1$s km</string>
+    <string name="location_history_points">%1$d points</string>
+    <string name="location_history_devices">%1$d devices</string>
+    <string name="location_history_span">%1$s – %2$s</string>
+
+    <!-- Contact Book (contact manager add-on) -->
+    <string name="contactbook_label">Contacts</string>
+    <string name="contactbook_home_subtitle">Manage your address book</string>
+    <string name="contactbook_self_you">%1$s (you)</string>
+    <string name="contactbook_onboarding_title">Your contacts, in one place</string>
+    <string name="contactbook_onboarding_body_1">Keep your contacts on your private Homebase cloud and reach the people you chat with. Import from your phone, or add contacts by hand.</string>
+    <string name="contactbook_onboarding_body_2">Your contacts are encrypted on your personal Homebase server and sync across your devices.</string>
+    <string name="contactbook_onboarding_setup">Get started</string>
+    <string name="contactbook_onboarding_dismiss">Maybe later</string>
+
+    <string name="contactbook_tab_contacts">Contacts</string>
+    <string name="contactbook_tab_circles">Circles</string>
+    <string name="contactbook_connected">Connected</string>
+    <string name="contactbook_vetted">Vetted</string>
+    <string name="contactbook_unvetted_empty">No unvetted connections.</string>
+    <string name="contactbook_vetted_empty">No vetted connections.</string>
+    <string name="contactbook_circles_empty">You don't have any circles yet.</string>
+    <string name="contactbook_circle_unvetted">Unvetted</string>
+    <string name="contactbook_circle_members_empty">This circle has no members.</string>
+    <string name="contactbook_circle_members_count">%1$d members</string>
+
+    <string name="contactbook_search_hint">Search</string>
+    <string name="contactbook_filter_all">All</string>
+    <string name="contactbook_requests_header">Connection requests</string>
+    <string name="contactbook_no_results">No contacts match your search</string>
+
+    <string name="contactbook_action_add">Add contact</string>
+    <string name="contactbook_action_settings">Contact settings</string>
+
+    <string name="contactbook_empty_title">No contacts yet</string>
+    <string name="contactbook_empty_body">Add a contact by hand.</string>
+    <string name="contactbook_empty_new">Add a contact</string>
+
+    <string name="contactbook_detail_message">Message</string>
+    <string name="contactbook_detail_sync">Sync</string>
+    <string name="contactbook_detail_edit">Edit</string>
+    <string name="contactbook_detail_delete">Delete</string>
+    <string name="contactbook_detail_block">Block</string>
+    <string name="contactbook_detail_unblock">Unblock</string>
+    <string name="contactbook_detail_disconnect">Disconnect</string>
+    <string name="contactbook_detail_connect">Send connection request</string>
+    <string name="contactbook_detail_not_connected">Not connected</string>
+    <string name="contactbook_detail_pending">Connection request pending</string>
+    <string name="contactbook_detail_request_incoming">Wants to connect with you</string>
+    <string name="contactbook_detail_request_outgoing">Connection request sent</string>
+    <string name="contactbook_detail_accept">Accept</string>
+    <string name="contactbook_detail_reject">Reject</string>
+    <string name="contactbook_detail_cancel_request">Cancel request</string>
+    <string name="contactbook_detail_blocked">Blocked</string>
+    <string name="contactbook_detail_recent_media">Recent media</string>
+    <string name="contactbook_detail_no_recent_media">No recent media yet</string>
+    <string name="contactbook_detail_contact_details">Contact details</string>
+    <string name="contactbook_detail_emergency_badge">Emergency contact</string>
+    <string name="contactbook_detail_location_data_as_of">Location data as of %1$s</string>
+    <string name="contactbook_detail_bio">Bio</string>
+    <string name="contactbook_detail_experience">Experience</string>
+    <string name="contactbook_detail_tab_details">Details</string>
+    <string name="contactbook_detail_tab_about">About</string>
+    <string name="contactbook_detail_tab_activity">Activity</string>
+    <string name="contactbook_detail_name">Name</string>
+    <string name="contactbook_detail_about_empty">There's nothing here yet. A bio, experience, and social links will show up once this person shares them.</string>
+    <string name="contactbook_detail_activity_empty">No shared activity yet. Media and other things you share in your conversation will appear here.</string>
+    <string name="contactbook_detail_manage">Manage contact</string>
+    <string name="contactbook_detail_social">Social</string>
+    <string name="contactbook_detail_location">Location</string>
+    <string name="contactbook_detail_circles">Circles</string>
+    <string name="contactbook_detail_circles_empty">Not in any of your circles yet.</string>
+    <string name="contactbook_detail_circles_connect">Connect with this person to add them to your circles.</string>
+    <string name="contactbook_detail_groups_empty">No chat groups in common.</string>
+    <string name="contactbook_detail_groups_connect">Connect with this person to see chat groups you have in common.</string>
+    <string name="contactbook_detail_none">None</string>
+    <string name="contactbook_detail_more">More</string>
+    <string name="contactbook_detail_less">Less</string>
+    <string name="contactbook_detail_block_title">Block this contact?</string>
+    <string name="contactbook_detail_block_message">They won't be able to reach you, and they won't be notified. You can unblock them later to restore the connection.</string>
+    <string name="contactbook_detail_disconnect_title">Disconnect?</string>
+    <string name="contactbook_detail_disconnect_message">This permanently removes your connection and the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
+    <string name="contactbook_detail_delete_title">Delete contact?</string>
+    <string name="contactbook_detail_delete_message">This removes the contact from your address book.</string>
+    <string name="contactbook_detail_delete_message_connected">This removes the contact from your address book and disconnects your connection, removing the access it granted. They won't be notified. To reconnect, you'll need to send a new connection request.</string>
+    <string name="contactbook_detail_danger_zone">Danger zone</string>
+
+    <string name="contactbook_edit_title_new">New contact</string>
+    <string name="contactbook_edit_title_edit">Edit contact</string>
+    <string name="contactbook_edit_given_name">First name</string>
+    <string name="contactbook_edit_surname">Last name</string>
+    <string name="contactbook_edit_odinid">Homebase ID</string>
+    <string name="contactbook_edit_odinid_locked">Homebase ID can't be changed for a connected contact.</string>
+    <string name="contactbook_edit_synced_banner">Synced from their Homebase profile. Changes you make are saved only for you and won't change their profile.</string>
+    <string name="contactbook_edit_synced_from_profile">From their Homebase profile</string>
+    <string name="contactbook_edit_overrides">Overrides their profile value (%1$s) · only you see this</string>
+    <string name="contactbook_edit_override_added">Only you see this</string>
+    <string name="contactbook_edit_reset">Reset to profile value</string>
+    <string name="contactbook_detail_override_synced">Their profile: %1$s</string>
+    <string name="contactbook_detail_override_none">not set in their profile</string>
+    <string name="contactbook_edit_phone">Phone</string>
+    <string name="contactbook_edit_add_phone">Add phone number</string>
+    <string name="contactbook_edit_add_email">Add email address</string>
+    <string name="contactbook_edit_remove">Remove</string>
+    <string name="contactbook_country_search">Search countries</string>
+    <string name="contactbook_edit_email">Email</string>
+    <string name="contactbook_edit_city">City</string>
+    <string name="contactbook_edit_country">Country</string>
+    <string name="contactbook_edit_birthday">Birthday</string>
+    <string name="contactbook_edit_change_photo">Add photo</string>
+    <string name="contactbook_edit_save">Save</string>
+    <string name="contactbook_edit_cancel">Cancel</string>
+    <string name="contactbook_error_email">Enter a valid email address</string>
+    <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>
+    <string name="contactbook_error_odinid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+
+    <string name="contactbook_settings_section">Contacts</string>
+    <string name="contactbook_settings_open">Open Contacts</string>
+    <string name="contactbook_settings_show_icon">Show Contacts icon in bottom bar</string>
+
+    <string name="contactbook_error_save">Couldn't save the contact.</string>
+    <string name="contactbook_error_forbidden">Couldn't save — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="contactbook_error_connection_forbidden">Couldn't update this connection — this app doesn't have permission to manage your connections. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="contactbook_error_delete">Couldn't delete the contact.</string>
+    <string name="contactbook_error_delete_forbidden">Couldn't delete — this app doesn't have permission to manage your contacts. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
+    <string name="contactbook_error_message">Couldn't open the chat.</string>
+    <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
+
+    <string name="contactbook_action_blocked">Contact blocked.</string>
+    <string name="contactbook_action_unblocked">Contact unblocked.</string>
+    <string name="contactbook_action_disconnected">Disconnected.</string>
+    <string name="contactbook_action_sync_started">Syncing this contact from their profile…</string>
+    <string name="contactbook_action_request_accepted">Connection request accepted.</string>
+    <string name="contactbook_action_request_rejected">Connection request declined.</string>
+    <string name="contactbook_action_request_cancelled">Connection request canceled.</string>
+    <string name="contactbook_action_request_withdrawn">This request was withdrawn by the sender.</string>
+
+    <string name="add_contact_title">Add contact</string>
+    <string name="add_contact_odinid_label">Homebase ID</string>
+    <string name="add_contact_odinid_hint">name.homebase.id</string>
+    <string name="add_contact_lead_help">Enter their Homebase ID and we'll look up their profile.</string>
+    <string name="add_contact_resolving">Looking up identity…</string>
+    <string name="add_contact_invalid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+    <string name="add_contact_not_found">We couldn't find that Homebase ID. You can still add them as a contact.</string>
+    <string name="add_contact_identity_found">Found %1$s</string>
+    <string name="add_contact_manual_link">Don't know their Homebase ID? Add manually</string>
+    <string name="add_contact_byid_link">Have their Homebase ID? Look them up</string>
+    <string name="add_contact_details_optional">Details (optional)</string>
+    <string name="add_contact_photo_from_profile">Photo from their Homebase profile</string>
+    <string name="add_contact_send_request">Send connection request</string>
+    <string name="add_contact_send_request_help">Not connected yet. Send a request so you can message each other.</string>
+    <string name="add_contact_already_connected">You're already connected</string>
+    <string name="add_contact_save_as_new">Save as new contact</string>
+    <string name="add_contact_already_saved">Already in your contacts</string>
+    <string name="add_contact_blocked">You've blocked this person</string>
+
+    <string name="storage_diagnostics_header">Diagnostics (dev)</string>
+    <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>
+    <string name="storage_diagnostics_force_runtime_crash">Force app crash (test)</string>
+
+    <!-- Profile editor -->
+    <string name="profile_edit_title">Edit profile</string>
+    <string name="profile_edit_save">Save</string>
+    <string name="profile_edit_load_failed">Couldn't load your profile.</string>
+    <string name="profile_edit_retry">Retry</string>
+    <string name="profile_edit_error_forbidden">This app doesn't have permission to edit your profile. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="profile_edit_error_save">Couldn't save your profile. Please try again.</string>
+    <string name="profile_edit_given_name">First name</string>
+    <string name="profile_edit_surname">Last name</string>
+    <string name="profile_edit_additional_name">Middle name</string>
+    <string name="profile_edit_nickname">Nickname</string>
+    <string name="profile_edit_status">Status</string>
+    <string name="profile_edit_birthday">Birthday</string>
+    <string name="profile_edit_birthday_hint">YYYY-MM-DD</string>
+    <string name="profile_edit_email">Email</string>
+    <string name="profile_edit_email_label">Email label</string>
+    <string name="profile_edit_email_label_hint">e.g. Personal, Work</string>
+    <string name="profile_edit_phone">Phone</string>
+    <string name="profile_edit_phone_label">Phone label</string>
+    <string name="profile_edit_phone_label_hint">e.g. Mobile, Home, Work</string>
+    <string name="profile_edit_address_label">Address label</string>
+    <string name="profile_edit_address_label_hint">e.g. Home, Work</string>
+    <string name="profile_edit_address1">Address line 1</string>
+    <string name="profile_edit_address2">Address line 2</string>
+    <string name="profile_edit_postcode">Postcode</string>
+    <string name="profile_edit_city">City</string>
+    <string name="profile_edit_country">Country</string>
+    <string name="profile_edit_twitter">Twitter</string>
+    <string name="profile_edit_facebook">Facebook</string>
+    <string name="profile_edit_instagram">Instagram</string>
+    <string name="profile_edit_tiktok">TikTok</string>
+    <string name="profile_edit_linkedin">LinkedIn</string>
+
+    <string name="profile_edit_visibility_public">Public</string>
+    <string name="profile_edit_visibility_connected">Vetted</string>
+    <string name="profile_edit_public_hint">Visible to everyone, including people you haven't connected with.</string>
+    <string name="profile_edit_connected_fallback_hint">Leave blank to show vetted contacts your Public value instead.</string>
+    <string name="profile_edit_preview_enter">Preview</string>
+    <string name="profile_edit_preview_exit">Back to editing</string>
+    <string name="profile_edit_preview_section_public">Public</string>
+    <string name="profile_edit_preview_section_public_desc">Visible to everyone, including people you haven't connected with.</string>
+    <string name="profile_edit_preview_section_vetted">Vetted</string>
+    <string name="profile_edit_preview_section_vetted_desc">Visible to your vetted (confirmed) connections.</string>
+    <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
+
+    <!-- Avatar editor -->
+    <string name="profile_avatar_edit_title">Change photo</string>
+    <string name="cd_profile_avatar_change_photo">Change photo</string>
+    <string name="profile_avatar_edit_acl_anonymous">Public photo</string>
+    <string name="profile_avatar_edit_acl_connected">Vetted photo</string>
+    <string name="profile_avatar_edit_anonymous_desc">Visible to anyone, even people you're not connected to.</string>
+    <string name="profile_avatar_edit_connected_desc">Visible only to vetted contacts — can be a different photo than your public one.</string>
+    <string name="profile_avatar_edit_upload">Save</string>
+    <string name="profile_avatar_edit_remove">Remove</string>
+    <string name="profile_avatar_edit_error_upload">Couldn't upload your photo. Please try again.</string>
+    <string name="profile_avatar_edit_error_too_large">That photo is too large — please choose a smaller one.</string>
+    <string name="profile_avatar_edit_error_delete">Couldn't remove your photo. Please try again.</string>
 
 </resources>

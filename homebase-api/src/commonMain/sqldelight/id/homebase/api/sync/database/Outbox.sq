@@ -70,6 +70,18 @@ SET checkOutStamp=NULL,
     nextRunTime=:nextRunTime
 WHERE checkOutStamp=:checkOutStamp;
 
+-- Check a row back in WITHOUT counting the attempt (#987): connectivity-class failures
+-- (no network reaching the server) must not burn the MAX_RETRIES budget toward a
+-- permanent drop — an extended-offline stretch with background wakes could otherwise
+-- consume all attempts on hopeless probes and DROP queued items that today survive
+-- untouched until reconnect. nextRunTime still advances so hopeless probes stay
+-- rate-bounded.
+checkInUncharged:
+UPDATE Outbox
+SET checkOutStamp=NULL,
+    nextRunTime=:nextRunTime
+WHERE checkOutStamp=:checkOutStamp;
+
 -- Force a queued row's next attempt (e.g. "Try now" resetting a backed-off
 -- item to run immediately). Guarded on checkOutStamp IS NULL: an in-flight
 -- row's nextRunTime is owned by checkInFailed and must not be raced.
@@ -96,6 +108,15 @@ deleteBy:
 DELETE FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
 
+-- Cancel a queued row ONLY when no worker holds it. Deleting a checked-out
+-- row does NOT stop its upload (the worker already read the row) — it just
+-- makes the cancel a silent lie while the message still ships. Callers that
+-- need cancellation use this guarded form via OutboxSync.cancelPending and
+-- get an explicit InFlight answer instead.
+deleteByIfNotCheckedOut:
+DELETE FROM Outbox
+WHERE driveId = ? AND uniqueId = ? AND checkOutStamp IS NULL;
+
 
 -- Select the (single, by UNIQUE(driveId,uniqueId)) pending row for a message.
 -- Lets a caller tell a queued create apart from a queued edit before deleting.
@@ -103,6 +124,24 @@ selectByDriveAndUnique:
 SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
 FROM Outbox
 WHERE driveId = ? AND uniqueId = ?;
+
+-- Does ANY outbox row still exist for this uniqueId (across drives)? Message
+-- Info uses it to tell whether a queued message is still waiting on an earlier
+-- message — its dependencyUniqueId row hasn't drained yet — which is the same
+-- existence condition the checkout dependency gate (nextScheduled) applies.
+existsByUniqueId:
+SELECT COUNT(*) FROM Outbox WHERE uniqueId = ?;
+
+-- The single row for a uniqueId (across drives), to walk a dependency chain:
+-- given a dependencyUniqueId, fetch that row's own driveId/dependencyUniqueId/
+-- state so Message Info can report the blocker and "Try now" can resolve it.
+-- Outbox is UNIQUE(driveId,uniqueId); a uniqueId on >1 drive is not expected, so
+-- LIMIT 1 is safe.
+selectByUniqueId:
+SELECT rowId,driveId,uniqueId,dependencyUniqueId,priority,lastAttempt,nextRunTime,checkOutCount,checkOutStamp,uploadType,json,files
+FROM Outbox
+WHERE uniqueId = ?
+LIMIT 1;
 
 -- Select checked out item
 selectCheckedOut:

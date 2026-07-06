@@ -23,7 +23,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       // Run Koin, logging, and database init before any UI framework setup.
       // This keeps the main-thread run-loop free between heavy init and the
       // first Compose frame, preventing the iOS text-rendering race condition.
-      MainViewControllerKt.initializeApp()
+      //
+      // Arm crash handling FIRST (no Koin/DB) and check for a crash from last run.
+      // If there is one, DEFER heavy init until the user taps Continue (avoids an
+      // init-time crash loop). Otherwise initialize normally.
+      if let pending = MainViewControllerKt.armCrashHandlingAndCheckPending() {
+          CrashRecoveryModel.shared.pendingReportPath = pending
+      } else {
+          MainViewControllerKt.initializeApp()
+      }
 
       //By default showPushNotification value is true.
       //When set showPushNotification to false foreground push  notification will not be shown.
@@ -62,7 +70,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           intentIdentifiers: [],
           options: []
       )
-      UNUserNotificationCenter.current().setNotificationCategories([messageCategory])
+      // Reply-only category for content-less pushes ("You have a new message"
+      // placeholder) — no Mark as Read when there's nothing to read (#983).
+      // The extension picks between the two categories.
+      let messageNoContentCategory = UNNotificationCategory(
+          identifier: "MESSAGE_NO_CONTENT_CATEGORY",
+          actions: [replyAction],
+          intentIdentifiers: [],
+          options: []
+      )
+      UNUserNotificationCenter.current().setNotificationCategories(
+          [messageCategory, messageNoContentCategory]
+      )
   }
 
   // Present notifications while the app is in the foreground
@@ -173,6 +192,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           guard let key = k as? String, key != "aps" else { continue }
           if let str = v as? String { data[key] = str }
       }
+      // Hop 1 of the push→capture chain (#988) — lands in homebase.log via the exported
+      // Kotlin bridge (Kermit is up: initializeApp ran in didFinishLaunching). appState
+      // raw values: 0=active, 1=inactive, 2=background. The delegate runs on the main
+      // thread, so reading applicationState here is legal.
+      PushChainLoggingKt.logPushChain(
+          hop: "received(ios)",
+          detail: "appState=\(application.applicationState.rawValue) hasAps=\(aps != nil) dataKeys=\(data.count)")
       let entry = NotificationEntry.companion.fromKoin()
       entry.onPushArrivedAsync(title: title, body: body, data: data) { success in
           completionHandler(success == true ? .newData : .failed)
@@ -191,9 +217,6 @@ struct iOSApp: App {
 
         // Inject Crashlytics bridge into the Kotlin framework
         CrashlyticsBridgeHolder.shared.setBridge(bridge: CrashlyticsBridgeImpl())
-
-        // Register Metal layer nudge so Compose UI can trigger glyph atlas rebuilds
-        TextRenderingHelper.shared.register(nudger: MetalLayerNudger())
     }
     
     var body: some Scene {
@@ -207,7 +230,9 @@ struct iOSApp: App {
 
     private func handleIncomingURL(_ url: URL) {
         switch url.scheme {
-        case "homebase-share":
+        // Accept both the prod scheme and the dev build's variant (see SHARE_URL_SCHEME /
+        // ShareViewController.shareUrlScheme) — the app only ever receives its own.
+        case "homebase-share", "homebase-share-dev":
             if url.host == "moment" {
                 ShareHandlerBridge.shared.handleIncomingMomentShare()
             } else {

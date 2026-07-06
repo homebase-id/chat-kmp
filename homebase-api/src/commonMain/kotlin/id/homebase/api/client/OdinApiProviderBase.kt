@@ -16,7 +16,11 @@ import io.ktor.client.request.patch
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.readRawBytes
+import io.ktor.http.contentLength
+import io.ktor.utils.io.cancel
+import io.ktor.utils.io.readAvailable
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
@@ -28,6 +32,8 @@ import io.ktor.client.request.delete
 import io.ktor.client.request.parameter
 import io.ktor.utils.io.charsets.Charsets
 import io.ktor.utils.io.charsets.name
+import kotlinx.coroutines.CancellationException
+import kotlinx.io.IOException
 
 typealias UploadProgress = suspend (bytesSent: Long, totalBytes: Long?) -> Unit
 
@@ -80,12 +86,40 @@ abstract class OdinApiProviderBase(
     // Core request primitive
     // ------------------------------------------------------------
 
+    /**
+     * Run a network operation, mapping any transport failure (timeout,
+     * connection refused, DNS, dropped socket) to a typed [NetworkException].
+     * Cancellation is rethrown untouched so structured concurrency still works.
+     * Non-network failures (decrypt, parse) are NOT caught here — they fall
+     * outside [block] and propagate unchanged.
+     */
+    private suspend fun <T> networkCall(block: suspend () -> T): T =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            throw NetworkException(e)
+        } catch (e: Exception) {
+            // Some engines raise connect-time transport failures that are NOT IOExceptions —
+            // Ktor CIO (Desktop) throws UnresolvedAddressException (an IllegalArgumentException)
+            // on DNS/offline. Wrap those too so every engine surfaces one typed NetworkException;
+            // anything that isn't a transport failure rethrows unchanged.
+            if (e.isTransientNetworkFailure()) throw NetworkException(e)
+            throw e
+        }
+
     protected suspend fun request(
         block: suspend () -> HttpResponse,
         secret: SecureByteArray?
     ): ApiResponse {
-        val response = block()
-        val rawBody = response.body<String>()
+        // The connect AND the body read are both network I/O — a socket can drop
+        // mid-read — so both run under networkCall, which maps transport failures
+        // to a typed NetworkException instead of leaking a raw IOException.
+        val (response, rawBody) = networkCall {
+            val r = block()
+            r to r.body<String>()
+        }
 
         // Decrypt when the server flags it (X-SSE) OR the body is unmistakably the shared-secret
         // envelope. The header is the fast path used on native; but browsers strip non-safelisted
@@ -124,12 +158,36 @@ abstract class OdinApiProviderBase(
         }
     }
 
+    /**
+     * Fetch a binary body fully into RAM. When [maxBytes] is set (#845), the read
+     * is size-guarded: an over-limit `Content-Length` is refused BEFORE the body
+     * is read, and a length-less (chunked) response is aborted the moment the
+     * running count passes the limit — worst-case RAM is limit + one chunk, never
+     * unbounded. The throw is [PayloadTooLargeException] (not an IOException), so
+     * [networkCall] passes it through untyped-wrapped and the outbox classifier /
+     * callers can treat it as non-retryable.
+     */
     protected suspend fun requestBytes(
+        maxBytes: Long? = null,
         block: suspend () -> HttpResponse
     ): ByteApiResponse {
 
-        val response = block()
-        val bytes = response.readRawBytes()
+        val (response, bytes) = networkCall {
+            val r = block()
+            if (maxBytes != null) {
+                val contentLength = r.contentLength()
+                if (contentLength != null && contentLength > maxBytes) {
+                    // Best-effort body discard — some engines throw their own
+                    // length-mismatch error from cancel; never let that mask the
+                    // typed refusal.
+                    runCatching { r.bodyAsChannel().cancel(null) }
+                    throw PayloadTooLargeException(sizeBytes = contentLength, limitBytes = maxBytes)
+                }
+                r to readBodyCapped(r, maxBytes)
+            } else {
+                r to r.readRawBytes()
+            }
+        }
 
         val contentType =
             response.headers["decryptedcontenttype"]
@@ -142,6 +200,35 @@ abstract class OdinApiProviderBase(
             bytes = bytes,
             contentType = contentType
         )
+    }
+
+    /**
+     * Read the response body while counting — the chunked-transfer fallback for
+     * the [requestBytes] size guard, for responses without a Content-Length.
+     */
+    private suspend fun readBodyCapped(response: HttpResponse, maxBytes: Long): ByteArray {
+        val channel = response.bodyAsChannel()
+        val chunks = ArrayList<ByteArray>()
+        var total = 0L
+        val buf = ByteArray(64 * 1024)
+        while (true) {
+            val read = channel.readAvailable(buf, 0, buf.size)
+            if (read == -1) break
+            if (read == 0) continue
+            total += read
+            if (total > maxBytes) {
+                channel.cancel(null)
+                throw PayloadTooLargeException(sizeBytes = -1, limitBytes = maxBytes)
+            }
+            chunks.add(buf.copyOf(read))
+        }
+        val out = ByteArray(total.toInt())
+        var off = 0
+        for (c in chunks) {
+            c.copyInto(out, off)
+            off += c.size
+        }
+        return out
     }
 
     // ------------------------------------------------------------

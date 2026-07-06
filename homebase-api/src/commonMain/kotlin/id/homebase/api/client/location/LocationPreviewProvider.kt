@@ -7,6 +7,10 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.isSuccess
+import id.homebase.api.coroutines.ioDispatcher
+import id.homebase.api.coroutines.supervisedScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -16,10 +20,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.ln
-import kotlin.math.tan
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 
@@ -52,10 +52,15 @@ class LocationPreviewProvider(
         lat: Double,
         lon: Double,
         zoom: Int = 15,
+        /**
+         * Address the caller already resolved (e.g. the share-location screen's live pan
+         * geocoding) — skips the Nominatim round-trip entirely. Blank/null ⇒ resolve here.
+         */
+        knownAddress: String? = null,
     ): LocationPreview {
         cache[CacheKey(lat, lon, zoom)]?.let { return it }
 
-        val address = try {
+        val address = knownAddress?.takeIf { it.isNotBlank() } ?: try {
             reverseGeocode(lat, lon, zoom) ?: formatLatLon(lat, lon)
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "reverseGeocode threw — falling back to lat/lon" }
@@ -84,7 +89,29 @@ class LocationPreviewProvider(
         return preview
     }
 
-    private suspend fun reverseGeocode(lat: Double, lon: Double, zoom: Int): String? {
+    /**
+     * Reverse-geocode a point to a display address (Nominatim `display_name`), or null when the
+     * lookup fails or the point has no address. Cached by coordinates rounded to ~11 m so pan
+     * jitter (the share-location screen re-resolving as the map settles) doesn't re-query; the
+     * remote call is rate-limited to Nominatim's 1 req/s budget. Callers doing continuous lookups
+     * (address-follows-pan) must ALSO debounce on their side — the rate limiter queues, it
+     * doesn't shed.
+     */
+    suspend fun reverseGeocode(lat: Double, lon: Double, zoom: Int = 18): String? {
+        val key = AddressKey(roundCoord(lat), roundCoord(lon), zoom)
+        addressCacheMutex.withLock { addressCache[key] }?.let { return it }
+        val resolved = reverseGeocodeRemote(lat, lon, zoom) ?: return null
+        addressCacheMutex.withLock {
+            addressCache[key] = resolved
+            // Insertion-order eviction — good enough for a pan cache.
+            while (addressCache.size > ADDRESS_CACHE_MAX) {
+                addressCache.remove(addressCache.keys.first())
+            }
+        }
+        return resolved
+    }
+
+    private suspend fun reverseGeocodeRemote(lat: Double, lon: Double, zoom: Int): String? {
         // Nominatim usage policy: max 1 req/sec, identifying User-Agent. We add a touch of
         // headroom (1.1s) so we never miss the budget if the wall clock is slightly skewed.
         nominatimMutex.withLock {
@@ -147,14 +174,63 @@ class LocationPreviewProvider(
         return bytes
     }
 
-    /** Web Mercator lat/lon → tile X/Y at the given zoom. Standard Slippy Map formula. */
-    private fun latLonToTile(lat: Double, lon: Double, zoom: Int): Pair<Int, Int> {
-        val n = 1 shl zoom
-        val xTile = ((lon + 180.0) / 360.0 * n).toInt()
-        val latRad = lat * PI / 180.0
-        val yTile = ((1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * n).toInt()
-        return xTile to yTile
+    /**
+     * Fetch one raw OSM tile PNG for the Location history basemap. Same HTTP
+     * path and User-Agent as the chat preview; LRU-cached and single-flighted.
+     * The fetch runs on a provider-owned scope so a cancelled caller (the
+     * canvas effect restarting on pan/zoom) can neither kill an in-flight
+     * download other callers await nor strand its single-flight entry.
+     * Returns null on failure — callers leave the background empty.
+     *
+     * No blank-tile size guard here (unlike [fetchStaticMap]): a tiny
+     * uniform-color PNG is a legitimate basemap tile (open water, plain
+     * terrain), not a broken preview image.
+     */
+    suspend fun getTilePng(zoom: Int, xTile: Int, yTile: Int): ByteArray? {
+        val key = TileKey(zoom, xTile, yTile)
+        val flight = tileCacheMutex.withLock {
+            tileCache[key]?.let { return it }
+            tileFlights.getOrPut(key) {
+                tileScope.async {
+                    val bytes = try {
+                        fetchTile(zoom, xTile, yTile)
+                    } catch (e: Exception) {
+                        Logger.w(throwable = e, tag = TAG) { "getTilePng($zoom/$xTile/$yTile) threw" }
+                        null
+                    }
+                    tileCacheMutex.withLock {
+                        if (bytes != null) {
+                            tileCache[key] = bytes
+                            // Insertion-order eviction — good enough for a pan/zoom cache.
+                            while (tileCache.size > TILE_CACHE_MAX) {
+                                tileCache.remove(tileCache.keys.first())
+                            }
+                        }
+                        tileFlights.remove(key)
+                    }
+                    bytes
+                }
+            }
+        }
+        return flight.await()
     }
+
+    private suspend fun fetchTile(zoom: Int, xTile: Int, yTile: Int): ByteArray? {
+        val url = "https://tile.openstreetmap.org/$zoom/$xTile/$yTile.png"
+        val response = httpClient.get(url) {
+            header("User-Agent", USER_AGENT)
+            header("Accept", "image/png,image/*")
+        }
+        if (!response.status.isSuccess()) {
+            Logger.w(tag = TAG) { "tile HTTP ${response.status.value} for $zoom/$xTile/$yTile" }
+            return null
+        }
+        return response.readRawBytes()
+    }
+
+    /** Web Mercator lat/lon → tile X/Y at the given zoom. Standard Slippy Map formula. */
+    private fun latLonToTile(lat: Double, lon: Double, zoom: Int): Pair<Int, Int> =
+        WebMercator.latLonToTile(lat, lon, zoom)
 
     private fun formatLatLon(lat: Double, lon: Double): String {
         val latStr = ((lat * 1e5).toLong() / 1e5).toString()
@@ -162,7 +238,14 @@ class LocationPreviewProvider(
         return "$latStr, $lonStr"
     }
 
+    /** ~11 m grid (4 decimals) — close enough that one address serves the whole cell. */
+    private fun roundCoord(v: Double): Double = (v * 1e4).toLong() / 1e4
+
     private data class CacheKey(val lat: Double, val lon: Double, val zoom: Int)
+
+    private data class AddressKey(val lat: Double, val lon: Double, val zoom: Int)
+
+    private data class TileKey(val zoom: Int, val x: Int, val y: Int)
 
     private companion object {
         private const val TAG = "LocationPreviewProvider"
@@ -179,5 +262,19 @@ class LocationPreviewProvider(
         private val cache = mutableMapOf<CacheKey, LocationPreview>()
         private val nominatimMutex = Mutex()
         private var lastNominatimCallAt: TimeSource.Monotonic.ValueTimeMark? = null
+
+        // Resolved-address cache for pan-follows-address lookups (share-location screen).
+        private const val ADDRESS_CACHE_MAX = 128
+        private val addressCache = LinkedHashMap<AddressKey, String>()
+        private val addressCacheMutex = Mutex()
+
+        // Raw-tile cache for the Location history basemap (~64 tiles ≈ 1-2MB).
+        private const val TILE_CACHE_MAX = 64
+        private val tileCache = LinkedHashMap<TileKey, ByteArray>()
+        private val tileFlights = mutableMapOf<TileKey, Deferred<ByteArray?>>()
+        private val tileCacheMutex = Mutex()
+
+        // Owns tile downloads so they survive caller cancellation (see getTilePng).
+        private val tileScope = supervisedScope("OsmTileFetcher", ioDispatcher)
     }
 }

@@ -152,6 +152,10 @@ class OutboxSetNextRunTimeTest {
             )
             sync.clearCheckout(timeoutMs = 5_000)
         }
-        db.close()
+        // Real-dispatcher DB: a cancelled retry coroutine's DB op can land
+        // during close() and race NativeSqliteDriver teardown on iOS-sim
+        // (ConcurrentModificationException at null:-1). Harmless on a per-test
+        // in-memory DB — see closeIgnoringTeardownRace.
+        db.closeIgnoringTeardownRace()
     }
 }

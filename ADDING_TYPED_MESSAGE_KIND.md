@@ -265,6 +265,28 @@ is MessageContent.Poll -> {
 
 ---
 
+## Step 6b — Conversation-list preview icon + title
+
+The conversation list shows a typed message as `<kind icon> <title>` (a poll bubble icon
+next to the poll question, etc.). Add a branch for your kind in
+`typedMessageContentLabel(messageContent)` in
+`homebase-chat/src/commonMain/kotlin/id/homebase/chat/widget/MessageContentLabel.kt`, reusing
+the same Material icon your bubble uses:
+
+```kotlin
+is MessageContent.Poll -> ContentLabel(messageContent.displayLabel, Icons.Default.HowToVote)
+```
+
+The text is `MessageContent.displayLabel` — the same value that already feeds notifications and
+search (Step 3) — so no new string resource is needed. The last message's parsed
+`MessageContent` reaches the list via `ConversationUiModel.lastMessageContent`, which is
+populated generically (from `msg.messageContent`) in
+`ConversationUiModel.updateWithLatestMessage`, `ConversationMessageBump`, and
+`ConversationStream` — you do NOT need to touch those for a new kind. Cover the new branch in
+`TypedMessageContentLabelTest`.
+
+---
+
 ## Step 7 — Composer + attachment-sheet entry
 
 ### Composer

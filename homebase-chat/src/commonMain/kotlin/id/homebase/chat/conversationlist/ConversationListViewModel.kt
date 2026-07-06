@@ -30,6 +30,13 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatMessagesData
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.services.livelocation.ShareBackResult
+import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
+import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
+import id.homebase.chat.services.livelocation.shareLiveLocationBack
+import id.homebase.core.location.GpsRequestReason
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
@@ -42,6 +49,7 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.config.stickerLabeledDrive
@@ -53,10 +61,12 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.resources.MR
 import id.homebase.resources.chat_introduce_preflight_in_progress
+import id.homebase.resources.chat_location_unavailable
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.conversation_jump_message_unavailable
+import id.homebase.resources.live_share_ended
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -82,6 +92,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 import kotlin.time.TimeSource
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -102,6 +113,14 @@ enum class ConversationLoadTrigger {
 
     /** A notification tap resolved to a now-loaded conversation. */
     NotificationResolved,
+
+    /**
+     * Navigation caused by an incoming OS share (homebase-share:// on iOS,
+     * ShareReceiverActivity → MainActivity on Android). This is the ONLY trigger
+     * that may auto-send a pending share descriptor — see
+     * [MessageActionsHandler.processPendingSharedContent].
+     */
+    ShareIntent,
 
     /** Caller did not specify — investigate if these show up in a burst. */
     Unknown,
@@ -135,6 +154,9 @@ class ConversationListViewModel(
     private val stickerStream: id.homebase.chat.services.sticker.StickerStream,
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
+    private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
+    private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
+    private val locationService: id.homebase.core.location.LocationService,
 ) : ViewModel() {
 
     companion object {
@@ -245,17 +267,21 @@ class ConversationListViewModel(
     private val stickerHandler = StickerHandler(
         scope = viewModelScope,
         messagesUiState = _messagesUiState,
-        stickerService = stickerService,
-        chatMessageActionService = chatMessageActionService,
         sendEvent = ::sendEvent,
         addMessageWithFiles = messageActionsHandler::addMessageWithFiles,
-        // Surface the extend-permissions dialog (if needed) and suspend until the Stickers
-        // drive is granted. Instant once granted; on first use it waits for the user to
-        // complete the flow so the upload isn't enqueued to an ungranted (unsynced) drive.
-        awaitDriveGranted = {
-            stickerPermissionViewModel.recheckPermissions()
-            stickerPermissionViewModel.permissionsGranted.first { it }
+        resolveStickerForSend = stickerService::resolveForSend,
+        saveStickerBytes = { bytes, contentType, sourceFileId ->
+            stickerService.saveSticker(
+                bytes = bytes,
+                contentType = contentType,
+                scope = viewModelScope,
+                sourceFileId = sourceFileId,
+            )
         },
+        deleteSticker = stickerService::deleteSticker,
+        getPayloadBytes = chatMessageActionService::getPayloadBytes,
+        savedStickers = { stickerStream.stickers.value },
+        awaitDriveGranted = ::ensureStickerDriveReady,
     )
 
     private val stickerCreator = StickerCreator(
@@ -280,11 +306,21 @@ class ConversationListViewModel(
             )
         },
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
-        awaitDriveGranted = {
-            stickerPermissionViewModel.recheckPermissions()
-            stickerPermissionViewModel.permissionsGranted.first { it }
-        },
+        awaitDriveGranted = ::ensureStickerDriveReady,
     )
+
+    /**
+     * Gate the sticker save/create paths: surface the extend-permissions dialog if needed,
+     * suspend until the Stickers drive is granted, then register + mount it BEFORE the caller
+     * writes — so the upload isn't enqueued to an ungranted/unmounted (unsynced) drive. Instant
+     * for an already-activated user ([StickerService.activate] is idempotent); on first use it
+     * waits for the user to complete the permission flow.
+     */
+    private suspend fun ensureStickerDriveReady() {
+        stickerPermissionViewModel.recheckPermissions()
+        stickerPermissionViewModel.permissionsGranted.first { it }
+        stickerService.activate()
+    }
 
     /** Create-a-sticker chooser state (null = no flow). Observed by ConversationListScreen. */
     val stickerCreateState: StateFlow<StickerCreateState?> = stickerCreator.state
@@ -301,20 +337,15 @@ class ConversationListViewModel(
         get() = stickerPermissionViewModel
 
     init {
-        // Mirror MomentsViewModel: once the Stickers drive is authorized (the user
-        // completed the extend-permissions flow, or it was already granted), hot-mount
-        // it so the sync engine begins pulling saved stickers. Mounting is idempotent in
-        // AuthConnectionCoordinator, so a repeated grant is a no-op.
+        // Once the Stickers drive is authorized (the user completed the extend-permissions
+        // flow, or it was already granted), delegate activation to StickerService — it
+        // registers + mounts the drive (idempotently) and cold-loads the tray. This VM owns
+        // the sticker permission UI but does no mounting itself; on subsequent app starts the
+        // registered drive is auto-mounted by AuthConnectionCoordinator's login pre-mount loop.
         viewModelScope.launch {
             stickerPermissionViewModel.permissionsGranted
                 .filter { it }
-                .collect {
-                    runCatching { authConnectionCoordinator.mountDrive(stickerLabeledDrive) }
-                        .onFailure { e ->
-                            Logger.e(e, TAG) { "Failed to mount Stickers drive after grant" }
-                        }
-                    stickerStream.start()
-                }
+                .collect { stickerService.activate() }
         }
 
         viewModelScope.launch {
@@ -322,6 +353,40 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(ownerSession = session) }
                 _messagesUiState.update { it.copy(ownerSession = session) }
             }
+        }
+
+        // Track MY live-share state against the open conversation and globally. FULL coverage
+        // hides the bubbles' "share live location" offers (starting a share that's already
+        // running is confusing, and a second tap would create a duplicate live message — #966
+        // follow-up). ANY coverage + the global value drive the purple sharing pins in the
+        // conversation and chat-list top bars (#816). No ticker here: the pin/bubble composables
+        // derive visibility from `now < untilMs` with their own exact-deadline tickers.
+        viewModelScope.launch {
+            combine(
+                ActiveConversation.conversation,
+                liveLocationShareService.recipients,
+            ) { conversationId, roster -> conversationId to roster }
+                .collectLatest { (conversationId, roster) ->
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    _uiState.update {
+                        it.copy(ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs))
+                    }
+                    var fullUntilMs: Long? = null
+                    var anyUntilMs: Long? = null
+                    conversationId?.let { id ->
+                        val recipientIds = runCatching {
+                            conversationStream.getRecipients(id, emptyList(), null)
+                        }.getOrDefault(emptyList()).map { it.domainName }
+                        fullUntilMs = liveShareCoverageUntilMs(roster, recipientIds, nowMs)
+                        anyUntilMs = liveShareAnyUntilMs(roster, recipientIds, nowMs)
+                    }
+                    _messagesUiState.update {
+                        it.copy(
+                            ownLiveShareUntilMs = fullUntilMs,
+                            ownLiveShareInConversationUntilMs = anyUntilMs,
+                        )
+                    }
+                }
         }
 
         // Post-create preflight collector. CreateConversationGroupViewModel emits the
@@ -501,8 +566,29 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
+            // The note-to-self bootstrap needs *credentials*, not just a renderable
+            // list. `dataReady` can fire from cached conversations + a synthesized
+            // session (see the leading-edge debounce note above) before
+            // CredentialsManager has its active credentials — and the first thing
+            // ensureNoteToSelfExists() does is requireActiveDomain(), which throws
+            // "No active credentials set" in that window. An empty/just-wiped DB (e.g.
+            // a legacy install landing on a fresh odin-2.db, or the stale-schema
+            // self-heal) makes the cached list resolve faster, widening that window.
+            //
+            // This launch runs on the bare viewModelScope (no CoroutineExceptionHandler),
+            // so an uncaught throw here reaches the global crash handler and kills the
+            // app right as the overview appears. Gate on credentials so we don't run too
+            // early, and contain any residual failure — this is a best-effort bootstrap
+            // that is retried on every launch, never worth crashing over.
             conversationStream.conversations.first { it.dataReady }
-            conversationService.ensureNoteToSelfExists()
+            credentialsManager.credentialsFlow.first { it != null }
+            try {
+                conversationService.ensureNoteToSelfExists()
+            } catch (e: Throwable) {
+                Logger.w(tag = TAG, throwable = e) {
+                    "ensureNoteToSelfExists failed; will retry on next launch"
+                }
+            }
         }
 
         // Listen for search query changes
@@ -615,7 +701,10 @@ class ConversationListViewModel(
         viewModelScope.launch {
             authConnectionCoordinator.connectionState
                 .collectLatest { state ->
-                    _uiState.update { it.copy(connectionStatus = state.toConnectionStatus()) }
+                    val status = state.toConnectionStatus()
+                    _uiState.update { it.copy(connectionStatus = status) }
+                    // Drives the media upload overlay's online-only "Sending" spinner (#948).
+                    _messagesUiState.update { it.copy(isConnected = status == AppConnectionStatus.Connected) }
                 }
         }
 
@@ -756,13 +845,33 @@ class ConversationListViewModel(
         Logger.i(tag = "ConversationListViewModel") {
             "selectConversation id=$conversationId scrollToBottom=$scrollToBottom trigger=$trigger"
         }
-        // Check for pending shared content (from iOS share extension or other handoff)
+        // Check for pending shared content (from iOS share extension or other handoff).
+        // Pass the trigger: only a ShareIntent-caused open consumes the descriptor, so a
+        // leftover share can't be auto-re-sent by an ordinary open or a notification tap.
         viewModelScope.launch {
-            messageActionsHandler.processPendingSharedContent(conversationId)
+            messageActionsHandler.processPendingSharedContent(conversationId, trigger)
         }
 
         ActiveConversation.selectConversation(conversationId)
         loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
+    }
+
+    /**
+     * Set/clear the live-share window on a location message by editing its header descriptor
+     * ([LocationPreviewDescriptor.liveShareUntilMs]). Only applies to new-format (typed) location
+     * messages; a no-op otherwise.
+     */
+    private suspend fun updateLocationLiveShare(messageId: Uuid, untilMs: Long) {
+        val msg = chatMessageStream.getMessage(messageId) ?: return
+        val descriptor = (msg.messageContent as? MessageContent.Location)?.descriptor ?: return
+        val updated = descriptor.copy(liveShareUntilMs = untilMs)
+        runCatching {
+            chatMessageSenderService.updateMessage(
+                messageId = messageId,
+                versionTag = msg.versionTag,
+                content = MessageContentParser.serialize(MessageContent.Location(updated)),
+            )
+        }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
     }
 
     fun eventConsumed() {
@@ -794,6 +903,88 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.SearchClicked -> {
                 _uiState.update { it.copy(isSearchActive = true) }
+            }
+
+            is ConversationListUiAction.OpenLiveLocationMap -> {
+                sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
+            }
+
+            is ConversationListUiAction.OpenShareLocation -> {
+                sendEvent(ConversationListUiEvent.NavigateToShareLocation(action.conversationId.toString()))
+            }
+
+            is ConversationListUiAction.OpenLocationSetup -> {
+                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
+            }
+
+            is ConversationListUiAction.OpenLocationDashboard -> {
+                // Same navigation as setup: openLocation routes to the dashboard when the add-on
+                // is activated — always true while a share is running (the pin's only tap path).
+                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
+            }
+
+            // Live share has two linked halves: the synced *declaration* (the message's
+            // liveShareUntilMs header descriptor — Location is a raw-header typed kind, so
+            // updateMessage(content = descriptorJson) sets it and syncs to both sides) AND the local
+            // *relay* roster that actually streams GPS. Both use the SAME absolute end-time so stop can
+            // later remove exactly this share's {recipient, end-time} roster entries.
+            is ConversationListUiAction.StartLiveLocationShare -> viewModelScope.launch {
+                // Guard: a live share is pointless if location can't actually capture GPS (add-on not
+                // set up / permission not granted) — prompt the user to set it up instead of silently
+                // broadcasting nothing.
+                if (!liveShareReadiness.isReady()) {
+                    _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
+                    return@launch
+                }
+                val untilMs = Clock.System.now().toEpochMilliseconds() + action.durationMs
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                updateLocationLiveShare(action.messageId, untilMs) // synced declaration → bubbles flip LIVE
+                liveLocationShareService.start(recipients, untilMs) // local relay → GPS arms + streams
+            }
+
+            is ConversationListUiAction.StopLiveLocationShare -> viewModelScope.launch {
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                // The share's end-time off the descriptor BEFORE we overwrite it — the key that targets
+                // just this share's roster entries, leaving any other live share running.
+                val untilMs = (msg.messageContent as? MessageContent.Location)?.descriptor?.liveShareUntilMs
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                if (untilMs != null) liveLocationShareService.stop(recipients, untilMs)
+                updateLocationLiveShare(action.messageId, Clock.System.now().toEpochMilliseconds())
+            }
+
+            // Share back from someone ELSE's location bubble (#966). Their message is never
+            // touched (liveShareUntilMs is only ever written on the sharer's own message) —
+            // shareLiveLocationBack sends a NEW lightweight live message of our own and starts
+            // the relay; see its doc for the mirror-the-sender's-window semantics.
+            is ConversationListUiAction.ShareLiveLocationBack -> viewModelScope.launch {
+                if (!liveShareReadiness.isReady()) {
+                    _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
+                    return@launch
+                }
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                val result = shareLiveLocationBack(
+                    durationMs = action.durationMs,
+                    senderLiveShareUntilMs =
+                        (msg.messageContent as? MessageContent.Location)?.descriptor?.liveShareUntilMs,
+                    nowMs = Clock.System.now().toEpochMilliseconds(),
+                    getFix = { locationService.requestLatestGps(GpsRequestReason.LiveMap) },
+                    send = { descriptor ->
+                        chatMessageSenderService.sendNewTypedMessage(
+                            messageUniqueId = Uuid.random(),
+                            conversationId = msg.conversationId,
+                            content = MessageContent.Location(descriptor),
+                            previousMessageUniqueId = null,
+                        )
+                    },
+                    startRelay = { untilMs -> liveLocationShareService.start(recipients, untilMs) },
+                )
+                when (result) {
+                    ShareBackResult.Expired -> sendEvent(ShowInfoMessage(MR.string.live_share_ended))
+                    ShareBackResult.NoFix -> sendEvent(ShowInfoMessage(MR.string.chat_location_unavailable))
+                    ShareBackResult.Sent -> Unit
+                }
             }
 
             is ConversationListUiAction.SearchBackClicked -> {
@@ -1101,6 +1292,16 @@ class ConversationListViewModel(
             is ConversationListUiAction.DismissStickerCreate -> stickerCreator.dismiss()
 
             is ConversationListUiAction.RemoveSticker -> stickerHandler.handleRemoveSticker(action)
+
+            // Sticker-tap bottom sheet (WhatsApp-style): open the sheet, dismiss it, or
+            // remove the saved copy created from this message. "Add to my stickers" reuses
+            // SaveStickerFromMessage; "Save to device" reuses DownloadMedia.
+            is ConversationListUiAction.ShowStickerOptions ->
+                stickerHandler.handleShowStickerOptions(action)
+            is ConversationListUiAction.DismissStickerOptions ->
+                stickerHandler.handleDismissStickerOptions()
+            is ConversationListUiAction.RemoveStickerFromMessage ->
+                stickerHandler.handleRemoveStickerFromMessage(action)
         }
     }
 
@@ -1729,7 +1930,7 @@ internal fun shouldClearLoadingSpinnerOnLoadEnd(
  * (pre-login). The preference order is load-bearing — inverting it would replace a resolved
  * display name / profile image with a bare odinId.
  */
-internal fun synthesizeOwnerSession(
+fun synthesizeOwnerSession(
     live: OwnerSession?,
     credentials: ApiCredentials?,
 ): OwnerSession? = live ?: credentials?.let {

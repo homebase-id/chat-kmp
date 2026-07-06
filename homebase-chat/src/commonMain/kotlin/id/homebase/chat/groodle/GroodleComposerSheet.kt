@@ -2,24 +2,32 @@ package id.homebase.chat.groodle
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.HowToVote
+import androidx.compose.material.icons.filled.LockClock
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -27,18 +35,15 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SheetState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
@@ -52,34 +57,36 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.composer.ComposerEditableField
+import id.homebase.chat.composer.ComposerRow
+import id.homebase.chat.composer.ComposerTitleField
 import id.homebase.chat.event.TimezonePickerSheet
 import id.homebase.chat.event.friendlyZoneLabel
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
+import id.homebase.chat.widget.GuardedComposerSheet
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.menu_back
 import id.homebase.resources.ok
+import id.homebase.resources.chat_groodle_add_another_time
 import id.homebase.resources.chat_groodle_add_time
 import id.homebase.resources.chat_groodle_allow_maybe
-import id.homebase.resources.chat_groodle_composer_title
 import id.homebase.resources.chat_groodle_deadline
 import id.homebase.resources.chat_groodle_deadline_24h
 import id.homebase.resources.chat_groodle_deadline_48h
 import id.homebase.resources.chat_groodle_deadline_none
 import id.homebase.resources.chat_groodle_deadline_week
 import id.homebase.resources.chat_groodle_duration
+import id.homebase.resources.chat_groodle_duration_decrease
+import id.homebase.resources.chat_groodle_duration_increase
 import id.homebase.resources.chat_groodle_duration_minutes
 import id.homebase.resources.chat_groodle_err_duplicate
 import id.homebase.resources.chat_groodle_err_times_missing
 import id.homebase.resources.chat_groodle_field_description
-import id.homebase.resources.chat_groodle_field_timezone
 import id.homebase.resources.chat_groodle_field_title
 import id.homebase.resources.chat_groodle_max_options
 import id.homebase.resources.chat_groodle_remove_option
@@ -108,6 +115,7 @@ private const val MAX_SLOTS = GroodleDescriptor.MAX_SLOTS
 private const val DEFAULT_DURATION_MINUTES = 60
 private const val DURATION_STEP_MINUTES = 15
 private const val MIN_DURATION_MINUTES = 15
+private const val MAX_DURATION_MINUTES = 24 * 60
 
 /** One editable candidate slot. [id] is a stable local key for list rendering. */
 private data class SlotDraft(
@@ -120,42 +128,50 @@ private data class SlotDraft(
 private enum class DeadlinePreset { NONE, H24, H48, WEEK }
 
 /**
- * Fullscreen composer for a Groodle. State is local `remember` — the composer is
- * short-lived (open → fill → send → dismiss). Mirrors `event/EventComposerSheet`.
+ * Bottom-sheet composer for a Groodle (group-scheduling poll), modeled on the
+ * same Material 3 quick-create language as `event/EventComposerSheet`: a
+ * borderless title, then flat icon-led rows (when / time zone / allow-maybe /
+ * deadline / description).
+ *
+ * Presentation only — [GroodleDescriptor], the wire format and the send path are
+ * unchanged. State is local `remember` (the composer is short-lived:
+ * open → fill → send/dismiss).
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroodleComposerSheet(
     conversationId: Uuid,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
+    GuardedComposerSheet(onDismiss = onDismiss) { sheetState, requestClose, reportUnsaved ->
         GroodleComposerContent(
             conversationId = conversationId,
+            sheetState = sheetState,
             onDismiss = onDismiss,
             onSent = onSent,
+            onRequestClose = requestClose,
+            onUnsavedContentChange = reportUnsaved,
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun GroodleComposerContent(
     conversationId: Uuid,
+    sheetState: SheetState,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
+    onRequestClose: () -> Unit = onDismiss,
+    onUnsavedContentChange: (Boolean) -> Unit = {},
 ) {
     val sender: ChatMessageSenderService = koinInject()
     val scope = rememberCoroutineScope()
+    val brand = HomebaseTheme.extendedColors.bubbleSentSurface
 
     val systemTz = remember { TimeZone.currentSystemDefault() }
-    val today = remember {
-        Clock.System.now().toLocalDateTime(systemTz).date
-    }
+    val today = remember { Clock.System.now().toLocalDateTime(systemTz).date }
 
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -168,6 +184,7 @@ private fun GroodleComposerContent(
 
     var sending by remember { mutableStateOf(false) }
     var showAddDate by remember { mutableStateOf(false) }
+    var datePickerForId by remember { mutableStateOf<Long?>(null) }
     var timePickerForId by remember { mutableStateOf<Long?>(null) }
     var tzExpanded by remember { mutableStateOf(false) }
 
@@ -183,6 +200,11 @@ private fun GroodleComposerContent(
             title.isNotBlank() && slots.isNotEmpty() && allTimesSet && !hasDuplicate && !sending
         }
     }
+
+    // Report unsaved content up so the sheet guards swipe/scrim/back/close
+    // against accidental discard (#891).
+    val hasUnsavedContent = title.isNotBlank() || description.isNotBlank() || slots.isNotEmpty()
+    LaunchedEffect(hasUnsavedContent) { onUnsavedContentChange(hasUnsavedContent) }
 
     val doSend: () -> Unit = {
         if (isValid) {
@@ -214,150 +236,213 @@ private fun GroodleComposerContent(
                         previousMessageUniqueId = null,
                     )
                 }
-                sending = false
+                sheetState.hide()
                 onSent()
             }
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.chat_groodle_composer_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
-            )
-        },
-        modifier = Modifier.fillMaxSize(),
-    ) { padding ->
-        Column(
+    Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+        // Top bar: close (start) · Send (end).
+        Row(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxWidth()
+                .padding(start = 4.dp, end = 16.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text(stringResource(MR.string.chat_groodle_field_title)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = description,
-                onValueChange = { description = it },
-                label = { Text(stringResource(MR.string.chat_groodle_field_description)) },
-                modifier = Modifier.fillMaxWidth().height(96.dp),
-            )
-
-            // Timezone (reused from Event).
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = friendlyZoneLabel(timezone),
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text(stringResource(MR.string.chat_groodle_field_timezone)) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Box(
-                    modifier = Modifier.matchParentSize().clickable(onClick = { tzExpanded = true }),
+            IconButton(onClick = onRequestClose) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.cancel),
                 )
             }
-
-            // Allow-Maybe toggle.
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(MR.string.chat_groodle_allow_maybe),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(checked = allowMaybe, onCheckedChange = { allowMaybe = it })
-            }
-
-            // Deadline presets.
-            Text(
-                text = stringResource(MR.string.chat_groodle_deadline),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DeadlineChip(stringResource(MR.string.chat_groodle_deadline_24h), deadlinePreset == DeadlinePreset.H24) { deadlinePreset = DeadlinePreset.H24 }
-                DeadlineChip(stringResource(MR.string.chat_groodle_deadline_48h), deadlinePreset == DeadlinePreset.H48) { deadlinePreset = DeadlinePreset.H48 }
-                DeadlineChip(stringResource(MR.string.chat_groodle_deadline_week), deadlinePreset == DeadlinePreset.WEEK) { deadlinePreset = DeadlinePreset.WEEK }
-                DeadlineChip(stringResource(MR.string.chat_groodle_deadline_none), deadlinePreset == DeadlinePreset.NONE) { deadlinePreset = DeadlinePreset.NONE }
-            }
-
-            // Slot rows.
-            slots.forEach { draft ->
-                SlotDraftRow(
-                    draft = draft,
-                    onPickTime = { timePickerForId = draft.id },
-                    onDurationChange = { delta ->
-                        val idx = slots.indexOfFirst { it.id == draft.id }
-                        if (idx >= 0) {
-                            val next = (slots[idx].durationMinutes + delta).coerceAtLeast(MIN_DURATION_MINUTES)
-                            slots[idx] = slots[idx].copy(durationMinutes = next)
-                        }
-                    },
-                    onRemove = { slots.removeAll { it.id == draft.id } },
-                )
-            }
-
-            OutlinedButton(
-                onClick = { showAddDate = true },
-                enabled = slots.size < MAX_SLOTS,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(MR.string.chat_groodle_add_time))
-            }
-            Text(
-                text = stringResource(MR.string.chat_groodle_max_options, MAX_SLOTS),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            // Validation hints.
-            if (slots.isNotEmpty() && !allTimesSet) {
-                Text(
-                    text = stringResource(MR.string.chat_groodle_err_times_missing),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (hasDuplicate) {
-                Text(
-                    text = stringResource(MR.string.chat_groodle_err_duplicate),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
+            Spacer(Modifier.weight(1f))
             Button(
                 onClick = doSend,
                 enabled = isValid,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                    containerColor = brand,
                     contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                 ),
-                modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
                 Text(stringResource(MR.string.chat_groodle_send))
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                // imePadding INSIDE the scroll pads the content (not the viewport) so
+                // the focused field scrolls above the keyboard. The ModalBottomSheet
+                // already lifts for the IME, so shrinking the viewport here would
+                // double-count and collapse the sheet on Android. Matches
+                // ConnectRequestBottomSheet / VaultNewSectionSheet.
+                .imePadding()
+                .padding(horizontal = 20.dp),
+        ) {
+            // Title — borderless headline with a brand-blue underline indicator.
+            ComposerTitleField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = stringResource(MR.string.chat_groodle_field_title),
+                brand = brand,
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            // WHEN group — candidate time options + the add control.
+            val hasSlots = slots.isNotEmpty()
+            ComposerRow(
+                icon = Icons.Default.Schedule,
+                filled = hasSlots,
+                // Empty state is a single line, so center it with the clock icon like
+                // the other rows; once slots exist, top-align the icon with the list.
+                verticalAlignment = if (hasSlots) Alignment.Top else Alignment.CenterVertically,
+            ) {
+                if (!hasSlots) {
+                    Text(
+                        text = stringResource(MR.string.chat_groodle_add_time),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showAddDate = true }
+                            .padding(vertical = 6.dp),
+                    )
+                } else {
+                    Column(modifier = Modifier.weight(1f)) {
+                        slots.forEachIndexed { i, draft ->
+                            SlotEditLine(
+                                draft = draft,
+                                onPickDate = { datePickerForId = draft.id },
+                                onPickTime = { timePickerForId = draft.id },
+                                onDurationChange = { delta ->
+                                    val idx = slots.indexOfFirst { it.id == draft.id }
+                                    if (idx >= 0) {
+                                        val next = (slots[idx].durationMinutes + delta).coerceIn(MIN_DURATION_MINUTES, MAX_DURATION_MINUTES)
+                                        slots[idx] = slots[idx].copy(durationMinutes = next)
+                                    }
+                                },
+                                onRemove = { slots.removeAll { it.id == draft.id } },
+                            )
+                            if (i < slots.lastIndex) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 2.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                )
+                            }
+                        }
+
+                        // Plain-text action (no leading icon) so the label left-aligns
+                        // with the rows above, matching the Event composer.
+                        TextButton(
+                            onClick = { showAddDate = true },
+                            enabled = slots.size < MAX_SLOTS,
+                            modifier = Modifier.offset(x = (-12).dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        ) {
+                            Text(stringResource(MR.string.chat_groodle_add_another_time))
+                        }
+                        Text(
+                            text = stringResource(MR.string.chat_groodle_max_options, MAX_SLOTS),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        if (!allTimesSet) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(MR.string.chat_groodle_err_times_missing),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        if (hasDuplicate) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(MR.string.chat_groodle_err_duplicate),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Time zone (reused from Event; tappable opens the shared picker).
+            ComposerRow(
+                icon = Icons.Default.Public,
+                filled = true,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = { tzExpanded = true }),
+            ) {
+                Text(
+                    text = friendlyZoneLabel(timezone),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+            // Allow "Maybe" — label + trailing switch.
+            ComposerRow(
+                icon = Icons.Default.HowToVote,
+                filled = allowMaybe,
+                trailing = {
+                    Switch(checked = allowMaybe, onCheckedChange = { allowMaybe = it })
+                },
+            ) {
+                Text(
+                    text = stringResource(MR.string.chat_groodle_allow_maybe),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            // Voting deadline — label + preset chips.
+            ComposerRow(
+                icon = Icons.Default.LockClock,
+                filled = deadlinePreset != DeadlinePreset.NONE,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(MR.string.chat_groodle_deadline),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DeadlineChip(stringResource(MR.string.chat_groodle_deadline_24h), deadlinePreset == DeadlinePreset.H24) { deadlinePreset = DeadlinePreset.H24 }
+                        DeadlineChip(stringResource(MR.string.chat_groodle_deadline_48h), deadlinePreset == DeadlinePreset.H48) { deadlinePreset = DeadlinePreset.H48 }
+                        DeadlineChip(stringResource(MR.string.chat_groodle_deadline_week), deadlinePreset == DeadlinePreset.WEEK) { deadlinePreset = DeadlinePreset.WEEK }
+                        DeadlineChip(stringResource(MR.string.chat_groodle_deadline_none), deadlinePreset == DeadlinePreset.NONE) { deadlinePreset = DeadlinePreset.NONE }
+                    }
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+            // Description.
+            ComposerRow(
+                icon = Icons.AutoMirrored.Filled.Notes,
+                filled = description.isNotEmpty(),
+                verticalAlignment = Alignment.Top,
+            ) {
+                ComposerEditableField(
+                    value = description,
+                    onValueChange = { description = it },
+                    placeholder = stringResource(MR.string.chat_groodle_field_description),
+                    singleLine = false,
+                    cursorColor = brand,
+                )
             }
 
             Spacer(Modifier.height(24.dp))
@@ -368,15 +453,41 @@ private fun GroodleComposerContent(
         DatePickerSheet(
             initialDate = today,
             onConfirm = { date ->
+                showAddDate = false
                 if (slots.size < MAX_SLOTS) {
                     val inheritedDuration = slots.lastOrNull()?.durationMinutes ?: DEFAULT_DURATION_MINUTES
-                    slots.add(SlotDraft(id = nextId, date = date, startTime = null, durationMinutes = inheritedDuration))
+                    val newId = nextId
+                    slots.add(SlotDraft(id = newId, date = date, startTime = null, durationMinutes = inheritedDuration))
                     nextId += 1
+                    // Time is mandatory, so chain straight into the time picker for
+                    // the new option (mirrors the Event composer's date→time chain) —
+                    // no separate "Set time" tap, no date-without-time slot (#890).
+                    timePickerForId = newId
                 }
-                showAddDate = false
             },
             onDismiss = { showAddDate = false },
         )
+    }
+
+    datePickerForId?.let { id ->
+        val idx = slots.indexOfFirst { it.id == id }
+        if (idx >= 0) {
+            DatePickerSheet(
+                initialDate = slots[idx].date,
+                onConfirm = { date ->
+                    val cur = slots.indexOfFirst { it.id == id }
+                    if (cur >= 0) slots[cur] = slots[cur].copy(date = date)
+                    datePickerForId = null
+                    // Chain to the time picker after a date change too, so a slot
+                    // can't be left with a date but no time (#890). Opens pre-filled
+                    // with any existing time.
+                    timePickerForId = id
+                },
+                onDismiss = { datePickerForId = null },
+            )
+        } else {
+            datePickerForId = null
+        }
     }
 
     timePickerForId?.let { id ->
@@ -408,66 +519,84 @@ private fun GroodleComposerContent(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * One candidate slot inside the WHEN group: a "date · time" line (the time is
+ * independently tappable; date is fixed at creation), a compact duration stepper,
+ * and a remove action.
+ */
 @Composable
-private fun DeadlineChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
-}
-
-@Composable
-private fun SlotDraftRow(
+private fun SlotEditLine(
     draft: SlotDraft,
+    onPickDate: () -> Unit,
     onPickTime: () -> Unit,
     onDurationChange: (Int) -> Unit,
     onRemove: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = formatDateLabel(draft.date),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = formatSlotDate(draft.date),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onPickDate)
+                    .padding(vertical = 6.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = draft.startTime?.let { formatTime(it) } ?: stringResource(MR.string.chat_groodle_set_time),
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (draft.startTime != null) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onPickTime)
+                    .padding(vertical = 6.dp, horizontal = 6.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            // Default IconButton sizing keeps the 48dp minimum touch target.
+            IconButton(onClick = onRemove) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.chat_groodle_remove_option),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                IconButton(onClick = onRemove) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(MR.string.chat_groodle_remove_option),
-                    )
-                }
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(onClick = onPickTime, modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = draft.startTime?.let {
-                            it.hour.toString().padStart(2, '0') + ":" + it.minute.toString().padStart(2, '0')
-                        } ?: stringResource(MR.string.chat_groodle_set_time),
-                    )
-                }
-                // Duration stepper.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { onDurationChange(-DURATION_STEP_MINUTES) }) {
-                        Icon(imageVector = Icons.Default.Remove, contentDescription = stringResource(MR.string.chat_groodle_duration))
-                    }
-                    Text(
-                        text = stringResource(MR.string.chat_groodle_duration_minutes, draft.durationMinutes),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    IconButton(onClick = { onDurationChange(DURATION_STEP_MINUTES) }) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = stringResource(MR.string.chat_groodle_duration))
-                    }
-                }
+        }
+        // Duration stepper — distinct labels per button so a screen reader can
+        // tell increment from decrement.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onDurationChange(-DURATION_STEP_MINUTES) }) {
+                Icon(
+                    imageVector = Icons.Default.Remove,
+                    contentDescription = stringResource(MR.string.chat_groodle_duration_decrease),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = stringResource(MR.string.chat_groodle_duration_minutes, draft.durationMinutes),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            IconButton(onClick = { onDurationChange(DURATION_STEP_MINUTES) }) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(MR.string.chat_groodle_duration_increase),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeadlineChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -525,8 +654,16 @@ private fun TimePickerSheet(
     )
 }
 
-private fun formatDateLabel(date: LocalDate): String =
-    "${date.dayOfWeek.name.take(3)}, ${date.month.name.take(3)} ${date.day}"
+/** e.g. "Tue, Jun 16". */
+private fun formatSlotDate(date: LocalDate): String {
+    val dow = date.dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }.take(3)
+    val mon = date.month.name.lowercase().replaceFirstChar { it.uppercase() }.take(3)
+    return "$dow, $mon ${date.day}"
+}
+
+/** 24h "HH:mm". */
+private fun formatTime(t: LocalTime): String =
+    t.hour.toString().padStart(2, '0') + ":" + t.minute.toString().padStart(2, '0')
 
 /**
  * Resolves the deadline preset to an absolute UTC instant, clamped so it never

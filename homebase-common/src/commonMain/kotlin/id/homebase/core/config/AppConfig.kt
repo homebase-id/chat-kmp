@@ -69,6 +69,14 @@ expect fun dataUpgradeReturnUrl(): String
 const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
 const val AUTO_CONNECTIONS_CIRCLE_ID = "9e22b42952f74d2580e11250b651d343"
 
+/**
+ * Well-known GUID (N-format) of the circle whose members may see this identity's location in an
+ * emergency. Matching by id rather than name survives a rename; the owner-console "manage" deep link
+ * uses the same id. Granting it server-side gives the member `ConditionalTemporalRead` on the
+ * location drive.
+ */
+const val EMERGENCY_LOCATION_CIRCLE_ID = "8b5383a5927246f8a666f4f3fcb7392b"
+
 // TypeIds
 const val OWNER_FOLLOWER_TYPE_ID = "2cc468af-109b-4216-8119-542401e32f4d"
 const val OWNER_CONNECTION_REQUEST_TYPE_ID = "8ee62e9e-c224-47ad-b663-21851207f768"
@@ -127,6 +135,22 @@ val stickerLabeledDrive = LabeledDrive(
     label = "Stickers",
 )
 
+// Location drive — modeled on [stickerLabeledDrive] (app-generated stable alias GUID +
+// drive type GUID). Holds the user's encrypted location history: one file per device
+// per UTC hour (see LocationTrackContent). Optional drive (not in [mandatorySyncDrives]);
+// requested via the extend-permissions flow and mounted when the user activates the
+// Location add-on.
+//
+// The type GUID is a placeholder until the server team provisions the real Location
+// drive type (same caveat as Vault above).
+val locationLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("2e191a14-8640-4ebc-b0c8-aaac913f6fa8"),
+        type = Uuid.parse("9dbc3bf5-ca24-4d7d-98ca-6933af0ad491"),
+    ),
+    label = "Location",
+)
+
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
 val vaultDefaultSections = listOf(
     Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
@@ -148,6 +172,10 @@ val appPermissions: List<AppPermissionType> =
         AppPermissionType.ReceiveDataFromOtherIdentitiesOnMyBehalf,
         AppPermissionType.SendPushNotifications,
         AppPermissionType.SendIntroductions,
+        // Required to write the owner's standard-profile attributes (in-app profile editor);
+        // without it PUT /api/v2/profile/attributes returns 403. Paired with the ProfileDrive
+        // Read grant below, which lets the editor read current values to prefill the form.
+        AppPermissionType.ManageProfile,
     )
 
 // Target drive access requests (general — excludes feed drive)
@@ -172,8 +200,18 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             description = " ",
             permissions = listOf(DrivePermission.Read, DrivePermission.Write)
         ),
-
-        )
+        // Read-only grant on the ProfileDrive so the in-app profile editor can read the owner's
+        // current standard-profile attributes (id + versionTag + values) to prefill the form.
+        // Writes don't need drive Write here — they go through the ManageProfile-gated
+        // /api/v2/profile/attributes endpoint, not a direct drive upload.
+        TargetDriveAccessRequest(
+            alias = profileLabeledDrive.drive.alias.toString(),
+            type = profileLabeledDrive.drive.type.toString(),
+            name = "Profile Drive",
+            description = "Drive which contains your profile information",
+            permissions = listOf(DrivePermission.Read)
+        ),
+    )
 
 val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(
@@ -318,6 +356,28 @@ val stickerTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
     )
 )
+
+// Location-specific permission config — drive-only, no extra app permissions.
+// Mirrors the Vault/Moments optional-drive permission shape.
+val locationTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = locationLabeledDrive.drive.alias.toString(),
+        type = locationLabeledDrive.drive.type.toString(),
+        name = "Location Drive",
+        description = "Drive which contains your encrypted location history",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
+fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = locationTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+    )
+}
 
 fun getStickerPermissionExtensionConfig(): PermissionExtensionConfig {
     return PermissionExtensionConfig(

@@ -178,6 +178,25 @@ adb logcat -d --pid=$(adb shell pidof id.homebase.feed.dev)
 adb logcat -c
 ```
 
+### Reading release crash stack traces
+
+Release and `dev` builds run R8 with `isMinifyEnabled = true` for shrinking and
+optimization, but `proguard-rules.pro` sets `-dontobfuscate`, so identifier
+renaming is **off**. On-device traces (logcat, `homebase.log`, the crash-recovery
+screen, a tester's screenshot) already show the real class/method names — e.g.
+`id.homebase.feed.MainActivity` — with exact line numbers (`-keepattributes
+SourceFile,LineNumberTable`). No `retrace` and no per-build `mapping.txt` is
+needed to read names; a raw trace is directly triageable.
+
+- **Crashlytics / Play Console** still work as before: the Crashlytics Gradle
+  plugin uploads `mapping.txt` on every minified build, and these show the exact
+  original file + line. Harmless to keep.
+
+(Renaming was disabled because the app is open-source — obfuscating names that
+are public on GitHub anyway protected nothing, while readable raw traces make
+real-world crash triage from logs/screenshots far easier. Shrinking and
+optimization, which is where R8's size win actually comes from, stay on.)
+
 ## Desktop App Logs (JVM / Android Studio `desktopApp:run`)
 
 The Desktop App writes its `homebase.log` to the platform-specific app data directory
@@ -291,7 +310,11 @@ serialization.
 - `take`/`substring` remain correct for known-ASCII content: URLs, hex/base64, UUIDs,
   device tokens, byte arrays.
 
-## Adding New Top-Level Features (Add-on Apps)
+### `strings.xml` apostrophes
+
+Do **not** escape apostrophes as `\'` in `composeResources/values/strings.xml`. Compose
+Resources is not Android aapt — a plain `'` is correct and is the existing convention
+(e.g. `Couldn't save the contact.`). Write `won't`, `doesn't`, `you're`, not `won\'t`.
 
 When adding a self-contained feature that surfaces as an icon in the bottom navigation bar
 (Vault-style — onboarding flow, extend-permissions dialog, settings toggle for icon
@@ -299,6 +322,29 @@ visibility, optional biometric gate), follow the recipe in
 [`ADDING_ADDON_APPS.md`](ADDING_ADDON_APPS.md). It covers preferences with stable UUIDs,
 routing, `AppNavHost` wiring, `AuthConnectionCoordinator` drive subscription, DI, and the
 expect/actual biometric layer.
+
+## Phone numbers & email addresses in the UI
+
+Any UI that captures a phone number or email — primary slot, additional/extra slots, add
+flows, anywhere — must enforce the canonical format. Don't drop a raw `OutlinedTextField`
+in for these.
+
+- **Phone numbers** are stored as **E.164** (`+14155550123`). Capture them with
+  `PhoneNumberField` (`…/contactbook/components/PhoneNumberField.kt`) — a country-code
+  selector + national-number field that emits a normalized E.164 string (or `""` when
+  blank). The user never types the `+` or country code. Never persist a hand-typed national
+  string. The control is stateful (it seeds its country/national once and then owns them),
+  so render lists of them under a **stable `key(id)`**, not the list index — index-keying
+  shuffles a row's seeded state when a sibling above it is removed. See the keyed
+  `DraftPhone` rows in `ContactEditSheet.kt`.
+- **Email addresses** must be validated before they can be saved.
+- Use `ContactFieldValidation` (`…/contactbook/ContactFieldValidation.kt`) as the single
+  source of truth: `isValidPhone` (E.164), `isValidEmail`, `normalizePhone`. Validators
+  treat blank as valid (fields are optional); the empty-vs-required decision is the caller's.
+- **Legacy data may not be E.164.** Show it (seed it into `PhoneNumberField`, render it in
+  the email field) and flag it with the field's `isError` + `errorText`, but **block Save
+  until it's corrected** — gate the Save button on every phone/email being valid, primary
+  *and* additional. Error strings: `contactbook_error_phone`, `contactbook_error_email`.
 
 ## Adding a New Typed Message Kind
 

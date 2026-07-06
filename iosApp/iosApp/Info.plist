@@ -13,7 +13,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>homebase-share</string>
+				<string>$(SHARE_URL_SCHEME)</string>
 				<string>homebase-fchat</string>
 			</array>
 		</dict>
@@ -30,7 +30,11 @@
 	<key>NSCalendarsUsageDescription</key>
 	<string>Used to add chat events to your calendar.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Used to share your current location in chat.</string>
+	<string>Used to share your current location in chat and, when you enable it, to record your private location history.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Allows Homebase to keep recording your private, encrypted location history while the app is in the background. Only you can see it.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Used to record your step count alongside your private location history, so you can tell walking from cycling or driving.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>INSendMessageIntent</string>
@@ -39,7 +43,16 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>location</string>
 		<string>remote-notification</string>
 	</array>
+	<!-- Expose the app's Documents directory in the Files app ("On My iPhone > Homebase")
+	     so files saved via FileSystemHandler.saveFile (the "Saved to Documents" path in
+	     FileUtilities.native.kt) are actually visible to the user. The DB lives at
+	     ~/databases (excluded from backup), not here, so nothing sensitive is exposed. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

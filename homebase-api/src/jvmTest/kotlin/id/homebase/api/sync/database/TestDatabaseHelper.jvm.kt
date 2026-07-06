@@ -8,3 +8,7 @@ actual fun createInMemoryDatabase(): SqlDriver {
     OdinDatabase.Schema.create(driver)
     return driver
 }
+
+// Raw driver, no schema applied — the test stages its own DDL.
+actual fun createRawInMemoryDriver(): SqlDriver =
+    JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)

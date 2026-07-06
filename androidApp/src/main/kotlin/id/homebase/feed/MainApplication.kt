@@ -22,9 +22,10 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
-import id.homebase.core.logging.CrashLogger
+import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
+import id.homebase.feed.crash.GlobalCrashHandler
 import id.homebase.core.util.PlatformInfo
 import chat_kmp.homebase_common.BuildConfig
 import id.homebase.core.notifications.NotificationService
@@ -61,6 +62,11 @@ class MainApplication : Application(), KoinComponent {
         // way. Activity-scoped access still goes through ActivityProvider.initialize.
         ActivityProvider.initializeApplicationContext(this)
 
+        // Install the global crash handler as early as possible — before Koin/DB —
+        // so even an init-time crash gets a written report + the native recovery
+        // screen. It needs only Context + PackageManager + static BuildConfig.
+        GlobalCrashHandler.install(this)
+
         // Initialize storage (must be done before App() which may access storage)
         SecureStorage.initialize(this)
         SharedPreferences.initialize(this) // TODO: Maybe we should use injectable UserPreferences
@@ -96,9 +102,6 @@ class MainApplication : Application(), KoinComponent {
 
         val platformInfo = get<PlatformInfo>()
         StartupLogger.logAppStartupInfo(platformInfo.versionName, platformInfo.versionCode, BuildConfig.APP_BUILD_TIME)
-
-        // Set up uncaught exception handler for crash logging
-        setupCrashHandler()
 
         // Detect main-thread stalls before Android ANRs. Logs the main-thread stack to
         // homebase.log when a frame budget is exceeded by >4s — gives us a usable trace
@@ -146,6 +149,11 @@ class MainApplication : Application(), KoinComponent {
         // Cold-start is covered by StartupCacheAudit; this is the bound on
         // a same-process share's on-disk lifetime.
         registerShareOutboundForegroundSweep()
+
+        // Re-arm Location tracking on every process start (incl. boot-receiver
+        // and background-location wakes — onPostAuthenticated never runs on
+        // headless cold starts, so this cannot live there).
+        get<LocationTrackingCoordinator>().onProcessStart()
 
         StartupLogger.checkpoint("onCreate end")
     }
@@ -207,19 +215,5 @@ class MainApplication : Application(), KoinComponent {
         }
     }
 
-    private fun setupCrashHandler() {
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
 
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            try {
-                CrashLogger.logCrash(thread.name, throwable)
-            } catch (e: Exception) {
-                // If crash logging fails, still call the default handler
-                e.printStackTrace()
-            } finally {
-                // Call the original handler to let the app crash normally
-                defaultHandler?.uncaughtException(thread, throwable)
-            }
-        }
-    }
 }

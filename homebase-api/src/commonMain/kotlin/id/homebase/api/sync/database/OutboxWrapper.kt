@@ -51,6 +51,20 @@ class OutboxWrapper(
             delegate.selectByDriveAndUnique(driveId, uniqueId).executeAsOneOrNull()
         }
 
+    /** True when any outbox row still exists for [uniqueId] (across drives) —
+     *  i.e. a dependency a queued message is waiting on hasn't drained yet. */
+    suspend fun existsByUniqueId(uniqueId: Uuid): Boolean =
+        databaseManager.readValue("outbox.existsByUniqueId") {
+            delegate.existsByUniqueId(uniqueId).executeAsOne() > 0L
+        }
+
+    /** The row for [uniqueId] across drives (or null) — used to walk a
+     *  dependency chain from a message to the earlier one it's blocked on. */
+    suspend fun selectByUniqueId(uniqueId: Uuid): Outbox? =
+        databaseManager.readValue("outbox.selectByUniqueId") {
+            delegate.selectByUniqueId(uniqueId).executeAsOneOrNull()
+        }
+
     suspend fun count(): Long =
         databaseManager.readValue("outbox.count") { delegate.count().executeAsOne() }
 
@@ -94,6 +108,18 @@ class OutboxWrapper(
         }
     }
 
+    /** Check a row back in WITHOUT incrementing checkOutCount (#987): used for
+     *  connectivity-class failures so hopeless offline probes never burn the
+     *  MAX_RETRIES drop budget. Same named-args caution as [checkInFailed]. */
+    suspend fun checkInUncharged(
+        checkOutStamp: Long,
+        nextRunTime: Long,
+    ): Long {
+        return databaseManager.withWriteValue {
+            delegate.checkInUncharged(nextRunTime = nextRunTime, checkOutStamp = checkOutStamp).value
+        }
+    }
+
     /** Reset a queued row's next-attempt time (ms epoch). Returns the number of
      *  rows changed: 0 when the row is missing or currently checked out — an
      *  in-flight row's nextRunTime is owned by [checkInFailed]. */
@@ -130,6 +156,18 @@ class OutboxWrapper(
     ): Long {
         return databaseManager.withWriteValue {
             delegate.deleteBy(driveId, uniqueId).value
+        }
+    }
+
+    /** Guarded cancel: deletes the row only when no worker holds it
+     *  (checkOutStamp IS NULL). Returns rows deleted — 0 means the row is
+     *  either gone or in flight; see [OutboxSync.cancelPending]. */
+    suspend fun deleteByIfNotCheckedOut(
+        driveId: Uuid,
+        uniqueId: Uuid,
+    ): Long {
+        return databaseManager.withWriteValue {
+            delegate.deleteByIfNotCheckedOut(driveId, uniqueId).value
         }
     }
 

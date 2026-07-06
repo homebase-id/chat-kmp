@@ -1,6 +1,8 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.PayloadSizePolicy
+import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,28 +61,49 @@ class VideoPreloader(
             try {
                 val metadata = try {
                     resolveVideoMetadata(data, driveFileProvider)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Logger.d(tag = "VideoIO") { "preload skipped — no metadata for ${data.fileId}/${data.payloadKey}: ${e.message}" }
-                    return@withLock
+                    null
                 }
 
-                if (metadata.isSegmented) {
+                if (metadata?.isSegmented == true) {
                     preloadFirstHlsSegment(data, metadata, emit)
-                } else {
-                    driveFileProvider.prefetchPayload(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        key = data.payloadKey,
-                        onDownloadProgress = emit,
-                    )
-                    Logger.d(tag = "VideoIO") { "preload complete (mp4, encrypted cache): ${data.fileId}/${data.payloadKey}" }
+                } else if (metadata != null) {
+                    // Render-limit gate (#845): a full-MP4 prefetch is a whole-payload
+                    // fetch into the LRU. Only ≤5 MB sent MP4s matter here (bigger sends
+                    // are HLS); an export-sized or unknown-size mp4 (foreign client)
+                    // would be refused by the network guard anyway — skip it quietly so
+                    // preload can't churn the cache or burn a doomed request.
+                    val size = metadata.fileSize
+                    if (size <= 0L || size > PayloadSizePolicy.RENDER_LIMIT_BYTES) {
+                        Logger.d(tag = "VideoIO") {
+                            "preload skipped — export-sized/unknown mp4 (${size}B): ${data.fileId}/${data.payloadKey}"
+                        }
+                    } else {
+                        try {
+                            driveFileProvider.prefetchPayload(
+                                driveId = data.driveId,
+                                fileId = data.fileId,
+                                key = data.payloadKey,
+                                onDownloadProgress = emit,
+                            )
+                            Logger.d(tag = "VideoIO") { "preload complete (mp4, encrypted cache): ${data.fileId}/${data.payloadKey}" }
+                        } catch (e: PayloadTooLargeException) {
+                            // Belt-and-braces: metadata.fileSize lied about the real size.
+                            Logger.d(tag = "VideoIO") { "preload skipped — guard refused mp4: ${e.message}" }
+                        }
+                    }
                 }
-                emit(1f)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.w(tag = "VideoIO") { "preload failed for ${data.fileId}/${data.payloadKey}: ${e.message}" }
             }
+            // Settle progress to done on every non-cancellation exit (metadata-miss,
+            // mp4 stall, hls throw) so the bubble overlay can't freeze (#788).
+            emit(1f)
         }
     }
 

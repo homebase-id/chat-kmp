@@ -13,6 +13,9 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.OdinDatabase
+import id.homebase.api.sync.database.Outbox
+import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.services.ChatProtocol
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -81,6 +84,14 @@ class OptimisticWriterReactionToggleTest {
             credentialsManager = credentialsManager,
             dbm = dbm,
             eventBus = eventBus,
+            outboxSync = OutboxSync(
+                databaseManager = dbm,
+                uploader = object : OutboxUploader {
+                    override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) =
+                        error("no uploads in this test")
+                },
+                eventBus = eventBus,
+            ),
         )
     }
 

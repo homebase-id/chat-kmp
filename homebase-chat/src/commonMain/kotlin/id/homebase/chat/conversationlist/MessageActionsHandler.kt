@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
@@ -18,14 +19,18 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.MAX_REACTIONS_PER_USER_PER_MESSAGE
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
+import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
 import id.homebase.chat.services.renderer.toMessageDataType
@@ -637,30 +642,9 @@ internal class MessageActionsHandler(
                     }
 
                     is AttachmentPendingFile.FileImage -> {
-                        var filePath = attachment.file.toUploadPath(fileOperationsProvider)
-                        var contentType = resolveContentType(
-                            fileName = attachment.file.name,
-                            platformMimeType = attachment.file.mimeType()?.toString(),
-                        )
-                        if (contentType == "image/heic" || contentType == "image/heif") {
-                            val heicBytes = fileOperationsProvider.readFileBytes(filePath)
-                            val jpegBytes = convertHeicToJpeg(heicBytes)
-                            if (jpegBytes != null) {
-                                filePath = fileOperationsProvider.writeBytesToTempFile(
-                                    jpegBytes,
-                                    "heic_converted_",
-                                    ".jpg"
-                                )
-                                contentType = "image/jpeg"
-                            }
-                        }
                         attachments.add(
-                            AttachmentInput(
-                                filePath = filePath,
-                                contentType = contentType,
-                                displayName = attachment.file.name,
-                                forceSticker = attachment.forceSticker,
-                            )
+                            attachment.file.toImageAttachmentInput(fileOperationsProvider)
+                                .copy(forceSticker = attachment.forceSticker),
                         )
                     }
 
@@ -669,10 +653,10 @@ internal class MessageActionsHandler(
                             AttachmentInput(
                                 filePath = attachment.file.toUploadPath(fileOperationsProvider),
                                 contentType = resolveContentType(
-                                    fileName = attachment.file.name,
+                                    fileName = attachment.sourceFileName ?: attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
                                 ),
-                                displayName = attachment.file.name,
+                                displayName = attachment.sourceFileName ?: attachment.file.name,
                                 trimStartMs = attachment.trimStartMs,
                                 trimEndMs = attachment.trimEndMs,
                                 // Web: the blob: URL becomes the ffmpeg compress INPUT (read in JS,
@@ -687,6 +671,7 @@ internal class MessageActionsHandler(
                         var filePath = attachment.image.file.toUploadPath(fileOperationsProvider)
                         var contentType = resolveContentType(
                             fileName = attachment.image.fileName,
+                            platformMimeType = attachment.image.file.mimeType()?.toString(),
                         )
                         if (contentType == "image/heic" || contentType == "image/heif") {
                             val heicBytes = fileOperationsProvider.readFileBytes(filePath)
@@ -901,7 +886,13 @@ internal class MessageActionsHandler(
                     }
                     sendEvent(
                         ShowErrorMessage(
-                            "Failed to send file(s): ${e.message}"
+                            // Fail soft: a disposable pre-encryption source was swept/evicted (or its
+                            // content://`/`ph:// grant revoked) before send. No outbox row was enqueued
+                            // — the right fix is to re-pick, not retry.
+                            if (e is SourceUnavailableException)
+                                "That attachment is no longer available — please pick it again."
+                            else
+                                "Failed to send file(s): ${e.message}"
                         )
                     )
                 }
@@ -913,7 +904,18 @@ internal class MessageActionsHandler(
      * Checks for pending shared content (from iOS share extension handoff)
      * and sends it to the given conversation automatically.
      */
-    internal suspend fun processPendingSharedContent(conversationId: Uuid) {
+    internal suspend fun processPendingSharedContent(
+        conversationId: Uuid,
+        trigger: ConversationLoadTrigger,
+    ) {
+        // Only a share-intent navigation may auto-send the pending descriptor. Any other
+        // open of this conversation (notification tap, ordinary navigation) must NOT consume
+        // it — otherwise a descriptor left on disk from an earlier share would be re-sent the
+        // next time its target conversation is opened. A leftover descriptor is harmless: a
+        // ShareIntent navigation is always preceded by the share extension writing a *fresh*
+        // descriptor (it overwrites), so a stale one can never be the thing consumed here.
+        if (trigger != ConversationLoadTrigger.ShareIntent) return
+
         val descriptor = shareContentProcessor.readPendingContent() ?: return
         // Only process if the target conversation matches
         if (descriptor.targetConversationId != conversationId.toString()) return
@@ -961,6 +963,10 @@ internal class MessageActionsHandler(
             }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: SourceUnavailableException) {
+            // Shared-in source vanished before send (no outbox row enqueued) — re-pick.
+            Logger.w(tag = "ConversationListViewModel") { "Shared content source unavailable: ${e.path}" }
+            sendEvent(ShowErrorMessage("That shared file is no longer available — please share it again."))
         } catch (e: Exception) {
             Logger.e(tag = "ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
             sendEvent(ShowErrorMessage("Failed to send shared content: ${e.message}"))
@@ -1025,16 +1031,41 @@ internal class MessageActionsHandler(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+                registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
-                chatMessageSenderService.sendNewMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    messageText = content,
-                    previousMessageUniqueId = null,
-                    payloadBundle = payloadBundle,
-                    dataType = payloadRenderers.toMessageDataType(),
-                )
+                // Arm the own-send follow before the send: this path adds no placeholder,
+                // so the consuming effect waits for this id to land in the list (#995).
+                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
+
+                // Location is a typed kind (= Event): the coordinate descriptor rides in the header
+                // (appData), the map PNG stays a chat_loc payload. Sending it through the typed path
+                // is what lets a live-share toggle edit the descriptor via updateMessage().
+                val locationPreview =
+                    payloadRenderers.filterIsInstance<LocationPreviewRenderer>().firstOrNull()?.preview
+                if (locationPreview != null && payloadRenderers.size == 1) {
+                    // Carry the user's typed caption in the descriptor (a typed message has no separate
+                    // text body); cap it so the header descriptor stays well under the 7 KB budget.
+                    val caption = content.trim().ifBlank { null }?.truncateToCodePoints(2000)
+                    chatMessageSenderService.sendNewTypedMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = conversationId,
+                        content = MessageContent.Location(
+                            LocationPreviewPayloadBuilder.descriptorFor(locationPreview).copy(caption = caption)
+                        ),
+                        previousMessageUniqueId = null,
+                        payloadBundle = payloadBundle,
+                    )
+                } else {
+                    chatMessageSenderService.sendNewMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = conversationId,
+                        messageText = content,
+                        previousMessageUniqueId = null,
+                        payloadBundle = payloadBundle,
+                        dataType = payloadRenderers.toMessageDataType(),
+                    )
+                }
                 messageInputTextState.clear()
                 jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
@@ -1046,6 +1077,28 @@ internal class MessageActionsHandler(
                 sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
             } finally {
                 messagesUiState.update { it.copy(isSendingMessage = false) }
+            }
+        }
+    }
+
+    /**
+     * Register the plaintext local copy of a link preview's OG image so the optimistic bubble can
+     * render it crisp via AsyncImage while the payload uploads — instead of the 20px embedded
+     * tinyThumb. [PayloadFile.filePath] is the same temp file that feeds the encryption pipeline,
+     * which reads it and writes ciphertext to a *separate* file (see PayloadBundleEncryptionService),
+     * so it stays plaintext and decodable for the upload window. A present
+     * [PayloadFile.previewThumbnail] is the signal that a real raster image was produced — the
+     * no-image case writes a 1-byte sentinel we must not hand to Coil. Keyed by the link payload key
+     * so MediaItem can look it up by (messageId, payloadKey).
+     */
+    private fun registerLocalPreviewContexts(messageId: Uuid, bundle: PayloadBundle?) {
+        bundle?.payloads?.forEach { payload ->
+            if (payload.key == ChatProtocol.PAYLOAD_KEY_LINKS && payload.previewThumbnail != null) {
+                localVideoContextStore.put(
+                    messageId,
+                    payload.key,
+                    LocalAttachmentContext.Image(localFilePath = payload.filePath, aspectRatio = null),
+                )
             }
         }
     }
@@ -1071,7 +1124,12 @@ internal class MessageActionsHandler(
 
                 val newMessageId = Uuid.random()
                 pendingMessageId = newMessageId
+                registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
+
+                // Arm the own-send follow before the send: this path adds no placeholder,
+                // so the consuming effect waits for this id to land in the list (#995).
+                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
 
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
@@ -1104,8 +1162,7 @@ internal class MessageActionsHandler(
             try {
                 val rawReactions = chatMessageActionService.getReactions(messageId)
                 val reactions = rawReactions.map { reaction ->
-                    val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
-                        ?: reaction.odinId.domainName
+                    val displayName = contactService.resolveByOdinId(reaction.odinId).name
                     ReactionDisplayItem(
                         odinId = reaction.odinId.domainName,
                         displayName = displayName,

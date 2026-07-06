@@ -1,7 +1,10 @@
 package id.homebase.api.client.eventbus
 
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.websockets.CircleDefinitionChangeType
+import id.homebase.api.client.websockets.ConnectionChangeType
 import id.homebase.api.client.websockets.Introduction
+import id.homebase.api.client.websockets.PublicProfileArtifact
 import id.homebase.api.common.OdinId
 import id.homebase.api.video.VideoProcessingPhase
 import kotlin.uuid.Uuid
@@ -51,6 +54,24 @@ sealed interface BackendEvent {
         data class IntroductionsReceived(
             val introducerOdinId: OdinId,
             val introduction: Introduction
+        ) : CircleNetworkEvent
+
+        /**
+         * An existing connection's state changed elsewhere (disconnect/block/unblock) or a circle
+         * was granted/revoked to it. Pushed to all the owner's sessions for any origin — including
+         * an echo of this device's own mutation, so consumers must be idempotent. [circleId] is
+         * non-null only for [ConnectionChangeType.CircleGranted] / [ConnectionChangeType.CircleRevoked].
+         */
+        data class ConnectionChanged(
+            val identity: String,
+            val change: ConnectionChangeType,
+            val circleId: String?,
+        ) : CircleNetworkEvent
+
+        /** A circle definition itself changed elsewhere (not its membership). Echoes like above. */
+        data class CircleDefinitionChanged(
+            val circleId: String,
+            val change: CircleDefinitionChangeType,
         ) : CircleNetworkEvent
 
     }
@@ -154,11 +175,15 @@ sealed interface BackendEvent {
             val uniqueId: Uuid,
         ) : OutboxEvent
 
-        /** Fired when an item is permanently dropped after exceeding the max retry limit. */
+        /** Fired when an item is permanently dropped — either a permanent
+         *  (never-retryable) failure or the max retry limit was exceeded.
+         *  [reason] is human-readable diagnostics (classifier reason or
+         *  "retries exhausted (N)"), for logs/Message Info — not for branching. */
         data class OutboxItemDropped(
             val driveId: Uuid,
             val uniqueId: Uuid,
-            val attempts: Int
+            val attempts: Int,
+            val reason: String? = null,
         ) : OutboxEvent
 
     }
@@ -263,4 +288,29 @@ sealed interface BackendEvent {
 
     // We need an event for when someone is typing something for you...
     // data object UserTyping : backendEvent
+
+    /**
+     * An ephemeral Live Relay blob arrived over the notification websocket (e.g. a live GPS point
+     * from a connected identity). Last-value-wins, nothing durable — if you're offline the data is
+     * just gone. [senderOdinId] is authoritative; [receivedAt] is the server-received time (ms) for
+     * staleness; [blob] is the opaque base64 payload; [channelKey] routes to the right open session.
+     */
+    data class LiveRelayReceived(
+        val senderOdinId: OdinId,
+        val channelKey: String,
+        val blob: String,
+        val receivedAt: Long,
+    ) : BackendEvent
+
+    /**
+     * One of the owner's derived public-profile artifacts (`sitedata.json`, `/pub/image`,
+     * `/pub/profile`) was republished server-side — fired after ANY profile-attribute write, not
+     * just photo uploads. No diff payload; consumers should re-fetch the named [artifact]. Always
+     * about the logged-in owner's own identity (broadcast to every session for the tenant, never
+     * about a peer). See [id.homebase.api.client.auth.OwnerSessionRepository] for the primary
+     * consumer.
+     */
+    data class PublicProfileContentPublished(
+        val artifact: PublicProfileArtifact,
+    ) : BackendEvent
 }

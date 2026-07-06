@@ -1,7 +1,10 @@
+@file:OptIn(ExperimentalEncodingApi::class, ExperimentalResourceApi::class)
+
 package id.homebase.core.avatars
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,7 +26,12 @@ import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.util.ifTrue
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_owner
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.Uuid
 
 @Composable
 fun OwnerAvatar(
@@ -35,13 +44,47 @@ fun OwnerAvatar(
     options: AvatarOptions,
     modifier: Modifier = Modifier,
     sharedTransitionScope: SharedTransitionScope?,
-    animatedVisibilityScope: AnimatedVisibilityScope?
+    animatedVisibilityScope: AnimatedVisibilityScope?,
+    /** Forwarded to [PublicAvatar] when [profileImageData] is null — see its doc. */
+    cacheBustKey: Long? = null,
 ) {
+    // Preview-only owner image (e.g. the note-to-self avatar built from
+    // OwnerSession.profileImagePreviewThumbnail): there is no server-fetchable
+    // file (fileId == NIL), so decode and paint the embedded base64 preview
+    // directly. Routing it through HomebaseImage would 404 on the chat drive and
+    // overlay an error triangle. A real fetchable owner image (fileId != NIL)
+    // still goes through HomebaseImage below for progressive loading.
+    val previewOnlyBitmap = remember(profileImageData?.previewThumbnail, profileImageData?.fileId) {
+        val data = profileImageData ?: return@remember null
+        if (data.fileId != Uuid.NIL) return@remember null
+        data.previewThumbnail?.content?.takeIf { it.isNotBlank() }?.let { content ->
+            try {
+                Base64.decode(content).decodeToImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .ifTrue(connectionStatus != null) { Modifier.size(options.size + 6.dp) }
     ) {
-        if (profileImageData != null) {
+        if (previewOnlyBitmap != null) {
+            Image(
+                bitmap = previewOnlyBitmap,
+                contentDescription = stringResource(MR.string.avatar_owner),
+                contentScale = options.contentScale,
+                modifier = Modifier
+                    .size(options.size)
+                    .clip(CircleShape)
+                    .let {
+                        if (options.onClick != null) {
+                            it.clickable { options.onClick.invoke() }
+                        } else it
+                    },
+            )
+        } else if (profileImageData != null) {
             HomebaseImage(
                 imageData = profileImageData,
                 modifier = Modifier
@@ -63,6 +106,7 @@ fun OwnerAvatar(
                 odinId = odinId,
                 initials = initials,
                 options = options,
+                cacheBustKey = cacheBustKey,
             )
         }
         if (connectionStatus != null) {

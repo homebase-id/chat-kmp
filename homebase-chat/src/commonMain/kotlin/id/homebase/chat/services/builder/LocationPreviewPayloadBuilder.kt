@@ -8,7 +8,7 @@ import id.homebase.api.image.createThumbnails
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -76,6 +76,25 @@ object LocationPreviewPayloadBuilder {
             ),
             thumbnails = emptyList(),
             previewThumbs = listOfNotNull(tinyThumb),
+        )
+    }
+
+    /**
+     * The [LocationPreviewDescriptor] for a preview — used as the message HEADER content for location
+     * messages (the coordinate data lives in appData, like Event; the PNG stays a payload). `hasImage`
+     * is computed the same way [build] does (a decodable base64 image).
+     */
+    fun descriptorFor(locationPreview: LocationPreview): LocationPreviewDescriptor {
+        val imageUrl = locationPreview.imageUrl
+        val hasImage = imageUrl != null && imageUrl.contains("base64,") &&
+            runCatching { Base64.decode(imageUrl.substringAfter("base64,")).isNotEmpty() }.getOrDefault(false)
+        return LocationPreviewDescriptor(
+            lat = locationPreview.lat,
+            lon = locationPreview.lon,
+            address = locationPreview.address.truncateToCodePoints(200),
+            hasImage = hasImage,
+            imageWidth = if (hasImage) locationPreview.imageWidth else null,
+            imageHeight = if (hasImage) locationPreview.imageHeight else null,
         )
     }
 

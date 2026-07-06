@@ -1,7 +1,9 @@
 package id.homebase.chat.services.convo.contact
 
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -9,6 +11,7 @@ import id.homebase.api.common.OdinId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,10 +20,40 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import co.touchlab.kermit.Logger
 
+/** Debounce window for push-driven refreshes — long enough to swallow a fan-out burst, short
+ *  enough that the contact-detail / circles UI updates promptly after an external change. */
+private const val REFRESH_DEBOUNCE_MS = 300L
+
 data class ConnectionState(
     val isLoaded: Boolean,
     val map: Map<OdinId, RedactedIdentityConnectionRegistration>
 )
+
+/**
+ * Owner circles (including system circles) with their members, fetched alongside the
+ * connection map on every [ConnectionService.refresh]. Powers circle-membership reads:
+ * the contact-list "Confirmed" / "Introduced" pills (via the two system-circle ids) and
+ * the contact-detail "circles this person is in" list. Not cached — it repopulates on the
+ * next refresh, so on a cold start consumers fall back until the first refresh lands.
+ */
+data class CircleMembershipState(
+    val isLoaded: Boolean = false,
+    val circles: List<CircleWithMembers> = emptyList(),
+) {
+    /** Lowercased member domains of the circle whose id matches [circleId] (32-char N-format). */
+    fun membersOf(circleId: String): Set<String> =
+        circles.firstOrNull { it.circle.id.equals(circleId, ignoreCase = true) }
+            ?.members?.map { it.domainName.lowercase() }?.toSet()
+            ?: emptySet()
+
+    /** Circle definitions the identity [odinId] is a member of. */
+    fun circlesFor(odinId: String): List<RedactedCircleDefinition> {
+        val domain = odinId.lowercase()
+        return circles
+            .filter { cwm -> cwm.members.any { it.domainName.lowercase() == domain } }
+            .map { it.circle }
+    }
+}
 
 class ConnectionService(
     private val provider: ConnectionNetworkProvider,
@@ -35,6 +68,9 @@ class ConnectionService(
     val connections: StateFlow<ConnectionState> =
         _connections.asStateFlow()
 
+    private val _circles = MutableStateFlow(CircleMembershipState())
+    val circles: StateFlow<CircleMembershipState> = _circles.asStateFlow()
+
     // One-shot — prevents the AppModule preload and the ConversationListViewModel
     // init from each running hydrate+refresh on cold boot. WS-reconnect refreshes
     // go through the BackendEvent.ConnectionOnline handler in init (calls
@@ -47,9 +83,23 @@ class ConnectionService(
     // actions, CircleNetworkEvents) bypass this guard so they always re-fetch.
     private var refreshJob: Job? = null
 
+    // Trailing-debounce for push-driven invalidation (ConnectionChanged / CircleDefinitionChanged).
+    // Each event reschedules, so a burst (bulk circle edit, or the echo of our own mutation plus the
+    // real change) collapses into a single refresh once the events go quiet.
+    private var debouncedRefreshJob: Job? = null
+
     private fun launchRefresh() {
         if (refreshJob?.isActive == true) return
         refreshJob = scope.launch { refresh() }
+    }
+
+    /** Coalesces a burst of push events into one refresh [REFRESH_DEBOUNCE_MS] after the last one. */
+    private fun scheduleRefresh() {
+        debouncedRefreshJob?.cancel()
+        debouncedRefreshJob = scope.launch {
+            delay(REFRESH_DEBOUNCE_MS)
+            refresh()
+        }
     }
 
     init {
@@ -78,6 +128,19 @@ class ConnectionService(
                     // When the websocket comes back after an offline window, reconcile
                     // against the server — covers the airplane-mode-off case.
                     is BackendEvent.ConnectionOnline -> launchRefresh()
+                    // Connection/circle state changed somewhere (another device, owner-console,
+                    // server-side). These fan out to every session and echo our own mutations, so
+                    // a single connection edit or a bulk circle change can arrive as a burst —
+                    // collapse them into one re-fetch. refresh() already reloads connections AND
+                    // circles, so both event kinds are covered by the same scheduled refresh.
+                    is BackendEvent.CircleNetworkEvent.ConnectionChanged -> {
+                        Logger.d { "ConnectionChanged: ${event.identity} ${event.change} ${event.circleId ?: ""}" }
+                        scheduleRefresh()
+                    }
+                    is BackendEvent.CircleNetworkEvent.CircleDefinitionChanged -> {
+                        Logger.d { "CircleDefinitionChanged: ${event.circleId} ${event.change}" }
+                        scheduleRefresh()
+                    }
                     // Logout: drop the previous identity's connection map.
                     is BackendEvent.SessionEnded -> reset()
                     else -> {}
@@ -104,8 +167,11 @@ class ConnectionService(
     fun reset() {
         refreshJob?.cancel()
         refreshJob = null
+        debouncedRefreshJob?.cancel()
+        debouncedRefreshJob = null
         started = false
         _connections.value = ConnectionState(isLoaded = false, map = emptyMap())
+        _circles.value = CircleMembershipState()
     }
 
     private suspend fun hydrateFromCache() {
@@ -129,6 +195,15 @@ class ConnectionService(
                 Logger.d { "Fetching connected and blocked connections in parallel..." }
                 val connectedDeferred = async { provider.getConnected(1000, null) }
                 val blockedDeferred = async { provider.getBlocked(1000, null) }
+                // Circles ride along on the same refresh. A failure here must not break the
+                // connection map, so it is caught independently and leaves prior circles intact.
+                val circlesDeferred = async {
+                    runCatching { provider.getCirclesWithMembers(includeSystemCircle = true) }
+                        .getOrElse { e ->
+                            Logger.w(e) { "ConnectionService: getCirclesWithMembers failed" }
+                            null
+                        }
+                }
                 val connected = connectedDeferred.await()
                 val blocked = blockedDeferred.await()
                 Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
@@ -136,6 +211,15 @@ class ConnectionService(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
                 )
+                circlesDeferred.await()?.let { circles ->
+                    _circles.value = CircleMembershipState(isLoaded = true, circles = circles)
+                    // Verifies the Confirmed (bb2683fa…) / Auto (9e22b429…) system-circle ids
+                    // actually come back here so the membership-driven pills are reliable.
+                    Logger.d {
+                        "ConnectionService circles: " +
+                            circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
+                    }
+                }
                 runCatching {
                     cache.persistConnections(
                         connected = connected.results.map { it.odinId },

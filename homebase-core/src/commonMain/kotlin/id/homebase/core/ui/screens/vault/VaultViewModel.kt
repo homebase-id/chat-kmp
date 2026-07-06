@@ -9,14 +9,18 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.clipboard.platformFileFromPath
+import id.homebase.imageeditor.ui.CropResultBus
+import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
@@ -55,25 +59,79 @@ class VaultViewModel(
     private val vaultService: VaultService,
     private val vaultUploaderService: VaultUploaderService,
     private val eventBus: EventBus,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val optionalDriveActivation: OptionalDriveActivation,
     private val driveRegistry: DriveRegistry,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveSyncManager: DriveSyncManager,
+    private val cropResultBus: CropResultBus,
+    private val drawResultBus: DrawResultBus,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
     private val _syncingState = MutableStateFlow(false)
     private val _checkingPermissions = MutableStateFlow(false)
+    private val _preparingShareKeys = MutableStateFlow<Set<String>>(emptySet())
+    private val _pendingEditor = MutableStateFlow<VaultPendingEditor?>(null)
+
+    /**
+     * True while a crop/draw screen is navigated to on top of Vault. That forward-navigation
+     * disposes VaultScreen, firing its `onDispose` -> [VaultUiAction.CloseOverlay]; this flag
+     * tells the CloseOverlay handler to KEEP the gallery overlay in state across the round-trip
+     * so the user lands back where they were (page refreshing in place) instead of on the grid.
+     * It guards only the crop/draw round-trip: set right before the nav event, consumed by the
+     * one dispose-driven CloseOverlay it is meant to swallow, and cleared again when the edit
+     * result returns — so a genuine back-out of Vault still closes the overlay.
+     */
+    private var imageEditNavInFlight = false
 
     val uiState: StateFlow<VaultUiState> = combine(
         combine(vaultStream.sections, vaultStream.entriesBySection, vaultStream.isLoaded) { s, e, l ->
             Triple(s, e, l)
         },
-        _overlayState,
+        combine(_overlayState, _pendingEditor) { o, p -> o to p },
         _syncingState,
         _checkingPermissions,
-    ) { (sections, entriesBySection, isLoaded), overlay, syncing, checkingPermissions ->
+        _preparingShareKeys,
+    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), syncing, checkingPermissions, preparing ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        // Seed the initial value from VaultStream's CURRENT cached snapshot. VaultStream is a
+        // singleton that keeps its loaded sections across screen re-entry, but a freshly created
+        // VaultViewModel's stateIn would otherwise emit the empty + loading default VaultUiState()
+        // (isLoading = true, no sections) for the frame before the combine's first emission —
+        // flashing the full-screen spinner (VaultContent shows it on
+        // `(isLoading || isSyncing) && sections.isEmpty()`) on every Vault entry even though the
+        // data is already cached. Seeding from cache renders the cached sections immediately and
+        // spins only on a genuine cold load (stream not loaded yet → isLoaded = false, empty).
+        buildUiState(
+            sections = vaultStream.sections.value,
+            entriesBySection = vaultStream.entriesBySection.value,
+            isLoaded = vaultStream.isLoaded.value,
+            overlay = _overlayState.value,
+            pendingEditor = _pendingEditor.value,
+            syncing = _syncingState.value,
+            checkingPermissions = _checkingPermissions.value,
+            preparingShareKeys = _preparingShareKeys.value,
+        ),
+    )
+
+    /**
+     * Builds the [VaultUiState] from the stream + overlay inputs. Shared by the [uiState] combine
+     * and the cache-seeded `stateIn` initial value above so the two can never drift.
+     */
+    private fun buildUiState(
+        sections: List<VaultSection>,
+        entriesBySection: Map<Uuid, List<VaultEntry>>,
+        isLoaded: Boolean,
+        overlay: VaultOverlay?,
+        pendingEditor: VaultPendingEditor?,
+        syncing: Boolean,
+        checkingPermissions: Boolean,
+        preparingShareKeys: Set<String>,
+    ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
                 entries = entriesBySection[section.sectionId] ?: emptyList(),
@@ -85,14 +143,16 @@ class VaultViewModel(
             val freshFile = sectionModels.flatMap { it.entries }.find { it.uniqueId == gallery.file.uniqueId }
             if (freshFile != null) gallery.copy(file = freshFile) else gallery
         }
-        VaultUiState(
+        return VaultUiState(
             sections = sectionModels,
             isLoading = !isLoaded,
             isSyncing = syncing,
             isCheckingPermissions = checkingPermissions,
             fullScreenOverlay = refreshedOverlay ?: overlay,
+            preparingShareKeys = preparingShareKeys,
+            pendingEditor = pendingEditor,
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VaultUiState())
+    }
 
     private val _events = MutableSharedFlow<VaultUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<VaultUiEvent> = _events.asSharedFlow()
@@ -122,14 +182,13 @@ class VaultViewModel(
                     val hasDrive = isVaultRegistered()
                     _isActivated.value = hasDrive
                     Logger.i(tag = TAG) { "isLoaded→true: isActivated=$hasDrive" }
-                    if (hasDrive) {
-                        try {
-                            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
-                            driveSyncManager.syncDrive(vaultLabeledDrive.drive.alias)
-                        } catch (e: Exception) {
-                            Logger.w(e, TAG) { "mountDrive/sync failed (non-fatal)" }
-                        }
-                    }
+                    // Intentionally NO eager mount here. A registered vault is mounted by
+                    // AuthConnectionCoordinator's login-time pre-mount loop (it's in the
+                    // DriveRegistry) before the WebSocket connects, and observeDriveSyncStatus()
+                    // confirms activation once the drive appears in driveStatuses. Mounting it
+                    // again from here raced that pre-mount and triggered a redundant WS reconnect
+                    // → second syncAll → the post-login "0 records" sync-screen regression.
+                    // First-time activation still mounts via handleActivation().
                 }
             }
         }
@@ -169,11 +228,11 @@ class VaultViewModel(
         val alreadyRegistered = isVaultRegistered()
         if (!alreadyRegistered) {
             Logger.i(tag = TAG) { "activation: first-time setup — mounting drive + creating sections" }
-            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+            optionalDriveActivation.activate(vaultLabeledDrive)
             createDefaultSections()
         } else {
             Logger.i(tag = TAG) { "activation: vault already registered — mounting drive" }
-            authConnectionCoordinator.mountDrive(vaultLabeledDrive)
+            optionalDriveActivation.activate(vaultLabeledDrive)
         }
         _isActivated.update { true }
         _events.tryEmit(VaultUiEvent.Activated)
@@ -203,9 +262,13 @@ class VaultViewModel(
             is VaultUiAction.MoveSectionDown,
             is VaultUiAction.AddEntryToSection,
             is VaultUiAction.AppendPages,
+            is VaultUiAction.ConfirmAddEditor,
+            is VaultUiAction.EditStagedImage,
+            is VaultUiAction.EditExistingPage,
             is VaultUiAction.DeletePage,
             is VaultUiAction.UpdateNotes,
             is VaultUiAction.UpdateLabel,
+            is VaultUiAction.MoveEntryToSection,
             is VaultUiAction.SharePage,
             is VaultUiAction.SavePage,
             is VaultUiAction.ShareFile,
@@ -239,16 +302,40 @@ class VaultViewModel(
             is VaultUiAction.MoveSectionDown -> handleMoveSectionDown(action.section)
             is VaultUiAction.AddEntryToSection -> handleAddEntryToSection(action)
             is VaultUiAction.AppendPages -> handleAppendPages(action)
+            is VaultUiAction.OpenAddEditor -> handleOpenAddEditor(action)
+            is VaultUiAction.AddToEditor -> handleAddToEditor(action)
+            is VaultUiAction.RemoveFromEditor -> handleRemoveFromEditor(action)
+            is VaultUiAction.SetEditorName -> _pendingEditor.update { it?.copy(name = action.name) }
+            is VaultUiAction.SetEditorPage -> _pendingEditor.update { it?.copy(currentPage = action.page) }
+            is VaultUiAction.EditStagedImage -> handleEditStagedImage(action)
+            is VaultUiAction.ConfirmAddEditor -> handleConfirmAddEditor(action)
+            VaultUiAction.DismissAddEditor -> {
+                imageEditNavInFlight = false
+                _pendingEditor.update { null }
+            }
+            is VaultUiAction.EditExistingPage -> handleEditExistingPage(action)
             is VaultUiAction.DeletePage -> handleDeletePage(action)
             is VaultUiAction.UpdateNotes -> handleUpdateNotes(action)
             is VaultUiAction.UpdateLabel -> handleUpdateLabel(action)
+            is VaultUiAction.MoveEntryToSection -> handleMoveEntryToSection(action)
             is VaultUiAction.SharePage -> handleSharePage(action)
             is VaultUiAction.SavePage -> handleSavePage(action)
             is VaultUiAction.EntryClicked -> handleEntryClicked(action)
             is VaultUiAction.ShareFile -> handleShareFile(action)
             is VaultUiAction.RenameFile -> handleRenameFile(action)
             is VaultUiAction.DeleteFile -> handleDeleteFile(action)
-            VaultUiAction.CloseOverlay -> _overlayState.update { null }
+            VaultUiAction.CloseOverlay -> {
+                // While a crop/draw nav is in flight, the forward-navigation has disposed
+                // VaultScreen, firing its onDispose -> CloseOverlay. That is NOT a real close,
+                // so keep the gallery overlay in state across the round-trip. Consume the flag
+                // (one-shot) so this only swallows that single dispose-driven close — a genuine
+                // back-out of Vault afterwards still closes the overlay.
+                if (imageEditNavInFlight) {
+                    imageEditNavInFlight = false
+                } else {
+                    _overlayState.update { null }
+                }
+            }
             VaultUiAction.RefreshFiles -> { /* handled by VaultStream event observation */
             }
         }
@@ -359,6 +446,8 @@ class VaultViewModel(
         if (files.isEmpty()) return
 
         val firstName = files.first().name
+        // The user-typed value is the entry's editable label, NOT its file name.
+        val label = action.entryName?.ifBlank { null }
         val firstContentType = resolveContentType(firstName, files.first().mimeType()?.toString())
         val pendingId = Uuid.random()
 
@@ -389,6 +478,7 @@ class VaultViewModel(
             uniqueId = pendingId,
             driveId = Uuid.NIL,
             fileName = firstName,
+            label = label,
             contentType = firstContentType,
             sizeBytes = 0L,
             createdAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
@@ -440,6 +530,7 @@ class VaultViewModel(
 
                 val uniqueId = vaultUploaderService.uploadFile(
                     entryName = firstName,
+                    label = label,
                     files = fileData,
                     scope = viewModelScope,
                     groupId = action.sectionId,
@@ -552,17 +643,194 @@ class VaultViewModel(
         vaultStream.updateOptimisticEntry(optimisticEntry)
 
         viewModelScope.launch {
+            // Copy each picked file into the sandbox NOW for the upload read. By upload
+            // time the iOS document picker's security scope is gone, so reading the raw
+            // "File Provider Storage" path there throws ("Unable to read file"). The raw
+            // paths above are fine for the instant optimistic preview because the picker
+            // scope is still live at pick time. Mirrors handleAddFiles (and chat's
+            // materializeForUpload fix).
+            val uploadData = action.newFiles.mapIndexed { index, file ->
+                val ext = file.name.substringAfterLast('.', "tmp")
+                val tempPath = "${fileOperationsProvider.getCacheDirectory()}/vault_upload_${Uuid.random()}.$ext"
+                file.copyToPath(tempPath)
+                tempPath to fileData[index].second
+            }
             val success = vaultUploaderService.appendPages(
                 file = action.file,
-                newFiles = fileData,
+                newFiles = uploadData,
                 scope = viewModelScope,
             )
             if (!success) {
+                uploadData.forEach { (path, _) ->
+                    try { fileOperationsProvider.deleteTempFile(path) } catch (_: Exception) { }
+                }
                 vaultStream.updateOptimisticEntry(action.file)
                 _events.tryEmit(VaultUiEvent.Error(VaultError.AppendPagesFailed))
             }
         }
     }
+
+    // region Add-pictures editor (reuses image-editor-ui's crop/draw seam)
+
+    private fun stageAttachment(file: PlatformFile): AttachmentPendingFile {
+        val ct = resolveContentType(file.name, file.mimeType()?.toString())
+        return if (ct.startsWith("image/")) {
+            AttachmentPendingFile.FileImage(id = Uuid.random(), file = file)
+        } else {
+            AttachmentPendingFile.File(id = Uuid.random(), file = file)
+        }
+    }
+
+    private fun handleOpenAddEditor(action: VaultUiAction.OpenAddEditor) {
+        if (action.files.isEmpty()) return
+        _pendingEditor.update {
+            VaultPendingEditor(
+                attachments = action.files.map { stageAttachment(it) },
+                sectionId = action.sectionId,
+                appendTo = action.appendTo,
+            )
+        }
+    }
+
+    private fun handleAddToEditor(action: VaultUiAction.AddToEditor) {
+        if (action.files.isEmpty()) return
+        val newAttachments = action.files.map { stageAttachment(it) }
+        _pendingEditor.update { cur -> cur?.copy(attachments = cur.attachments + newAttachments) }
+    }
+
+    private fun handleRemoveFromEditor(action: VaultUiAction.RemoveFromEditor) {
+        _pendingEditor.update { cur ->
+            val remaining = cur?.attachments?.filter { it.attachmentId != action.attachmentId }
+                ?: return@update null
+            if (remaining.isEmpty()) null else cur.copy(attachments = remaining)
+        }
+    }
+
+    private fun handleEditStagedImage(action: VaultUiAction.EditStagedImage) {
+        val attachment = _pendingEditor.value?.attachments
+            ?.firstOrNull { it.attachmentId == action.attachmentId } as? AttachmentPendingFile.FileImage
+            ?: return
+        launchEditor(
+            tool = action.tool,
+            readSource = { fileOperationsProvider.readFileBytes(attachment.file.pathCompat) },
+        ) { editedBytes ->
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            val replaced = AttachmentPendingFile.FileImage(
+                id = action.attachmentId,
+                file = platformFileFromPath(tempPath),
+            )
+            _pendingEditor.update { cur ->
+                cur?.copy(
+                    attachments = cur.attachments.map {
+                        if (it.attachmentId == action.attachmentId) replaced else it
+                    },
+                )
+            }
+        }
+    }
+
+    private fun handleConfirmAddEditor(action: VaultUiAction.ConfirmAddEditor) {
+        val editor = _pendingEditor.value ?: return
+        imageEditNavInFlight = false
+        _pendingEditor.update { null }
+        val files = editor.attachments.mapNotNull { att ->
+            when (att) {
+                is AttachmentPendingFile.FileImage -> att.file
+                is AttachmentPendingFile.File -> att.file
+                else -> null
+            }
+        }
+        if (files.isEmpty()) return
+        val appendTo = editor.appendTo
+        if (appendTo != null) {
+            onAction(VaultUiAction.AppendPages(appendTo, files))
+        } else if (editor.sectionId != null) {
+            onAction(VaultUiAction.AddEntryToSection(editor.sectionId, files, action.entryName))
+        }
+    }
+
+    /**
+     * Re-edits an already-stored image page: downloads the payload, routes it through
+     * the editor, then replaces that payload IN PLACE (same key) so page count/order
+     * stay stable and the thumbnail simply refreshes.
+     */
+    private fun handleEditExistingPage(action: VaultUiAction.EditExistingPage) {
+        launchEditor(
+            tool = action.tool,
+            readSource = {
+                val path = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                    ?: throw IllegalStateException("Failed to download page payload")
+                fileOperationsProvider.readFileBytes(path)
+            },
+        ) { editedBytes ->
+            val tempPath = fileOperationsProvider.writeBytesToTempFile(editedBytes, "vault_edit_", ".jpg")
+            // Refresh the gallery thumbnail immediately from the edited local file
+            // while the outbox replace propagates.
+            localAttachmentStore.put(
+                action.file.uniqueId,
+                action.payloadKey,
+                LocalAttachmentContext.Image(localFilePath = tempPath, aspectRatio = null),
+            )
+            val success = vaultUploaderService.replacePagePayload(
+                file = action.file,
+                payloadKey = action.payloadKey,
+                newFilePath = tempPath,
+                contentType = "image/jpeg",
+                scope = viewModelScope,
+            )
+            if (!success) _events.tryEmit(VaultUiEvent.Error(VaultError.EditPageFailed))
+        }
+    }
+
+    /**
+     * Posts the source bytes to the crop or draw result bus, emits the navigate event,
+     * and feeds the single result to [onResult]. The collection runs on viewModelScope
+     * so it survives the editor overlay being torn down while the crop/draw screen is
+     * on top of it.
+     */
+    private fun launchEditor(
+        tool: VaultEditorTool,
+        readSource: suspend () -> ByteArray,
+        onResult: suspend (ByteArray) -> Unit,
+    ) {
+        viewModelScope.launch {
+            try {
+                val bytes = readSource()
+                val requestId = Uuid.random()
+                when (tool) {
+                    VaultEditorTool.Crop -> {
+                        cropResultBus.postSource(requestId, bytes)
+                        viewModelScope.launch {
+                            cropResultBus.resultsFor(requestId).collect {
+                                imageEditNavInFlight = false
+                                onResult(it.bytes)
+                            }
+                        }
+                        imageEditNavInFlight = true
+                        _events.tryEmit(VaultUiEvent.NavigateToCropper(requestId))
+                    }
+                    VaultEditorTool.Draw -> {
+                        drawResultBus.postSource(requestId, bytes)
+                        viewModelScope.launch {
+                            drawResultBus.resultsFor(requestId).collect {
+                                imageEditNavInFlight = false
+                                onResult(it.bytes)
+                            }
+                        }
+                        imageEditNavInFlight = true
+                        _events.tryEmit(VaultUiEvent.NavigateToDrawer(requestId))
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "Failed to open vault image editor: ${e.message}" }
+                _events.tryEmit(VaultUiEvent.Error(VaultError.OpenEditorFailed))
+            }
+        }
+    }
+
+    // endregion
 
     private fun handleDeletePage(action: VaultUiAction.DeletePage) {
         val isLastPage = action.file.payloadDescriptors.size <= 1
@@ -609,30 +877,63 @@ class VaultViewModel(
         }
     }
 
-    private fun handleSharePage(action: VaultUiAction.SharePage) {
+    private fun handleMoveEntryToSection(action: VaultUiAction.MoveEntryToSection) {
+        val sourceSectionId = action.entry.groupId
+        if (sourceSectionId == action.targetSectionId) return
+
+        _overlayState.update { null }
+        vaultStream.moveOptimisticEntry(action.entry.uniqueId, action.targetSectionId)
+
         viewModelScope.launch {
-            val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
-            if (tempPath != null) {
-                val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
-                val contentType = descriptor?.contentType ?: action.file.contentType
-                _events.tryEmit(
-                    VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
-                )
-            } else {
-                _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+            val success = vaultService.moveEntryToSection(action.entry, action.targetSectionId)
+            if (!success) {
+                if (sourceSectionId != null) {
+                    vaultStream.moveOptimisticEntry(action.entry.uniqueId, sourceSectionId)
+                }
+                _events.tryEmit(VaultUiEvent.Error(VaultError.MoveEntryFailed))
+            }
+        }
+    }
+
+    private fun handleSharePage(action: VaultUiAction.SharePage) {
+        // Re-entrancy guard: a tap while this page is already downloading is a no-op, so
+        // repeated taps don't queue duplicate downloads / multiple share sheets (#850).
+        // onAction runs on the UI thread, so this check-then-add is effectively atomic.
+        if (action.payloadKey in _preparingShareKeys.value) return
+        _preparingShareKeys.update { it + action.payloadKey }
+        viewModelScope.launch {
+            try {
+                val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                if (tempPath != null) {
+                    val descriptor = action.file.payloadDescriptors.find { it.key == action.payloadKey }
+                    val contentType = descriptor?.contentType ?: action.file.contentType
+                    _events.tryEmit(
+                        VaultUiEvent.ShareFileReady(tempPath, action.file.fileName, contentType),
+                    )
+                } else {
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+                }
+            } finally {
+                _preparingShareKeys.update { it - action.payloadKey }
             }
         }
     }
 
     private fun handleSavePage(action: VaultUiAction.SavePage) {
+        if (action.payloadKey in _preparingShareKeys.value) return
+        _preparingShareKeys.update { it + action.payloadKey }
         viewModelScope.launch {
-            val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
-            if (tempPath != null) {
-                _events.tryEmit(
-                    VaultUiEvent.SaveFileReady(tempPath, action.file.fileName),
-                )
-            } else {
-                _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+            try {
+                val tempPath = vaultUploaderService.downloadPayload(action.file, action.payloadKey)
+                if (tempPath != null) {
+                    _events.tryEmit(
+                        VaultUiEvent.SaveFileReady(tempPath, action.file.fileName),
+                    )
+                } else {
+                    _events.tryEmit(VaultUiEvent.Error(VaultError.DownloadPageFailed))
+                }
+            } finally {
+                _preparingShareKeys.update { it - action.payloadKey }
             }
         }
     }

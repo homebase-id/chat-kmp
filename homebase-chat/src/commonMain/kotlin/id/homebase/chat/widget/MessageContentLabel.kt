@@ -2,7 +2,12 @@ package id.homebase.chat.widget
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -13,10 +18,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_audio
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_file
+import id.homebase.resources.chat_message_gif
 import id.homebase.resources.chat_message_image
 import id.homebase.resources.chat_message_link
 import id.homebase.resources.chat_message_location
@@ -29,6 +36,28 @@ import org.jetbrains.compose.resources.stringResource
  * Represents a content-type label for a message preview (e.g., "Image", "Video").
  */
 data class ContentLabel(val text: String, val icon: ImageVector?)
+
+/**
+ * Content label for a typed message kind (poll, event, dice roll, groodle, or an
+ * unrecognized newer kind) — the kind's icon plus its [MessageContent.displayLabel]
+ * (poll question, event title, dice summary, …). Lets the conversation-list preview show
+ * "<icon> <title>" instead of plain text for these messages.
+ *
+ * Pure (no composition) so it is unit-testable; the labels are message content, not UI
+ * chrome, so they need no localization — matching the existing notification/search path
+ * that also reads [MessageContent.displayLabel].
+ *
+ * When you add a new typed message kind, add its branch here so it gets a preview icon.
+ */
+fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = when (messageContent) {
+    is MessageContent.Poll -> ContentLabel(messageContent.displayLabel, Icons.Default.BarChart)
+    is MessageContent.Event -> ContentLabel(messageContent.displayLabel, Icons.Default.Event)
+    is MessageContent.DiceRoll -> ContentLabel(messageContent.displayLabel, Icons.Default.Casino)
+    is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
+    is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
+    is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
+    null -> null
+}
 
 /**
  * Determines the content-type label for a message based on its payload descriptors.
@@ -44,6 +73,7 @@ fun messageContentLabel(
     isDeleted: Boolean,
     firstPayload: PayloadDescriptor?,
     hasMultiplePayloads: Boolean,
+    messageContent: MessageContent? = null,
 ): ContentLabel? {
     if (isDeleted) {
         return ContentLabel(
@@ -51,6 +81,10 @@ fun messageContentLabel(
             icon = Icons.Default.Block
         )
     }
+
+    // Typed kinds (poll/event/dice/groodle) show their kind icon + title even though their
+    // preview text is non-blank — so this runs before the text early-return below.
+    typedMessageContentLabel(messageContent)?.let { return it }
 
     if (textContent.isNotBlank()) {
         return null
@@ -65,6 +99,17 @@ fun messageContentLabel(
 
     if (firstPayload != null) {
         return when {
+            // Specific payload keys first: a Location carries a map *image* and a Link
+            // carries a preview *image*, so they'd otherwise match the generic image/
+            // branch below and mis-label as "Image". The key identifies the kind exactly.
+            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> ContentLabel(
+                text = stringResource(MR.string.chat_message_link),
+                icon = Icons.Default.Description
+            )
+            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> ContentLabel(
+                text = stringResource(MR.string.chat_message_location),
+                icon = Icons.Default.LocationOn
+            )
             // A solo transparent cut-out image carries DescriptorContent.ImageFile(isSticker=true).
             // hasMultiplePayloads is already false here, so this is the single-payload case the
             // sticker bubble (MediaMessage) recognises — surface "Sticker" instead of "Image".
@@ -74,6 +119,12 @@ fun messageContentLabel(
                     text = stringResource(MR.string.chat_preview_sticker),
                     icon = Icons.AutoMirrored.Filled.StickyNote2
                 )
+            // GIF indicator is the 👾 emoji baked into the string (like the deleted-message
+            // 🚫), so no Material icon — keeps the playful marker without an extra glyph.
+            firstPayload.contentType == "image/gif" -> ContentLabel(
+                text = stringResource(MR.string.chat_message_gif),
+                icon = null
+            )
             firstPayload.contentType?.startsWith("image/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_image),
                 icon = Icons.Default.Image
@@ -86,14 +137,6 @@ fun messageContentLabel(
             firstPayload.contentType?.startsWith("audio/") == true -> ContentLabel(
                 text = stringResource(MR.string.chat_message_audio),
                 icon = Icons.Default.PlayArrow
-            )
-            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LINKS -> ContentLabel(
-                text = stringResource(MR.string.chat_message_link),
-                icon = Icons.Default.Description
-            )
-            firstPayload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> ContentLabel(
-                text = stringResource(MR.string.chat_message_location),
-                icon = Icons.Default.LocationOn
             )
             else -> ContentLabel(
                 text = stringResource(MR.string.chat_message_file),

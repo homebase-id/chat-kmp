@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.ConversationAvatarModel
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -36,7 +37,14 @@ data class ConversationUiModel(
     val lastMessageIsDeleted: Boolean = false,
     val lastMessageFirstPayload: PayloadDescriptor? = null,
     val lastMessageHasMultiplePayloads: Boolean = false,
+    /**
+     * Parsed typed content of the last message (poll, event, dice roll, …) when it is one,
+     * else null. Lets the list preview show the kind's icon + title via
+     * [id.homebase.chat.widget.typedMessageContentLabel].
+     */
+    val lastMessageContent: MessageContent? = null,
     val lastMessageIsFromActiveUser: Boolean = false,
+    val lastMessageSender: OdinId? = null,
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
     val isGroup: Boolean = false,
@@ -170,7 +178,9 @@ data class ConversationUiModel(
                     lastMessageIsDeleted = msg.isDeleted,
                     lastMessageFirstPayload = msg.payloads?.firstOrNull(),
                     lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1,
-                    lastMessageIsFromActiveUser = msg.isAuthoredBy(activeUserDomain),
+                    lastMessageContent = msg.messageContent,
+                    lastMessageIsFromActiveUser = msg.isFromActiveUser(activeUserDomain),
+                    lastMessageSender = msg.originalAuthor,
                 )
             }
             return this

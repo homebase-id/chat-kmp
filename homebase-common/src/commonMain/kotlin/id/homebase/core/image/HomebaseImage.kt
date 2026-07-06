@@ -70,6 +70,7 @@ fun HomebaseImage(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     contentScale: ContentScale = ContentScale.Fit,
+    alignment: Alignment = Alignment.Center,
     placeholder: @Composable (() -> Unit)? = null,
     error: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
@@ -187,6 +188,7 @@ fun HomebaseImage(
                         painter = loadingPainter,
                         contentDescription = contentDescription,
                         contentScale = contentScale,
+                        alignment = alignment,
                         modifier = Modifier.fillMaxSize().then(blurMod)
                     )
                 } else if (previewBitmap != null) {
@@ -194,6 +196,7 @@ fun HomebaseImage(
                         bitmap = previewBitmap,
                         contentDescription = contentDescription,
                         contentScale = contentScale,
+                        alignment = alignment,
                         modifier = Modifier.fillMaxSize().then(blurMod)
                     )
                 } else {
@@ -207,6 +210,7 @@ fun HomebaseImage(
                         bitmap = previewBitmap,
                         contentDescription = contentDescription,
                         contentScale = contentScale,
+                        alignment = alignment,
                         modifier = Modifier.fillMaxSize().then(blurMod)
                     )
                 } else {
@@ -217,7 +221,8 @@ fun HomebaseImage(
             is AsyncImagePainter.State.Success -> {
                 SubcomposeAsyncImageContent(
                     modifier = Modifier.fillMaxSize().then(blurMod),
-                    contentScale = contentScale
+                    contentScale = contentScale,
+                    alignment = alignment
                 )
             }
 
@@ -231,6 +236,7 @@ fun HomebaseImage(
                             bitmap = previewBitmap,
                             contentDescription = contentDescription,
                             contentScale = contentScale,
+                            alignment = alignment,
                             modifier = Modifier.fillMaxSize().then(blurMod)
                         )
                     } else {

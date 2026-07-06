@@ -1,18 +1,12 @@
 package id.homebase.feed
 
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
@@ -31,15 +25,13 @@ import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.notifications.decideNotificationIntent
 import id.homebase.core.notifications.isReplayedFromHistory
+import id.homebase.feed.crash.NativeCrashRecovery
 import id.homebase.feed.share.ShareShortcutPublisher
-import id.homebase.core.settings.ThemeState
-import id.homebase.core.settings.UserPreferences
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
-import org.koin.compose.koinInject
 
 class MainActivity : AppCompatActivity() {
 
@@ -52,6 +44,15 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        // If the previous run died in a *native* crash (an NDK signal — e.g. a SQLCipher
+        // SIGSEGV — that the JVM GlobalCrashHandler can never see), surface the recovery
+        // screen now instead of starting normally. Returns false on a clean previous run.
+        if (NativeCrashRecovery.checkAndMaybeLaunch(this)) {
+            finish()
+            return
+        }
+
         // The gap from MainApplication's "onCreate end" to here is process-idle /
         // background→foreground (a background-woken process sits here until the user
         // opens it). The gap from here to "App() first composition" is the real
@@ -80,33 +81,8 @@ class MainActivity : AppCompatActivity() {
         // Marked here (not inside the composable body, which re-fires per recomposition):
         // setContent → "App() first composition" is the first-frame / composition cost.
         StartupLogger.checkpoint("setContent")
-        setContent {
-            val userPreferences = koinInject<UserPreferences>()
-            val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
-            val isDarkTheme = when (prefState.theme) {
-                ThemeState.System -> isSystemInDarkTheme()
-                ThemeState.Dark -> true
-                ThemeState.Light -> false
-            }
-
-            DisposableEffect(isDarkTheme) {
-                enableEdgeToEdge(
-                    statusBarStyle = if (isDarkTheme) {
-                        SystemBarStyle.dark(Color.TRANSPARENT)
-                    } else {
-                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-                    },
-                    navigationBarStyle = if (isDarkTheme) {
-                        SystemBarStyle.dark(Color.TRANSPARENT)
-                    } else {
-                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-                    },
-                )
-                onDispose {}
-            }
-
-            App()
-        }
+        // Theme-aware system bars are applied by HomebaseTheme (UpdateEdgeToEdge).
+        setContent { App() }
     }
 
     override fun onNewIntent(intent: Intent) {

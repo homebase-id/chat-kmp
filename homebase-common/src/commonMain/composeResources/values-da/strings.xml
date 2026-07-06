@@ -37,7 +37,6 @@
     <string name="connect">Forbind</string>
     <string name="updated">Opdateret</string>
     <string name="loading">Indlæser...</string>
-    <string name="connection_requests_banner">%1$s kontakt anmodninger</string>
     <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
     <string name="show_more">Vis mere</string>
     <string name="chat_message_read_more">Læs mere</string>
@@ -109,7 +108,6 @@
     <string name="avatar_conversation">Samtale avatar</string>
     <string name="avatar_default">Standard avatar</string>
     <string name="avatar_public">Offentlig avatar</string>
-    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -311,7 +309,7 @@
     <string name="chat_no_gallery_items">Ingen elementer</string>
     <string name="chat_select_more_photos">Vælg flere billeder</string>
     <string name="chat_gallery_selection_index">%1$d</string>
-    <string name="chat_gallery_send_count">Send (%1$d)</string>
+    <string name="chat_gallery_next_count">Næste (%1$d)</string>
 
     <!-- Conversation new -->
     <string name="chat_new_conversation">Ny samtale</string>
@@ -455,15 +453,17 @@
     <string name="chat_message_attachment_options">Vedhæftelses menu</string>
     <string name="chat_message_emoji_options">Emoji menu</string>
     <string name="chat_message_edited">Redigeret</string>
-    <string name="chat_message_deleted">🚫 Denne besked blev slettet</string>
+    <string name="chat_message_deleted">Denne besked blev slettet</string>
 
     <string name="chat_message_image">Billede</string>
+    <string name="chat_message_gif">👾 GIF</string>
     <string name="chat_preview_sticker">Klistermærke</string>
     <string name="chat_message_link">Link</string>
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
     <string name="chat_message_file">Fil</string>
     <string name="chat_message_multiple_media">Medier</string>
+    <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
 
     <!-- Stickers (gemte klistermærker) -->
     <string name="chat_sticker_share">Klistermærker</string>
@@ -608,6 +608,7 @@
     <string name="storage_defragment_button">Defragmentér</string>
     <string name="storage_cache_payloads">Mediedata</string>
     <string name="storage_cache_thumbnails">Miniaturebilleder</string>
+    <string name="storage_cache_hls_chunks">Videostream-cache</string>
     <string name="storage_cache_profile_images">Profilbilleder</string>
     <string name="storage_cache_profiles">Offentlige profiler</string>
     <string name="storage_cache_coil_memory">Billeder i hukommelsen</string>
@@ -690,5 +691,10 @@
     <!-- Moments push notifications -->
     <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
     <string name="moments_push_new_comment">Kommenterede på et øjeblik, du er en del af</string>
+
+    <!-- Vault Move to section -->
+    <string name="vault_move_to_section">Flyt til sektion…</string>
+    <string name="vault_move_to_section_target">Flyt til %1$s</string>
+    <string name="vault_move_to_section_failed">Kunne ikke flytte filen. Prøv igen.</string>
 
 </resources>

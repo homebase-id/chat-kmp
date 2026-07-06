@@ -1,6 +1,7 @@
 import UIKit
 import SwiftUI
 import Intents
+import FirebaseCore
 
 /// Main entry point for the iOS Share Extension.
 /// Checks auth, loads the conversation cache, shows a picker,
@@ -9,6 +10,13 @@ class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        // Configure Firebase so Crashlytics captures crashes in the share-extension
+        // process (separate bundle/process from the main app). Guarded against
+        // re-entry across extension reuse.
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
 
         // 1. Check authentication via App Group cache
         guard ShareAuthChecker.isAuthenticated() else {
@@ -26,7 +34,8 @@ class ShareViewController: UIViewController {
         }
 
         // 3. Load conversation cache from App Group
-        let (conversations, _, momentsActivated) = ShareConversationCacheReader.load()
+        let (conversations, _, momentsActivated, ownerDomain, ownerDisplayName) =
+            ShareConversationCacheReader.load()
 
         // "New Moment" needs media and an activated Moments feature — mirror the
         // Android picker's gating.
@@ -36,6 +45,8 @@ class ShareViewController: UIViewController {
         let pickerView = SharePickerView(
             conversations: conversations,
             showMomentOption: momentsActivated && hasMedia,
+            ownerDisplayName: ownerDisplayName,
+            ownerDomain: ownerDomain,
             onSelect: { [weak self] conversationIds in
                 self?.handleSelection(conversationIds: conversationIds)
             },
@@ -121,9 +132,18 @@ class ShareViewController: UIViewController {
         }
     }
 
+    /// Variant-specific share URL scheme. A dev + prod build installed side by side must NOT
+    /// both register the same scheme, or this extension's openURL hand-off can be claimed by
+    /// the wrong app — which then reads a different App Group than the one we wrote to, so the
+    /// share silently vanishes. Derived from the (already variant-specific) App Group id; must
+    /// stay in sync with SHARE_URL_SCHEME in the xcconfigs that the main app registers.
+    private var shareUrlScheme: String {
+        SharedContentSaver.appGroupId.hasSuffix(".dev") ? "homebase-share-dev" : "homebase-share"
+    }
+
     /// Open the main app's moments composer via URL scheme.
     private func openMainAppForMoment() {
-        guard let url = URL(string: "homebase-share://moment") else {
+        guard let url = URL(string: "\(shareUrlScheme)://moment") else {
             cancelExtension()
             return
         }
@@ -133,7 +153,7 @@ class ShareViewController: UIViewController {
 
     /// Open the main app via URL scheme to complete the send.
     private func openMainApp(conversationIds: String) {
-        guard let url = URL(string: "homebase-share://send?conversationIds=\(conversationIds)") else {
+        guard let url = URL(string: "\(shareUrlScheme)://send?conversationIds=\(conversationIds)") else {
             cancelExtension()
             return
         }

@@ -9,6 +9,7 @@ import id.homebase.api.file.CacheAudit
 import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.file.wipeOutboxStaging
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.core.config.dataUpgradeReturnUrl
 
@@ -18,7 +19,6 @@ import okio.Path.Companion.toPath
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
-import id.homebase.chat.contactinfo.ContactInfoViewModel
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationmedia.ConversationMediaViewModel
@@ -33,7 +33,15 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
 import id.homebase.chat.selectmembers.SelectMembersViewModel
+import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.chat.services.livelocation.LiveShareReadiness
+import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.permissions.isLocationPermissionGranted
+import id.homebase.core.location.emergency.EmergencyLocateService
+import id.homebase.core.location.emergency.EmergencyLocateStore
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -41,8 +49,13 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContentParser
-import id.homebase.chat.services.PayloadBundleEncryptionService
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.VideoEncodePolicy
+import id.homebase.upload.OptimisticLocalWriter
+import id.homebase.upload.UploadService
+import id.homebase.chat.services.outbox.OptimisticWriterPort
 import id.homebase.chat.services.ShareSuggestionDonor
 import id.homebase.chat.services.StatusMessageData
 import id.homebase.api.client.drives.HomebaseFile
@@ -59,13 +72,21 @@ import id.homebase.chat.services.convo.PostCreateIntroductionPreflightBus
 import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.chat.services.convo.contact.DriveContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.core.contactbook.ContactOverrideStore
+import id.homebase.core.contactbook.EmergencyContactReceiveService
+import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
+import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
+import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
@@ -89,10 +110,13 @@ import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationEntry
@@ -104,7 +128,6 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
-import id.homebase.core.ui.screens.connections.ConnectionsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
@@ -118,6 +141,8 @@ import id.homebase.core.ui.screens.moments.MomentsFeedViewModel
 import id.homebase.core.ui.screens.moments.MomentsSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.ui.screens.notifications.NotificationSettingsViewModel
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditViewModel
+import id.homebase.core.ui.screens.profile.ProfileEditViewModel
 import id.homebase.core.ui.screens.settings.SettingsViewModel
 import id.homebase.core.ui.screens.defragmenter.DefragmenterViewModel
 import id.homebase.core.ui.screens.defragmenter.service.DefragSource
@@ -132,16 +157,49 @@ import org.koin.core.module.dsl.viewModelOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.location.EmergencyCircleNotifier
+import id.homebase.core.location.GpsRequestReason
+import id.homebase.core.location.PushLocationCapture
+import id.homebase.core.location.LocationPreferences
+import id.homebase.core.location.tracking.LocationDeviceId
+import id.homebase.core.location.tracking.DeviceSensors
+import id.homebase.core.location.tracking.createDeviceSensors
+import id.homebase.core.location.LocationService
+import id.homebase.core.location.tracking.LocationFixRouter
+import id.homebase.core.location.tracking.LocationPointStore
+import id.homebase.core.location.tracking.createOneShotLocationProvider
+import id.homebase.core.location.tracking.LocationTracker
+import id.homebase.core.location.tracking.LocationTrackingCoordinator
+import id.homebase.core.location.tracking.createLocationTracker
+import id.homebase.core.ui.screens.location.LocationTrackUploaderService
+import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.PushCaptureUploader
+import id.homebase.core.ui.screens.location.model.locationHourFileUid
+import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
+import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
+import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
+import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 val MomentsPermissionQualifier = named("momentsPermission")
 val StickerPermissionQualifier = named("stickerPermission")
+val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+    // Adapter so the upload pipeline's encoding policy doesn't couple homebase-common's
+    // UserPreferences to homebase-upload. Reads the live preference value on each access.
+    single<VideoEncodePolicy> {
+        val prefs: UserPreferences = get()
+        object : VideoEncodePolicy {
+            override val allowTenBitVideo: Boolean get() = prefs.allowTenBitVideo
+        }
+    }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
@@ -168,7 +226,7 @@ val appModule = module {
                     content = content,
                 )
             },
-            enqueueOutbox = { request -> outboxSync.tryEnqueue(request) },
+            enqueueOutbox = { request -> outboxSync.tryEnqueue(request).enqueued },
             eventBus = get(),
             scope = get(),
         )
@@ -181,6 +239,137 @@ val appModule = module {
     singleOf(::MomentGroupService)
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
+
+    // Contact Book add-on (contact manager). Reads from the mandatory Contacts
+    // drive; writes through the api-layer ContactsProvider. No optional-drive
+    // activation — the drive is always mounted.
+    single { ContactBookPreferences(get()) }
+    // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
+    // book consumes it directly. No core-side stream/service wrapper.
+    // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
+    singleOf(::ContactOverrideStore)
+
+    // region Location add-on
+    single { LocationPreferences(get()) }
+    single { LocationDeviceId() }
+    single<DeviceSensors> { createDeviceSensors() }
+    single { LocationPointStore(databaseManager = get(), deviceSensors = get()) }
+    // The single routing seam (#835): every capture path submits here. It owns the persist-vs-relay
+    // decision so the policy is greppable in one place instead of smeared across store + DI + share.
+    single {
+        LocationFixRouter(
+            store = get(),
+            // The only place (besides the coordinator's acquire gate) that reads the history flag:
+            // persist iff history on; a live share's fixes relay but aren't recorded (#823).
+            allowHistory = { get<LocationPreferences>().allowLocationHistory.value },
+            // History: persist + drain to hour files (rate-gated). Lazy get() avoids the
+            // construction-time cycle; runs only when history is on. The reason is log-only
+            // context (#988): push-triggered flushes log their skip-gates at Info.
+            persistAsHistory = { points, reason ->
+                get<LocationPointStore>().persistHistory(points)
+                get<LocationTrackUploaderService>().flushIfDue(reason)
+            },
+            // Live: relay the latest fix. Rides this same background-capable seam (NOT a UI Flow) so
+            // it fires on cold-woken background points; self-gates on the share roster.
+            relayLatest = { point -> get<LiveLocationShareService>().relayLatest(point) },
+        )
+    }
+    single {
+        LiveLocationShareService(
+            relay = get<LiveRelayProvider>()::relay,
+            locationPointStore = get(),
+            databaseManager = get(),
+            // The coordinator is the single owner of the GPS tracker; the share service only declares
+            // that it needs GPS and pokes the coordinator to re-evaluate.
+            onLiveShareChanged = { get<LocationTrackingCoordinator>().refreshGpsHold() },
+        )
+    }
+    single { LiveLocationReceiveStore(eventBus = get(), scope = get()) }
+    single { EmergencyLocateStore(eventBus = get(), scope = get()) }
+    single { EmergencyLocateService(temporalDriveReadProvider = get(), store = get()) }
+    // Readiness gate for "Share live location": activated add-on + location permission, so the chat
+    // layer can prompt to set up location instead of starting a share that captures nothing.
+    single<LiveShareReadiness> {
+        val activation = get<OptionalDriveActivation>()
+        LiveShareReadiness {
+            activation.isActivated(locationLabeledDrive) &&
+                isLocationPermissionGranted()
+        }
+    }
+    single<LocationTracker> { createLocationTracker(get<LocationFixRouter>()) }
+    single {
+        LocationTrackUploaderService(
+            uploadService = get(),
+            fileOperationsProvider = get(),
+            driveFileProvider = get(),
+            databaseManager = get(),
+            credentialsManager = get(),
+            eventBus = get(),
+            deviceId = get(),
+            optionalDriveActivation = get(),
+            scope = get(),
+            // Battery saver: defer background uploads (but a foregrounded user, or a >24h
+            // un-uploaded backlog, still uploads). #878 follow-up.
+            powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
+            isAppForeground = { get<LocationTrackingCoordinator>().isForeground },
+            // Drain even without the websocket (#987): background wakes (push, PendingIntent
+            // batch, SLC relaunch) never flip OutboxSync online, so the normal enqueue kick
+            // declines and the hour-file would strand until the next foreground connect.
+            drainNow = { get<OutboxSync>().send(force = true) },
+        )
+    }
+    single {
+        LocationTrackingCoordinator(
+            preferences = get(),
+            tracker = get(),
+            scope = get(),
+        ).apply {
+            // The uploader lives in homebase-core; the coordinator (homebase-common)
+            // reaches it through this seam only.
+            onFlushDue = { get<LocationTrackUploaderService>().flushIfDue() }
+            // Lets the coordinator keep GPS armed for an active live-location share (incl. across a
+            // cold start / iOS relaunch) without referencing homebase-chat.
+            liveShareActive = { get<LiveLocationShareService>().hasLiveShare() }
+            // Force a fresh fix on app-open when stale (#878). Goes through the gated
+            // forceCaptureIfTracking() — the single entry for automatic triggers — so the
+            // "only when a persistent consumer wants GPS" decision lives in one place (the
+            // coordinator's own isCaptureWanted() pre-check just avoids launching when not wanted).
+            onForegroundEntry = { get<LocationService>().forceCaptureIfTracking(GpsRequestReason.AppForeground) }
+        }
+    }
+    // The single public entry point for "this device's location" — composes coordinator (acquire) +
+    // router (route) + store/permission (access). One-shot fixes route through the router too.
+    // The one-shot provider is constructed HERE (not a standalone single) so nothing can inject it
+    // directly and bypass getCurrentGps's routing — every fetched fix is guaranteed to be routed.
+    single {
+        LocationService(
+            coordinator = get(),
+            router = get(),
+            pointStore = get(),
+            preferences = get(),
+            oneShot = createOneShotLocationProvider(),
+            scope = get(),
+            // Battery saver: on-demand fixes go cache-only (no radio). #878 follow-up.
+            powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
+        )
+    }
+    // Push-wake capture+upload orchestrator (#987): gated capture, then a bounded forced
+    // outbox drain with row-verified confirmation, so the hour-file lands during the wake.
+    // Interface lives in homebase-common (NotificationEntry injects it); lambda seams keep
+    // the orchestration testable and mirror the persistAsHistory wiring style.
+    single<PushLocationCapture> {
+        PushCaptureUploader(
+            capture = { get<LocationService>().forceCaptureIfTracking(GpsRequestReason.PushReceived) },
+            pendingRow = { uid ->
+                get<OutboxSync>().pendingUploadType(locationLabeledDrive.drive.alias, uid) != null
+            },
+            drain = { get<OutboxSync>().send(force = true) },
+            events = get<EventBus>().events,
+            locationDriveId = locationLabeledDrive.drive.alias,
+            hourUid = { hourStart -> locationHourFileUid(get<LocationDeviceId>().value, hourStart) },
+        )
+    }
+    // endregion
 
     // DriveRegistry reads/writes a cross-device list of optional drives from the user's
     // Chat drive. See id.homebase.core.sync.DriveRegistry for the storage model.
@@ -235,6 +424,10 @@ val appModule = module {
         )
     }
 
+    // Shared activation primitive for optional add-on drives (Vault, Moments, Location,
+    // Stickers) — see OptionalDriveActivation.
+    single { OptionalDriveActivation(get(), get()) }
+
     // Bound here rather than in homebase-api's ApiModule because the logout hook
     // needs platform singletons (Coil ImageLoader, FileOperationsProvider) that
     // don't exist at the homebase-api layer. The hook clears every cache that
@@ -269,6 +462,17 @@ val appModule = module {
                 }.onFailure {
                     Logger.w(tag = "YouAuthFlowManager", throwable = it) {
                         "logout cache sweep failed"
+                    }
+                }
+                // The durable outbox staging dir (#842) sits OUTSIDE cacheDir, so the
+                // sweep above can't reach it — wipe it explicitly. Pairs with the
+                // outbox-table wipe (driveSyncManager.clearStorage()): rows and staged
+                // payloads leave together.
+                runCatching {
+                    wipeOutboxStaging(fileOps.getOutboxStagingDirectory())
+                }.onFailure {
+                    Logger.w(tag = "YouAuthFlowManager", throwable = it) {
+                        "logout outbox-staging wipe failed"
                     }
                 }
                 runCatching { imageLoader.memoryCache?.clear() }
@@ -307,6 +511,31 @@ val appModule = module {
             // a missing promoteToForeground() can't hang the app on "syncing".
             startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
+                // Live Relay receive store: clear any prior identity's positions for a clean
+                // slate (they rehydrate from the server's flush-on-connect). Resolved FIRST and
+                // independent of the other services so its app-lifetime init{} collector is
+                // guaranteed up — a throw in a later location reset() below can't prevent the
+                // consumer from existing when relay packets arrive (bug #824). The collector is
+                // never cancelled here; logout clears it in-stream via SessionEnded.
+                get<LiveLocationReceiveStore>().reset()
+                // Emergency-retrieved peer location history is memory-only and per-identity —
+                // clear any prior identity's retrievals (same in-stream SessionEnded backstop).
+                get<EmergencyLocateStore>().reset()
+
+                // Self-heal crash-orphaned encrypted payload temps. Two dirs (#842):
+                // the durable staging dir (outside cacheDir, invisible to the
+                // CacheSweeper — this reap is its only safety net) and the legacy
+                // <cacheDir>/outbox-temp (KEEP-protected; still referenced by outbox
+                // rows enqueued before the app update — drains itself, then only this
+                // reap empties leftovers). Fire-and-forget.
+                get<OutboxSync>().scheduleIdleOutboxTempReap(
+                    get<FileOperationsProvider>().getOutboxStagingDirectory()
+                )
+                get<OutboxSync>().scheduleIdleOutboxTempReap(
+                    get<FileOperationsProvider>().getCacheDirectory().trimEnd('/') +
+                        "/" + CacheAudit.OUTBOX_TEMP_DIR_NAME
+                )
+
                 // Preload conversations and contacts from local DB while navigation
                 // and Compose composition are still in progress, saving ~800ms.
                 val conversationStream = get<ConversationStream>()
@@ -320,6 +549,8 @@ val appModule = module {
                 get<MomentsRecipientLookupService>().start()
                 get<MomentsFeedService>().start()
                 get<MomentGroupService>().start()
+                // Notify peers when our emergency-location circle membership changes (grant/revoke).
+                get<EmergencyCircleNotifier>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -341,6 +572,25 @@ val appModule = module {
                 }
                 // endregion
 
+                // region Emergency contact: incoming designation / revocation status messages.
+                // A peer adding us to (designation) or removing us from (revocation) their emergency
+                // circle posts us a status; the receive service records/clears our can-locate flag for
+                // them and consumes the message so a re-delivery can't re-apply stale state.
+                val emergencyContactReceive = get<EmergencyContactReceiveService>()
+                conversationStream.onEmergencyContactDesignated = { sender, file ->
+                    emergencyContactReceive.onDesignated(sender, file)
+                }
+                conversationStream.onEmergencyContactRevoked = { sender, file ->
+                    emergencyContactReceive.onRevoked(sender, file)
+                }
+                // Background backstop: the live status-message handlers above only fire on the
+                // WS-push path, so a designation that arrived during cold sync (or a dropped
+                // event) is never applied. Recover missed SETs against the temporal-access
+                // preflight in the background — no screen required. Set-only: the reconciler
+                // never clears; revocation is applied solely by onRevoked above (issue #961).
+                get<EmergencyContactReconciler>().start()
+                // endregion
+
                 // region Auto-unarchive: incoming message for archived conversation
                 conversationStream.onUnarchiveConversation = { conversationId ->
                     conversationService.unarchiveConversation(conversationId)
@@ -349,8 +599,25 @@ val appModule = module {
 
                 get<VaultPreferences>().reset()
                 get<VaultStream>().apply { reset(); start() }
+                // Contact Book: re-seed prefs + reload the contact list for the new
+                // identity (singletons survive logout — clear stale in-memory state).
+                get<ContactBookPreferences>().reset()
+                get<ContactRepository>().apply { reset(); start() }
                 // Hydrate the saved-stickers tray for the new identity (mirror Vault).
                 get<id.homebase.chat.services.sticker.StickerStream>().apply { reset(); start() }
+
+                // Location add-on: re-seed prefs from the (possibly wiped) DB,
+                // clear in-memory capture state, restart the flusher's outbox
+                // observer + retention sweep, and stop the tracker if the wipe
+                // turned the master switch off. Order matters: prefs first.
+                get<LocationPreferences>().reset()
+                get<LocationPointStore>().reset()
+                get<LocationTrackUploaderService>().apply { reset(); start() }
+                // Live Relay debug-flow: re-seed the live-share roster from this identity's DB FIRST
+                // (it must survive app open/kill until expiry), so the coordinator's reset() below sees
+                // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
+                get<LiveLocationShareService>().reset()
+                get<LocationTrackingCoordinator>().reset()
             }
         )
     }
@@ -368,6 +635,14 @@ val appModule = module {
 
     factoryOf(::PayloadBundleEncryptionService) bind PayloadBundleEncryptor::class
     factoryOf(::OptimisticWriter)
+    // Adapts chat's OptimisticWriter onto the upload pipeline's OptimisticLocalWriter port, so
+    // the shared UploadService writes optimistic rows without homebase-upload depending on chat.
+    single<OptimisticLocalWriter> { OptimisticWriterPort(get()) }
+    // The one shared, feature-agnostic upload pipeline (#844 Deliverable B).
+    singleOf(::UploadService)
+    // Shared optimistic-send cache seeder — used by Chat, Moments, Vault, Stickers
+    // so a just-sent image shows its sharp thumbnail through "finalizing".
+    singleOf(::PayloadCacheSeeder)
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)
@@ -375,7 +650,9 @@ val appModule = module {
 
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
-    singleOf(::DriveContactService)
+    singleOf(::EmergencyCircleNotifier)
+    singleOf(::EmergencyContactReceiveService)
+    singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
     single<id.homebase.chat.services.convo.ConversationParticipantLookup> { get<ConversationStream>() }
@@ -388,6 +665,7 @@ val appModule = module {
         ConversationService(
             credentialsManager = get(),
             payloadBundleEncryptionService = get(),
+            uploadService = get(),
             dbm = get(),
             introductionProvider = get(),
             scope = get(),
@@ -560,6 +838,9 @@ val appModule = module {
             stickerStream = get(),
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
+            liveLocationShareService = get(),
+            liveShareReadiness = get(),
+            locationService = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -567,7 +848,6 @@ val appModule = module {
     viewModelOf(::CreateConversationGroupViewModel)
     viewModelOf(::SelectMembersViewModel)
     viewModelOf(::MessageInfoViewModel)
-    viewModelOf(::ContactInfoViewModel)
     viewModelOf(::ConversationSettingsViewModel)
     viewModelOf(::ConversationMediaViewModel)
     viewModelOf(::GroupSettingsViewModel)
@@ -591,6 +871,78 @@ val appModule = module {
     }
     viewModel { MomentsViewModel(get(), get(MomentsPermissionQualifier), get()) }
     viewModelOf(::MomentsSettingsViewModel)
+    viewModel(LocationPermissionQualifier) {
+        ExtendPermissionViewModel(get(), get(), get(), getLocationPermissionExtensionConfig())
+    }
+    viewModel {
+        LocationViewModel(
+            locationPreferences = get(),
+            locationPermissionViewModel = get(LocationPermissionQualifier),
+            optionalDriveActivation = get(),
+            trackingCoordinator = get(),
+            pointStore = get(),
+            uploaderService = get(),
+            deviceDirectory = get(),
+            contactRepository = get(),
+            connectionService = get(),
+            contactService = get(),
+            temporalDriveReadProvider = get(),
+            credentialsManager = get(),
+            tracker = get(),
+            receiveStore = get(),
+            liveShareService = get(),
+            conversationService = get(),
+            emergencyLocateService = get(),
+            authConnectionCoordinator = get(),
+        )
+    }
+    // Manual block: the optional peerDomain (emergency-locate peer mode) arrives as a Koin
+    // runtime parameter from the LocationPeerHistory route; the own-history call site passes none.
+    viewModel { params ->
+        LocationHistoryViewModel(
+            deviceDirectory = get(),
+            locationPreferences = get(),
+            emergencyLocateStore = get(),
+            peerDomain = params.getOrNull(),
+        )
+    }
+    // Manual block (not viewModelOf): the constructor has a `nowMs: () -> Long` param with a default;
+    // viewModelOf would try to autowire that Function0 from Koin and fail at creation time.
+    viewModel {
+        LiveLocationViewModel(
+            receiveStore = get(),
+            contactService = get(),
+            locationPreferences = get(),
+            pointStore = get(),
+            credentialsManager = get(),
+            locationService = get(),
+        )
+    }
+    viewModel { params ->
+        ShareLocationViewModel(
+            conversationId = params.get(),
+            previewProvider = get(),
+            locationService = get(),
+            locationPreferences = get(),
+            liveShareReadiness = get(),
+            liveLocationShareService = get(),
+            chatMessageSenderService = get(),
+            conversationStream = get(),
+            fileOperationsProvider = get(),
+        )
+    }
+    viewModelOf(::ContactBookViewModel)
+    viewModelOf(::ContactDetailViewModel)
+    viewModelOf(::AddContactViewModel)
+    viewModelOf(::ContactBookSettingsViewModel)
+    singleOf(::LocationDeviceDirectory)
+    viewModel { params ->
+        FindDeviceViewModel(
+            deviceIdArg = params.getOrNull(),
+            deviceDirectory = get(),
+            locationPreferences = get(),
+        )
+    }
     viewModelOf(::MomentComposeViewModel)
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
@@ -631,13 +983,14 @@ val appModule = module {
         )
     }
     viewModelOf(::SettingsViewModel)
+    viewModelOf(::ProfileEditViewModel)
+    viewModelOf(::ProfileAvatarEditViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
-    viewModelOf(::ConnectionsViewModel)
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
@@ -649,11 +1002,13 @@ val appModule = module {
             vaultService = get(),
             vaultUploaderService = get(),
             eventBus = get(),
-            authConnectionCoordinator = get(),
+            optionalDriveActivation = get(),
             driveRegistry = get(),
             localAttachmentStore = get(),
             fileOperationsProvider = get(),
             driveSyncManager = get(),
+            cropResultBus = get(),
+            drawResultBus = get(),
         )
     }
     viewModelOf(::VaultSettingsViewModel)

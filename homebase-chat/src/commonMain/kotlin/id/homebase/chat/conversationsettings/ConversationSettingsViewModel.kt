@@ -103,8 +103,8 @@ class ConversationSettingsViewModel(
         if (conversation.isGroupConversation) return null
         val self = ownerSessionRepository.user.value?.odinId
         val contact = conversation.participants.firstOrNull { it != self } ?: return null
-        val resolved = contactService.resolveByOdinId(contact)?.name
-        return resolved?.takeIf { it.isNotBlank() && it != contact.domainName }
+        val resolved = contactService.resolveByOdinId(contact).name
+        return resolved.takeIf { it.isNotBlank() && it != contact.domainName }
     }
 
     /**

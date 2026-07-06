@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import coil3.disk.DiskCache
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
@@ -141,7 +142,7 @@ class PublicProfileProviderCached(
         getCached(
             cacheKey = "image:$odinId",
             disk = imageDiskCache,
-            fetch = { httpClient.get("https://${odinId}/pub/image") },
+            fetch = { httpClient.get(odinId.publicImageUrl()) },
             transform = { response ->
                 response.bodyAsBytes()
             },
@@ -161,6 +162,33 @@ class PublicProfileProviderCached(
                 }
             }
         )
+
+    /**
+     * Drops the cached `/pub/profile` entry for [odinId] so the next [getPublicProfile] call
+     * re-fetches instead of serving up to a week-old data — used when a
+     * `publicProfileContentPublished(ProfileCard)` notification says this identity's card was
+     * just republished server-side.
+     */
+    suspend fun invalidateProfile(odinId: OdinId) {
+        val cacheKey = "profile:$odinId"
+        try {
+            profileDiskCache.remove(cacheKey.toDiskKey())
+        } catch (e: Exception) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "invalidate profile failed key=$cacheKey" }
+        }
+        notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+    }
+
+    /** Same as [invalidateProfile] but for the `/pub/image` entry — see `ProfileImage` artifact. */
+    suspend fun invalidateImage(odinId: OdinId) {
+        val cacheKey = "image:$odinId"
+        try {
+            imageDiskCache.remove(cacheKey.toDiskKey())
+        } catch (e: Exception) {
+            Logger.w(tag = "PublicProfileIO", throwable = e) { "invalidate image failed key=$cacheKey" }
+        }
+        notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+    }
 
     suspend fun clearCaches() {
         try {

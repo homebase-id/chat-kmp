@@ -2,6 +2,7 @@ package id.homebase.core.notifications
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -29,7 +30,10 @@ class ConversationNotificationIdsTest {
     @Test
     fun summaryId_matchesDisplayerFormula() {
         val (_, summaryId) = conversationNotificationIds(a)
-        assertEquals(SUMMARY_ID_OFFSET + (a.hashCode() and 0x7FFFFFFF), summaryId)
+        assertEquals(
+            SUMMARY_ID_OFFSET + ((a.hashCode() and 0x7FFFFFFF) % (Int.MAX_VALUE - SUMMARY_ID_OFFSET)),
+            summaryId,
+        )
     }
 
     /** Bug #1 proof: a scoped cancel of A can never collide with B's notifications. */
@@ -44,11 +48,29 @@ class ConversationNotificationIdsTest {
         assertTrue(idsA.intersect(idsB).isEmpty(), "conversation A and B share a notification id")
     }
 
+    /**
+     * Regression: the summary id must never overflow Int into a negative value. The old
+     * formula `SUMMARY_ID_OFFSET + (hash and 0x7FFFFFFF)` wrapped negative whenever the
+     * masked hash landed within SUMMARY_ID_OFFSET of Int.MAX_VALUE. We deterministically
+     * find one such input (the random version only hit it ~0.2% of runs — the CI flake)
+     * and assert the id now stays in range.
+     */
     @Test
     fun summaryId_isAlwaysPositive() {
-        repeat(50) {
-            val (_, summaryId) = conversationNotificationIds(Uuid.random().toString())
-            assertTrue(summaryId >= SUMMARY_ID_OFFSET, "summary id underflowed the offset")
+        val overflowThreshold = Int.MAX_VALUE - SUMMARY_ID_OFFSET
+        var probe: String? = null
+        var i = 0
+        while (i < 5_000_000 && probe == null) {
+            val candidate = "conv-$i"
+            if ((candidate.hashCode() and 0x7FFFFFFF) >= overflowThreshold) probe = candidate
+            i++
         }
+        assertNotNull(probe, "no overflow-window input found to exercise the fix")
+
+        val (_, summaryId) = conversationNotificationIds(probe)
+        assertTrue(
+            summaryId in SUMMARY_ID_OFFSET..Int.MAX_VALUE,
+            "summary id out of range: $summaryId",
+        )
     }
 }

@@ -2,6 +2,8 @@ package id.homebase.core.notifications
 
 import co.touchlab.kermit.Logger
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.location.DEFAULT_PUSH_CAPTURE_BUDGET_MS
+import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.sync.SyncOutcome
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +39,7 @@ class NotificationEntry(
     private val notificationService: NotificationService,
     private val orchestrator: BackgroundSyncOrchestrator,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val pushLocationCapture: PushLocationCapture,
 ) {
 
     /**
@@ -54,7 +57,18 @@ class NotificationEntry(
             "onPushArrived title=$title body=$body data.size=${data.size}"
         }
         notificationService.onFcmMessageReceived(title, body, data)
-        return orchestrator.syncIfAuthenticated()
+        val outcome = orchestrator.syncIfAuthenticated()
+        // A push briefly wakes the process — an opportunistic free moment to record a fresh point if
+        // tracking is on and the last one is stale (#878), AND to make the resulting hour-file
+        // upload actually land before the wake ends (#987: the websocket never connects in a
+        // background wake, so without the bounded forced drain inside captureAndUpload the
+        // enqueued row would sit until the next foreground connect). Awaited (bounded by the
+        // budget) so iOS's completionHandler fires after the upload attempt, not before.
+        // Best-effort — never fail the push sync over it. The capture result + drain outcome
+        // are logged under the PushCapture tag (#988).
+        runCatching { pushLocationCapture.captureAndUpload(DEFAULT_PUSH_CAPTURE_BUDGET_MS) }
+            .onFailure { Logger.w(tag = "NotificationEntry", throwable = it) { "push capture+upload failed" } }
+        return outcome
     }
 
     /**
@@ -83,8 +97,15 @@ class NotificationEntry(
         onComplete: (success: Boolean) -> Unit,
     ) {
         CoroutineScope(Dispatchers.Default).launch {
+            Logger.i(tag = "PushCapture") { "handler: onPushArrivedAsync entered dataKeys=${data.size}" }
             val outcome = runCatching { onPushArrived(title, body, data) }
                 .getOrElse { SyncOutcome.Failed(it) }
+            // Ordering of this line vs LocationTrackUploader's "Hour-file upload confirmed"
+            // answers "did the upload land before iOS suspended us" (#988): a confirm line
+            // AFTER this one means the outbox was still draining past the fetch window.
+            Logger.i(tag = "PushCapture") {
+                "handler: complete success=${outcome is SyncOutcome.Success} outcome=${outcome::class.simpleName}"
+            }
             onComplete(outcome is SyncOutcome.Success)
         }
     }

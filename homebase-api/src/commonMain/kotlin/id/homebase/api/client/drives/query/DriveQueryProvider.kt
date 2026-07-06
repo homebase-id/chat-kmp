@@ -92,8 +92,13 @@ class DriveQueryProvider(
      * Decode a query-batch response body into a [QueryBatchResponse], salvaging individually
      * corrupt file metadata rather than failing the whole batch. Shared by the own-host and
      * over-peer query paths — both receive headers encrypted under the caller's [secret].
+     *
+     * `internal` so the temporal-read path
+     * ([id.homebase.api.client.peer.temporal.TemporalDriveReadProvider.temporalQueryBatch]) reuses the
+     * exact same salvage-decode instead of duplicating it — its `/temporal/query-batch` response has
+     * the identical [QueryBatchResponse] shape.
      */
-    private suspend fun mapQueryBatchResponse(
+    internal suspend fun mapQueryBatchResponse(
         body: String,
         secret: SecureByteArray,
     ): QueryBatchResponse {

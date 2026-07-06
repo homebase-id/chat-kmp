@@ -1,4 +1,8 @@
 package id.homebase.chat.services
+import id.homebase.upload.PayloadCacheSeeder
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.thumbnailDescriptorsFor
+import id.homebase.upload.PayloadBundle
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
@@ -27,9 +31,11 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.chat.ChatMessageSizer
+import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
@@ -37,6 +43,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonPrimitive
+import id.homebase.api.file.SourceUnavailableException
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
@@ -50,6 +60,8 @@ class ChatMessageSenderService(
     private val optimisticWriter: OptimisticWriter,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadCacheSeeder: PayloadCacheSeeder,
+    private val uploadService: UploadService,
     private val shareSuggestionDonor: ShareSuggestionDonor = ShareSuggestionDonor(),
 ) : id.homebase.chat.services.convo.StatusMessageSender {
     companion object {
@@ -181,6 +193,11 @@ class ChatMessageSenderService(
         conversationId: Uuid,
         content: id.homebase.chat.services.content.MessageContent,
         previousMessageUniqueId: Uuid?,
+        // Optional media payload riding alongside the header descriptor — e.g. an
+        // Event's cover photo. The descriptor still renders header-only (no scroll
+        // fetch); the payload loads progressively like any chat image. Defaults to
+        // null so existing typed-kind callers are unchanged.
+        payloadBundle: PayloadBundle? = null,
     ): SendMessageResult = sendMessageInternal(
         messageUniqueId = messageUniqueId,
         conversationId = conversationId,
@@ -190,9 +207,47 @@ class ChatMessageSenderService(
         // the title never leaves the sender). See MessageContent.kt.
         notificationText = content.notificationLabel,
         previousMessageUniqueId = previousMessageUniqueId,
-        payloadBundle = null,
+        payloadBundle = payloadBundle,
         dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
     )
+
+    private data class ResolvedRecipients(val recipients: List<OdinId>, val isLocalOnly: Boolean)
+
+    /**
+     * Local-only is an explicit decision, never an inference from an empty lookup (#934):
+     *  1. recipientOverride != null        -> caller forced the set (heal's emptyList() = intentional local-only)
+     *  2. id == ConversationWithYourselfId -> note-to-self
+     *  3. participants non-empty, all self -> legacy self-1:1
+     * Anything else resolving to zero recipients (even after the stream's DB re-hydration
+     * inside getRecipients) is a corrupt/placeholder conversation: throw instead of
+     * uploading with allowDistribution=false — a real 1:1 must never be silently
+     * misclassified as note-to-self and left undelivered.
+     */
+    private suspend fun resolveRecipients(
+        conversationId: Uuid,
+        additionalRecipients: List<OdinId> = emptyList(),
+        recipientOverride: List<OdinId>? = null,
+    ): ResolvedRecipients {
+        val recipients = conversationStream.getRecipients(
+            conversationId = conversationId,
+            additionalRecipients = additionalRecipients,
+            recipientOverride = recipientOverride,
+        )
+        if (recipients.isNotEmpty()) return ResolvedRecipients(recipients, isLocalOnly = false)
+        if (recipientOverride != null) return ResolvedRecipients(recipients, isLocalOnly = true)
+        if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+            return ResolvedRecipients(recipients, isLocalOnly = true)
+        }
+        // Re-read AFTER getRecipients — its hydration may have replaced the in-memory row.
+        val participants = conversationStream.getConversationById(conversationId)?.participants
+        if (!participants.isNullOrEmpty()) {
+            return ResolvedRecipients(recipients, isLocalOnly = true) // all-self legacy 1:1
+        }
+        error(
+            "No recipients resolved for conversation $conversationId (participants missing) — " +
+                "refusing local-only send"
+        )
+    }
 
     private suspend fun sendMessageInternal(
         messageUniqueId: Uuid,
@@ -220,12 +275,11 @@ class ChatMessageSenderService(
         }
 
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationStream.getRecipients(
+        val (recipients, isLocalOnly) = resolveRecipients(
             conversationId = conversationId,
             additionalRecipients = additionalRecipients,
             recipientOverride = recipientOverride,
         )
-        val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val effectiveNotificationText = if (recipients.size > 1) {
             val groupName = conversation.name
@@ -246,11 +300,9 @@ class ChatMessageSenderService(
                 "isLocalOnly=$isLocalOnly " +
                 "payloads=${payloadBundle?.payloads?.size ?: 0}"
         }
-        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
-            messageUniqueId, payloadBundle, keyHeader.aesKey, scope = scope
-        )
-
         val effectiveUserDate = userDate ?: UnixTimeUtc.now()
+        // previewThumbs pass through encryptBundle unchanged, so derive the preview from the
+        // plaintext bundle here — UploadService doesn't need to hand the encrypted result back.
         val unecryptedMetadata =
             UploadFileMetadata(
                 allowDistribution = !isLocalOnly,
@@ -262,34 +314,12 @@ class ChatMessageSenderService(
                     dataType = dataType,
                     userDate = effectiveUserDate.milliseconds,
                     content = content,
-                    previewThumbnail = encryptedBundle.previewThumbs.minByOrNull {
+                    previewThumbnail = payloadBundle?.previewThumbs?.minByOrNull {
                         it.pixelWidth
                     })
             )
 
-        val request = UploadFileRequest(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            metadata = unecryptedMetadata.encryptContent(keyHeader),
-            transitOptions = TransitOptions(
-                recipients = recipients,
-                sendContents = SendContents.All,
-                useAppNotification = !isStatusMessage && !isLocalOnly,
-                appNotificationOptions = PushNotificationOptions(
-                    appId = ChatProtocol.ChatAppId.toString(),
-                    typeId = conversationId.toString(),
-                    tagId = messageUniqueId.toString(),
-                    silent = false,
-                    unEncryptedMessage = effectiveNotificationText
-                )
-            ),
-            payloads = encryptedBundle.payloads,
-            thumbnails = encryptedBundle.thumbnails
-        )
-        // Outbox enqueue is the success gate — once accepted, the message
-        // will be delivered regardless of what happens after.
-        //
-        // Determine the outbox dependency:
+        // Determine the outbox dependency (the shared UploadService enqueues with it):
         //   1. If the caller supplied an explicit previousMessageUniqueId, use it.
         //   2. Otherwise, chain on the last message we enqueued in THIS conversation
         //      (in-memory tracker) so messages typed while offline release in send
@@ -305,15 +335,49 @@ class ChatMessageSenderService(
         val effectiveDep = previousMessageUniqueId
             ?: lastEnqueuedMutex.withLock { lastEnqueuedPerConversation[conversationId] }
             ?: conversationId
-        val enqueued = outboxSync.tryEnqueue(
-            request,
-            priority = 1,
-            dependencyUniqueId = effectiveDep,
+
+        // The shared upload pipeline owns the spine: encrypt (fail soft on a missing source) →
+        // encrypt metadata → build request → outbox enqueue (the success gate) → seed cache →
+        // optimistic write. Chat keeps the bits below: dependency chaining, lastEnqueued
+        // tracking, and the share suggestion.
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
+                driveId = chatDrive,
+                uniqueId = messageUniqueId,
+                keyHeader = keyHeader,
+                bundle = payloadBundle,
+                metadata = unecryptedMetadata,
+                transit = TransitOptions(
+                    recipients = recipients,
+                    sendContents = SendContents.All,
+                    useAppNotification = !isStatusMessage && !isLocalOnly,
+                    appNotificationOptions = PushNotificationOptions(
+                        appId = ChatProtocol.ChatAppId.toString(),
+                        typeId = conversationId.toString(),
+                        tagId = messageUniqueId.toString(),
+                        silent = false,
+                        unEncryptedMessage = effectiveNotificationText
+                    )
+                ),
+                dependencyUniqueId = effectiveDep,
+                priority = 1,
+                originalRecipientCount = recipients.size,
+            ),
+            scope = scope,
         )
 
-        if (!enqueued) {
-            error("Failed to send chat message")
+        when (outcome) {
+            is UploadOutcome.Enqueued -> Unit
+            is UploadOutcome.SourceMissing ->
+                // Fail soft (#844): a raw pre-encryption source was gone — no row was enqueued.
+                // Throw so MessageActionsHandler surfaces the "re-pick" prompt (the prior contract).
+                throw SourceUnavailableException(outcome.missingPaths.firstOrNull() ?: "")
+            is UploadOutcome.AlreadyQueued,
+            is UploadOutcome.WouldStrandCreate,
+            is UploadOutcome.Failed ->
+                error("Failed to send chat message (outbox: $outcome)")
         }
+
         // Record this message as the new chain tail for the conversation. Done after
         // a successful enqueue so a failure doesn't leave a dangling pointer that
         // future messages would chain to a never-enqueued id (which `NOT EXISTS`
@@ -321,53 +385,7 @@ class ChatMessageSenderService(
         lastEnqueuedMutex.withLock {
             lastEnqueuedPerConversation[conversationId] = messageUniqueId
         }
-        Logger.d(tag = TAG) { "sendMessageInternal: outbox enqueued message=$messageUniqueId dep=$effectiveDep" }
-
-        // Best-effort optimistic write — makes the message appear in the chat
-        // stream immediately. If it fails, the outbox delivery + sync will
-        // bring the message back.
-        @OptIn(ExperimentalEncodingApi::class)
-        val payloadDescriptors = encryptedBundle.payloads.map { payload ->
-            PayloadDescriptor(
-                key = payload.key,
-                contentType = payload.contentType.ifEmpty { null },
-                thumbnails = encryptedBundle.thumbnails
-                    .filter { it.key == payload.key }
-                    .map {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = null,
-                        )
-                    }
-                    .ifEmpty { null },
-                iv = payload.iv?.let { Base64.encode(it) },
-                descriptorContent = payload.descriptorContent,
-                previewThumbnail = payload.previewThumbnail?.let {
-                    ThumbnailDescriptor(
-                        pixelWidth = it.pixelWidth,
-                        pixelHeight = it.pixelHeight,
-                        contentType = it.contentType,
-                        content = it.content,
-                    )
-                },
-            )
-        }.ifEmpty { null }
-        try {
-            val optimisticFileId = optimisticWriter.writeNewFile(
-                driveId = chatDrive,
-                keyHeader = keyHeader,
-                unecryptedMetadata = unecryptedMetadata,
-                originalRecipientCount = recipients.size,
-                fileSystemType = FileSystemType.Standard,
-                payloadDescriptors = payloadDescriptors,
-            )
-            Logger.d(tag = TAG) { "sendMessageInternal: optimistic write complete message=$messageUniqueId" }
-            seedPayloadCache(optimisticFileId, encryptedBundle)
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "sendMessageInternal: optimistic write failed (non-fatal) message=$messageUniqueId" }
-        }
+        Logger.d(tag = TAG) { "sendMessageInternal: enqueued message=$messageUniqueId dep=$effectiveDep" }
 
         // Best-effort share suggestion
         try {
@@ -385,45 +403,6 @@ class ChatMessageSenderService(
         }
 
         return SendMessageResult(uniqueId = messageUniqueId)
-    }
-
-    /**
-     * Seed the encrypted payload/thumbnail disk cache with the bytes that just
-     * went into the outbox, keyed under the optimistic fileId. The outbox temp
-     * files are deleted when a permanently-failed row is dropped, so this cache
-     * copy is what makes a failed message's media (and overflow text, which also
-     * rides as a payload) recoverable by [resendMessage]. Best-effort: the cache
-     * is LRU-bounded and a miss only degrades retry to [ResendOutcome.UnrecoverableMedia].
-     */
-    private suspend fun seedPayloadCache(fileId: Uuid, encryptedBundle: PayloadBundle) {
-        for (payload in encryptedBundle.payloads) {
-            try {
-                driveFileProvider.cachePayloadBytesEncrypted(
-                    driveId = chatDrive,
-                    fileId = fileId,
-                    key = payload.key,
-                    bytes = fileOperationsProvider.readFileBytes(payload.filePath),
-                    contentType = payload.contentType,
-                )
-            } catch (e: Exception) {
-                Logger.w(throwable = e, tag = TAG) { "seedPayloadCache: payload seed failed (non-fatal) key=${payload.key} fileId=$fileId" }
-            }
-        }
-        for (thumb in encryptedBundle.thumbnails) {
-            try {
-                driveFileProvider.cacheThumbBytesEncrypted(
-                    driveId = chatDrive,
-                    fileId = fileId,
-                    payloadKey = thumb.key,
-                    width = thumb.pixelWidth,
-                    height = thumb.pixelHeight,
-                    bytes = thumb.thumbnailBytes,
-                    contentType = thumb.contentType,
-                )
-            } catch (e: Exception) {
-                Logger.w(throwable = e, tag = TAG) { "seedPayloadCache: thumb seed failed (non-fatal) key=${thumb.key} ${thumb.pixelWidth}x${thumb.pixelHeight} fileId=$fileId" }
-            }
-        }
     }
 
     suspend fun updateMessage(
@@ -445,8 +424,7 @@ class ChatMessageSenderService(
             aesKey = msg.keyHeader.aesKey
         )
 
-        val recipients = conversationStream.getRecipients(msg.conversationId)
-        val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
+        val (recipients, isLocalOnly) = resolveRecipients(msg.conversationId)
 
         // If the original create is still queued (never reached the server),
         // editing must keep it a *create*. Downgrading to an UpdateFile would
@@ -463,7 +441,11 @@ class ChatMessageSenderService(
                 message = JsonPrimitive(content),
                 isEdited = false
             )
-            val createBuilt = buildMessageContentAndBundle(
+            // Typed kinds (Event/DiceRoll/Groodle/Poll) keep their raw descriptor as
+            // the header content; only plain text/media use the envelope builder (see
+            // the normal update path below for the full rationale).
+            val isRawHeaderContent = MessageContentParser.usesRawHeaderContent(msg.messageContent)
+            val createBuilt = if (isRawHeaderContent) null else buildMessageContentAndBundle(
                 preVersionedMessageData = createMessageData,
                 payloadBundle = null,
                 fileOperationsProvider = fileOperationsProvider
@@ -476,16 +458,17 @@ class ChatMessageSenderService(
                     uniqueId = messageId,
                     groupId = msg.conversationId,
                     fileType = ChatProtocol.MessageFileType,
-                    dataType = 0,
+                    dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
                     userDate = msg.userDate.toEpochMilliseconds(),
-                    content = createBuilt.headerContent,
+                    content = createBuilt?.headerContent ?: content,
                     previewThumbnail = msg.previewThumbnail
                 )
             )
             // Re-encrypt the (possibly new) text-overflow payload with the same
             // aesKey the create's media payloads already use, so everything in
-            // the amended request stays decryptable with one keyHeader.
-            val encryptedOverflow = createBuilt.payloadBundle?.let {
+            // the amended request stays decryptable with one keyHeader. Typed kinds
+            // have no overflow payload (descriptor is header-only).
+            val encryptedOverflow = createBuilt?.payloadBundle?.let {
                 payloadBundleEncryptionService.encryptBundle(messageId, it, createKey.aesKey, scope)
             }?.payloads ?: emptyList()
             val amended = amendPendingCreate(
@@ -494,7 +477,7 @@ class ChatMessageSenderService(
                 encryptedOverflowPayloads = encryptedOverflow
             )
             val enqueued = outboxSync.replaceEnqueue(amended, priority = 1, dependencyUniqueId = null)
-            if (!enqueued) error("Failed to update chat message")
+            if (!enqueued.enqueued) error("Failed to update chat message (outbox: $enqueued)")
             optimisticWriter.writeUpdate(
                 driveId = chatDrive,
                 keyHeader = createKey,
@@ -504,22 +487,31 @@ class ChatMessageSenderService(
             return UpdateMessageResult(uniqueId = messageId)
         }
 
+        // Typed kinds (Event/DiceRoll/Groodle/Poll) store the raw descriptor JSON
+        // verbatim in appData.content; only plain text / media use the MessageAppData
+        // envelope that buildMessageContentAndBundle produces. Wrapping a descriptor
+        // in the envelope strips its required fields and makes it unparseable on the
+        // next read, so for typed kinds write `content` straight through and leave the
+        // message's existing payloads (e.g. an Event cover photo) untouched.
+        val isRawHeaderContent = MessageContentParser.usesRawHeaderContent(msg.messageContent)
+
         val messageData = msg.messageAppData.copy(
             deliveryStatus = ChatDeliveryStatus.Sending.value,
             message = JsonPrimitive(content),
             isEdited = true
         )
 
-        val built = buildMessageContentAndBundle(
+        val built = if (isRawHeaderContent) null else buildMessageContentAndBundle(
             preVersionedMessageData = messageData,
             payloadBundle = null,
             fileOperationsProvider = fileOperationsProvider
         )
 
-        val payloads = built.payloadBundle?.payloads ?: emptyList()
+        val headerContent = built?.headerContent ?: content
+        val payloads = built?.payloadBundle?.payloads ?: emptyList()
 
         val toDeletePayloads =
-            if (payloads.isEmpty())
+            if (!isRawHeaderContent && payloads.isEmpty())
                 listOf(PayloadDeleteKey(ChatProtocol.DefaultPayloadKey))
             else
                 emptyList()
@@ -532,9 +524,9 @@ class ChatMessageSenderService(
                 uniqueId = messageId,
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
-                dataType = 0,
+                dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
                 userDate = msg.userDate.toEpochMilliseconds(),
-                content = built.headerContent,
+                content = headerContent,
                 previewThumbnail = msg.previewThumbnail
             )
         )
@@ -572,8 +564,8 @@ class ChatMessageSenderService(
                 dependencyUniqueId = null,
             )
 
-            if (!enqueued) {
-                error("Failed to update chat message")
+            if (!enqueued.enqueued) {
+                error("Failed to update chat message (outbox: $enqueued)")
             }
 
             optimisticWriter.writeUpdate(
@@ -598,7 +590,7 @@ class ChatMessageSenderService(
      * 1. **Server absent** — the original create never landed: re-enqueue an
      *    [UploadFileRequest], reusing the file's original [KeyHeader] so the
      *    recovered pre-encrypted payloads (seeded into the payload cache at
-     *    send time by [seedPayloadCache]) stay decryptable. If any media
+     *    send time by [PayloadCacheSeeder]) stay decryptable. If any media
      *    payload's bytes are gone (cache evicted), refuses with
      *    [ResendOutcome.UnrecoverableMedia] rather than silently sending a
      *    text-only message.
@@ -685,8 +677,12 @@ class ChatMessageSenderService(
             fileOperationsProvider = fileOperationsProvider,
         )
 
-        val recipients = conversationStream.getRecipients(msg.conversationId)
-        val isLocalOnly = recipients.isEmpty()
+        val (recipients, isLocalOnly) = try {
+            resolveRecipients(msg.conversationId)
+        } catch (e: IllegalStateException) {
+            Logger.e(throwable = e, tag = TAG) { "resendMessage: recipient resolution failed uniqueId=$messageId" }
+            return ResendOutcome.Failed(e)
+        }
 
         val enqueueOutcome = try {
             when (recoverability) {
@@ -765,7 +761,7 @@ class ChatMessageSenderService(
             thumbnails = recovered.thumbnails,
         )
         val enqueued = outboxSync.tryEnqueue(request, priority = 1, dependencyUniqueId = null)
-        if (!enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry create"))
+        if (!enqueued.enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry create: $enqueued"))
         return ResendOutcome.EnqueuedCreate
     }
 
@@ -818,7 +814,7 @@ class ChatMessageSenderService(
             thumbnails = recovered.thumbnails,
         )
         val enqueued = outboxSync.replaceEnqueue(request, priority = 1, dependencyUniqueId = null)
-        if (!enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry update"))
+        if (!enqueued.enqueued) return ResendOutcome.Failed(IllegalStateException("outbox refused the retry update: $enqueued"))
         return ResendOutcome.EnqueuedUpdate
     }
 

@@ -123,7 +123,14 @@ internal class AttachmentHandler(
     fun handleAttachPlatformFile(action: ConversationListUiAction.AttachPlatformFile) {
         scope.launch {
             try {
-                val newFiles = action.files.map {
+                val newFiles = action.files.map { picked ->
+                    // Copy the picked file into the sandbox NOW, while the picker's iOS
+                    // security scope is still live. The send path later reads the file by
+                    // path from a separate coroutine, where a path-rebuilt NSURL has no
+                    // scope — so without this copy `readFileData` throws "Unable to read
+                    // file". No-op on web; a cheap sandbox copy elsewhere. See
+                    // AttachmentUploadResolve.materializeForUpload.
+                    val it = picked.materializeForUpload(fileOperationsProvider)
                     val ct = it.mimeType()?.toString()
                         ?: detectContentTypeFromExtensionOrHint(it.name)
                     when {
@@ -204,6 +211,9 @@ internal class AttachmentHandler(
                         AttachmentPendingFile.FileVideo(
                             Uuid.generateV7(),
                             it.file,
+                            // The gallery PlatformFile path is a bare PHAsset localIdentifier on iOS
+                            // (no extension), so carry the real filename for content-type resolution.
+                            sourceFileName = it.fileName,
                             thumbnailBytes = null,
                         )
                     } else {
@@ -244,7 +254,18 @@ internal class AttachmentHandler(
                     if (pending is AttachmentPendingFile.FileVideo) {
                         // Cheap playable handle (blob: URL on web, real path on native); see
                         // handleAttachPlatformFile. Send-time materialization is separate.
-                        extractThumbnailAsync(pending.attachmentId, gallery.file.toPlayableUrl())
+                        val rawPath = gallery.file.toPlayableUrl()
+                        // iOS quick-switch hands a bare PHAsset localIdentifier (ph://… / …/L0/…)
+                        // that AVPlayer (the editor preview) and the thumbnail/duration probe can't
+                        // open — materialize it to a real temp file first. Other platforms
+                        // (Android content://, desktop real path) are already playable; pass through.
+                        // The send path resolves file (the identifier) on its own, so it's untouched.
+                        val playable = if (rawPath.startsWith("ph://") || rawPath.contains("/L0/")) {
+                            fileOperationsProvider.resolveToFilePath(rawPath)
+                        } else {
+                            rawPath
+                        }
+                        extractThumbnailAsync(pending.attachmentId, playable)
                     }
                 }
             } catch (e: Exception) {
@@ -584,7 +605,7 @@ internal class AttachmentHandler(
     /**
      * Toggle the editor's per-attachment "background removal in progress" marker, which
      * drives the wand-button spinner in
-     * [id.homebase.chat.widget.FullScreenAttachmentEditor]. No-ops if the attachment
+     * [id.homebase.chat.widget.MediaAttachmentEditor]. No-ops if the attachment
      * overlay is no longer open (e.g. the user dismissed it mid-run).
      */
     private fun setBackgroundRemovalInProgress(attachmentId: Uuid, inProgress: Boolean) {

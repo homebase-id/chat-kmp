@@ -66,6 +66,9 @@ kotlin {
             api(project(":homebase-api"))
             api(project(":homebase-common"))
             api(project(":image-editor-ui"))
+            // `api` (not implementation): upload types appear in core's public API (Vault/Moments
+            // senders, etc.) used by the app modules, so they must be transitively visible.
+            api(project(":homebase-upload"))
             implementation(project(":homebase-auth"))
             implementation(project(":homebase-chat"))
 
@@ -100,6 +103,11 @@ kotlin {
             implementation(libs.koin.compose.viewmodel)
             implementation(libs.multiplatform.settings)
             implementation(libs.richeditor.compose)
+            // Drag-to-reorder list (Calvin-LL/Reorderable) — declared here as well as
+            // in homebase-chat (its actual home) for the SAME Desktop transitive-strip
+            // reason documented for the markdown renderer below; the Poll composer's
+            // ReorderableColumn would otherwise NoClassDefFoundError on Desktop.
+            implementation(libs.reorderable)
             // mikepenz markdown renderer — declared here, not only in homebase-chat
             // (its actual home), for the SAME reason richeditor is duplicated above:
             // desktopApp consumes homebase-chat via a repackaged per-platform JAR

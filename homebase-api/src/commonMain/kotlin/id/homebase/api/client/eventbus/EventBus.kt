@@ -9,7 +9,12 @@ import kotlin.time.TimeSource
 
 class EventBus(
     replay: Int = 1,
-    extraBufferCapacity: Int = 10
+    // Buffer headroom for bursts: the whole bus is gated by its slowest collector (a
+    // SharedFlow buffer is shared across all subscribers), so when one DB-bound subscriber
+    // falls behind, every emitter suspends until it catches up. 64 slots absorb a typical
+    // WSPush/outbox burst without parking producers. NOTE: this is headroom, not a fix —
+    // a persistently slow subscriber still backs the bus up; it only widens the runway.
+    extraBufferCapacity: Int = 64
 ) {
     private val _events =
         MutableSharedFlow<BackendEvent>(replay = replay, extraBufferCapacity = extraBufferCapacity)

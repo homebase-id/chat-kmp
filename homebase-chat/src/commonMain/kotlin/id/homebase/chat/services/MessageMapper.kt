@@ -44,6 +44,18 @@ import id.homebase.resources.system_group_heal_local_cleanup_both
 import id.homebase.resources.system_group_heal_local_cleanup_main
 import id.homebase.resources.system_group_heal_requested
 import id.homebase.resources.system_group_heal_requested_you
+import id.homebase.resources.system_emergency_contact_designated
+import id.homebase.resources.system_emergency_contact_designated_you
+import id.homebase.resources.system_emergency_contact_designated_you_unknown
+import id.homebase.resources.system_emergency_contact_revoked
+import id.homebase.resources.system_emergency_contact_revoked_you
+import id.homebase.resources.system_emergency_contact_revoked_you_unknown
+import id.homebase.resources.system_emergency_locate_requested
+import id.homebase.resources.system_emergency_locate_requested_unknown
+import id.homebase.resources.system_emergency_locate_requested_you
+import id.homebase.resources.system_emergency_locate_requested_you_unknown
+import id.homebase.resources.chat_poll_ended_other
+import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.uuid.Uuid
@@ -63,13 +75,27 @@ import kotlin.uuid.Uuid
 
 internal fun getDeliveryStatus(header: HomebaseFile): ChatDeliveryStatus {
 
+    // Self/no-recipient uploads never transit, so the honest ceiling is Sent (single
+    // tick): a double tick must always be corroborated by a non-empty per-recipient
+    // transfer history, which these files can never have (#934).
     if (header.fileMetadata.appData.groupId == ChatProtocol.ConversationWithYourselfId) {
-        return ChatDeliveryStatus.Read
+        return ChatDeliveryStatus.Sent
     }
 
+    // KNOWN, ACCEPTED limitation: this guard also catches LEGACY messages. The server
+    // only started stamping originalRecipientCount in Feb 2025 (odin-core #888); older
+    // headers decode to the Kotlin default 0 and render a single tick here even when
+    // transferHistory.summary shows the recipient read the message (message-info stays
+    // truthful — it fetches the live per-recipient history). Deliberately not fixed:
+    // affects only pre-Feb-2025 messages, a population that never grows. If it ever
+    // must be fixed, treat the summary as POSITIVE EVIDENCE ONLY when count == 0
+    // (read > 0 → Read, delivered > 0 → Delivered, else Sent) — do NOT fall through
+    // to the >= comparisons below: with count == 0 an all-zero summary satisfies
+    // `totalReadByRecipient >= count` (0 >= 0) and resurrects the #934 lying double
+    // tick this guard exists to prevent.
     val count = header.serverMetadata.originalRecipientCount
     if (count == 0) {
-        return ChatDeliveryStatus.Read
+        return ChatDeliveryStatus.Sent
     }
     val transferSummary =
         header.serverMetadata.transferHistory?.summary ?: return ChatDeliveryStatus.Sent
@@ -123,6 +149,15 @@ suspend fun mapToMessageData(
         val isDeleted = header.isSoftDeleted()
 
         if (isDeleted) {
+            // A consumed status (system) message leaves no trace: unlike a deleted user
+            // message — where the "This message was deleted" tombstone is the point — a status
+            // message such as an emergency-contact designation is soft-deleted by the receiver
+            // purely to neutralise re-delivery (EmergencyContactReceiveService.consume). The user
+            // never authored or saw it, so render nothing rather than a "Deleted File" tombstone.
+            // appData survives the local soft-delete (the branch below reads groupId/uniqueId/
+            // userDate from it), so isStatusMessage (appData.dataType) is reliable here.
+            if (isStatusMessage) return null
+
             val deletedUserDate = if (appData.userDate == null)
                 metadata.created
             else
@@ -182,6 +217,18 @@ suspend fun mapToMessageData(
                 // never lands in our chat as if our own copy had auto-healed.
                 if (status.statusMessage == StatusMessage.GroupHealLocalCleanup &&
                     metadata.originalAuthor != domain
+                ) {
+                    return null
+                }
+                // Ambush embargo (#EmergencyLocateRequested): the RECIPIENT must not see the
+                // request notice until the embargo passes — a captor inspecting the victim's
+                // phone sees nothing for 24h. The sender's own copy always renders. Decode-time
+                // check means there is no ticker: the message appears on the next conversation
+                // load after the deadline.
+                val embargoUntil = status.emergencyLocateEmbargoUntilMs
+                if (embargoUntil != null &&
+                    metadata.originalAuthor != domain &&
+                    UnixTimeUtc.now().milliseconds < embargoUntil
                 ) {
                     return null
                 }
@@ -514,6 +561,57 @@ internal suspend fun renderStatusMessage(
                 // shouldn't happen in practice; render the "both"
                 // string so we don't render an empty line.
                 else -> TranslationUtil.getString(MR.string.system_group_heal_local_cleanup_both)
+            }
+        }
+
+        StatusMessage.PollEnded -> {
+            val q = status.pollQuestion ?: ""
+            if (authorIsYou) TranslationUtil.getString(MR.string.chat_poll_ended_self, q)
+            else TranslationUtil.getString(MR.string.chat_poll_ended_other, name, q)
+        }
+
+        StatusMessage.EmergencyContactDesignated ->
+            when {
+                authorIsYou && subject != null ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated_you, subject)
+                authorIsYou ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated_you_unknown)
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_designated, name)
+            }
+
+        StatusMessage.EmergencyContactRevoked ->
+            when {
+                authorIsYou && subject != null ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you, subject)
+                authorIsYou ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you_unknown)
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_contact_revoked, name)
+            }
+
+        StatusMessage.EmergencyLocateRequested -> {
+            val explanation = status.emergencyLocateExplanation?.takeIf { it.isNotBlank() }
+            when {
+                authorIsYou && explanation != null ->
+                    TranslationUtil.getString(
+                        MR.string.system_emergency_locate_requested_you,
+                        subject ?: TranslationUtil.getString(MR.string.someone),
+                        explanation
+                    )
+                authorIsYou ->
+                    TranslationUtil.getString(
+                        MR.string.system_emergency_locate_requested_you_unknown,
+                        subject ?: TranslationUtil.getString(MR.string.someone)
+                    )
+                explanation != null ->
+                    TranslationUtil.getString(
+                        MR.string.system_emergency_locate_requested,
+                        name,
+                        explanation
+                    )
+                else ->
+                    TranslationUtil.getString(MR.string.system_emergency_locate_requested_unknown, name)
             }
         }
     }

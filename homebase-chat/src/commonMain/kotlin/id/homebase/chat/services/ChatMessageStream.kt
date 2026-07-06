@@ -391,8 +391,24 @@ class ChatMessageStream(
     }
 
     override suspend fun getMessage(messageId: Uuid): MessageUiModel? {
-        val messageFile = getMessageFile(messageId) ?: return null
-        return mapToMessageData(messageFile, credentialsManager, ::resolveDisplayName)
+        // Diagnostic (debug aid): getMessage returning null is invisible at the call site (e.g. a blank
+        // Message Info screen with no id/times). Log the two null paths — DB row missing vs.
+        // present-but-unmappable (with the fields that decide mapping) — so the cause is a single log
+        // read, not guesswork. Only fires on the anomaly path, so no steady-state spam.
+        val messageFile = getMessageFile(messageId)
+        if (messageFile == null) {
+            Logger.w(tag = "MsgLookup") { "getMessage: no DB row for uniqueId=$messageId" }
+            return null
+        }
+        val mapped = mapToMessageData(messageFile, credentialsManager, ::resolveDisplayName)
+        if (mapped == null) {
+            val a = messageFile.fileMetadata.appData
+            Logger.w(tag = "MsgLookup") {
+                "getMessage: row found but mapped to null uniqueId=$messageId " +
+                    "fileType=${a.fileType} dataType=${a.dataType} groupId=${a.groupId} appUid=${a.uniqueId}"
+            }
+        }
+        return mapped
     }
 
     override suspend fun getMessageFile(messageId: Uuid): HomebaseFile? {
@@ -688,7 +704,7 @@ class ChatMessageStream(
                 ?.let { return it }
         }
 
-        return contactService.resolveByOdinId(author)?.name ?: author.domainName
+        return contactService.resolveByOdinId(author).name
     }
 
 }

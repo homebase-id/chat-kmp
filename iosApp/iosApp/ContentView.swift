@@ -1,7 +1,6 @@
 import UIKit
 import SwiftUI
 import ComposeApp
-import os.log
 
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
@@ -21,13 +20,38 @@ struct ComposeView: UIViewControllerRepresentable {
 
 struct ContentView: View {
     @Environment(\.scenePhase) var scenePhase
-    @Environment(\.colorScheme) var colorScheme
     @State private var showPrivacyOverlay = false
+    // PREVENTION: don't build ComposeView until the scene has been .active at least once. iOS can
+    // launch the process in the BACKGROUND (prewarm / push relaunch) and still connect the scene;
+    // Compose's first frame then renders while backgrounded, iOS rejects the Metal submissions, and
+    // the glyph atlas is born dead → all text blank at the first real foreground (fingerprint
+    // fontCacheUsed=6889 count=4, 3/3 field captures). Latched true forever after — backgrounding
+    // later must NOT tear the view down.
+    @State private var hasBeenActive = false
+    // Crash recovery: when a crash report from the previous run is pending, show the
+    // native SwiftUI recovery screen INSTEAD of Compose until the user taps Continue
+    // (which runs the deferred heavy init and flips pendingReportPath back to nil).
+    @ObservedObject private var crashModel = CrashRecoveryModel.shared
 
     var body: some View {
+        if let reportPath = crashModel.pendingReportPath {
+            CrashRecoveryView(reportPath: reportPath)
+        } else {
+            mainContent
+        }
+    }
+
+    private var mainContent: some View {
         ZStack {
-            ComposeView()
-                .ignoresSafeArea()
+            if hasBeenActive || scenePhase == .active {
+                ComposeView()
+                    .ignoresSafeArea()
+            } else {
+                // Native placeholder while the scene has never been active (background launch, or
+                // the first milliseconds of a normal launch before .active lands).
+                Color(UIColor.systemBackground)
+                    .ignoresSafeArea()
+            }
 
             if showPrivacyOverlay {
                 PrivacyOverlayView()
@@ -36,17 +60,15 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            os_log("onAppear fired", log: textRenderLog, type: .info)
-            // DISABLED for the blank-text recovery experiment — the cold-start 150ms Metal nudge is a
-            // bare setNeedsDisplay (replays cached blobs) that hasn't reliably fixed the bug and would
-            // confound attribution of the shake-triggered purge+recompose recovery. Re-enable to restore.
-            // DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            //     os_log("Cold-start nudge firing at 150ms", log: textRenderLog, type: .info)
-            //     nudgeMetalLayer(trigger: "onAppear")
-            // }
+            // PREVENTION latch (companion to the .active onChange): if the scene is already active
+            // when we appear, onChange never fires — latch here so a later backgrounding can never
+            // un-build ComposeView (tearing it down on .background would recreate the very bug).
+            if scenePhase == .active && !hasBeenActive {
+                hasBeenActive = true
+                IosGpuTextDiagnosticsKt.logPrevention(note: "appeared already .active — ComposeView built immediately")
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            os_log("scenePhase changed to %{public}@", log: textRenderLog, type: .info, String(describing: newPhase))
             switch newPhase {
             case .inactive:
                 if VaultPrivacyBridge.shared.shouldProtect {
@@ -58,23 +80,15 @@ struct ContentView: View {
                 withAnimation(.easeOut(duration: 0.15)) {
                     showPrivacyOverlay = false
                 }
-                // DISABLED for the experiment (see onAppear): the foreground nudge would mask the blank
-                // and confound the shake recovery. nudgeMetalLayer(trigger: "scenePhase→active")
+                // PREVENTION latch: first .active ever → ComposeView gets built now (and stays built
+                // through later backgrounding). Log it so homebase.log shows the deferral timeline.
+                if !hasBeenActive {
+                    hasBeenActive = true
+                    IosGpuTextDiagnosticsKt.logPrevention(note: "first .active — ComposeView built now (deferred since launch)")
+                }
             default:
                 break
             }
-        }
-        .onChange(of: colorScheme) { _, newScheme in
-            os_log("colorScheme changed to %{public}@", log: textRenderLog, type: .info, String(describing: newScheme))
-            // DISABLED for the experiment (see onAppear):
-            // DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            //     nudgeMetalLayer(trigger: "colorScheme→\(newScheme)")
-            // }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in
-            // Blank-text recovery experiment: log cache state, purge Skia caches + force a full
-            // re-composition, then log again ~1.5s later. See captureAndRecoverOnShake.
-            captureAndRecoverOnShake()
         }
     }
 }

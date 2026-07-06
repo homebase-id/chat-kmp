@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalComposeUiApi::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.vault.gallery
 
@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,10 +57,12 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.media.MediaPager
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.ui.screens.vault.VaultEditorTool
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.components.VaultFileDropdownMenu
 import id.homebase.core.ui.screens.vault.components.fileTypeIcon
 import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.vault_delete_confirm_action
@@ -73,6 +76,8 @@ import id.homebase.resources.vault_gallery_save_page
 import id.homebase.resources.vault_gallery_share_page
 import id.homebase.resources.vault_permission_cancel
 import id.homebase.chat.services.LocalAttachmentContextStore
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -90,6 +95,11 @@ fun VaultGalleryScreen(
     onUpdateLabel: (String?) -> Unit,
     onUpdateNotes: (String?) -> Unit,
     onDeleteEntry: () -> Unit,
+    onEditPage: (payloadKey: String, tool: VaultEditorTool) -> Unit = { _, _ -> },
+    sections: List<VaultSection>,
+    onMoveToSection: (Uuid) -> Unit,
+    /** Payload keys whose share/save download is in flight — drives the spinner + disabled state. */
+    preparingShareKeys: Set<String> = emptySet(),
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
@@ -162,6 +172,7 @@ fun VaultGalleryScreen(
                     onAppendPages = onAppendPages,
                     onUpdateLabel = onUpdateLabel,
                     onUpdateNotes = onUpdateNotes,
+                    onEditPage = onEditPage,
                     localAttachmentStore = localAttachmentStore,
                 )
             },
@@ -276,13 +287,27 @@ fun VaultGalleryScreen(
                         },
                         actions = {
                             if (currentDescriptor != null) {
-                                IconButton(onClick = { onSharePage(currentDescriptor.key) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Share,
-                                        contentDescription = stringResource(MR.string.vault_gallery_share_page),
-                                    )
+                                val isPreparing = currentDescriptor.key in preparingShareKeys
+                                IconButton(
+                                    onClick = { onSharePage(currentDescriptor.key) },
+                                    enabled = !isPreparing,
+                                ) {
+                                    if (isPreparing) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = stringResource(MR.string.vault_gallery_share_page),
+                                        )
+                                    }
                                 }
-                                IconButton(onClick = { onSavePage(currentDescriptor.key) }) {
+                                IconButton(
+                                    onClick = { onSavePage(currentDescriptor.key) },
+                                    enabled = !isPreparing,
+                                ) {
                                     Icon(
                                         imageVector = Icons.Outlined.Download,
                                         contentDescription = stringResource(MR.string.vault_gallery_save_page),
@@ -294,6 +319,8 @@ fun VaultGalleryScreen(
                                 onShare = { currentDescriptor?.let { onSharePage(it.key) } },
                                 onDelete = { showDeleteEntryConfirm = true },
                                 onDeletePage = { currentDescriptor?.let { pageToDelete = it.key } },
+                                sections = sections,
+                                onMoveToSection = onMoveToSection,
                                 iconTint = MaterialTheme.colorScheme.onSurface,
                             )
                         },

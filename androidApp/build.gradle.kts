@@ -80,8 +80,8 @@ android {
 
     buildTypes {
         release {
-            // Enables code shrinking, obfuscation, and optimization for only
-            // your project's release build type.
+            // Enables code shrinking and optimization. Identifier obfuscation is
+            // turned off via -dontobfuscate in proguard-rules.pro.
             isMinifyEnabled = true
 
             // Enables resource shrinking, which is performed by the
@@ -99,8 +99,8 @@ android {
         create("dev") {
             applicationIdSuffix = ".dev"
 
-            // Enables code shrinking, obfuscation, and optimization for only
-            // your project's release build type.
+            // Enables code shrinking and optimization. Identifier obfuscation is
+            // turned off via -dontobfuscate in proguard-rules.pro.
             isMinifyEnabled = true
 
             // Enables resource shrinking, which is performed by the
@@ -149,6 +149,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jetbrains.compose.material3)
     implementation(libs.jetbrains.compose.material.icons.extended)
+    implementation(libs.android.material)
 
     implementation(libs.koin.core)
     implementation(libs.koin.android)
@@ -165,6 +166,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
+    // Native (NDK) crash capture: installs Google's async-signal-safe signal handler so
+    // native crashes (e.g. a SQLCipher SIGSEGV/SIGABRT) — which the JVM uncaught handler
+    // in GlobalCrashHandler can never see — are recorded and reflected by
+    // didCrashOnPreviousExecution(). Prebuilt artifact; no NDK/CMake build on our side.
+    implementation(libs.firebase.crashlytics.ndk)
 
     debugImplementation(libs.androidx.ui.tooling)
 

@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
@@ -198,6 +199,28 @@ public class DriveFileProvider(
     }
 
     /**
+     * Fetch + decrypt a payload using the per-payload key header the server returns on the GET
+     * (`SharedSecretEncryptedHeader64`) — the authoritative, race-free (key, IV) for that exact
+     * served byte stream. Required for payloads whose IV the server rotates on rewrite (e.g. a
+     * contact's `ext_data`), where a separately-queried `descriptor.iv` is a stale snapshot and the
+     * file content IV is the wrong IV. Goes to the network because the disk cache doesn't persist
+     * that header. Returns null on 404.
+     */
+    suspend fun getPayloadBytesDecryptedViaResponseHeader(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+    ): ByteArray? {
+        val raw = try {
+            driveCache.getPayloadBytesRawFromNetwork(driveId, fileId, key)
+        } catch (e: NotFoundException) {
+            return null
+        }
+        if (raw.status == 404) return null
+        return decryptBytes(raw.headers, raw.bytes)
+    }
+
+    /**
      * Fetch the FULL still-encrypted bytes of a payload, going through the disk cache.
      * Returns null on 404. Used by the chat heal-redistribute path to pull an existing
      * payload (the group image) off our own drive and re-attach it to a `updateFileByUniqueId`
@@ -263,6 +286,21 @@ public class DriveFileProvider(
     ) = driveCache.cacheThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, bytes, contentType, lastModified)
 
     /**
+     * Move a file's seeded cache entries (payloads + thumbnails) from the
+     * optimistic client-minted fileId to the server-assigned one at sync-back,
+     * so the sender's own media keeps hitting the cache after the local record
+     * adopts the server fileId. [payloads] must be the SYNCED file's
+     * descriptors (their `lastModified` becomes part of the thumb cache key).
+     * Counterpart to the seed APIs above.
+     */
+    suspend fun rekeyCachedFile(
+        driveId: Uuid,
+        oldFileId: Uuid,
+        newFileId: Uuid,
+        payloads: List<PayloadDescriptor>,
+    ) = driveCache.rekeyCachedFile(driveId, oldFileId, newFileId, payloads)
+
+    /**
      * Fetch the raw (still-encrypted) bytes for a specific byterange of a payload, going through
      * the disk cache. Used by the iOS HLS resource loader, which decrypts each HLS segment as a
      * standalone AES-CBC blob (FFmpeg encrypts each segment independently with PKCS7 padding).
@@ -293,8 +331,21 @@ public class DriveFileProvider(
         key: String,
         keyHeader: KeyHeader,
         outputPath: String,
-        fileOps: FileOperationsProvider
-    ): Boolean = driveCache.streamPayloadDecryptedToPath(driveId, fileId, key, keyHeader, outputPath, fileOps)
+        fileOps: FileOperationsProvider,
+        onProgress: ((Float) -> Unit)? = null,
+    ): Boolean = driveCache.streamPayloadDecryptedToPath(
+        driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+
+    /** [VideoPrefetchDriveAccess] variant — the cached layer supplies its own file ops. */
+    override suspend fun streamPayloadDecryptedToPath(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        keyHeader: KeyHeader,
+        outputPath: String,
+        onProgress: ((Float) -> Unit)?,
+    ): Boolean = driveCache.streamPayloadDecryptedToPath(
+        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,

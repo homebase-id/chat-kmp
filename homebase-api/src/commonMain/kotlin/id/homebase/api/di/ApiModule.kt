@@ -8,10 +8,16 @@ import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
+import id.homebase.api.client.contacts.ContactHeaderReader
+import id.homebase.api.client.contacts.ContactPayloadReader
+import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.liverelay.LiveRelayProvider
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -25,6 +31,9 @@ import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
 import id.homebase.api.client.peer.PeerWebSocketManager
+import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
+import id.homebase.api.client.profile.ProfileProvider
+import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
@@ -72,7 +81,7 @@ val apiModule = module {
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
-    single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get()) }
+    single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
     singleOf(::OutboxSync)
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
@@ -85,14 +94,17 @@ val apiModule = module {
     factoryOf(::DriveUploadProvider)
 
     factoryOf(::DriveFileProvider)
+    factoryOf(::PayloadDownloadService)
     factory<VideoPrefetchDriveAccess> { get<DriveFileProvider>() }
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::PeerDriveQueryProvider)
+    factoryOf(::TemporalDriveReadProvider)
     factoryOf(::PeerDriveUploadProvider)
     factoryOf(::PeerNotificationProvider)
+    factoryOf(::LiveRelayProvider)
     // Single: one set of peer (owner-hosted) websocket connections per app session; reset on logout
     // via AuthConnectionCoordinator.disconnect(). Uses its own internal scope (default ctor arg).
     single {
@@ -105,6 +117,32 @@ val apiModule = module {
     }
     factoryOf(::ConnectionRequestProvider)
     factoryOf(::ConnectionIntroductionProvider) bind IntroductionSender::class
+    // Single so the per-contact AES-key cache used by setContactImage survives across calls.
+    // ContactHeaderReader adapts DriveFileProvider's header-by-uid read so ContactsProvider stays
+    // off the heavier drive-file/caching graph.
+    single<ContactHeaderReader> {
+        val driveFileProvider = get<DriveFileProvider>()
+        ContactHeaderReader { driveId, uniqueId ->
+            driveFileProvider.getFileHeaderByUid(driveId, uniqueId)
+        }
+    }
+    // Reads + decrypts a contact's on-demand payloads (ext_data bios, appextdata). The list/index
+    // header omits per-payload IVs, so go through the full file header for the IV + file key, then
+    // decrypt via the normal cached payload path. Narrow seam (like ContactHeaderReader) keeps
+    // ContactRepository off the drive-file graph and fakeable in tests.
+    single<ContactPayloadReader> {
+        val driveFileProvider = get<DriveFileProvider>()
+        ContactPayloadReader { driveId, fileId, payloadKey ->
+            driveFileProvider.getPayloadBytesDecryptedViaResponseHeader(driveId, fileId, payloadKey)
+        }
+    }
+    singleOf(::ContactsProvider)
+    singleOf(::ContactRepository)
+    // Owner profile-attribute editor: write client + read/orchestration (queries the ProfileDrive
+    // on demand; the drive is not in mandatorySyncDrives). Needs the ManageProfile permission +
+    // ProfileDrive Read grant from AppConfig.
+    factoryOf(::ProfileProvider)
+    factoryOf(::ProfileRepository)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)

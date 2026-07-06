@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
@@ -73,7 +75,6 @@ import id.homebase.resources.cancel
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
-import id.homebase.resources.settings_connections
 import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
@@ -90,7 +91,9 @@ import id.homebase.resources.settings_security_setup
 import id.homebase.resources.cd_open_externally
 import id.homebase.resources.settings_section_danger_zone
 import id.homebase.resources.settings_section_general
+import id.homebase.resources.location_settings_section
 import id.homebase.resources.vault_settings_section
+import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.settings_storage
 import org.jetbrains.compose.resources.stringResource
 
@@ -98,13 +101,16 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBackClick: () -> Unit,
-    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
     onNavigateToVaultSettings: () -> Unit,
+    onNavigateToLocation: () -> Unit,
+    onNavigateToContactBookSettings: () -> Unit,
+    onNavigateToProfileEdit: () -> Unit,
+    onNavigateToProfileAvatarEdit: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -120,6 +126,16 @@ fun SettingsScreen(
             is SettingsUiEvent.OpenUrl -> {
                 viewModel.eventConsumed()
                 uriHandler.openUrl(event.url)
+            }
+
+            SettingsUiEvent.NavigateToProfileEdit -> {
+                viewModel.eventConsumed()
+                onNavigateToProfileEdit()
+            }
+
+            SettingsUiEvent.NavigateToProfileAvatarEdit -> {
+                viewModel.eventConsumed()
+                onNavigateToProfileAvatarEdit()
             }
         }
     }
@@ -156,13 +172,15 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             onBackClick = onBackClick,
-            onNavigateToConnections = onNavigateToConnections,
             onNavigateToNotifications = onNavigateToNotifications,
             onNavigateToAppearance = onNavigateToAppearance,
            onNavigateToVaultSettings = onNavigateToVaultSettings,
             onNavigateToStorage = onNavigateToStorage,
             onNavigateToHelp = onNavigateToHelp,
             onNavigateToMomentsSettings = onNavigateToMomentsSettings,
+            onNavigateToLocation = onNavigateToLocation,
+            onNavigateToContactBookSettings = onNavigateToContactBookSettings,
+            onAvatarClick = { viewModel.onAction(SettingsUiAction.AvatarClicked) },
         )
 
         if (uiState.isLoggingOut) {
@@ -217,13 +235,15 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
-    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
     onNavigateToHelp: () -> Unit,
     onNavigateToMomentsSettings: () -> Unit,
     onNavigateToVaultSettings: () -> Unit = {},
+    onNavigateToLocation: () -> Unit = {},
+    onNavigateToContactBookSettings: () -> Unit = {},
+    onAvatarClick: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
@@ -254,7 +274,10 @@ fun SettingsUi(
         ) {
             // Avatar
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onAvatarClick)
+                    .padding(vertical = 24.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -267,7 +290,8 @@ fun SettingsUi(
                             size = 96.dp,
                         ),
                         sharedTransitionScope = null,
-                        animatedVisibilityScope = null
+                        animatedVisibilityScope = null,
+                        cacheBustKey = ownerSession.profileImageLastModified,
                     )
                     Spacer(modifier = Modifier.width(24.dp))
                     Column {
@@ -285,12 +309,6 @@ fun SettingsUi(
             }
             Spacer(modifier = Modifier.height(8.dp))
             SettingsSectionHeader(stringResource(MR.string.settings_section_general))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.People,
-                text = stringResource(MR.string.settings_connections),
-                onClick = onNavigateToConnections
-            )
-            Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
                 imageVector = Icons.Outlined.Person,
                 text = stringResource(MR.string.settings_profile_info),
@@ -383,6 +401,20 @@ fun SettingsUi(
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
+                modifier = Modifier.testTag("locationSettingsButton"),
+                imageVector = Icons.Outlined.LocationOn,
+                text = stringResource(MR.string.location_settings_section),
+                onClick = onNavigateToLocation,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
+                modifier = Modifier.testTag("contactBookSettingsButton"),
+                imageVector = Icons.Outlined.People,
+                text = stringResource(MR.string.contactbook_settings_section),
+                onClick = onNavigateToContactBookSettings,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsItemAction(
                 modifier = Modifier.testTag("helpButton"),
                 imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
                 text = stringResource(MR.string.settings_help),
@@ -429,7 +461,6 @@ fun SettingsUiPreview() {
             uiState = SettingsUiState(),
             onAction = {},
             onBackClick = {},
-            onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
             onNavigateToVaultSettings = {},

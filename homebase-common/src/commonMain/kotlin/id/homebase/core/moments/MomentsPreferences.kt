@@ -10,8 +10,9 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
 
     private val keyValue get() = databaseManager.keyValue
 
-    private val _activated = MutableStateFlow(readBoolean(ACTIVATED_KEY, default = false))
-    val activated: StateFlow<Boolean> = _activated.asStateFlow()
+    // Activation is no longer a local preference flag — it's derived from the mounted
+    // drive (see MomentsViewModel.isActivated), which reflects the cross-device
+    // DriveRegistry. The old 0a0201 key is abandoned (no migration needed).
 
     // Visible by default — Moments shows in the bottom nav out of the box; tapping
     // it before onboarding routes to the activation flow (see AppNavHost.openMoments).
@@ -21,12 +22,6 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
 
     private val _viewMode = MutableStateFlow(readViewMode())
     val viewMode: StateFlow<MomentsViewMode> = _viewMode.asStateFlow()
-
-    suspend fun setActivated(value: Boolean) {
-        if (_activated.value == value) return
-        keyValue.upsertValue(ACTIVATED_KEY, encode(value))
-        _activated.value = value
-    }
 
     suspend fun setIconVisible(value: Boolean) {
         if (_iconVisible.value == value) return
@@ -64,7 +59,7 @@ class MomentsPreferences(private val databaseManager: DatabaseManager) {
 
     companion object {
         // Stable namespace for Moments. Vault owns 0a01xx; Moments is the next free slot.
-        val ACTIVATED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0201")
+        // 0a0201 (former ACTIVATED_KEY) is retired — activation now derives from the drive.
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0202")
         val VIEW_MODE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0203")
     }

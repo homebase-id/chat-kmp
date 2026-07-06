@@ -1,10 +1,8 @@
 package id.homebase.api.sync.database
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.ClientException
-import id.homebase.api.client.NotFoundException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
@@ -14,7 +12,9 @@ import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxReque
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.cleanupHlsScratch
+import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.file.systemFileSystem
+import okio.FileSystem
 import okio.Path.Companion.toPath
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.eventbus.BackendEvent
@@ -24,6 +24,7 @@ import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.crypto.toUtf8ByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -61,6 +62,58 @@ internal fun wouldStrandPendingCreate(existingUploadType: Long?, incomingUploadT
     incomingUploadType == DriveOutboxUploader.UpdateFile &&
         existingUploadType == DriveOutboxUploader.UploadNewFile
 
+/**
+ * Outcome of [OutboxSync.tryEnqueue]/[OutboxSync.replaceEnqueue]. Replaces the
+ * old Boolean, whose `false` collapsed three very different situations —
+ * a benign UNIQUE(driveId, uniqueId) collision ("already queued, fine"), the
+ * strand guard refusing a downgrade, and a real DB failure ("this request is
+ * silently lost") — leaving callers to guess which one happened.
+ */
+sealed interface EnqueueResult {
+    /** The request is durably queued. */
+    data object Enqueued : EnqueueResult
+
+    /** A row for this (driveId, uniqueId) is already pending — the UNIQUE
+     *  constraint rejected the insert. Usually benign: the queued request will
+     *  be sent. Use [OutboxSync.replaceEnqueue] when the new request should
+     *  supersede it. */
+    data object AlreadyQueued : EnqueueResult
+
+    /** replaceEnqueue refused to replace a pending `UploadNewFile` with an
+     *  `UpdateFile` — that would strand the un-sent create (see
+     *  [wouldStrandPendingCreate]). Re-enqueue the edit AS a create instead. */
+    data object WouldStrandCreate : EnqueueResult
+
+    /** The insert failed for a reason other than the UNIQUE constraint — the
+     *  request was NOT queued and will not be sent. */
+    data class Failed(val cause: Throwable) : EnqueueResult
+}
+
+/** True only for [EnqueueResult.Enqueued] — exactly the old Boolean `true`. */
+val EnqueueResult.enqueued: Boolean get() = this == EnqueueResult.Enqueued
+
+/**
+ * Outcome of [OutboxSync.cancelPending]. Replaces callers reaching into the
+ * raw outbox table (`selectByDriveAndUnique` + unconditional `deleteBy`) —
+ * which silently "cancelled" rows whose upload was already running.
+ */
+sealed interface CancelOutcome {
+    /** A queued `UploadNewFile` was removed — the create never reached the
+     *  server, so there is nothing to delete remotely. */
+    data object CancelledCreate : CancelOutcome
+
+    /** A queued non-create row (edit, delete, …) was removed. */
+    data object Cancelled : CancelOutcome
+
+    /** A worker currently holds the row: the upload is running and CANNOT be
+     *  stopped by deleting the row. Nothing was changed. [isCreate] tells the
+     *  caller whether the in-flight request is the file's create. */
+    data class InFlight(val isCreate: Boolean) : CancelOutcome
+
+    /** No row for (driveId, uniqueId) — already sent, dropped, or never queued. */
+    data object NothingPending : CancelOutcome
+}
+
 class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
@@ -76,70 +129,18 @@ class OutboxSync(
         isOnline = online
     }
 
+    /** Whether the outbox is currently allowed to send (the connection is up).
+     *  When false, queued items can't even attempt — Message Info shows
+     *  "waiting for connection" rather than a meaningless backoff countdown. */
+    fun isCurrentlyOnline(): Boolean = isOnline
+
     private val MAX_SENDING_THREADS = 3
     private val BASE_DELAY_SECONDS = 30L        // first retry after 30s
     private val MAX_DELAY_SECONDS = 14400L      // 4 hours cap
-    private val MAX_RETRIES = 20                // ~48 hours total
+    private val MAX_RETRIES = MAX_ATTEMPTS      // ~48 hours total
     private val semaphore = Semaphore(MAX_SENDING_THREADS)
     private val activeThreads = atomic(0)
 
-    /**
-     * Returns true when the upload exception describes a state that won't be
-     * fixed by retrying (file not found server-side, missing version tag for
-     * an update, etc.). Drops these immediately instead of burning ~48h of
-     * exponential-backoff retries.
-     */
-    private fun isPermanentFailure(e: Throwable): Boolean {
-        if (e is NotFoundException) return true
-        if (e is ClientException) {
-            when (e.errorCode) {
-                OdinClientErrorCode.FileNotFound,
-                OdinClientErrorCode.MissingVersionTag,
-                OdinClientErrorCode.VersionTagMismatch,
-                OdinClientErrorCode.CannotOverwriteNonExistentFile,
-                OdinClientErrorCode.UnknownId -> return true
-                else -> Unit
-            }
-            // The server sometimes returns 400 with the structured errorCode
-            // collapsed to UnhandledScenario but the message text intact.
-            // Catch the recurring local-only-placeholder failures we've seen
-            // so they don't loop in the outbox. The version-tag check matches
-            // both "Missing version tag" and "Mismatching version tag".
-            val msg = e.message ?: return false
-            if (msg.contains("Could not find file", ignoreCase = true)) return true
-            if (msg.contains(Regex("Mis(sing|matching) version tag", RegexOption.IGNORE_CASE))) return true
-            // Server-enforced size invariants — never recover with retry.
-            // Catches "Thumbnail size of N exceeds 1024" (the bug behind
-            // the URL-preview SVG outbox stall on 2026-05-17) and any
-            // sibling quota messages the server emits in the same shape
-            // with errorCode collapsed to UnhandledScenario.
-            if (msg.contains(Regex("size of \\d+ exceeds \\d+", RegexOption.IGNORE_CASE))) return true
-            // Encrypted-file key mismatch on update: the server rejects an update
-            // whose AES key differs from the existing file's ("When updating an
-            // encrypted file, the AES key must match the existing key …"). The
-            // outbox row carries a fixed key, so every retry replays the same
-            // wrong key against an unchanging server file — deterministically
-            // unrecoverable. Drop it instead of burning ~48h of retries.
-            // GUARDRAIL, not the fix: the root cause is DriveOutboxUploader.
-            // retryAsUpdate adopting the server's versionTag but reusing the
-            // client's freshly-minted keyHeader (seen when the local DB lost the
-            // conversation's key, e.g. the in-memory web DB after a reload, and
-            // optimistically recreated the conversation with a new key). The real
-            // fix re-hydrates the existing server key on ExistingFileWithUniqueId.
-            if (msg.contains("AES key must match", ignoreCase = true)) return true
-            // Client-side pre-flight rejections from
-            // [UploadValidation.kt]. The validator throws ClientException
-            // shaped like a server response so we land here on attempt 1.
-            if (msg.startsWith("Upload validation failed: ")) return true
-        }
-        return false
-    }
-
-    private fun permanentFailureReason(e: Throwable): String = when {
-        e is NotFoundException -> "404 NotFound"
-        e is ClientException -> "errorCode=${e.errorCode} msg=${e.message}"
-        else -> e::class.simpleName ?: "unknown"
-    }
     private val totalSent = atomic(0)
     private val counterMutex = Mutex()
 
@@ -150,10 +151,22 @@ class OutboxSync(
     // another thread is already processing.
     // Then the call immediately knows if a worker thread has been spawned.
     //
-    suspend fun send(): Boolean {
-        if (!isOnline) {
+    /**
+     * @param force bypass the offline gate for THIS drain only (#987): a background push wake
+     *   has provably-working network but the websocket never connects, so [isOnline] stays
+     *   false and enqueued rows would otherwise sit until the next foreground WS connect.
+     *   [isOnline] itself is NOT touched (the connection coordinator owns it), and every
+     *   internal re-entry (the post-backoff re-kick below, the parallel-worker spawn in
+     *   [outboxSend]) calls plain send() — so the bypass never outlives the wake. A failed
+     *   attempt on a genuinely dead network takes the normal checkInFailed backoff.
+     */
+    suspend fun send(force: Boolean = false): Boolean {
+        if (!isOnline && !force) {
             Logger.d("OutboxSync: send() skipped — offline")
             return false
+        }
+        if (force && !isOnline) {
+            Logger.i("OutboxSync: send(force=true) — bypassing offline gate (push wake); isOnline stays false")
         }
         if (!semaphore.tryAcquire()) {
             return false
@@ -210,6 +223,10 @@ class OutboxSync(
                 this.send() // Try to spawn a thread for parallel outbox processing
 
             try {
+                // This row is now genuinely in flight on this worker — record its
+                // checkout stamp as live so Message Info can tell "uploading" from
+                // a dead zombie without guessing at elapsed time.
+                markCheckoutLive(outboxRecord.checkOutStamp)
                 // We sent the item, send an event
                 eventBus.emit(
                     BackendEvent.OutboxEvent.ItemStarted(
@@ -223,7 +240,8 @@ class OutboxSync(
 
                 // if successful we remove it from the database
                 databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
-                Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()}")
+                // driveId included so a location-drive completion is directly greppable (#988).
+                Logger.i("OutboxSync: completed uniqueId=${outboxRecord.uniqueId} uploadType=${outboxRecord.uploadTypeLabel()} driveId=${outboxRecord.driveId}")
 
                 // We sent the item, send an event
                 eventBus.emit(
@@ -232,15 +250,55 @@ class OutboxSync(
                         outboxRecord.uniqueId
                     )
                 )
+                clearLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId)
                 totalSent.incrementAndGet()
+            } catch (e: CancellationException) {
+                // Worker scope cancelled (logout, shutdown) — not an upload
+                // failure. Don't classify, don't checkInFailed, don't emit
+                // failure events: the row stays checked out and the next
+                // start's clearCheckedOut recovers it, exactly like an app
+                // kill. Without this rethrow the catch below would record a
+                // bogus failed attempt (it only avoids that today because its
+                // first suspension point happens to rethrow cancellation).
+                throw e
             } catch (e: Exception) {
+                // Connectivity circuit-breaker (#987): no network reaching the server means
+                // every remaining row would fail identically — check THIS row back in
+                // WITHOUT charging an attempt (a hopeless offline probe must not burn the
+                // ~48h MAX_RETRIES budget toward a permanent drop; before forced drains,
+                // offline rows were never attempted at all) and abort the whole drain pass.
+                // The next drain (WS connect, next wake, backoff re-kick) re-probes. Uses
+                // the same isTransientNetworkFailure classifier as the crash handlers —
+                // HTTP-response exceptions (server reached) never match, so poison rows
+                // still take the charged path below and eventually drop.
+                if (e.isTransientNetworkFailure()) {
+                    Logger.i(
+                        "OutboxSync: network unreachable (${e.message}) — uniqueId=${outboxRecord.uniqueId} " +
+                            "checked back in uncharged (attempt count stays ${outboxRecord.checkOutCount}); aborting drain pass"
+                    )
+                    databaseManager.outbox.checkInUncharged(
+                        outboxRecord.checkOutStamp!!,
+                        UnixTimeUtc.now().addSeconds(BASE_DELAY_SECONDS).milliseconds
+                    )
+                    recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
+                    eventBus.emit(
+                        BackendEvent.OutboxEvent.ItemFailed(
+                            outboxRecord.driveId,
+                            outboxRecord.uniqueId
+                        )
+                    )
+                    eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Network unreachable"))
+                    break // the finally below runs markCheckoutDone
+                }
+
                 val attempts = outboxRecord.checkOutCount + 1
 
-                if (attempts >= MAX_RETRIES || isPermanentFailure(e)) {
-                    val reason = if (attempts >= MAX_RETRIES) {
-                        "after $attempts failed attempts"
+                val permanentReason = classifyPermanentFailure(e)
+                if (attempts >= MAX_RETRIES || permanentReason != null) {
+                    val reason = if (permanentReason != null) {
+                        "permanent failure ($permanentReason)"
                     } else {
-                        "permanent failure (${permanentFailureReason(e)})"
+                        "after $attempts failed attempts"
                     }
                     Logger.e(
                         "OutboxSync: DROPPING uniqueId=${outboxRecord.uniqueId} " +
@@ -249,6 +307,7 @@ class OutboxSync(
                         e
                     )
                     databaseManager.outbox.deleteByRowId(outboxRecord.rowId)
+                    clearLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId)
 
                     // Drop branch: the upload exhausted retries or hit a permanent
                     // error, so nothing else will clean up the request's payload
@@ -267,7 +326,8 @@ class OutboxSync(
                         BackendEvent.OutboxEvent.OutboxItemDropped(
                             outboxRecord.driveId,
                             outboxRecord.uniqueId,
-                            attempts.toInt()
+                            attempts.toInt(),
+                            reason = permanentReason ?: "retries exhausted ($attempts)",
                         )
                     )
                     continue
@@ -289,6 +349,9 @@ class OutboxSync(
                     outboxRecord.checkOutStamp!!,
                     UnixTimeUtc.now().addSeconds(n).milliseconds
                 )
+                // Remember why this attempt failed so Message Info can show the
+                // reason instead of a bare "still sending" spinner.
+                recordLastUploadError(outboxRecord.driveId, outboxRecord.uniqueId, e.message)
 
                 eventBus.emit(
                     BackendEvent.OutboxEvent.ItemFailed(
@@ -298,8 +361,27 @@ class OutboxSync(
                 )
 
                 eventBus.emit(BackendEvent.OutboxEvent.Failed(e.message ?: "Unknown error"))
+            } finally {
+                // No longer running on this worker — whether it completed, failed,
+                // dropped, or the scope was cancelled. (On cancellation the row
+                // stays checked out in the DB but is no longer in flight, so it
+                // correctly reads as a zombie until clearCheckout revives it.)
+                markCheckoutDone(outboxRecord.checkOutStamp)
             }
         }
+    }
+
+    /**
+     * Fire-and-forget send kick after a successful enqueue: the caller (e.g.
+     * the chat Send button) must not wait on outbox worker startup. send() is
+     * non-blocking today, but we launch it on the outbox's own scope so future
+     * changes to send() can't leak back into the caller's suspension chain.
+     */
+    private fun kickIfEnqueued(result: EnqueueResult, sendNow: Boolean): EnqueueResult {
+        if (sendNow && result.enqueued) {
+            scope.launch { send() }
+        }
+        return result
     }
 
     public suspend fun tryEnqueue(
@@ -307,116 +389,78 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.DeleteFilesByGroupId,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: DeleteLocalFilesByFileIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(), //random because our request is a list of files
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.DeleteFile,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: UpdateFileByUniqueIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val json = OdinSystemSerializer.serialize(request)
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = json
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+            json = OdinSystemSerializer.serialize(request)
+        ),
+        sendNow,
+    )
 
     public suspend fun replaceEnqueue(
         request: UpdateFileByUniqueIdRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val json = OdinSystemSerializer.serialize(request)
-        val enqueued = replaceEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        replaceEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateFile,
-            json = json
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+            json = OdinSystemSerializer.serialize(request)
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: UploadFileRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
@@ -424,18 +468,9 @@ class OutboxSync(
             priority = priority,
             uploadType = DriveOutboxUploader.UploadNewFile,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     /** Replace any pending row for this message with a fresh create. Used to
      *  coalesce an edit into a still-queued (not-yet-sent) create so the edit
@@ -445,8 +480,8 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = replaceEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        replaceEnqueue(
             driveId = request.driveId,
             uniqueId = request.metadata.appData.uniqueId
                 ?: error("unique id required to place in outbox"),
@@ -454,14 +489,9 @@ class OutboxSync(
             priority = priority,
             uploadType = DriveOutboxUploader.UploadNewFile,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     /** Upload type of the pending row for (driveId, uniqueId), or null if none
      *  is queued. Lets a caller branch on create-vs-update before enqueuing. */
@@ -478,8 +508,62 @@ class OutboxSync(
         return OdinSystemSerializer.deserialize<UploadFileRequest>(row.json.decodeToString())
     }
 
+    // In-memory last upload-failure reason per (driveId, uniqueId), surfaced as
+    // the Message Info "why is it stuck" line. Deliberately NOT persisted: a
+    // schema column would force a DATABASE_VERSION bump, and the upgrade path
+    // wipes every table — including pending outbox rows (genuinely-unsent
+    // messages). The reason is re-recorded on the next retry attempt, so the
+    // only cost of keeping it in memory is a blank reason in the brief window
+    // between a process restart and the next attempt. Guarded by its own mutex
+    // (written on the drain worker, read from the UI).
+    private val lastErrorMutex = Mutex()
+    private val lastUploadErrorByRow = mutableMapOf<Pair<Uuid, Uuid>, String>()
+
+    private suspend fun recordLastUploadError(driveId: Uuid, uniqueId: Uuid, message: String?) {
+        val reason = message?.takeIf { it.isNotBlank() } ?: return
+        lastErrorMutex.withLock { lastUploadErrorByRow[driveId to uniqueId] = reason }
+    }
+
+    private suspend fun clearLastUploadError(driveId: Uuid, uniqueId: Uuid) {
+        lastErrorMutex.withLock { lastUploadErrorByRow.remove(driveId to uniqueId) }
+    }
+
+    private suspend fun lastUploadErrorFor(driveId: Uuid, uniqueId: Uuid): String? =
+        lastErrorMutex.withLock { lastUploadErrorByRow[driveId to uniqueId] }
+
+    public companion object {
+        /** Max outbox upload attempts before a row is dropped (~48h of backoff).
+         *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
+        public const val MAX_ATTEMPTS: Int = 20
+    }
+
+    // Checkout stamps of rows currently held by a LIVE upload worker in THIS
+    // process. This is the exact "in-flight vs dead" signal — NO time-based
+    // guessing (an upload can legitimately run for an hour): a checked-out DB row
+    // whose stamp is NOT in here has no worker running it, so it's a zombie (the
+    // worker died, or the process was killed — which empties this in-memory set,
+    // so after a restart every still-checked-out row is correctly seen as dead).
+    private val liveCheckoutMutex = Mutex()
+    private val liveCheckoutStamps = mutableSetOf<Long>()
+
+    private suspend fun markCheckoutLive(stamp: Long?) {
+        stamp ?: return
+        liveCheckoutMutex.withLock { liveCheckoutStamps.add(stamp) }
+    }
+
+    private suspend fun markCheckoutDone(stamp: Long?) {
+        stamp ?: return
+        liveCheckoutMutex.withLock { liveCheckoutStamps.remove(stamp) }
+    }
+
+    private suspend fun isCheckoutLive(stamp: Long?): Boolean {
+        stamp ?: return false
+        return liveCheckoutMutex.withLock { stamp in liveCheckoutStamps }
+    }
+
     /** Display-oriented snapshot of the pending row for (driveId, uniqueId) —
-     *  what Message Info needs to render "still sending, next attempt in ~N min"
+     *  what Message Info needs to render "still sending, attempt N of M, next
+     *  attempt in mm:ss / waiting on an earlier message / why it last failed"
      *  without deserializing the request json. */
     public data class PendingRowSnapshot(
         /** Milliseconds epoch of the next attempt (0 / sentinel = "shortly").
@@ -487,19 +571,91 @@ class OutboxSync(
          *  seconds-epoch value — display code must normalize. */
         val nextRunTime: Long,
         val checkOutCount: Long,
-        /** True when an upload worker currently holds the row. */
+        /** True when the row is checked out in the DB. NOTE: this alone does not
+         *  mean it's uploading — a zombie (dead worker) is also checked out. Use
+         *  [isActivelyUploading] to tell them apart. */
         val isCheckedOut: Boolean,
         val uploadType: Long,
+        /** True when a LIVE upload worker is genuinely running this checkout right
+         *  now (its stamp is held in [liveCheckoutStamps]). Exact, with no
+         *  time-based guess — an upload may legitimately run for an hour.
+         *  `isCheckedOut && !isActivelyUploading` ⇒ a zombie: the UI shows
+         *  "stuck" and offers Try now. */
+        val isActivelyUploading: Boolean = false,
+        /** The message this row is queued behind, if any. */
+        val dependencyUniqueId: Uuid? = null,
+        /** True when [dependencyUniqueId] still has a row in the outbox — i.e.
+         *  this message is blocked waiting for that earlier one to send. */
+        val dependencyPending: Boolean = false,
+        /** Reason the last upload attempt failed (server message), or null when
+         *  no attempt has failed yet this session. */
+        val lastError: String? = null,
     )
 
     public suspend fun pendingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
         val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) ?: return null
+        return row.toSnapshot()
+    }
+
+    private suspend fun Outbox.toSnapshot(): PendingRowSnapshot {
+        val dependencyPending = dependencyUniqueId?.let { databaseManager.outbox.existsByUniqueId(it) } ?: false
         return PendingRowSnapshot(
-            nextRunTime = row.nextRunTime,
-            checkOutCount = row.checkOutCount,
-            isCheckedOut = row.checkOutStamp != null,
-            uploadType = row.uploadType,
+            nextRunTime = nextRunTime,
+            checkOutCount = checkOutCount,
+            isCheckedOut = checkOutStamp != null,
+            uploadType = uploadType,
+            isActivelyUploading = isCheckoutLive(checkOutStamp),
+            dependencyUniqueId = dependencyUniqueId,
+            dependencyPending = dependencyPending,
+            lastError = lastUploadErrorFor(driveId, uniqueId),
         )
+    }
+
+    /**
+     * Snapshot of the row at the head of [uniqueId]'s dependency chain — the
+     * earlier message it's actually blocked on. Walks `dependencyUniqueId`
+     * pointers (which still have a row) to the deepest pending ancestor and
+     * returns its snapshot, so Message Info can report the blocker's real state
+     * (checked-out/stuck, attempt #, next-attempt countdown, last error) instead
+     * of a bare "waiting". Returns null when nothing is blocking. Bounded by a
+     * visited-set + depth cap against a malformed cycle.
+     */
+    public suspend fun blockingRowSnapshot(driveId: Uuid, uniqueId: Uuid): PendingRowSnapshot? {
+        val visited = mutableSetOf(uniqueId)
+        var dep = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)?.dependencyUniqueId
+        var head: Outbox? = null
+        var guard = 0
+        while (dep != null && visited.add(dep) && guard++ < MAX_ATTEMPTS) {
+            val depRow = databaseManager.outbox.selectByUniqueId(dep) ?: break
+            head = depRow
+            dep = depRow.dependencyUniqueId
+        }
+        return head?.toSnapshot()
+    }
+
+    /**
+     * Cancel the pending outbox row for (driveId, uniqueId), if any — but never
+     * a row whose upload is in flight: deleting a checked-out row doesn't stop
+     * the worker (it already read the row), it only turns the cancel into a
+     * silent lie while the request still ships. Callers branch on the returned
+     * [CancelOutcome] instead of guessing.
+     */
+    public suspend fun cancelPending(driveId: Uuid, uniqueId: Uuid): CancelOutcome {
+        val row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+            ?: return CancelOutcome.NothingPending
+        val isCreate = row.uploadType == DriveOutboxUploader.UploadNewFile
+        if (row.checkOutStamp != null) return CancelOutcome.InFlight(isCreate)
+
+        val deleted = databaseManager.outbox.deleteByIfNotCheckedOut(driveId, uniqueId)
+        if (deleted == 0L) {
+            // Raced: between the select and the guarded delete the row was
+            // either checked out or drained. Re-read to report which.
+            val now = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+                ?: return CancelOutcome.NothingPending
+            return CancelOutcome.InFlight(now.uploadType == DriveOutboxUploader.UploadNewFile)
+        }
+        Logger.i("OutboxSync: cancelPending removed queued ${if (isCreate) "create" else "row"} uniqueId=$uniqueId")
+        return if (isCreate) CancelOutcome.CancelledCreate else CancelOutcome.Cancelled
     }
 
     /**
@@ -518,6 +674,41 @@ class OutboxSync(
         return changed > 0
     }
 
+    /**
+     * "Try now" that also resolves the blocker(s): the row for (driveId,
+     * uniqueId) may be waiting on an earlier message that is either backed off
+     * or whose own row is a checked-out zombie (its worker died — a checked-out
+     * row strands its dependents via the gate and can't be reset by
+     * setNextRunTime). This:
+     *  1. runs [clearCheckout] — the existing, idle-gated reconnect cleanup
+     *     (waits until no worker is active, then checks zombies back in) — so a
+     *     dead blocker can run again, using the same safe mechanism the WS
+     *     reconnect does rather than an age-bounded background reclaim;
+     *  2. resets this row and every still-pending ancestor in its dependency
+     *     chain to run immediately, and kicks the send loop.
+     * The chain then drains in dependency order: the head runs (recover-as-Sent
+     * / drop) → its row clears → the gate opens → dependents flow. Resolves a
+     * stuck "waiting on an earlier message" without deleting anything. Returns
+     * true when at least one row was reset.
+     */
+    public suspend fun runNowResolvingDependencies(driveId: Uuid, uniqueId: Uuid): Boolean {
+        // Reuse the reconnect-style cleanup (idle-gated, safe — never clears a
+        // row while a worker holds it) to revive a checked-out zombie blocker.
+        clearCheckout()
+        var changed = 0L
+        val visited = mutableSetOf<Uuid>()
+        var row = databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
+        var guard = 0
+        while (row != null && visited.add(row.uniqueId) && guard++ <= MAX_ATTEMPTS) {
+            changed += databaseManager.outbox.setNextRunTime(row.driveId, row.uniqueId, 0L)
+            val dep = row.dependencyUniqueId ?: break
+            row = databaseManager.outbox.selectByUniqueId(dep)
+        }
+        Logger.i("OutboxSync: runNowResolvingDependencies reset $changed row(s) in the chain for uniqueId=$uniqueId")
+        scope.launch { send() }
+        return changed > 0L
+    }
+
     public suspend fun tryEnqueue(
         request: UpdateLocalMetadataTagsOutboxRequest,
         driveId: Uuid,
@@ -525,37 +716,28 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = driveId,
             uniqueId = uniqueId,
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.UpdateLocalMetadataTags,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: UpdateLocalAppdataContentOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
+    ): EnqueueResult {
         Logger.d(tag = "MarkAsRead") {
             "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): drive=${request.driveId} fileId=${request.fileId} hasIv=${request.iv != null} sendNow=$sendNow"
         }
-        val enqueued = tryEnqueue(
+        val result = tryEnqueue(
             driveId = request.driveId,
             uniqueId = request.fileId,
             dependencyUniqueId = dependencyUniqueId,
@@ -564,18 +746,9 @@ class OutboxSync(
             json = OdinSystemSerializer.serialize(request)
         )
         Logger.d(tag = "MarkAsRead") {
-            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): enqueued=$enqueued drive=${request.driveId} fileId=${request.fileId}"
+            "OutboxSync.tryEnqueue(UpdateLocalAppdataContent): result=$result drive=${request.driveId} fileId=${request.fileId}"
         }
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
+        return kickIfEnqueued(result, sendNow)
     }
 
     public suspend fun tryEnqueue(
@@ -583,37 +756,28 @@ class OutboxSync(
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
-        val enqueued = tryEnqueue(
+    ): EnqueueResult = kickIfEnqueued(
+        tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
             priority = priority,
             uploadType = DriveOutboxUploader.ToggleReaction,
             json = OdinSystemSerializer.serialize(request)
-        )
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
-    }
+        ),
+        sendNow,
+    )
 
     public suspend fun tryEnqueue(
         request: SendReadReceiptByFileIdsOutboxRequest,
         priority: Long = 100,
         dependencyUniqueId: Uuid? = null,
         sendNow: Boolean = true
-    ): Boolean {
+    ): EnqueueResult {
         Logger.d(tag = "MarkAsRead") {
             "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): drive=${request.driveId} fileIdsCount=${request.fileIds.size} sendNow=$sendNow"
         }
-        val enqueued = tryEnqueue(
+        val result = tryEnqueue(
             driveId = request.driveId,
             uniqueId = Uuid.random(),
             dependencyUniqueId = dependencyUniqueId,
@@ -622,18 +786,9 @@ class OutboxSync(
             json = OdinSystemSerializer.serialize(request)
         )
         Logger.d(tag = "MarkAsRead") {
-            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): enqueued=$enqueued drive=${request.driveId}"
+            "OutboxSync.tryEnqueue(SendReadReceiptByFileIds): result=$result drive=${request.driveId}"
         }
-
-        if (enqueued && sendNow) {
-            // Fire-and-forget: the enqueue caller (e.g. chat Send button) must not
-            // wait on outbox worker startup. send() is non-blocking today, but we
-            // launch it on the outbox's own scope so future changes to send() can't
-            // leak back into the caller's suspension chain.
-            scope.launch { send() }
-        }
-
-        return enqueued
+        return kickIfEnqueued(result, sendNow)
     }
 
     /** Like tryEnqueue but replaces any existing pending item with the same (driveId, uniqueId).
@@ -646,7 +801,7 @@ class OutboxSync(
         priority: Long,
         uploadType: Long,
         json: String
-    ): Boolean {
+    ): EnqueueResult {
         // Defense in depth: never silently downgrade a pending create to an
         // update. Chat's edit path coalesces into a create before reaching here
         // (see ChatMessageSenderService.updateMessage); this guard ensures no
@@ -657,7 +812,7 @@ class OutboxSync(
                 "OutboxSync: refusing to replace a pending UploadNewFile with an UpdateFile " +
                     "for uniqueId=$uniqueId — would strand the un-sent create."
             )
-            return false
+            return EnqueueResult.WouldStrandCreate
         }
         databaseManager.outbox.deleteBy(driveId, uniqueId)
         return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
@@ -670,7 +825,7 @@ class OutboxSync(
         priority: Long,
         uploadType: Long,
         json: String
-    ): Boolean {
+    ): EnqueueResult {
         try {
             databaseManager.outbox.insert(
                 driveId,
@@ -694,14 +849,27 @@ class OutboxSync(
                 Logger.w("OutboxSync: ItemEnqueued event dropped (EventBus buffer full) uniqueId=$uniqueId")
             }
 
-            return true
+            return EnqueueResult.Enqueued
 
+        } catch (e: CancellationException) {
+            // The caller's coroutine was cancelled — propagate; classifying it
+            // as Failed would misreport routine cancellation as a lost request.
+            throw e
         } catch (t: Throwable) {
+            // Tell the benign UNIQUE(driveId, uniqueId) collision apart from a
+            // real DB failure: if a pending row exists for this key, the insert
+            // hit the constraint. (Driver-agnostic — constraint exception types
+            // differ across JDBC/Android/native.)
+            val alreadyQueued = runCatching {
+                databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId) != null
+            }.getOrDefault(false)
+            if (alreadyQueued) {
+                Logger.i("OutboxSync: tryEnqueue found a pending row for uniqueId=$uniqueId — AlreadyQueued")
+                return EnqueueResult.AlreadyQueued
+            }
             Logger.e("OutboxSync - Failed to Enqueue", t)
+            return EnqueueResult.Failed(t)
         }
-
-        return false
-
     }
 
     /**
@@ -745,19 +913,84 @@ class OutboxSync(
         cleanupHlsScratch(payloads)
     }
 
+    /**
+     * Fire-and-forget self-heal for the durable encrypted-payload temp dir (`outbox-temp/`, #844).
+     * Runs [reapIdleOutboxTemps] on the outbox scope. Wire it from a post-auth hook.
+     */
+    fun scheduleIdleOutboxTempReap(outboxTempDir: String) {
+        scope.launch { runCatching { reapIdleOutboxTemps(outboxTempDir) } }
+    }
+
+    /**
+     * Reap crash-orphaned encrypted payload temps from `outbox-temp/`. The dir is KEEP-protected
+     * from the CacheSweeper (a pending send's payload must survive), so this is its self-heal.
+     *
+     * Two conditions make it provably safe to delete, so we never touch a live payload:
+     *  1. **Outbox idle** (`count() == 0`) — nothing pending or in-flight references any file here,
+     *     so every file is an orphan. A completed row deletes its own temp; a still-pending one
+     *     (incl. an offline send waiting indefinitely) keeps `count() > 0` and skips this entirely.
+     *  2. **Older than [maxAgeMs]** — closes the only race: an enc temp written for a brand-new send
+     *     microseconds before its row is inserted is seconds old, so the age floor never reaps it.
+     *     This is what makes the reap safe to run at ANY time, not just at startup.
+     *
+     * Fail-safe: a file whose mtime can't be read is skipped, never deleted.
+     */
+    suspend fun reapIdleOutboxTemps(
+        outboxTempDir: String,
+        maxAgeMs: Long = 24 * 60 * 60 * 1000L,
+        fileSystem: FileSystem = systemFileSystem,
+        nowMs: Long = UnixTimeUtc.now().milliseconds,
+    ) {
+        if (databaseManager.outbox.count() > 0L) return
+        val dir = outboxTempDir.toPath()
+        if (!fileSystem.exists(dir)) return
+        val cutoff = nowMs - maxAgeMs
+        val files = runCatching { fileSystem.list(dir) }.getOrNull() ?: return
+        var reaped = 0
+        for (f in files) {
+            val meta = fileSystem.metadataOrNull(f) ?: continue
+            val mtime = meta.lastModifiedAtMillis ?: continue
+            if (mtime >= cutoff) continue
+            if (meta.isDirectory) {
+                // Staged HLS payloads are whole hls_<uuid>/ directories (#842) — a flat
+                // delete() fails on a non-empty dir, so they'd leak forever. Recursive-
+                // delete them (age-gated on the dir's own mtime, same idle precondition).
+                // Any OTHER directory shape is unexpected here: skip it, never guess.
+                if (f.name.startsWith("hls_") &&
+                    safeDeleteRecursively(outboxTempDir, f.name, fileSystem)
+                ) reaped++
+            } else {
+                runCatching { fileSystem.delete(f) }.onSuccess { reaped++ }
+            }
+        }
+        if (reaped > 0) Logger.i("OutboxSync: reaped $reaped orphaned outbox-temp entrie(s) (outbox idle, >${maxAgeMs}ms old)")
+    }
+
     suspend fun clearCheckout(timeoutMs: Long = 10_000) {
         val start = UnixTimeUtc.now().milliseconds
+        // Instrumentation: this is the only path that revives zombie checked-out
+        // rows (it runs from AuthConnectionCoordinator.onConnected). If a row
+        // stays stranded across restarts, the log here tells us which leg failed:
+        // never called (onConnected never fired), timed out (a worker is wedged),
+        // or ran and cleared N rows.
+        val outstanding = activeThreads.value
+        Logger.i("OutboxSync: clearCheckout() ENTER — activeWorkers=$outstanding (waiting for idle, timeout=${timeoutMs}ms)")
 
         while (activeThreads.value > 0) {
             if (UnixTimeUtc.now().milliseconds - start > timeoutMs) {
-                Logger.w("clearCheckout timed out waiting for outbox to become idle")
+                Logger.w(
+                    "OutboxSync: clearCheckout() TIMED OUT after ${timeoutMs}ms with " +
+                        "${activeThreads.value} worker(s) still active — checked-out rows NOT cleared; " +
+                        "any zombie stays stranded until the next idle reconnect"
+                )
                 return
             }
             delay(50)
         }
 
-        checkoutMutex.withLock {
+        val cleared = checkoutMutex.withLock {
             databaseManager.outbox.clearCheckedOut()
         }
+        Logger.i("OutboxSync: clearCheckout() DONE — checked $cleared row(s) back in (waited ${UnixTimeUtc.now().milliseconds - start}ms)")
     }
 }

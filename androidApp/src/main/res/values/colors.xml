@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Homebase brand colors for the native crash screen (light). Mirrors
+     homebase-common LightColors so the recovery screen matches the app theme. -->
+<resources>
+    <color name="crash_primary">#2C58C3</color>
+    <color name="crash_on_primary">#FFFFFF</color>
+    <color name="crash_primary_container">#D2DFFB</color>
+    <color name="crash_on_primary_container">#051845</color>
+    <color name="crash_secondary_container">#DCE5F9</color>
+    <color name="crash_on_secondary_container">#151D2C</color>
+    <color name="crash_surface">#FBFCFF</color>
+    <color name="crash_on_surface">#1B1B1D</color>
+    <color name="crash_surface_variant">#E7EBF3</color>
+    <color name="crash_on_surface_variant">#545863</color>
+</resources>

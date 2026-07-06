@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.storage
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.common.util.formatBytes
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
+import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_storage
@@ -52,6 +55,7 @@ import id.homebase.resources.storage_orphan_coil_title
 import id.homebase.resources.storage_cache_coil_memory
 import id.homebase.resources.storage_cache_payloads
 import id.homebase.resources.storage_cache_profile_images
+import id.homebase.resources.storage_cache_hls_chunks
 import id.homebase.resources.storage_cache_profiles
 import id.homebase.resources.storage_cache_ram_badge
 import id.homebase.resources.storage_cache_size_format
@@ -66,6 +70,9 @@ import id.homebase.resources.storage_caches_none
 import id.homebase.resources.storage_clear_caches
 import id.homebase.resources.storage_database
 import id.homebase.resources.storage_defragment_button
+import id.homebase.resources.storage_diagnostics_force_native_crash
+import id.homebase.resources.storage_diagnostics_force_runtime_crash
+import id.homebase.resources.storage_diagnostics_header
 import id.homebase.resources.storage_drive_count_format
 import id.homebase.resources.storage_drives_header
 import id.homebase.resources.storage_drives_none
@@ -74,6 +81,7 @@ import id.homebase.resources.storage_other_header
 import id.homebase.resources.storage_total_cache_format
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 @Composable
 fun StorageSettingsScreen(
@@ -101,6 +109,7 @@ fun StorageSettingsScreen(
         onBackClick = onBackClick,
         onNavigateToDefragmenter = onNavigateToDefragmenter,
         snackbarHostState = snackbarHostState,
+        crashTrigger = koinInject(),
     )
 }
 
@@ -112,6 +121,7 @@ fun StorageSettingsUi(
     onBackClick: () -> Unit,
     onNavigateToDefragmenter: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    crashTrigger: DiagnosticsCrashTrigger = NoOpDiagnosticsCrashTrigger,
 ) {
     val scrollState = rememberScrollState()
 
@@ -239,8 +249,43 @@ fun StorageSettingsUi(
                 }
             }
 
+            if (crashTrigger.enabled) {
+                SectionHeader(title = stringResource(MR.string.storage_diagnostics_header))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        DiagnosticsCrashRow(
+                            label = stringResource(MR.string.storage_diagnostics_force_native_crash),
+                            onClick = { crashTrigger.forceNativeCrash() },
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        DiagnosticsCrashRow(
+                            label = stringResource(MR.string.storage_diagnostics_force_runtime_crash),
+                            onClick = { crashTrigger.forceRuntimeCrash() },
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+/** A dev-only destructive action row (error-coloured) used by the Diagnostics section. */
+@Composable
+private fun DiagnosticsCrashRow(label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.error,
+        )
     }
 }
 
@@ -400,6 +445,7 @@ private fun cacheColor(id: String): Color = when (id) {
     "public_images"    -> MaterialTheme.colorScheme.tertiary
     "drive_payloads"   -> MaterialTheme.colorScheme.secondary
     "drive_thumbnails" -> MaterialTheme.colorScheme.errorContainer
+    "hls_chunks"       -> MaterialTheme.colorScheme.tertiaryContainer
     else               -> MaterialTheme.colorScheme.outline
 }
 
@@ -506,6 +552,7 @@ private fun cacheLabelRes(id: String): StringResource = when (id) {
     "public_images" -> MR.string.storage_cache_profile_images
     "drive_payloads" -> MR.string.storage_cache_payloads
     "drive_thumbnails" -> MR.string.storage_cache_thumbnails
+    "hls_chunks" -> MR.string.storage_cache_hls_chunks
     StorageSettingsViewModel.COIL_MEMORY_ID -> MR.string.storage_cache_coil_memory
     else -> MR.string.storage_cache_unknown
 }

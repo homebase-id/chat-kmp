@@ -68,6 +68,9 @@ private val driveLocalTagIndexAdapter = DriveLocalTagIndex.Adapter(
 private val keyValueAdapter = KeyValue.Adapter(
     keyAdapter = UuidAdapter
 )
+private val locationPointAdapter = LocationPoint.Adapter(
+    flushedFileUidAdapter = UuidAdapter
+)
 private val outboxAdapter = Outbox.Adapter(
     driveIdAdapter = UuidAdapter,
     uniqueIdAdapter = UuidAdapter,
@@ -121,6 +124,13 @@ class DatabaseManager(
     private var database: OdinDatabase
     internal var driver: SqlDriver = driverProvider()
 
+    // The `-- Version:` stamped on the on-disk DriveMainIndex CREATE statement at the
+    // moment this driver was opened, BEFORE we (re)created the schema. -1 when there
+    // was no prior database (fresh install). [initialize] reads it to surface the
+    // upgrade snackbar; the actual stale-schema rebuild happens in `init` below.
+    internal var schemaVersionAtOpen: Long = -1
+        private set
+
     // Latency split of the most recent read; see [ReadTiming]. Updated on every
     // executeReadQuery; readers should treat it as best-effort (concurrent reads
     // race on this single cell) — it's a diagnostic, not a correctness signal.
@@ -128,6 +138,26 @@ class DatabaseManager(
     val lastReadTiming: ReadTiming? get() = _lastReadTiming.value
 
     init {
+        // Rebuild-on-version-bump must run BEFORE Schema.create(). Schema.create()
+        // is `CREATE TABLE/INDEX IF NOT EXISTS`, so on a stale on-disk schema the old
+        // tables survive the no-op CREATE TABLE while a *new* index over a *newly
+        // added* column (e.g. idx_unread_cover over DriveMainIndex.fileState) is built
+        // against the old table — throwing "no such column: fileState" and crashing the
+        // app at launch (iOS field crash; reproduced on every platform). Dropping the
+        // stale tables first lets create() rebuild the current schema cleanly. The
+        // detected version is kept in [schemaVersionAtOpen] so [initialize] can still
+        // raise the upgrade snackbar. See DriveMainIndexCreateOrderTest.
+        schemaVersionAtOpen = readOnDiskSchemaVersion(driver)
+        if (schemaVersionAtOpen in 1 until DATABASE_VERSION) {
+            logger.i {
+                "Stale schema v$schemaVersionAtOpen < v$DATABASE_VERSION — " +
+                    "dropping ${TABLE_NAMES.size} tables before recreate"
+            }
+            TABLE_NAMES.forEach { table ->
+                driver.execute(null, "DROP TABLE IF EXISTS $table;", 0)
+            }
+        }
+
         OdinDatabase.Schema.create(driver) // Create the tables if they are missing
         database = OdinDatabase(
             driver,
@@ -138,6 +168,7 @@ class DatabaseManager(
             driveMainIndexAdapter,
             driveTagIndexAdapter,
             keyValueAdapter,
+            locationPointAdapter,
             outboxAdapter
         )
         logger.i { "Database initialized" }
@@ -207,23 +238,47 @@ class DatabaseManager(
             "DriveMainIndex",
             "DriveTagIndex",
             "KeyValue",
+            "LocationPoint",
             "Outbox"
         )
 
         suspend fun initialize(driverProvider: () -> SqlDriver) {
             if (::instance.isInitialized) throw IllegalStateException("Already initialized")
 
+            // The constructor already rebuilt a stale schema (drop + recreate) before
+            // Schema.create() could trip over it — see the `init` block. Here we only
+            // surface the upgrade to the UI. [schemaVersionAtOpen] is the on-disk
+            // version observed before that rebuild: -1 = fresh install (no snackbar),
+            // 1..<DATABASE_VERSION = a real upgrade (tables were rebuilt).
             instance = DatabaseManager(driverProvider)
 
-            val version = instance.driveMainIndex.getSchemaVersion()
-
-            if (version < DATABASE_VERSION) {
+            val fromVersion = instance.schemaVersionAtOpen
+            if (fromVersion in 1 until DATABASE_VERSION) {
                 Logger.withTag("DatabaseManager")
-                    .i { "Schema version $version < $DATABASE_VERSION — wiping tables" }
-                instance.wipeAndRecreate()
+                    .i { "Schema upgraded from v$fromVersion to v$DATABASE_VERSION — tables rebuilt" }
                 _databaseUpgradeState.value =
-                    DatabaseUpgradeState.JustUpgraded(fromVersion = version.toInt())
+                    DatabaseUpgradeState.JustUpgraded(fromVersion = fromVersion.toInt())
             }
+        }
+
+        /**
+         * Read the schema version stamped as a `-- Version: N` comment on the on-disk
+         * DriveMainIndex CREATE statement, directly off the raw [driver] before any
+         * tables are (re)created. Returns -1 when the table doesn't exist yet (fresh
+         * install). Runs on the raw driver inside the constructor, before the
+         * wrapper/database exist.
+         */
+        private fun readOnDiskSchemaVersion(driver: SqlDriver): Long {
+            val createSql = driver.executeQuery(
+                identifier = null,
+                sql = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'DriveMainIndex'",
+                mapper = { cursor ->
+                    QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null)
+                },
+                parameters = 0,
+            ).value ?: return -1
+            return Regex("-- Version: (\\d+)").find(createSql)
+                ?.groupValues?.getOrNull(1)?.toLongOrNull() ?: -1
         }
 
         /**
@@ -248,7 +303,18 @@ class DatabaseManager(
                 factory.deleteOnDiskFiles()
                 DatabaseKeyManager.clearKey()
                 val freshKey = DatabaseKeyManager.getOrGenerateKey()
-                initialize { factory.createDriver(freshKey) }
+                // Wrap the retry: if the reset *also* fails (e.g. the on-disk files
+                // couldn't be removed, or the fresh open is itself broken), surface a
+                // clear, logged fatal instead of letting an opaque exception escape
+                // uncaught from the recovery path — which is how the iOS
+                // "no such column: fileState" double-fault reached users as a bare crash.
+                try {
+                    initialize { factory.createDriver(freshKey) }
+                } catch (retry: Exception) {
+                    Logger.withTag("DatabaseManager")
+                        .e(retry) { "initializeWithRecovery: reset retry also failed — database unopenable" }
+                    throw retry
+                }
             }
         }
     }
@@ -291,6 +357,9 @@ class DatabaseManager(
     }
     val outbox: OutboxWrapper by lazy {
         OutboxWrapper(driver, outboxAdapter, this)
+    }
+    val locationPoint: LocationPointWrapper by lazy {
+        LocationPointWrapper(driver, locationPointAdapter, this)
     }
     val connectionCache: ConnectionCacheWrapper by lazy {
         ConnectionCacheWrapper(driver, connectionCacheAdapter, this)

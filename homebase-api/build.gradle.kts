@@ -159,10 +159,12 @@ kotlin {
     val wasmJsDbBackedTestClasses = listOf(
         "id.homebase.api.sync.database.ChatReadCountWrapperTest",
         "id.homebase.api.sync.database.CursorSyncTest",
+        "id.homebase.api.sync.database.DriveMainIndexCreateOrderTest",
         "id.homebase.api.sync.database.DriveLocalTagIndexTest",
         "id.homebase.api.sync.database.DriveMainIndexTest",
         "id.homebase.api.sync.database.DriveTagIndexTest",
         "id.homebase.api.sync.database.FileStateFilterTest",
+        "id.homebase.api.sync.database.LocationPointWrapperTest",
         "id.homebase.api.sync.database.MainIndexMetaTest",
         "id.homebase.api.sync.database.OutboxSetNextRunTimeTest",
         "id.homebase.api.sync.database.OutboxSyncTest",

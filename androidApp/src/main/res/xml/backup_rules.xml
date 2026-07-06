@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- "odin-2.db" must match DB_FILE_NAME (homebase-api DatabaseDriverFactory.kt); that name is
+     frozen — XML can't reference the Kotlin const, so keep these in sync by hand. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="database" path="odin-2.db" />

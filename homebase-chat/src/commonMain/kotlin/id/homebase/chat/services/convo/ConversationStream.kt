@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -22,12 +23,13 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import id.homebase.core.share.ShareCacheStorage
-import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.share.ShareableConversation
+import id.homebase.core.sync.OptionalDriveActivation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -70,7 +72,7 @@ class ConversationStream(
     private val cacheStorage: ShareCacheStorage,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
-    private val momentsPreferences: MomentsPreferences,
+    private val optionalDriveActivation: OptionalDriveActivation,
 ) : ConversationLoader, ConversationParticipantLookup {
 
     private val chatDrive = chatTargetDrive.alias
@@ -127,6 +129,22 @@ class ConversationStream(
      * self-destruct it (soft-delete + hard-delete) once cleanup runs.
      */
     var onIncomingHealRequest: (suspend (status: StatusMessageData, sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
+
+    /**
+     * Hook invoked when the live receive stream observes an incoming
+     * [StatusMessage.EmergencyContactDesignated] status — i.e. the [sender] designated us as one of
+     * their emergency contacts. Wired in AppModule to mark the [sender] as an emergency contact on
+     * our own contact drive. Side effect only — does not affect message-list dispatch.
+     */
+    var onEmergencyContactDesignated: (suspend (sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
+
+    /**
+     * Hook invoked when the live receive stream observes an incoming
+     * [StatusMessage.EmergencyContactRevoked] status — i.e. the [sender] removed us from their
+     * emergency circle. Wired in AppModule to clear our can-locate flag for the [sender]. Side effect
+     * only — does not affect message-list dispatch.
+     */
+    var onEmergencyContactRevoked: (suspend (sender: OdinId, messageFile: HomebaseFile) -> Unit)? = null
     // endregion
 
 // region Orphan-recovery: read-path dedup of recover attempts
@@ -378,7 +396,7 @@ class ConversationStream(
                 ?.let { return it }
         }
 
-        return contactService.resolveByOdinId(author)?.name ?: author.domainName
+        return contactService.resolveByOdinId(author).name
     }
 
     private suspend fun dispatchGroupHealRequests(messageFiles: List<HomebaseFile>) {
@@ -400,6 +418,46 @@ class ConversationStream(
         }
     }
 
+    private suspend fun dispatchEmergencyDesignations(messageFiles: List<HomebaseFile>) {
+        val handler = onEmergencyContactDesignated ?: return
+        for (file in messageFiles) {
+            val appData = file.fileMetadata.appData
+            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
+            // originalAuthor is null on our own synced copy, so this only fires on the receiver side.
+            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
+            val content = appData.content ?: continue
+            val status = runCatching {
+                OdinSystemSerializer.deserialize<StatusMessageData>(content)
+            }.getOrNull() ?: continue
+            if (status.statusMessage != StatusMessage.EmergencyContactDesignated) continue
+            try {
+                handler(sender, file)
+            } catch (e: Exception) {
+                Logger.e(e) { "ConversationStream: emergency-designation handler threw for sender=${sender.domainName}: ${e.message}" }
+            }
+        }
+    }
+
+    private suspend fun dispatchEmergencyRevocations(messageFiles: List<HomebaseFile>) {
+        val handler = onEmergencyContactRevoked ?: return
+        for (file in messageFiles) {
+            val appData = file.fileMetadata.appData
+            if (appData.dataType != ChatProtocol.ChatStatusMessageDataType) continue
+            // originalAuthor is null on our own synced copy, so this only fires on the receiver side.
+            val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId ?: continue
+            val content = appData.content ?: continue
+            val status = runCatching {
+                OdinSystemSerializer.deserialize<StatusMessageData>(content)
+            }.getOrNull() ?: continue
+            if (status.statusMessage != StatusMessage.EmergencyContactRevoked) continue
+            try {
+                handler(sender, file)
+            } catch (e: Exception) {
+                Logger.e(e) { "ConversationStream: emergency-revocation handler threw for sender=${sender.domainName}: ${e.message}" }
+            }
+        }
+    }
+
     private suspend fun processMessageBatchIncrementally(messageFiles: List<HomebaseFile>) {
         if (messageFiles.isEmpty()) throw IllegalArgumentException("It can't be empty")
 
@@ -407,6 +465,10 @@ class ConversationStream(
         // handler. Done here (live BatchReceived only — never on cold reads or
         // searches) so the side effects fire exactly once per arrival.
         dispatchGroupHealRequests(messageFiles)
+        // Same live-only contract: mark the sender as an emergency contact when they designate us,
+        // and clear that mark when they revoke us.
+        dispatchEmergencyDesignations(messageFiles)
+        dispatchEmergencyRevocations(messageFiles)
 
         // For each file in the batch, map to model (fetch last message from DB if needed).
         // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can
@@ -531,8 +593,10 @@ class ConversationStream(
                         lastMessageIsDeleted = m.isDeleted,
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
+                        lastMessageContent = m.messageContent,
                         lastMessageIsFromActiveUser =
-                            m.isAuthoredBy(credentialsManager.getActiveDomain()),
+                            m.isFromActiveUser(credentialsManager.getActiveDomain()),
+                        lastMessageSender = m.originalAuthor,
                         isGroup = !isOneToOne
                     )
 
@@ -1430,12 +1494,25 @@ class ConversationStream(
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
-        val base = recipientOverride
-            ?: getConversationById(conversationId)?.participants
-            ?: return listOf()
-        val recipients =
-            (base + additionalRecipients).filter { it != domain }.distinct()
-        return recipients
+        fun compute(): List<OdinId>? {
+            val base = recipientOverride
+                ?: getConversationById(conversationId)?.participants
+                ?: return null
+            return (base + additionalRecipients).filter { it != domain }.distinct()
+        }
+
+        val first = compute()
+        if (recipientOverride == null &&
+            conversationId != ChatProtocol.ConversationWithYourselfId &&
+            first.isNullOrEmpty()
+        ) {
+            // The in-memory row may be a placeholder/Invalid map (participants=[]) or
+            // missing entirely (e.g. an archived 1:1 opened via Contacts) while the DB
+            // conversation file maps fine — re-map it into memory and try once more (#934).
+            loadConversation(conversationId)
+            return compute() ?: emptyList()
+        }
+        return first ?: emptyList()
     }
 
     private suspend fun updateShareCache(
@@ -1452,7 +1529,7 @@ class ConversationStream(
                     .firstOrNull { it != activeDomain }
 
                 val avatarUrl = if (!convo.isGroupConversation && otherParticipant != null) {
-                    "https://${otherParticipant.domainName}/pub/image"
+                    otherParticipant.publicImageUrl()
                 } else null
 
                 // Resolve contact name using the same contact map pattern as ConversationEnricher
@@ -1473,7 +1550,13 @@ class ConversationStream(
                 )
             }
             _shareableConversations.value = shareable
-            shareCacheWriter.updateCache(shareable, domain, momentsPreferences.activated.value)
+            val momentsActivated = optionalDriveActivation.isActivated(momentsLabeledDrive)
+            shareCacheWriter.updateCache(
+                shareable,
+                domain,
+                momentsActivated,
+                ownerDisplayName = ownerSessionRepository.user.value?.displayName,
+            )
 
             // Pre-cache group avatar images for the iOS share extension
             for (convo in conversations) {

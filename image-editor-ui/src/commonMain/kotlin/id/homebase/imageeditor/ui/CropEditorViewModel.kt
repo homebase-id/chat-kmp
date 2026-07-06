@@ -37,8 +37,23 @@ class CropEditorViewModel(
     private val resultBus: CropResultBus,
 ) : ViewModel() {
 
-    /** Read once from the navigation route — keys both the source and the result. */
-    val requestId: Uuid = Uuid.parse(savedStateHandle.toRoute<Route.Crop>().requestId)
+    /** Keys both the source and the result. Arrives as a nav arg (main app, via
+     *  Route.Crop) or as a directly-seeded handle key (the share editor mounts this
+     *  screen without a NavHost). Read the raw key first, fall back to the typed route. */
+    val requestId: Uuid = (savedStateHandle.get<String>("requestId")
+        ?: savedStateHandle.toRoute<Route.Crop>().requestId).let(Uuid::parse)
+
+    /** Same dual-path read as [requestId] — the share editor mount has no typed route to fall back to. */
+    private val lockedAspect: String? = savedStateHandle.get<String>("lockedAspect")
+        ?: runCatching { savedStateHandle.toRoute<Route.Crop>() }.getOrNull()?.lockedAspect
+
+    /** Free the bus entry when the cropper screen goes away — confirmed or aborted.
+     *  postResult() closes the channel on the confirm path; this covers the back-out
+     *  path so the caller's resultsFor(requestId) collector can't suspend forever. */
+    override fun onCleared() {
+        resultBus.cancel(requestId)
+        super.onCleared()
+    }
 
     private val _uiState = MutableStateFlow(CropEditorUiState())
     val uiState: StateFlow<CropEditorUiState> = _uiState.asStateFlow()
@@ -58,6 +73,9 @@ class CropEditorViewModel(
     private var visibleViewportPx: RectF = RectF()
 
     private var loaded: Boolean = false
+
+    /** Set once in [load] — [CropEditorUiAction.ResetClicked] must restore this instead of Free/unlocked. */
+    private var lockedToSquare: Boolean = false
 
     /**
      * Run the preprocessor and configure the [EditorModel]. Idempotent; safe
@@ -84,11 +102,20 @@ class CropEditorViewModel(
             }
             previewBitmap = prep.previewBytes.toImageBitmap()
             model.onImageReady(prep.naturalSize)
-            // Default aspect = Free → start unlocked so the user can drag
-            // any corner without being constrained.
-            model.setCropAspectLock(false)
             if (!visibleViewportPx.isEmpty()) {
                 model.setVisibleViewPort(visibleViewportPx)
+            }
+            val squareLocked = lockedAspect == "square"
+            lockedToSquare = squareLocked
+            if (squareLocked) {
+                // Caller (e.g. avatar crop) pre-locks a fixed aspect instead of the
+                // default Free/unlocked start.
+                model.setFixedRatio(AspectMode.Square.ratio)
+                model.setCropAspectLock(true)
+            } else {
+                // Default aspect = Free → start unlocked so the user can drag
+                // any corner without being constrained.
+                model.setCropAspectLock(false)
             }
             snapshotMatrices()
             _uiState.update {
@@ -97,6 +124,9 @@ class CropEditorViewModel(
                     naturalSize = prep.naturalSize,
                     canUndo = model.canUndo(),
                     canRedo = model.canRedo(),
+                    aspectMode = if (squareLocked) AspectMode.Square else AspectMode.Free,
+                    cropAspectLocked = squareLocked,
+                    aspectSwitcherHidden = squareLocked,
                 )
             }
         }
@@ -138,12 +168,17 @@ class CropEditorViewModel(
             }
             CropEditorUiAction.ResetClicked -> {
                 model.reset()
-                model.setCropAspectLock(false)
+                if (lockedToSquare) {
+                    model.setFixedRatio(AspectMode.Square.ratio)
+                    model.setCropAspectLock(true)
+                } else {
+                    model.setCropAspectLock(false)
+                }
                 snapshotMatrices()
                 _uiState.update {
                     it.copy(
-                        aspectMode = AspectMode.Free,
-                        cropAspectLocked = false,
+                        aspectMode = if (lockedToSquare) AspectMode.Square else AspectMode.Free,
+                        cropAspectLocked = lockedToSquare,
                         freeRotationDegrees = 0f,
                         canUndo = false,
                         canRedo = false,

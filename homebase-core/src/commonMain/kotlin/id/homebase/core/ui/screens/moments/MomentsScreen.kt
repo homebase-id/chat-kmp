@@ -793,6 +793,15 @@ private fun MomentCommentsSheetHost(
             key = "moment-comments-sheet-$momentId",
         ) { parametersOf(momentId, null) }
         val uiState by detailVm.uiState.collectAsStateWithLifecycle()
+        // Deleting the moment from the sheet's description menu does an
+        // optimistic local remove, so the feed card vanishes on its own. There's
+        // no nav target to pop here (unlike the reels view), so just close the
+        // sheet so it doesn't linger over the now-deleted moment.
+        LaunchedEffect(detailVm) {
+            detailVm.events.collect { event ->
+                if (event is MomentDetailUiEvent.MomentDeleted) onDismiss()
+            }
+        }
         MomentCommentsSheet(
             uiState = uiState,
             onAction = detailVm::onAction,
@@ -1179,14 +1188,20 @@ private fun MomentPostCard(
                         downloadingFiles = emptySet(),
                         sharedTransitionScope = null,
                         animatedVisibilityScope = null,
-                        // Inner per-cell click handlers stay disabled in the feed
-                        // so the card-level multi-tap detector receives all taps
-                        // — that's what makes double/triple-tap-to-react work on
-                        // the media area itself (Instagram-style). For the
-                        // carousel path the embedded video tile handles its
-                        // own play tap; double-tap-heart bubbles up via the
-                        // onDoubleTap callback below.
-                        onMediaClick = null,
+                        // Photos render through the inline pinch-zoom wrapper,
+                        // whose gesture detector consumes taps over the image —
+                        // so the card-level multi-tap detector never sees them
+                        // (#874). Route a single tap (open) through the per-cell
+                        // handler so the zoom wrapper's onTap opens the moment,
+                        // exactly like the card detector's single-tap does;
+                        // pinch + double-tap-zoom still work, and on the image
+                        // they replace double/triple-tap-react (taps elsewhere on
+                        // the card still react). Video tiles keep their own play
+                        // tap and double-tap-heart via the onDoubleTap callback.
+                        onMediaClick = { tapped ->
+                            if (commentsSheetOnTap) onOpenComments(tapped.key)
+                            else onCardClick(tapped.key)
+                        },
                         isUploading = uploadStatus != null,
                         isMuted = isMuted,
                         onToggleMute = onToggleMute,
@@ -1439,6 +1454,7 @@ private fun MomentsTopAppBar(
                             ),
                             animatedVisibilityScope = this@AnimatedVisibility,
                             sharedTransitionScope = null,
+                            cacheBustKey = session.profileImageLastModified,
                         )
                     }
                 }

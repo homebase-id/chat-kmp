@@ -12,13 +12,20 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Disable identifier renaming only. R8 shrinking + optimization stay on (the AAB
+# size wins are theirs, not renaming's). The app is open-source, so renamed
+# identifiers protect nothing public; leaving names intact makes raw traces
+# (logcat / homebase.log / crash-recovery screen / screenshots) directly readable
+# with no retrace / per-build mapping.txt.
+-dontobfuscate
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep line numbers in release stack traces so Crashlytics / Play Console and
+# `retrace` resolve crashes to the exact original file + line instead of
+# "Unknown Source".
+-keepattributes SourceFile,LineNumberTable
+
+# Moot with -dontobfuscate (no renaming happens); kept to minimise the diff.
+-renamesourcefileattribute SourceFile
 
 # Filekit
 -keep class com.sun.jna.** { *; }

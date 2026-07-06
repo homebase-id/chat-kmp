@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +32,8 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.video.VideoProcessingPhase
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.resources.MR
@@ -75,6 +78,8 @@ fun MediaMessage(
     onMediaClick: ((PayloadDescriptor) -> Unit)? = null,
     onMediaLongPress: ((PayloadDescriptor, Offset) -> Unit)? = null,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
+    liveControls: LiveLocationBubbleControls? = null,
+    locationHeaderDescriptor: LocationPreviewDescriptor? = null,
     shape: Shape = RoundedCornerShape(
         topStart = Dimens.Message.cornerRadius,
         topEnd = Dimens.Message.cornerRadius
@@ -94,6 +99,15 @@ fun MediaMessage(
     val isSticker = remember(payloads) {
         payloads.size == 1 &&
             (payloads[0].descriptorInfo() as? DescriptorContent.ImageFile)?.isSticker == true
+    }
+
+    // A link preview is a single auto-generated card (image + title/description). Unlike a photo or
+    // video upload its payload is tiny and the card carries text, so the full-bleed dark
+    // UploadProgressOverlay scrim is heavy, redundant with the message's own pending tick, and would
+    // hide the crisp local image we now render during send. Skip the scrim for it — the inner card
+    // still receives isUploading so it renders the local source instead of a failing drive fetch.
+    val isLinkPreview = remember(payloads) {
+        payloads.size == 1 && payloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
     }
 
     Box(modifier = Modifier.animateContentSize()) {
@@ -134,6 +148,8 @@ fun MediaMessage(
                     isDownloading = downloadingFiles.contains("${messageId}_${payloads[0].key}"),
                     messageId = messageId,
                     isUploading = uploadStatus != null,
+                    liveControls = liveControls,
+                    locationHeaderDescriptor = locationHeaderDescriptor,
                 )
             }
 
@@ -158,13 +174,29 @@ fun MediaMessage(
             }
         }
 
-        if (uploadStatus != null) {
+        if (uploadStatus != null && uploadStatus.showsMediaOverlay(LocalUploadConnected.current) && !isLinkPreview) {
             UploadProgressOverlay(
                 status = uploadStatus,
                 modifier = Modifier.matchParentSize(),
             )
         }
     }
+}
+
+internal val LocalUploadConnected = compositionLocalOf { true }
+
+// The dark scrim + big spinner is for real work: local prep (thumbnail/resize/compress/
+// encrypt = Preparing), video transcode (Processing), the active transfer (Uploading — %
+// then Finalizing), and the brief completion tick (Completed). "Sending" is the durably-
+// queued handoff waiting for the network: shown while online, but hidden offline — there
+// it never progresses (airplane mode) and would spin forever, so the bottom-right outbox
+// indicator represents it instead (#948).
+internal fun UploadStatus.showsMediaOverlay(isConnected: Boolean): Boolean = when (this) {
+    UploadStatus.Sending -> isConnected
+    UploadStatus.Preparing,
+    is UploadStatus.Processing,
+    is UploadStatus.Uploading,
+    UploadStatus.Completed -> true
 }
 
 @Composable

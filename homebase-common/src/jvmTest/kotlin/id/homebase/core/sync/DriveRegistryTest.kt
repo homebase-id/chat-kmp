@@ -289,16 +289,43 @@ class DriveRegistryTest {
     // ---------- bootstrap ----------
 
     @Test
-    fun bootstrapReturnsLocalDrivesWithoutFetchingServerWhenLocalAvailable() = runTest {
+    fun bootstrapReconcilesLocalWithServerMountingDriveActivatedElsewhere() = runTest {
+        // Regression: local index has only the drive activated on this device, but the
+        // server registry also lists a drive activated on ANOTHER device. bootstrap must
+        // fetch the server and return the union so the other drive is mounted at login —
+        // it used to short-circuit on the non-empty local cache and never reconcile.
+        val activatedElsewhere = makeLabeledDrive("activated-elsewhere")
         val db = createTestDatabaseManager()
         seedRegistryFile(db, listOf(feedLabeledDrive))
-        val recorder = WriteRecorder()
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive, activatedElsewhere))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val drives = registry.bootstrap()
+
+        assertEquals(
+            listOf(feedLabeledDrive.drive.alias, activatedElsewhere.drive.alias),
+            drives.map { it.drive.alias },
+        )
+        assertEquals(1, recorder.fetchCount, "bootstrap must reconcile against the server even when local has the file")
+        db.close()
+    }
+
+    @Test
+    fun bootstrapFallsBackToLocalWhenServerFetchThrowsAndLocalPresent() = runTest {
+        // Offline-safe: a failed server fetch must never drop the user's already-activated
+        // drives — fall back to the local cache rather than returning empty.
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val recorder = WriteRecorder(
+            fetchResolver = { throw RuntimeException("simulated network failure") },
+        )
         val registry = buildRegistry(db, recorder = recorder)
 
         val drives = registry.bootstrap()
 
         assertEquals(listOf(feedLabeledDrive.drive.alias), drives.map { it.drive.alias })
-        assertEquals(0, recorder.fetchCount, "bootstrap must not hit the server when local DB has the file")
+        assertEquals(1, recorder.fetchCount)
         db.close()
     }
 

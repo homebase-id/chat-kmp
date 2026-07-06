@@ -4,28 +4,26 @@ package id.homebase.core.ui.screens.vault
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.withResolvedFiles
 import id.homebase.api.image.convertHeicToJpeg
-import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
+import id.homebase.upload.thumbnailDescriptorsFor
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
-import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultFileContent
@@ -47,11 +45,10 @@ private const val TAG = "VaultUploaderService"
 private fun vaultPayloadKey(index: Int): String = "vlt_pg_${index.toString().padStart(2, '0')}"
 
 class VaultUploaderService(
-    private val outboxSync: OutboxSync,
-    private val optimisticWriter: OptimisticWriter,
-    private val payloadEncryptionService: PayloadBundleEncryptionService,
+    private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadDownloadService: PayloadDownloadService,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val vaultService: VaultService,
 ) {
@@ -64,6 +61,7 @@ class VaultUploaderService(
         groupId: Uuid? = null,
         notes: String? = null,
         notePreview: String? = null,
+        label: String? = null,
         uniqueId: Uuid = Uuid.random(),
     ): Uuid? =
     // Resolve the picked files (Android copies content:// picks into cacheDir
@@ -78,6 +76,7 @@ class VaultUploaderService(
                 groupId = groupId,
                 notes = notes,
                 notePreview = notePreview,
+                label = label,
                 uniqueId = uniqueId,
             )
         }
@@ -89,6 +88,7 @@ class VaultUploaderService(
         groupId: Uuid?,
         notes: String?,
         notePreview: String?,
+        label: String?,
         uniqueId: Uuid,
     ): Uuid? {
         // heic_converted_*.jpg temps created by convertHeicIfNeeded outlive that
@@ -108,13 +108,10 @@ class VaultUploaderService(
             var pdfPageCount: Int? = null
             val bundle = buildMultiPayloadBundle(resolvedFiles, { pdfPageCount = it }, notePreview)
 
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                uniqueId, bundle, keyHeader.aesKey, scope
-            )
-
             val content = OdinSystemSerializer.serialize(
-                VaultFileContent(name = entryName, notes = notes, pdfPageCount = pdfPageCount)
+                VaultFileContent(name = entryName, label = label, notes = notes, pdfPageCount = pdfPageCount)
             )
+            // previewThumbs pass through encryption unchanged, so derive from the plaintext bundle.
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -123,54 +120,24 @@ class VaultUploaderService(
                     content = content,
                     fileType = VAULT_FILE_TYPE,
                     groupId = groupId,
-                    previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
+                    previewThumbnail = bundle.previewThumbs.firstOrNull(),
                 ),
             )
 
-            val payloadDescriptors = encryptedBundle.payloads.map { payload ->
-                PayloadDescriptor(
-                    key = payload.key,
-                    contentType = payload.contentType.ifEmpty { null },
-                    iv = payload.iv?.let { Base64.encode(it) },
-                    descriptorContent = payload.descriptorContent,
-                    previewThumbnail = payload.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
-
-            val request = UploadFileRequest(
-                driveId = driveId,
-                keyHeader = keyHeader,
-                metadata = unencryptedMetadata.encryptContent(keyHeader),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
+            // Local-only vault file (allowDistribution=false). UploadService owns the spine:
+            // encrypt (fail-soft) → enqueue → seed cache → optimistic writeNewFile.
+            val outcome = uploadService.upload(
+                MediaUploadSpec(
+                    driveId = driveId,
+                    uniqueId = uniqueId,
+                    keyHeader = keyHeader,
+                    bundle = bundle,
+                    metadata = unencryptedMetadata,
+                    originalRecipientCount = 0,
+                ),
+                scope = scope,
             )
-
-            val enqueued = outboxSync.tryEnqueue(request)
-            if (enqueued) {
-                try {
-                    optimisticWriter.writeNewFile(
-                        driveId = driveId,
-                        keyHeader = keyHeader,
-                        unecryptedMetadata = unencryptedMetadata,
-                        originalRecipientCount = 0,
-                        fileSystemType = FileSystemType.Standard,
-                        payloadDescriptors = payloadDescriptors,
-                    )
-                    Logger.d(tag = TAG) { "Optimistic write complete: $entryName uniqueId=$uniqueId" }
-                } catch (e: Exception) {
-                    Logger.e(e, TAG) { "Optimistic write failed (non-fatal): $entryName" }
-                }
-                uniqueId
-            } else {
-                null
-            }
+            if (outcome is UploadOutcome.Enqueued) uniqueId else null
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue multi-payload upload: $entryName" }
             null
@@ -241,14 +208,8 @@ class VaultUploaderService(
                 allThumbnails += thumbnails
             }
 
-            val keyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16), aesKey = file.keyHeader.aesKey
-            )
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                Uuid.random(), PayloadBundle(allPayloads, allThumbnails, emptyList()),
-                keyHeader.aesKey, scope,
-            )
-
+            // Plaintext bundle — UploadService.updateFile (via enqueueFileContentUpdate) encrypts
+            // (fail-soft), builds the manifest, and writes the optimistic update.
             vaultService.enqueueFileContentUpdate(
                 uniqueId = file.uniqueId,
                 fileContent = VaultFileContent(
@@ -259,16 +220,89 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                manifest = UpdateManifest.build(
-                    payloads = encryptedBundle.payloads,
-                    thumbnails = encryptedBundle.thumbnails,
-                    generatePayloadIv = false,
-                ),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
+                bundle = PayloadBundle(allPayloads, allThumbnails, emptyList()),
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue append pages to ${file.uniqueId}" }
+            false
+        } finally {
+            for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
+        }
+    }
+
+    /**
+     * Replaces the image payload at [payloadKey] in place with [newFilePath]
+     * (the edited bytes). Same encryption/thumbnail/outbox path as
+     * [appendResolvedPages] — only the key is reused so the page is updated
+     * rather than appended. HEIC inputs are converted to JPEG just like the
+     * add/append paths.
+     */
+    suspend fun replacePagePayload(
+        file: VaultEntry,
+        payloadKey: String,
+        newFilePath: String,
+        contentType: String,
+        scope: CoroutineScope,
+    ): Boolean =
+        fileOperationsProvider.withResolvedFiles(listOf(newFilePath)) { resolved ->
+            replaceResolvedPagePayload(
+                file = file,
+                payloadKey = payloadKey,
+                newFilePath = resolved.first(),
+                contentType = contentType,
+                scope = scope,
+            )
+        }
+
+    private suspend fun replaceResolvedPagePayload(
+        file: VaultEntry,
+        payloadKey: String,
+        newFilePath: String,
+        contentType: String,
+        scope: CoroutineScope,
+    ): Boolean {
+        val heicTemps = mutableListOf<String>()
+        return try {
+            val (resolvedPath, resolvedType) = convertHeicIfNeeded(newFilePath, contentType)
+            if (resolvedPath != newFilePath) heicTemps += resolvedPath
+
+            var previewThumbnail: EmbeddedThumb? = null
+            var thumbnails = emptyList<ThumbnailFile>()
+            if (resolvedType.startsWith("image/")) {
+                try {
+                    val result = MessageThumbnailGenerator.generate(
+                        resolvedPath, payloadKey, fileOperationsProvider,
+                    )
+                    previewThumbnail = result.preview
+                    thumbnails = result.thumbnails
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "Thumbnail generation failed for replace payload $payloadKey" }
+                }
+            }
+
+            val payload = PayloadFile(
+                key = payloadKey,
+                filePath = resolvedPath,
+                contentType = resolvedType,
+                previewThumbnail = previewThumbnail,
+            )
+
+            vaultService.enqueueFileContentUpdate(
+                uniqueId = file.uniqueId,
+                fileContent = VaultFileContent(
+                    name = file.fileName,
+                    label = file.label,
+                    notes = file.notes,
+                ),
+                groupId = file.groupId,
+                versionTag = file.versionTag,
+                keyHeader = file.keyHeader,
+                bundle = PayloadBundle(listOf(payload), thumbnails, emptyList()),
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to enqueue replace page $payloadKey on ${file.uniqueId}" }
             false
         } finally {
             for (temp in heicTemps) fileOperationsProvider.deleteTempFile(temp)
@@ -295,9 +329,7 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                manifest = UpdateManifest.build(
-                    toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
-                ),
+                toDeletePayloads = listOf(PayloadDeleteKey(payloadKey)),
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue delete page $payloadKey from ${file.uniqueId}" }
@@ -311,11 +343,13 @@ class VaultUploaderService(
         markdown: String,
         notePreview: String?,
         scope: CoroutineScope,
-    ): Boolean {
+    ): Boolean = vaultService.runDurable {
+        // Run the whole persist (temp write → encrypt → enqueue) on the service scope so backing out
+        // of the editor mid-save doesn't cancel it before the outbox row commits (issue #927).
         val tempPath = fileOperationsProvider.writeBytesToTempFile(
             markdown.encodeToByteArray(), "vault_note_", ".md"
         )
-        return try {
+        try {
             val existingKey = file.payloadDescriptors.firstOrNull()?.key
                 ?: VaultEntry.DEFAULT_PAYLOAD_KEY
 
@@ -324,18 +358,6 @@ class VaultUploaderService(
                 filePath = tempPath,
                 contentType = CONTENT_TYPE_MARKDOWN,
                 descriptorContent = notePreview,
-            )
-
-            val keyHeader = KeyHeader(
-                iv = ByteArrayUtil.getRndByteArray(16),
-                aesKey = file.keyHeader.aesKey,
-            )
-
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                Uuid.random(),
-                PayloadBundle(listOf(payload), emptyList(), emptyList()),
-                keyHeader.aesKey,
-                scope,
             )
 
             vaultService.enqueueFileContentUpdate(
@@ -348,11 +370,12 @@ class VaultUploaderService(
                 groupId = file.groupId,
                 versionTag = file.versionTag,
                 keyHeader = file.keyHeader,
-                manifest = UpdateManifest.build(
-                    payloads = encryptedBundle.payloads,
-                    generatePayloadIv = false,
-                ),
-                payloads = encryptedBundle.payloads,
+                bundle = PayloadBundle(listOf(payload), emptyList(), emptyList()),
+                // A note edit is a full-state single-payload overwrite: write the new body through +
+                // seed it (so a read-back before send is correct) and coalesce rapid re-saves so the
+                // newest body wins instead of being dropped as AlreadyQueued (issue #927).
+                fileId = file.fileId,
+                replace = true,
             )
         } catch (e: CancellationException) {
             throw e
@@ -381,18 +404,20 @@ class VaultUploaderService(
                 file.keyHeader
             }
 
-            val bytes = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                key = payloadKey,
-                keyHeader = keyHeader,
-            )?.bytes ?: return null
-
             val ct = payloadDescriptor?.contentType ?: file.contentType
             val extension = ct.substringAfter("/", "bin").let {
                 if (it == "jpeg") "jpg" else it
             }
-            fileOperationsProvider.writeBytesToTempFile(bytes, "share_", ".$extension")
+            // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
+            // for any payload size; the old byte path buffered the whole payload
+            // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.
+            payloadDownloadService.exportToTemp(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                key = payloadKey,
+                keyHeader = keyHeader,
+                destination = ExportDestination.UploadTemp("share_", ".$extension"),
+            )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
             null

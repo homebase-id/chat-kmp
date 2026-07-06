@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,6 +23,8 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -29,6 +33,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
@@ -67,10 +72,11 @@ import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
-import id.homebase.chat.contactinfo.ContactInfoScreen
+import id.homebase.api.crypto.Md5
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
+import id.homebase.chat.conversationlist.ConversationLoadTrigger
 import id.homebase.chat.conversationsettings.ConversationSettingsScreen
 import id.homebase.chat.createconversation.CreateConversationScreen
 import id.homebase.chat.createconversationgroup.CreateConversationGroupScreen
@@ -78,7 +84,6 @@ import id.homebase.chat.editconversationgroup.EditConversationGroupScreen
 import id.homebase.chat.groupsettings.GroupSettingsScreen
 import id.homebase.chat.messageinfo.MessageInfoScreen
 import id.homebase.chat.selectmembers.SelectMembersScreen
-import id.homebase.core.TextRenderingHelper
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.permissions.PermissionStatus
@@ -86,7 +91,6 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
-import id.homebase.core.ui.screens.connections.ConnectionsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
@@ -104,10 +108,22 @@ import id.homebase.core.ui.screens.moments.MomentsUiEvent
 import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
+import id.homebase.core.location.LocationPreferences
+import id.homebase.core.ui.screens.location.LocationScreen
+import id.homebase.core.ui.screens.location.LocationUiEvent
+import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
+import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
+import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
+import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
+import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
+import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
+import id.homebase.core.ui.screens.vault.auth.VaultSessionTracker
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
@@ -117,16 +133,25 @@ import id.homebase.core.ui.screens.vault.settings.VaultSettingsScreen
 import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.ui.screens.contactbook.ContactBookScreen
+import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
+import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
+import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
+import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
+import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
+import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
+import id.homebase.resources.location_label
+import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
-import id.homebase.core.util.buildNotificationUrl
 import id.homebase.core.util.getUriHandler
 import kotlinx.io.files.Path
-import id.homebase.core.widget.ConnectionRequestHeaderBanner
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
 import id.homebase.imageeditor.ui.CropScreen
@@ -176,17 +201,33 @@ fun AppNavHost(
     val vaultPreferences = koinInject<VaultPreferences>()
     val vaultIconVisible by vaultPreferences.iconVisible.collectAsStateWithLifecycle()
     val vaultViewModel: VaultViewModel = koinViewModel()
-    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible) {
+    val locationPreferences = koinInject<LocationPreferences>()
+    val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
+    val locationViewModel: LocationViewModel = koinViewModel()
+    val contactBookPreferences = koinInject<ContactBookPreferences>()
+    val contactBookIconVisible by contactBookPreferences.iconVisible.collectAsStateWithLifecycle()
+    val contactBookOnboardingComplete by contactBookPreferences.onboardingComplete.collectAsStateWithLifecycle()
+    val contactBookViewModel: ContactBookViewModel = koinViewModel()
+    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible, contactBookIconVisible) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
             if (momentsIconVisible) add(TopLevelRoute.Moments)
             if (vaultIconVisible) add(TopLevelRoute.Vault)
+            if (locationIconVisible) add(TopLevelRoute.Location)
+            if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
             add(TopLevelRoute.Home)
         }
     }
+    val openContactBook: () -> Unit = {
+        navController.navigate(Route.ContactBook) {
+            popUpTo(Route.ChatList) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
     val openMoments: () -> Unit = {
-        if (momentsPreferences.activated.value) {
+        if (momentsViewModel.isActivated.value) {
             navController.navigate(Route.Moments) {
                 popUpTo(Route.ChatList) { saveState = true }
                 launchSingleTop = true
@@ -194,6 +235,17 @@ fun AppNavHost(
             }
         } else {
             navController.navigate(Route.MomentsOnboarding)
+        }
+    }
+    val openLocation: () -> Unit = {
+        if (locationViewModel.isActivated.value) {
+            navController.navigate(Route.Location) {
+                popUpTo(Route.ChatList) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else {
+            navController.navigate(Route.LocationOnboarding)
         }
     }
     val uriHandler = getUriHandler()
@@ -227,7 +279,12 @@ fun AppNavHost(
     )
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
-    val showBottomNavigationBar = isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen
+    // The full-screen image editor (newly-picked images) is a state-driven overlay, not a
+    // nav destination, so it doesn't hide the bottom nav on its own — fold it into the same
+    // gate the gallery uses.
+    val isVaultEditorOpen = vaultUiState.pendingEditor != null
+    val showBottomNavigationBar =
+        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -243,6 +300,10 @@ fun AppNavHost(
             }
         }
     }
+
+    // Keeps the Vault biometric session alive across every Vault sub-screen — owned by
+    // the vault feature, not this nav host.
+    VaultSessionTracker(navController)
 
     // Track active conversation + auth guard + notification permission
     LaunchedEffect(authState, currentDestination) {
@@ -287,7 +348,30 @@ fun AppNavHost(
                 is VaultUiEvent.OpenNoteEditor,
                 is VaultUiEvent.ShareFileReady,
                 is VaultUiEvent.SaveFileReady,
+                is VaultUiEvent.NavigateToCropper,
+                is VaultUiEvent.NavigateToDrawer,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
+            }
+        }
+    }
+
+    // Contact Book events → navigation. OpenConversation lands the chat list on
+    // the (created-if-needed) 1:1 conversation; CloseOnboarding pops back out of
+    // the contacts tab after a skip.
+    LaunchedEffect(Unit) {
+        contactBookViewModel.events.collect { event ->
+            when (event) {
+                is ContactBookUiEvent.OpenConversation -> {
+                    navController.selectConversationOnChatList(event.conversationId)
+                    navController.popBackStack(Route.ChatList, inclusive = false)
+                }
+                is ContactBookUiEvent.OpenDetail ->
+                    navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
+                ContactBookUiEvent.OpenAddContact ->
+                    navController.navigate(Route.AddContact())
+                ContactBookUiEvent.CloseOnboarding ->
+                    navController.popBackStack(Route.ChatList, inclusive = false)
+                else -> { /* Error handled by ContactBookScreen */ }
             }
         }
     }
@@ -335,9 +419,10 @@ fun AppNavHost(
                     // runs processPendingSharedContent so the shared file lands
                     // in the correct conversation.
                     if (event.source == NotificationNavigationEvent.OpenConversation.Source.ShareIntent) {
-                        navController.selectConversationOnChatList(id)
+                        // Tag this as a share-caused navigation so processPendingSharedContent
+                        // actually sends the pending descriptor (and only this path does).
+                        navController.selectConversationOnChatList(id, fromShareIntent = true)
                     }
-                    TextRenderingHelper.nudge()
                 }
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
@@ -346,11 +431,11 @@ fun AppNavHost(
                     val momentId = Uuid.parseOrNull(event.momentId)
                     Logger.i(tag = "AppNavHost") {
                         "OpenMoment received: id=$momentId openComments=${event.openComments} " +
-                                "activated=${momentsPreferences.activated.value}"
+                                "activated=${momentsViewModel.isActivated.value}"
                     }
                     // Only route when Moments is activated (receiving a moment push
                     // implies the moments drive is subscribed, so this normally holds).
-                    if (momentId != null && momentsPreferences.activated.value) {
+                    if (momentId != null && momentsViewModel.isActivated.value) {
                         // Cold-start safety: a tap can arrive while the NavHost is
                         // still on Route.AppLoading (startDestination). AppLoadingScreen
                         // finishes by navigating to ChatList with
@@ -380,12 +465,11 @@ fun AppNavHost(
                             )
                         )
                     }
-                    TextRenderingHelper.nudge()
                 }
 
                 is NotificationNavigationEvent.OpenMomentCompose -> {
                     Logger.i(tag = "AppNavHost") {
-                        "OpenMomentCompose received: activated=${momentsPreferences.activated.value}"
+                        "OpenMomentCompose received: activated=${momentsViewModel.isActivated.value}"
                     }
                     // The share flow seeded MomentCreateFlowState before launching
                     // us; MomentComposeViewModel reads that draft on init. Gate on
@@ -393,7 +477,7 @@ fun AppNavHost(
                     // Moment" when it is) and mirror the OpenMoment back-stack
                     // handling: push Moments first so back-press from the composer
                     // lands on the feed, then open the composer.
-                    if (momentsPreferences.activated.value) {
+                    if (momentsViewModel.isActivated.value) {
                         navController.currentBackStack.firstContaining {
                             it.destination.hasRoute(Route.ChatList::class)
                         }
@@ -404,7 +488,6 @@ fun AppNavHost(
                         }
                         navController.navigate(Route.MomentCompose)
                     }
-                    TextRenderingHelper.nudge()
                 }
             }
         }
@@ -426,6 +509,35 @@ fun AppNavHost(
         }
     }
 
+    // Translate Location onboarding one-shot events into nav-stack changes.
+    val locateFetchFailedMsg = stringResource(MR.string.location_locate_fetch_failed)
+    LaunchedEffect(Unit) {
+        locationViewModel.events.collect { event ->
+            when (event) {
+                LocationUiEvent.Activated -> {
+                    navController.popBackStack(Route.LocationOnboarding, inclusive = true)
+                    navController.navigate(Route.Location) {
+                        popUpTo(Route.ChatList) { saveState = true }
+                        launchSingleTop = true
+                    }
+                }
+                LocationUiEvent.CloseOnboarding -> navController.popBackStack()
+
+                is LocationUiEvent.OpenPeerHistory -> navController.navigate(
+                    Route.LocationPeerHistory(
+                        peerDomain = event.peerDomain,
+                        peerName = event.peerName,
+                    )
+                )
+
+                LocationUiEvent.LocateFetchFailed -> snackbarHostState.showSnackbar(
+                    message = locateFetchFailedMsg,
+                    duration = SnackbarDuration.Long,
+                )
+            }
+        }
+    }
+
     // Auto-dismiss in-app banner after 4 seconds
     val inAppNotification = uiState.inAppNotification
     LaunchedEffect(inAppNotification) {
@@ -437,6 +549,10 @@ fun AppNavHost(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // Leave the top inset to each screen: consuming it here pads everything
+        // below the status bar, so no screen's TopAppBar can extend behind it.
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets
+            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         bottomBar = {
             if (showBottomNavigationBar) {
                 NavigationBar {
@@ -460,10 +576,11 @@ fun AppNavHost(
                                 topLevelRoute.route::class
                             ) == true,
                             onClick = {
-                                TextRenderingHelper.nudge()
                                 when {
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    topLevelRoute is TopLevelRoute.Location -> openLocation()
+                                    topLevelRoute is TopLevelRoute.ContactBook -> openContactBook()
                                     else -> navController.navigate(topLevelRoute.route) {
                                         popUpTo(Route.ChatList) { saveState = true }
                                         launchSingleTop = true
@@ -494,10 +611,10 @@ fun AppNavHost(
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
                                 selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
                                 onClick = {
-                                    TextRenderingHelper.nudge()
                                     when {
                                         topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                         topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                        topLevelRoute is TopLevelRoute.Location -> openLocation()
                                         else -> navController.navigate(topLevelRoute.route) {
                                             popUpTo(Route.ChatList) { saveState = true }
                                             launchSingleTop = true
@@ -517,16 +634,6 @@ fun AppNavHost(
                                 onUpdateClick = { viewModel.triggerUpdate() }
                             )
                         }
-                        if (uiState.incomingRequests.isNotEmpty()) {
-                            ConnectionRequestHeaderBanner(
-                                requestCount = uiState.incomingRequests.size, onBannerClick = {
-                                    uiState.currentOdinId?.let {
-                                        val requestsUrl = it.buildNotificationUrl()
-                                        uriHandler.openUrl(requestsUrl)
-                                    }
-                                })
-                        }
-
                         val pendingUpgrade = uiState.pendingUpgrade
                         if (pendingUpgrade is PendingUpgradeState.ShowSnackbar) {
                             LaunchedEffect(pendingUpgrade) {
@@ -671,6 +778,8 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateToVault = openVault,
                                     onNavigateToMoments = openMoments,
+                                    onNavigateToLocation = openLocation,
+                                    onNavigateToContacts = openContactBook,
                                     onNavigateToExamples = { navController.navigate(Route.Examples) },
                                 )
                             }
@@ -691,6 +800,72 @@ fun AppNavHost(
                             }
                         }
 
+                        composable<Route.ContactBook> {
+                            if (isAuthenticated) {
+                                if (!contactBookOnboardingComplete) {
+                                    ContactBookOnboardingScreen(viewModel = contactBookViewModel)
+                                } else {
+                                    ContactBookScreen(
+                                        viewModel = contactBookViewModel,
+                                        connectRequestViewModel = koinViewModel(),
+                                        onProfileClick = {
+                                            navController.navigate(Route.Settings)
+                                        },
+                                        onOpenConversation = { conversationId ->
+                                            navController.selectConversationOnChatList(conversationId)
+                                            navController.popBackStack(Route.ChatList, inclusive = false)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+
+                        composable<Route.ContactBookSettings> {
+                            if (isAuthenticated) {
+                                val fromContacts = navController.previousBackStackEntry
+                                    ?.destination?.hasRoute(Route.ContactBook::class) == true
+                                ContactBookSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenContacts = openContactBook,
+                                    showOpenContacts = !fromContacts,
+                                )
+                            }
+                        }
+
+                        composable<Route.AddContact> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.AddContact>()
+                                AddContactScreen(
+                                    viewModel = koinViewModel(),
+                                    connectRequestViewModel = koinViewModel(),
+                                    identityOnly = route.identityOnly,
+                                    onBack = { navController.popBackStack() },
+                                    onOpenConversation = { conversationId ->
+                                        navController.selectConversationOnChatList(conversationId)
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.ContactBookDetail> {
+                            if (isAuthenticated) {
+                                ContactDetailScreen(
+                                    viewModel = koinViewModel(),
+                                    connectRequestViewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onOpenConversation = { conversationId ->
+                                        navController.selectConversationOnChatList(conversationId)
+                                        navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
+                                    },
+                                )
+                            }
+                        }
+
                         composable<Route.ChatList> { backStackEntry ->
                             if (isAuthenticated) {
                                 val conversationListViewModel: ConversationListViewModel =
@@ -704,6 +879,9 @@ fun AppNavHost(
                                 val pendingScrollToMessageId by backStackEntry.savedStateHandle.getStateFlow<String?>(
                                     "pendingScrollToMessageId", null
                                 ).collectAsStateWithLifecycle()
+                                val pendingFromShareIntent by backStackEntry.savedStateHandle.getStateFlow(
+                                    "pendingFromShareIntent", false
+                                ).collectAsStateWithLifecycle()
                                 LaunchedEffect(pendingConversationId) {
                                     pendingConversationId?.let { idStr ->
                                         Uuid.parseOrNull(idStr)?.let {
@@ -714,6 +892,13 @@ fun AppNavHost(
                                                 it,
                                                 messageId = pendingScrollToMessageId?.let { m -> Uuid.parseOrNull(m) },
                                                 scrollToBottom = pendingScrollToBottom,
+                                                // Only a share-intent navigation may auto-send the
+                                                // pending share descriptor (processPendingSharedContent).
+                                                trigger = if (pendingFromShareIntent) {
+                                                    ConversationLoadTrigger.ShareIntent
+                                                } else {
+                                                    ConversationLoadTrigger.Navigation
+                                                },
                                             )
                                             backStackEntry.savedStateHandle["pendingConversationId"] =
                                                 null
@@ -721,6 +906,8 @@ fun AppNavHost(
                                                 false
                                             backStackEntry.savedStateHandle["pendingScrollToMessageId"] =
                                                 null
+                                            backStackEntry.savedStateHandle["pendingFromShareIntent"] =
+                                                false
                                         }
                                     }
                                 }
@@ -736,8 +923,25 @@ fun AppNavHost(
                                     onNavigateToNewConversation = {
                                         navController.navigate(Route.CreateConversation)
                                     },
+                                    onNavigateToLiveLocationMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
+                                    // Reuse the same entry the Location nav icon uses: onboarding when
+                                    // the add-on isn't activated, else the dashboard (which requests
+                                    // permission) — covers both "not set up" gate-fail cases.
+                                    onNavigateToLocationSetup = openLocation,
+                                    onNavigateToShareLocation = { conversationId ->
+                                        navController.navigate(Route.LocationShare(conversationId))
+                                    },
                                     onNavigateToContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                        // 1:1 contact info is the full contact-detail screen
+                                        // (keyed by the contact uniqueId = md5(odinId)).
+                                        navController.navigate(
+                                            Route.ContactBookDetail(
+                                                uniqueId = Md5.toGuidId(it.lowercase()).toString(),
+                                                odinId = it,
+                                            )
+                                        )
                                     },
                                     onNavigateToConversationSettings = {
                                         navController.navigate(Route.ConversationSettings(it))
@@ -773,7 +977,6 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 CreateConversationScreen(
                                     viewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowConversation = { conversationId ->
                                         navController.selectConversationOnChatList(
@@ -785,6 +988,11 @@ fun AppNavHost(
                                     },
                                     onShowCreateGroup = {
                                         navController.navigate(Route.CreateConversationSelectMembers)
+                                    },
+                                    onAddContact = {
+                                        // From a chat flow: a contact is only useful with a
+                                        // Homebase ID, so hide manual entry.
+                                        navController.navigate(Route.AddContact(identityOnly = true))
                                     })
                             }
                         }
@@ -844,15 +1052,6 @@ fun AppNavHost(
                                             )
                                         )
                                     },
-                                )
-                            }
-                        }
-
-                        composable<Route.ContactInfo> {
-                            if (isAuthenticated) {
-                                ContactInfoScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }
@@ -932,7 +1131,14 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onShowContactInfo = {
-                                        navController.navigate(Route.ContactInfo(it))
+                                        // 1:1 contact info is the full contact-detail screen
+                                        // (keyed by the contact uniqueId = md5(odinId)).
+                                        navController.navigate(
+                                            Route.ContactBookDetail(
+                                                uniqueId = Md5.toGuidId(it.lowercase()).toString(),
+                                                odinId = it,
+                                            )
+                                        )
                                     },
                                     onAddMembers = {
                                         navController.navigate(Route.GroupAddMembers(it))
@@ -973,9 +1179,6 @@ fun AppNavHost(
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
-                                    onNavigateToConnections = {
-                                        navController.navigate(Route.Connections)
-                                    },
                                     onNavigateToNotifications = {
                                         navController.navigate(Route.NotificationSettings)
                                     },
@@ -993,6 +1196,39 @@ fun AppNavHost(
                                     },
                                     onNavigateToVaultSettings = {
                                         navController.navigate(Route.VaultSettings)
+                                    },
+                                    onNavigateToLocation = openLocation,
+                                    onNavigateToContactBookSettings = {
+                                        navController.navigate(Route.ContactBookSettings)
+                                    },
+                                    onNavigateToProfileEdit = {
+                                        navController.navigate(Route.ProfileEdit)
+                                    },
+                                    onNavigateToProfileAvatarEdit = {
+                                        navController.navigate(Route.ProfileAvatarEdit)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileEdit> {
+                            if (isAuthenticated) {
+                                ProfileEditScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileAvatarEdit> {
+                            if (isAuthenticated) {
+                                ProfileAvatarEditScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(
+                                            Route.Crop(requestId.toString(), lockedAspect = "square")
+                                        )
                                     },
                                 )
                             }
@@ -1107,18 +1343,118 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Connections> {
+                        composable<Route.LocationOnboarding> {
                             if (isAuthenticated) {
-                                ConnectionsScreen(
-                                    viewModel = koinViewModel(),
-                                    connectRequestViewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onShowConversation = { conversationId ->
-                                        navController.selectConversationOnChatList(
-                                            conversationId
+                                LocationOnboardingScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.Location> {
+                            if (isAuthenticated) {
+                                LocationScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateToHistory = {
+                                        navController.navigate(Route.LocationHistory)
+                                    },
+                                    onNavigateToFindDevice = { deviceId ->
+                                        navController.navigate(
+                                            Route.LocationFindDevice(deviceId?.toString())
                                         )
-                                        navController.popBackStack(
-                                            Route.ChatList, inclusive = false
+                                    },
+                                    onNavigateToLiveMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationHistory> {
+                            if (isAuthenticated) {
+                                LocationHistoryScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    // Empty-day "turn on location tracking" link → the dashboard, where
+                                    // the tracking toggle lives (reuse the existing instance).
+                                    onNavigateToDashboard = {
+                                        navController.navigate(Route.Location) {
+                                            launchSingleTop = true
+                                            popUpTo(Route.Location) { inclusive = false }
+                                        }
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationPeerHistory> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationPeerHistory>()
+                                LocationHistoryScreen(
+                                    // key: a fresh VM per peer (initial day + traces come from
+                                    // that peer's retrieved data, resolved at construction).
+                                    viewModel = koinViewModel(
+                                        key = route.peerDomain,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(route.peerDomain)
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    subjectName = route.peerName,
+                                    allowDelete = false,
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationLive> {
+                            if (isAuthenticated) {
+                                LiveLocationScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    // Maps-off CTA → location/maps setup (Route.Location when
+                                    // activated, else onboarding), reusing the shared nav lambda.
+                                    onOpenSetup = openLocation,
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationShare> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationShare>()
+                                ShareLocationScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.conversationId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parse(route.conversationId)
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    // Maps-off / enable-location CTA → location setup (dashboard or
+                                    // onboarding), reusing the shared nav lambda.
+                                    onOpenSetup = openLocation,
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationFindDevice> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationFindDevice>()
+                                FindDeviceScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.deviceId ?: "picker",
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                route.deviceId?.let { Uuid.parse(it) }
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onOpenDevice = { deviceId ->
+                                        navController.navigate(
+                                            Route.LocationFindDevice(deviceId.toString())
                                         )
                                     },
                                 )
@@ -1170,6 +1506,12 @@ fun AppNavHost(
                                             },
                                             onNavigateToNoteEditor = { sectionId, entryId ->
                                                 navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
+                                            },
+                                            onNavigateToCropper = { requestId ->
+                                                navController.navigate(Route.Crop(requestId.toString()))
+                                            },
+                                            onNavigateToDrawer = { requestId ->
+                                                navController.navigate(Route.Draw(requestId.toString()))
                                             },
                                         )
                                     }
@@ -1298,7 +1640,8 @@ fun AppNavHost(
 
 
 private fun NavHostController.selectConversationOnChatList(
-    conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null
+    conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,
+    fromShareIntent: Boolean = false,
 ): Boolean {
     val entry = runCatching { getBackStackEntry<Route.ChatList>() }.getOrNull()
     if (entry == null) {
@@ -1310,6 +1653,7 @@ private fun NavHostController.selectConversationOnChatList(
     entry.savedStateHandle["pendingConversationId"] = conversationId.toString()
     entry.savedStateHandle["pendingScrollToBottom"] = scrollToBottom
     entry.savedStateHandle["pendingScrollToMessageId"] = messageId?.toString()
+    entry.savedStateHandle["pendingFromShareIntent"] = fromShareIntent
     return true
 }
 
@@ -1318,7 +1662,9 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.Feed::class) == true ||
             this?.hasRoute(Route.Moments::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
-            this?.hasRoute(Route.Vault::class) == true
+            this?.hasRoute(Route.Vault::class) == true ||
+            this?.hasRoute(Route.Location::class) == true ||
+            this?.hasRoute(Route.ContactBook::class) == true
 }
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.isBetweenTopLevelRoutes(): Boolean {
@@ -1339,6 +1685,8 @@ sealed class TopLevelRoute(
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+    data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
+    data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
 }
 
 /**

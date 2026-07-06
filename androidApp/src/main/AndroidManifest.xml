@@ -23,6 +23,20 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Location add-on: background tracking (requires the Play Console
+         sensitive-permission declaration for this package — uploads are
+         rejected with 403 "background location permission declaration needs
+         to be updated" until it is approved) and re-arming the fused
+         PendingIntent registration after a reboot. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Location add-on: pedometer (steps per GPS point). ACTIVITY_RECOGNITION
+         lives in src/debug/AndroidManifest.xml ONLY: Google Play rejects any
+         store bundle declaring it with 403 "You must let us know whether your
+         app includes any health features" until the Play Console Health Apps
+         declaration is completed. Sideloaded debug builds keep step capture;
+         store builds (dev/release) record GPS + battery and leave steps null
+         until the declaration clears, at which point this moves back here. -->
 
     <!-- Devices running Android 13 (API level 33) or higher -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -45,6 +59,7 @@
         android:theme="@style/Theme.Material3.DayNight.NoActionBar"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="33">
         <activity
             android:exported="true"
@@ -142,6 +157,14 @@
                 <action android:name="id.homebase.feed.NOTIFICATION_MARK_READ" />
             </intent-filter>
         </receiver>
+
+        <activity
+            android:name=".crash.CrashActivity"
+            android:process=":crash"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Homebase.Crash" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

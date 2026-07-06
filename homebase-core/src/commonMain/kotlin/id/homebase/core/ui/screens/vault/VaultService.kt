@@ -1,15 +1,21 @@
 @file:OptIn(ExperimentalUuidApi::class, ExperimentalEncodingApi::class)
 
 package id.homebase.core.ui.screens.vault
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
+import id.homebase.upload.MediaUpdateSpec
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocale
 import id.homebase.api.client.drives.upload.UpdateManifest
@@ -19,6 +25,7 @@ import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.ui.screens.vault.model.VaultEntry
@@ -35,8 +42,30 @@ private const val TAG = "VaultService"
 class VaultService(
     private val outboxSync: OutboxSync,
     private val optimisticWriter: OptimisticWriter,
+    private val uploadService: UploadService,
+    private val scope: CoroutineScope,
 ) {
     private val driveId = vaultLabeledDrive.drive.alias
+
+    /**
+     * Runs [block] on this service's app-lifetime [scope] and awaits it, so a durable save
+     * (temp write → encrypt → outbox enqueue) COMPLETES even if the CALLER's coroutine is cancelled
+     * mid-flight — e.g. the user backs out of the note editor while the spinner shows. The caller
+     * still gets the result for its snackbar; if the caller is cancelled it simply stops awaiting
+     * while the enqueue lands anyway. Failures are funnelled through the Deferred, never up to
+     * [scope], so a failed save can't tear the service scope down. (issue #927 culprit #4)
+     */
+    internal suspend fun <T> runDurable(block: suspend () -> T): T {
+        val result = CompletableDeferred<T>()
+        scope.launch {
+            try {
+                result.complete(block())
+            } catch (e: Throwable) {
+                result.completeExceptionally(e)
+            }
+        }
+        return result.await()
+    }
 
     suspend fun createSection(
         sectionId: Uuid,
@@ -60,7 +89,7 @@ class VaultService(
                 keyHeader = keyHeader,
                 metadata = unencryptedMetadata.encryptContent(keyHeader),
             )
-            val enqueued = outboxSync.tryEnqueue(request)
+            val enqueued = outboxSync.tryEnqueue(request).enqueued
             if (enqueued) {
                 try {
                     optimisticWriter.writeNewFile(
@@ -90,13 +119,19 @@ class VaultService(
                     driveId = driveId,
                     fileIds = listOf(fileId),
                 ),
-            )
+            ).enqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue vault file delete: $uniqueId" }
             false
         }
     }
 
+    /**
+     * Enqueue a content/metadata update for an existing vault file through the shared
+     * [UploadService.updateFile]. Pass a plaintext [bundle] for new/replaced payloads (the pipeline
+     * encrypts + fail-softs), [toDeletePayloads] for a delete, or neither for a header-only edit
+     * (rename / label / notes). The pipeline reuses the file's AES key with a fresh IV.
+     */
     internal suspend fun enqueueFileContentUpdate(
         uniqueId: Uuid,
         fileContent: VaultFileContent,
@@ -104,11 +139,19 @@ class VaultService(
         versionTag: Uuid?,
         keyHeader: KeyHeader,
         fileType: Int = VAULT_FILE_TYPE,
-        manifest: UpdateManifest = UpdateManifest.build(),
-        payloads: List<PayloadFile>? = null,
-        thumbnails: List<ThumbnailFile>? = null,
+        bundle: PayloadBundle? = null,
+        toDeletePayloads: List<PayloadDeleteKey>? = null,
+        generatePayloadIv: Boolean = false,
+        // Pass the file's own id ONLY for a full-state single-payload overwrite (a note edit) so the
+        // pipeline writes the new body through + seeds it (issue #927). Leave null for incremental
+        // updates (append/replace one page, delete a page, header-only rename/label/move).
+        fileId: Uuid? = null,
+        // true → coalesce a still-queued update for this file (newest wins); false → tryEnqueue.
+        // Safe only when the update carries the file's COMPLETE state (a note edit), not an increment.
+        replace: Boolean = false,
     ): Boolean {
         val content = OdinSystemSerializer.serialize(fileContent)
+        // Reuse the file's AES key with a fresh IV — the server rejects an update whose AES key differs.
         val newKeyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16), aesKey = keyHeader.aesKey
         )
@@ -124,32 +167,21 @@ class VaultService(
             versionTag = versionTag,
         )
 
-        val enqueued = outboxSync.tryEnqueue(
-            request = UpdateFileByUniqueIdRequest(
+        val outcome = uploadService.updateFile(
+            MediaUpdateSpec(
                 driveId = driveId,
                 uniqueId = uniqueId,
                 keyHeader = newKeyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = manifest,
-                ),
-                metadata = unencryptedMetadata.encryptContent(newKeyHeader),
-                payloads = payloads,
-                thumbnails = thumbnails,
+                metadata = unencryptedMetadata,
+                bundle = bundle,
+                fileId = fileId,
+                toDeletePayloads = toDeletePayloads,
+                generatePayloadIv = generatePayloadIv,
+                replace = replace,
             ),
+            scope = scope,
         )
-
-        if (enqueued) {
-            try {
-                optimisticWriter.writeUpdate(driveId, newKeyHeader, unencryptedMetadata)
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for $uniqueId" }
-            }
-        }
-
-        return enqueued
+        return outcome is UploadOutcome.Enqueued
     }
 
     suspend fun renameEntry(
@@ -205,13 +237,13 @@ class VaultService(
                     driveId = driveId,
                     groupIds = listOf(sectionUniqueId),
                 ),
-            )
+            ).enqueued
             val sectionEnqueued = outboxSync.tryEnqueue(
                 request = DeleteLocalFilesByFileIdRequest(
                     driveId = driveId,
                     fileIds = listOf(sectionFileId),
                 ),
-            )
+            ).enqueued
             childrenEnqueued && sectionEnqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to delete vault section: $sectionUniqueId" }
@@ -255,7 +287,7 @@ class VaultService(
                     ),
                     metadata = unencryptedMetadata.encryptContent(newKeyHeader),
                 ),
-            )
+            ).enqueued
 
             if (enqueued) {
                 try {
@@ -268,6 +300,29 @@ class VaultService(
             enqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue section update: $sectionUniqueId" }
+            false
+        }
+    }
+
+    suspend fun moveEntryToSection(
+        entry: VaultEntry,
+        targetSectionId: Uuid,
+    ): Boolean {
+        return try {
+            enqueueFileContentUpdate(
+                uniqueId = entry.uniqueId,
+                fileContent = VaultFileContent(
+                    name = entry.fileName,
+                    label = entry.label,
+                    notes = entry.notes,
+                    pdfPageCount = entry.pdfPageCount,
+                ),
+                groupId = targetSectionId,
+                versionTag = entry.versionTag,
+                keyHeader = entry.keyHeader,
+            )
+        } catch (e: Exception) {
+            Logger.e(e, TAG) { "Failed to enqueue move for ${entry.uniqueId} -> $targetSectionId" }
             false
         }
     }

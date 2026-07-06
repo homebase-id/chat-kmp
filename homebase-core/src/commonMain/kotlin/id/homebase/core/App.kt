@@ -5,8 +5,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import id.homebase.core.diagnostics.TextRecovery
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
@@ -34,17 +32,15 @@ fun App(
     val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
     val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme() else if (prefState.theme == ThemeState.Dark) true else false
 
-    HomebaseTheme(darkTheme = isDarkTheme) {
-        // key(TextRecovery.epoch) — the iOS blank-text recovery (shake) bumps this to force a full
-        // re-composition of the UI tree so every Text re-shapes and re-rasterizes its glyphs. The
-        // navController is remembered above, so navigation state survives. No-op when never bumped.
-        key(TextRecovery.epoch.value) {
-            AppNavHost(
-                viewModel = koinInject(),
-                navController = navController,
-                youAuthFlowManager = youAuthFlowManager
-            )
-        }
+    HomebaseTheme(
+        darkTheme = isDarkTheme,
+        followsSystemTheme = prefState.theme == ThemeState.System,
+    ) {
+        AppNavHost(
+            viewModel = koinInject(),
+            navController = navController,
+            youAuthFlowManager = youAuthFlowManager
+        )
         LaunchedEffect(navController) { onNavHostReady(navController) }
     }
 }

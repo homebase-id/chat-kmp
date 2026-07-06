@@ -4,27 +4,27 @@ package id.homebase.chat.services.sticker
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadFile
-import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptionService
+import id.homebase.api.sync.database.enqueued
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import id.homebase.chat.services.builder.MessageThumbnailGenerator
-import id.homebase.chat.services.outbox.OptimisticWriter
-import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.stickerLabeledDrive
+import id.homebase.core.sync.OptionalDriveActivation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -44,31 +44,40 @@ private const val TAG = "StickerService"
  *  - [resolveForSend] downloads + decrypts a saved sticker's bytes to a temp file so the
  *    composer can re-stage it as a normal image attachment with `forceSticker = true`.
  *  - [deleteSticker] enqueues a local-file delete (mirror of VaultService.deleteEntry).
- *  - [ensureDriveMounted] lazily mounts the optional Stickers drive on first use.
+ *  - [activate] registers + mounts the optional Stickers drive on first-time grant.
  *
  * Reuses all existing crypto/outbox machinery — no hand-rolled encryption, no new table.
  */
 class StickerService(
     private val outboxSync: OutboxSync,
-    private val optimisticWriter: OptimisticWriter,
-    private val payloadEncryptionService: PayloadBundleEncryptionService,
+    private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
-    private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val optionalDriveActivation: OptionalDriveActivation,
     private val stickerStream: StickerStream,
 ) {
     private val driveId = stickerLabeledDrive.drive.alias
 
     /**
-     * Lazily mount the optional Stickers drive (mirrors Moments' on-demand mount).
-     * Mounting is idempotent in [AuthConnectionCoordinator]; safe to call on every
-     * tray-open / save without a "first time" flag.
+     * Activate the optional Stickers drive via [OptionalDriveActivation]: register it in
+     * the cross-device [id.homebase.core.sync.DriveRegistry] and mount it, then cold-load
+     * the saved-sticker stream. This is the SINGLE sanctioned mount path for stickers —
+     * invoked once when the user first grants the Stickers permission. On every subsequent
+     * app start the drive is already in the registry, so the login pre-mount loop mounts it
+     * automatically before the WebSocket connects; feature code does not re-mount.
+     *
+     * Idempotent: [OptionalDriveActivation.activate] is a no-op (and skips the WS-refresh)
+     * when the drive is already mounted, so a redundant call after the login pre-mount costs
+     * nothing.
      */
-    suspend fun ensureDriveMounted() {
+    suspend fun activate() {
         try {
-            authConnectionCoordinator.mountDrive(stickerLabeledDrive)
+            optionalDriveActivation.activate(stickerLabeledDrive)
+            stickerStream.start()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Logger.e(e, TAG) { "Failed to mount Stickers drive" }
+            Logger.e(e, TAG) { "Failed to activate Stickers drive" }
         }
     }
 
@@ -87,8 +96,17 @@ class StickerService(
         scope: CoroutineScope,
         name: String? = null,
         uniqueId: Uuid = Uuid.random(),
+        /**
+         * The chat-message file this sticker is being saved FROM. Persisted in the sticker
+         * file's appData content ([StickerFileContent.sourceFileId]) so the sticker-tap bottom
+         * sheet can later detect that the same received sticker is already saved. Null when the
+         * sticker originates in-app (editor / background-remover) with no source message.
+         */
+        sourceFileId: Uuid? = null,
     ): Uuid? {
-        ensureDriveMounted()
+        // The Stickers drive is already mounted by the time a save runs — either
+        // auto-mounted at login (registered) or activated when the user granted the
+        // Stickers permission (StickerHandler.awaitDriveGranted gates on that). No mount here.
 
         // Mirror VaultUploaderService: convert HEIC/HEIF to JPEG so the drive and receivers
         // get a web image format. A directly-saved transparent HEIC would otherwise upload as
@@ -129,11 +147,11 @@ class StickerService(
                 previewThumbs = listOfNotNull(thumbs?.preview),
             )
 
-            val encryptedBundle = payloadEncryptionService.encryptBundle(
-                uniqueId, bundle, keyHeader.aesKey, scope,
+            val content = OdinSystemSerializer.serialize(
+                StickerFileContent(name = name, sourceFileId = sourceFileId)
             )
-
-            val content = OdinSystemSerializer.serialize(StickerFileContent(name = name))
+            // previewThumbs pass through encryption unchanged, so derive the preview from the
+            // plaintext bundle (UploadService owns the encrypt).
             val unencryptedMetadata = UploadFileMetadata(
                 allowDistribution = false,
                 isEncrypted = true,
@@ -141,70 +159,49 @@ class StickerService(
                     uniqueId = uniqueId,
                     content = content,
                     fileType = StickerProtocol.STICKER_FILE_TYPE,
-                    previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
+                    previewThumbnail = bundle.previewThumbs.firstOrNull(),
                 ),
             )
 
-            val payloadDescriptors = encryptedBundle.payloads.map { p ->
-                PayloadDescriptor(
-                    key = p.key,
-                    contentType = p.contentType.ifEmpty { null },
-                    iv = p.iv?.let { Base64.encode(it) },
-                    descriptorContent = p.descriptorContent,
-                    previewThumbnail = p.previewThumbnail?.let {
-                        ThumbnailDescriptor(
-                            pixelWidth = it.pixelWidth,
-                            pixelHeight = it.pixelHeight,
-                            contentType = it.contentType,
-                            content = it.content,
-                        )
-                    },
-                )
-            }.ifEmpty { null }
-
-            val request = UploadFileRequest(
-                driveId = driveId,
-                keyHeader = keyHeader,
-                metadata = unencryptedMetadata.encryptContent(keyHeader),
-                payloads = encryptedBundle.payloads,
-                thumbnails = encryptedBundle.thumbnails,
-            )
-
-            val enqueued = outboxSync.tryEnqueue(request)
-            if (!enqueued) return null
-
-            // Optimistic local write + in-memory insert so the tray shows the sticker
-            // immediately, before the outbox round-trips. The real fileId is assigned by
-            // [OptimisticWriter] (and re-emitted by DriveSync); the in-memory optimistic
-            // row keys on uniqueId, so [StickerStream.upsertSticker] swaps in the
-            // server-confirmed SavedSticker (correct fileId) when it lands.
-            try {
-                optimisticWriter.writeNewFile(
+            // Pre-mint the optimistic fileId so the tray tile, the seeded cache, and
+            // rekeyCacheAfterCreate all key on the same id.
+            val optimisticFileId = Uuid.random()
+            val outcome = uploadService.upload(
+                MediaUploadSpec(
                     driveId = driveId,
+                    uniqueId = uniqueId,
                     keyHeader = keyHeader,
-                    unecryptedMetadata = unencryptedMetadata,
+                    bundle = bundle,
+                    metadata = unencryptedMetadata,
+                    // Local-only (allowDistribution=false): no transit recipients.
                     originalRecipientCount = 0,
-                    fileSystemType = FileSystemType.Standard,
-                    payloadDescriptors = payloadDescriptors,
-                )
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "Optimistic write failed (non-fatal) for sticker $uniqueId" }
+                    optimisticFileId = optimisticFileId,
+                ),
+                scope = scope,
+            )
+            if (outcome !is UploadOutcome.Enqueued) {
+                Logger.w(tag = TAG) { "Sticker not enqueued uniqueId=$uniqueId outcome=$outcome" }
+                return null
             }
 
+            // In-memory tray insert so the tray shows the sticker immediately, before the
+            // outbox round-trips. The optimistic DB write + cache seed already ran inside
+            // UploadService (keyed on the same optimisticFileId); this is the tray mirror,
+            // keyed on uniqueId, swapped for the server-confirmed row when it lands. It reuses
+            // the payload descriptor UploadService built from the encrypted bundle.
             stickerStream.insertOptimistic(
                 SavedSticker(
-                    // Placeholder fileId for the pending row; the confirmed row (with the
-                    // real fileId) replaces it via the stream's uniqueId-keyed upsert.
-                    fileId = uniqueId,
+                    fileId = optimisticFileId,
                     uniqueId = uniqueId,
                     driveId = driveId,
                     payloadKey = key,
                     contentType = uploadType,
                     keyHeader = keyHeader,
-                    previewThumbnail = encryptedBundle.previewThumbs.firstOrNull(),
-                    payloadDescriptor = payloadDescriptors?.firstOrNull()
+                    previewThumbnail = bundle.previewThumbs.firstOrNull(),
+                    payloadDescriptor = outcome.payloadDescriptors?.firstOrNull()
                         ?: PayloadDescriptor(key = key, contentType = uploadType),
                     createdAt = Clock.System.now().toEpochMilliseconds(),
+                    sourceFileId = sourceFileId,
                     isPending = true,
                 )
             )
@@ -261,7 +258,7 @@ class StickerService(
                     driveId = driveId,
                     fileIds = listOf(sticker.fileId),
                 ),
-            )
+            ).enqueued
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to enqueue sticker delete: ${sticker.uniqueId}" }
             false

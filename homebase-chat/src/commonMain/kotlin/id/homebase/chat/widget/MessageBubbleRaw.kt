@@ -20,19 +20,26 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,12 +58,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
+import id.homebase.chat.services.ChatDeliveryStatus
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
@@ -80,6 +89,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
+import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -92,6 +102,17 @@ import kotlin.uuid.Uuid
  * layout) — it is never used as an array index or loop bound.
  */
 private const val CollapsedBodyMaxLines = 10
+
+/**
+ * Per-message "Read more" expanded flag, owned ABOVE the LazyColumn (in
+ * `ConversationContent`) and keyed by the message's stable uniqueId. The bubble's own
+ * composition slot is recreated whenever the LazyColumn recomposes (a new message
+ * arrives) or a recycled slot is reused on scroll — a `remember(message.id)` flag held
+ * inside the item is lost on both, so an expanded long body would collapse back to
+ * truncated when a new message arrived. Hoisting the flag here makes it survive that
+ * churn while only the bubbles that read a changed entry recompose (SnapshotStateMap).
+ */
+internal val LocalExpandedMessages = compositionLocalOf<SnapshotStateMap<Uuid, Boolean>?> { null }
 
 /**
  * Core message bubble composable that renders message content with smart layout.
@@ -127,6 +148,7 @@ fun MessageBubbleRaw(
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
+    liveControls: LiveLocationBubbleControls? = null,
     sharedTransitionScope: SharedTransitionScope?,
     animatedVisibilityScope: AnimatedVisibilityScope?,
     downloadingFiles: Set<String>,
@@ -139,12 +161,25 @@ fun MessageBubbleRaw(
     chainCap: Int? = null,
 ) {
 
+    // #814: render the timestamp + delivery footer only on the last bubble of a
+    // same-sender cluster (END/ALONE), or whenever a sent message failed to deliver.
+    val showMessageFooter = clusterPosition == MessageClusterPosition.END ||
+        clusterPosition == MessageClusterPosition.ALONE ||
+        (sentByYou && message.messageAppData.deliveryStatus == ChatDeliveryStatus.Failed.value)
+
     // Typed rich-content (event today; poll/doodle later) bypasses the text+media
     // path entirely — each kind paints its own bubble, with its own background and
     // click handling. Long-press / reactions / replies are added per-kind in their
     // own slice.
     when (val content = message.messageContent) {
         is MessageContent.Event -> {
+            // Optional cover photo rides as a chat_web* image payload on the event
+            // message. EventBubble renders it rounded above the card (tapping it
+            // opens the event detail, not the media viewer) and in the detail too.
+            val coverPayload = message.payloads?.firstOrNull {
+                it.contentType?.startsWith("image/") == true &&
+                    it.key.startsWith(ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB)
+            }
             EventBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
@@ -154,6 +189,10 @@ fun MessageBubbleRaw(
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
                 onLongClick = onLongClick,
+                coverPayload = coverPayload,
+                coverFileId = message.fileId,
+                coverKeyHeader = message.keyHeader,
+                coverPreviewThumbnail = message.previewThumbnail,
             )
             return
         }
@@ -186,8 +225,71 @@ fun MessageBubbleRaw(
             )
             return
         }
+        is MessageContent.Poll -> {
+            id.homebase.chat.poll.PollBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
+                messageId = message.id,
+                conversationId = message.conversationId,
+                ownReactions = message.ownReactions,
+                reactionSummary = message.reactionPreview,
+                organizer = message.originalAuthor,
+                onLongClick = onLongClick,
+            )
+            return
+        }
+        // Location renders as a self-contained typed bubble (like Event) so the generic text line —
+        // which would duplicate the address (MessageMapper sets it to displayLabel) — is skipped, and
+        // the bubble is Event-sized. Old payload-format messages (messageContent == null) fall through
+        // to the media path instead.
+        is MessageContent.Location -> {
+            content.descriptor?.let { d ->
+                val mapPayload = message.payloads?.firstOrNull {
+                    it.key == ChatProtocol.PAYLOAD_KEY_LOCATION
+                }
+                val pIv = mapPayload?.iv?.let { Base64.decode(it) }
+                // One fused bubble: the map "card" stays neutral grey; only the user's caption section
+                // takes the message-bubble background (blue when sent). The outer modifier supplies the
+                // single rounded clip — the card sets the grey, the caption section sets the blue.
+                val captionBg = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentSurface
+                else MaterialTheme.colorScheme.surfaceContainerHigh
+                val captionContent = if (sentByYou) HomebaseTheme.extendedColors.bubbleSentOnSurface
+                else MaterialTheme.colorScheme.onSurface
+                // Same edited-aware footer text as a regular bubble (see messageInfoText below).
+                val locInfoText = formatMessageTimestamp(message.userDate).let {
+                    if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $it" else it
+                }
+                LocationPreviewCard(
+                    descriptor = d,
+                    fileId = message.fileId,
+                    driveId = chatTargetDrive.alias,
+                    payloadKey = ChatProtocol.PAYLOAD_KEY_LOCATION,
+                    keyHeader = KeyHeader(pIv ?: ByteArray(16), message.keyHeader.aesKey),
+                    previewThumbnail = mapPayload?.previewThumbnail?.toEmbeddedThumb(),
+                    modifier = modifier
+                        .widthIn(min = 240.dp, max = 320.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                    onLongPress = onLongClick,
+                    liveControls = liveControls,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    createdAtMs = message.userDate.toEpochMilliseconds(),
+                    timestamp = locInfoText,
+                    captionBackgroundColor = captionBg,
+                    captionContentColor = captionContent,
+                    showTimestamp = showMessageFooter,
+                    showDeliveryStatus = sentByYou && !message.isDeleted,
+                    isPendingSend = message.isPendingSend,
+                    deliveryStatus = message.messageAppData.deliveryStatus,
+                    pendingSince = message.userDate,
+                )
+            }
+            return
+        }
         null -> Unit // fall through to text + media rendering
     }
+
+    // Old payload-format location messages (no header descriptor) still render via the media path.
+    val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
 
     val filteredPayloads = message.payloads?.filter {
         it.key != ChatProtocol.DefaultPayloadKey &&
@@ -198,15 +300,29 @@ fun MessageBubbleRaw(
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
     // Task F: collapse header-resident long bodies (< 7 KB, hasMore = false) that still
-    // overflow a screenful, on mobile only. Transient (no rememberSaveable) and reset per
-    // message identity so recycled bubbles don't inherit a stale expanded state.
-    var bodyExpanded by remember(message.id) { mutableStateOf(false) }
+    // overflow a screenful, on mobile only. The expanded flag is hoisted above the
+    // LazyColumn (LocalExpandedMessages) and keyed by uniqueId so it survives list
+    // recomposition and scroll recycling — an expanded body stays expanded when a new
+    // message arrives. Falls back to a local per-item flag when no host map is provided
+    // (standalone bubble previews/tests), preserving the old behaviour there.
+    val expandedMessages = LocalExpandedMessages.current
+    var localBodyExpanded by remember(message.id) { mutableStateOf(false) }
+    val bodyExpanded = expandedMessages?.get(message.id) ?: localBodyExpanded
+    fun expandBody() {
+        if (expandedMessages != null) expandedMessages[message.id] = true else localBodyExpanded = true
+    }
+    val isMobileDevice = isMobile()
     // Desktop always shows the full body and never an expander.
-    val bodyMaxLines = if (isMobile() && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
-    // Derive truncation from the captured layout result rather than measuring screen height.
-    // hasVisualOverflow is true exactly when the line cap clipped the body.
-    val isBodyTruncated =
-        isMobile() && !bodyExpanded && (textLayoutResult?.hasVisualOverflow == true)
+    val bodyMaxLines = if (isMobileDevice && !bodyExpanded) CollapsedBodyMaxLines else Int.MAX_VALUE
+    // Whether a "Read more" affordance is *eligible* for this bubble. This is deliberately
+    // derived WITHOUT the post-layout textLayoutResult, so the chip's presence as a custom-
+    // Layout child is stable across the first measure→layout pass. Whether the chip is
+    // actually placed (and contributes height) is decided inside the Layout below from the
+    // freshly-written textLayoutResult, in the SAME measure pass that produces it. Gating the
+    // chip on textLayoutResult HERE instead would lag one frame behind onTextLayout: the
+    // bubble would lay out without the chip, then grow by the chip's height a frame later —
+    // the "bounce" seen as a clipped message scrolls into view.
+    val canShowReadMore = !bodyExpanded && (message.hasMore || isMobileDevice)
     val pressInteractionSource = remember { MutableInteractionSource() }
     val isPressed by pressInteractionSource.collectIsPressedAsState()
 
@@ -375,6 +491,7 @@ fun MessageBubbleRaw(
                     deliveryStatus = message.messageAppData.deliveryStatus,
                     contentColor = contentColor,
                     pendingSince = message.userDate,
+                    showTimestamp = showMessageFooter,
                     onMediaClick = onMediaClick,
                     onMediaLongPress = { handleLongClick() },
                     onRequestDecryptedFile = onRequestDecryptedFile,
@@ -394,6 +511,8 @@ fun MessageBubbleRaw(
                         previewThumbnail = message.previewThumbnail,
                         onMediaClick = onMediaClick,
                         onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                         onRequestDecryptedFile = onRequestDecryptedFile,
                         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
                         sharedTransitionScope = sharedTransitionScope,
@@ -403,6 +522,7 @@ fun MessageBubbleRaw(
                         uploadStatus = uploadStatus,
                     )
                     MediaTimestampOverlay(
+                        showTimestamp = showMessageFooter,
                         messageInfoText = messageInfoText,
                         sentByYou = sentByYou,
                         isPendingSend = isPendingSend,
@@ -432,6 +552,8 @@ fun MessageBubbleRaw(
                                 previewThumbnail = message.previewThumbnail,
                                 onMediaClick = onMediaClick,
                                 onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
                                 shape = RoundedCornerShape(0.dp),
                                 sharedTransitionScope = sharedTransitionScope,
@@ -441,6 +563,7 @@ fun MessageBubbleRaw(
                                 uploadStatus = uploadStatus,
                             )
                             MediaTimestampOverlay(
+                                showTimestamp = showMessageFooter,
                                 messageInfoText = messageInfoText,
                                 sentByYou = sentByYou,
                                 isPendingSend = isPendingSend,
@@ -490,6 +613,7 @@ fun MessageBubbleRaw(
                                 bottom = 4.dp,
                             ),
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     message.messageAppData.replyPreview?.let { reply ->
@@ -515,6 +639,8 @@ fun MessageBubbleRaw(
                                 topEnd = Dimens.Message.cornerRadius
                             ) else RoundedCornerShape(0.dp),
                             onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                             onRequestDecryptedFile = onRequestDecryptedFile,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
@@ -555,28 +681,18 @@ fun MessageBubbleRaw(
                             )
                         }
                     }
-                    Row(
+                    MessageTimestampFooter(
+                        visible = showMessageFooter,
+                        infoText = messageInfoText,
+                        contentColor = contentColor,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 8.dp, end = 12.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        Text(
-                            text = messageInfoText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = contentColor.copy(alpha = 0.7f)
-                        )
-                        if (sentByYou && !message.isDeleted) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            DeliveryStatus(
-                                isPendingSend = isPendingSend,
-                                deliveryStatus = message.messageAppData.deliveryStatus,
-                                contentColor = contentColor.copy(alpha = 0.7f),
-                                pendingSince = message.userDate,
-                            )
-                        }
-                    }
+                    )
                 }
             } else {
                 // Note: If adding composables to Layout here, remember to update layout code to take new widget into account
@@ -595,6 +711,7 @@ fun MessageBubbleRaw(
                                         bottom = 4.dp,
                                     ),
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                             // Inline reply preview if this message is a reply
@@ -621,6 +738,8 @@ fun MessageBubbleRaw(
                                         topEnd = Dimens.Message.cornerRadius
                                     ) else RoundedCornerShape(0.dp),
                                     onMediaLongPress = { _, _ -> handleLongClick() },
+                        liveControls = liveControls,
+                        locationHeaderDescriptor = locationDescriptor,
                                     onRequestDecryptedFile = onRequestDecryptedFile,
                                     sharedTransitionScope = sharedTransitionScope,
                                     animatedVisibilityScope = animatedVisibilityScope,
@@ -633,6 +752,8 @@ fun MessageBubbleRaw(
                                 modifier = Modifier.padding(
                                     horizontal = 12.dp, vertical = 12.dp
                                 ),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 if (emojiOnly) {
                                     // Render emoji-only messages prominently
@@ -645,6 +766,20 @@ fun MessageBubbleRaw(
                                         color = contentColor
                                     )
                                 } else {
+                                    // Mirror the conversation-list preview's deleted marker
+                                    // (MessageContentLabel: Block icon + the same string).
+                                    // This icon (16dp) + the row's 4dp gap shift the text's
+                                    // visual origin right; the timestamp-tuck Layout below adds
+                                    // that same offset (leadingIconOffset) to lastLineEnd so the
+                                    // tucked time clears the text instead of overlapping it.
+                                    if (message.isDeleted) {
+                                        Icon(
+                                            imageVector = Icons.Default.Block,
+                                            contentDescription = deletedText,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = contentColor,
+                                        )
+                                    }
                                     ChatMarkdown(
                                         content = bodyText,
                                         color = contentColor,
@@ -666,9 +801,14 @@ fun MessageBubbleRaw(
                             // OR clipped by the mobile line cap. Tapping downloads the spilled
                             // payload when present AND expands, in a single action — there is
                             // no collapse-back ("Read more" only).
-                            val showReadMore = !bodyExpanded && (message.hasMore || isBodyTruncated)
+                            //
+                            // The chip is *composed* whenever it is eligible (canShowReadMore);
+                            // whether it is actually placed and contributes height is decided in
+                            // the Layout's measure pass from the freshly-written
+                            // textLayoutResult. Composing it here on a layout-independent flag is
+                            // what keeps the bubble from growing a frame after it appears.
                             Box(modifier = Modifier.fillMaxWidth()) {
-                                if (showReadMore) {
+                                if (canShowReadMore) {
                                     Text(
                                         text = stringResource(MR.string.chat_message_read_more),
                                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
@@ -680,7 +820,7 @@ fun MessageBubbleRaw(
                                         modifier = Modifier
                                             .clickable {
                                                 if (message.hasMore) onShowMoreClick?.invoke()
-                                                bodyExpanded = true
+                                                expandBody()
                                             }
                                             .padding(
                                                 start = 12.dp,
@@ -698,23 +838,35 @@ fun MessageBubbleRaw(
                                 verticalAlignment = Alignment.Bottom,
                                 horizontalArrangement = Arrangement.End,
                             ) {
-                                Text(
-                                    text = messageInfoText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = contentColor.copy(alpha = 0.7f)
-                                )
-                                if (sentByYou && !message.isDeleted) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    DeliveryStatus(
-                                        isPendingSend = isPendingSend,
-                                        deliveryStatus = message.messageAppData.deliveryStatus,
-                                        contentColor = contentColor.copy(alpha = 0.7f),
-                                        pendingSince = message.userDate,
+                                // #814: keep this Row child present (the timestamp-tuck
+                                // Layout indexes children by position) but hide its
+                                // contents on non-terminal cluster bubbles.
+                                if (showMessageFooter) {
+                                    Text(
+                                        text = messageInfoText,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = contentColor.copy(alpha = 0.7f)
                                     )
+                                    if (sentByYou && !message.isDeleted) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        DeliveryStatus(
+                                            isPendingSend = isPendingSend,
+                                            deliveryStatus = message.messageAppData.deliveryStatus,
+                                            contentColor = contentColor.copy(alpha = 0.7f),
+                                            pendingSince = message.userDate,
+                                        )
+                                    }
                                 }
                             }
                         }
                     ) { measurables, constraints ->
+                        // The deleted-message Block icon sits left of the body inside the text
+                        // row (icon 16dp + the row's 4dp gap), shifting the text's visual origin
+                        // right. lastLineRight is measured from the text's own origin, so add this
+                        // offset to lastLineEnd below or the tucked timestamp overlaps the text.
+                        val leadingIconOffset =
+                            if (message.isDeleted) (16.dp + 4.dp).roundToPx() else 0
+
                         // Find MediaMessage index (after author and reply preview)
                         var mediaIndex = 0
                         if (authorName != null) mediaIndex++
@@ -761,6 +913,17 @@ fun MessageBubbleRaw(
 
                         // Calculate potential final width BEFORE measuring reply
                         val layoutResult = textLayoutResult
+
+                        // Decide read-more visibility HERE, from the layout result written
+                        // during THIS measure pass (the body was measured just above), so a
+                        // clipped body sizes the chip in on its first frame. hasMore is known
+                        // pre-layout; the mobile line-cap case reads hasVisualOverflow off the
+                        // fresh result. canShowReadMore (composition) guarantees the chip child
+                        // exists whenever this is true, so we never place an absent child.
+                        val showReadMore = !bodyExpanded &&
+                            (message.hasMore || (isMobileDevice && layoutResult?.hasVisualOverflow == true))
+                        val readMoreHeight = if (showReadMore) showMorePlaceable.height else 0
+
                         val rawPotentialFinalWidth: Int
 
                         if (layoutResult != null && layoutResult.lineCount > 0) {
@@ -770,7 +933,7 @@ fun MessageBubbleRaw(
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
@@ -829,7 +992,7 @@ fun MessageBubbleRaw(
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
-                            val lastLineEnd = textRowPadding + lastLineRight.toInt()
+                            val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
                                 (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
 
@@ -849,7 +1012,7 @@ fun MessageBubbleRaw(
                                     placeables.sumOf { it.height } +
                                             replyHeight +
                                             textPlaceable.height +
-                                            (showMorePlaceable.height)
+                                            readMoreHeight
                             } else {
                                 finalWidth = maxOf(
                                     mediaWidth,
@@ -865,7 +1028,7 @@ fun MessageBubbleRaw(
                                     placeables.sumOf { it.height } +
                                             replyHeight +
                                             textPlaceable.height +
-                                            (showMorePlaceable.height) +
+                                            readMoreHeight +
                                             infoPlaceable.height +
                                             8.dp.roundToPx() +
                                             4.dp.roundToPx()
@@ -879,10 +1042,10 @@ fun MessageBubbleRaw(
                                 authorWidth
                             )
                             infoY =
-                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + readMoreHeight
                             infoX = finalWidth - infoPlaceable.width
                             finalHeight =
-                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + infoPlaceable.height + 4.dp.roundToPx()
+                                placeables.sumOf { it.height } + replyHeight + textPlaceable.height + readMoreHeight + infoPlaceable.height + 4.dp.roundToPx()
                         }
 
                         // Same containment as `potentialFinalWidth`: never report a width
@@ -907,8 +1070,13 @@ fun MessageBubbleRaw(
                             textPlaceable.placeRelative(0, yPos)
                             yPos += textPlaceable.height
 
-                            showMorePlaceable.placeRelative(0, yPos)
-                            yPos += showMorePlaceable.height
+                            // Only place (and advance past) the chip when the measure pass
+                            // above decided to show it; readMoreHeight in finalHeight/infoY
+                            // matches this so the timestamp never overlaps an absent chip.
+                            if (showReadMore) {
+                                showMorePlaceable.placeRelative(0, yPos)
+                                yPos += showMorePlaceable.height
+                            }
 
                             infoPlaceable.placeRelative(clampedInfoX, infoY)
                         }
@@ -927,7 +1095,9 @@ private fun BoxScope.MediaTimestampOverlay(
     deliveryStatus: Int,
     contentColor: Color,
     pendingSince: Instant?,
+    showTimestamp: Boolean = true,
 ) {
+    if (!showTimestamp) return
     Box(modifier = Modifier.matchParentSize().align(Alignment.BottomStart)) {
         Box(
             modifier = Modifier.fillMaxWidth().height(40.dp)

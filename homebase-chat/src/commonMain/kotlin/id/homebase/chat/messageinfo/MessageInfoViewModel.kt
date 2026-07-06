@@ -88,8 +88,7 @@ class MessageInfoViewModel(
                             )
                         val recipients = transferHistory?.history?.results?.map { entry ->
                             val odinId = OdinId(entry.recipient)
-                            val displayName = contactService.resolveByOdinId(odinId)?.name
-                                ?: odinId.domainName
+                            val displayName = contactService.resolveByOdinId(odinId).name
                             RecipientStatusUiModel(
                                 odinId = entry.recipient,
                                 displayName = displayName,
@@ -120,8 +119,7 @@ class MessageInfoViewModel(
                         val messageId = message?.id ?: return@launch
                         val rawReactions = chatMessageActionService.getReactions(messageId)
                         val reactions = rawReactions.map { reaction ->
-                            val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
-                                ?: reaction.odinId.domainName
+                            val displayName = contactService.resolveByOdinId(reaction.odinId).name
                             ReactionUiModel(
                                 odinId = reaction.odinId.domainName,
                                 displayName = displayName,
@@ -167,14 +165,24 @@ class MessageInfoViewModel(
                 serverPresence = state.serverPresence,
             )
             // The outbox row (when present) overrides the tag/server view —
-            // a queued item is "still sending", whatever the tags claim.
+            // a queued item is "still sending", whatever the tags claim — but a
+            // delivered message can still carry a dead/lingering row (handled in
+            // retryUiState, which keeps the settled status + offers Try-now).
+            val nowMs = UnixTimeUtc.now().milliseconds
+            val row = state.outboxRow.takeIf { isOwn }
             val overlay = retryUiState(
                 base = result,
-                inOutbox = isOwn && state.outboxRow != null,
-                isCheckedOut = state.outboxRow?.isCheckedOut == true,
-                nextRunTimeRaw = state.outboxRow?.nextRunTime,
-                nowMs = UnixTimeUtc.now().milliseconds,
+                inOutbox = row != null,
+                isCheckedOut = row?.isCheckedOut == true,
+                isActivelyUploading = row?.isActivelyUploading == true,
+                nextRunTimeRaw = row?.nextRunTime,
+                nowMs = nowMs,
             )
+            // When blocked on an earlier message, the meaningful progress (attempt
+            // #, countdown, reason, checked-out/stuck) is the BLOCKER's, not this
+            // gated row's — that's the message that has to send first.
+            val waiting = row?.dependencyPending == true
+            val effective = if (waiting) state.blockingRow else row
             state.copy(
                 isOwnMessage = isOwn,
                 sendState = overlay.sendState,
@@ -182,6 +190,21 @@ class MessageInfoViewModel(
                 canRetry = overlay.canRetry,
                 canTryNow = overlay.canTryNow,
                 nextAttemptInMinutes = overlay.nextAttemptInMinutes,
+                // Show the attempt counter for ANY queued row — including a
+                // never-yet-attempted one (offline / first attempt) — so it isn't
+                // blank exactly when a message is stuck waiting to send.
+                attemptNumber = effective?.let { (it.checkOutCount + 1).toInt() },
+                nextAttemptAtMs = effective?.let { nextAttemptDeadlineMs(it.isCheckedOut, it.nextRunTime) },
+                waitingOnEarlierMessage = waiting,
+                stuckReason = effective?.lastError,
+                blockingRow = state.blockingRow,
+                isCheckedOut = effective?.isCheckedOut == true,
+                isActivelyUploading = effective?.isActivelyUploading == true,
+                // Offline only matters while something is actually queued.
+                outboxIsOffline = row != null && !outboxSync.isCurrentlyOnline(),
+                hasLingeringOutboxRow = row != null &&
+                    (overlay.sendState == OutgoingSendState.Sent ||
+                        overlay.sendState == OutgoingSendState.DeliveryFailed),
             )
         }
     }
@@ -197,7 +220,10 @@ class MessageInfoViewModel(
         val state = _uiState.value
         val message = state.message ?: return
         if (!message.isAuthoredBy(state.ownerSession?.odinId)) return
-        if (!message.isPendingSend && !message.isFailedSend) return
+        // Always read the row for an own message — NOT only when the tag says
+        // pending/failed. A delivered (Sent/Read) message can still carry a
+        // dead/zombie outbox row that strands later messages; gating on the tag
+        // hid it entirely. If no row exists this is a cheap no-op.
 
         outboxReadStarted = true
         viewModelScope.launch { refreshOutboxRow() }
@@ -206,7 +232,15 @@ class MessageInfoViewModel(
     private suspend fun refreshOutboxRow() {
         val message = _uiState.value.message ?: return
         val row = outboxSync.pendingRowSnapshot(chatTargetDrive.alias, message.id)
-        _uiState.update { it.copy(outboxRow = row) }
+        // When this row is blocked on an earlier message, fetch that blocker's
+        // own row so the UI can report its real state (checked-out/stuck,
+        // attempt, countdown) rather than a bare "waiting".
+        val blocker = if (row?.dependencyPending == true) {
+            outboxSync.blockingRowSnapshot(chatTargetDrive.alias, message.id)
+        } else {
+            null
+        }
+        _uiState.update { it.copy(outboxRow = row, blockingRow = blocker) }
         recomputeSendStatus()
     }
 
@@ -262,7 +296,10 @@ class MessageInfoViewModel(
         if (!state.canTryNow) return
         _uiState.update { it.copy(canTryNow = false, nextAttemptInMinutes = 0L) }
         viewModelScope.launch {
-            outboxSync.runNow(chatTargetDrive.alias, message.id)
+            // Resolve the whole blocked chain, not just this row: reclaims a dead
+            // (stale checked-out) blocker and resets every still-pending ancestor
+            // so the chain drains in order and this message can finally send.
+            outboxSync.runNowResolvingDependencies(chatTargetDrive.alias, message.id)
             delay(POST_TRY_NOW_REFRESH_MS)
             refreshOutboxRow()
         }

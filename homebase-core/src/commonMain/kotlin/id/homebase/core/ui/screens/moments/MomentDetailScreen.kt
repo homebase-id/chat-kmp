@@ -48,7 +48,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddReaction
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -568,6 +567,7 @@ fun MomentDetailPane(
                     is FullScreenOverlay.ViewMessageData -> "image"
                     is FullScreenOverlay.VideoPlayerData -> "video"
                     is FullScreenOverlay.AttachmentData -> "attachment"
+                    is FullScreenOverlay.PdfViewerData -> "pdf"
                 }
             },
             transitionSpec = {
@@ -617,6 +617,10 @@ fun MomentDetailPane(
                 is FullScreenOverlay.AttachmentData -> {
                     // Not used by moments — that overlay is the chat composer's
                     // attachment editor. The VM never emits this variant.
+                }
+
+                is FullScreenOverlay.PdfViewerData -> {
+                    // Not used by moments — PDFs are chat-only.
                 }
             }
         }
@@ -1478,6 +1482,11 @@ private fun MomentDetailContent(
         pageCount = { pageCount },
     )
 
+    // Set while the centred photo is pinched past fit. Disables the pager's
+    // horizontal paging so panning a zoomed photo doesn't flip pages; clears
+    // (paging resumes) at fit or when the page scrolls off.
+    var zoomedPageActive by remember(moment.id) { mutableStateOf(false) }
+
     // Report the on-screen carousel payload up to the overflow "Save current".
     // Description-only moments have no payloads → report null so the item hides.
     // snapshotFlow already dedups, so this only fires on a real page change.
@@ -1615,7 +1624,11 @@ private fun MomentDetailContent(
                 // page so single-payload moments (the common case) leave the
                 // vertical gesture entirely to the parent. Real carousels keep
                 // horizontal paging.
-                userScrollEnabled = pageCount > 1,
+                //
+                // Also suspend paging while the centred photo is pinched past
+                // fit so panning the zoomed image doesn't flip carousel pages;
+                // paging resumes when it returns to fit.
+                userScrollEnabled = pageCount > 1 && !zoomedPageActive,
             ) { page ->
                 val payload = moment.payloads[page]
                 val contentType = payload.contentType ?: ""
@@ -1708,10 +1721,23 @@ private fun MomentDetailContent(
                             shape = RectangleShape,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
-                            // Tap handled by the wrapping Box above (opens the
-                            // panel); keep the image itself gesture-free so the
-                            // horizontal swipe drives the pager cleanly.
-                            onClick = null,
+                            // With zoom on, the zoomable owns the tap surface:
+                            // at base scale its onTap opens the panel/lightbox;
+                            // while zoomed it pans. With zoom off keep the image
+                            // gesture-free so the tap falls to the wrapping Box
+                            // and the horizontal swipe drives the pager cleanly.
+                            onClick = if (commentsOpen) null else onMediaTap,
+                            // Inline pinch-zoom in the reels viewer. Disabled
+                            // while the media is shrunk to the comments band —
+                            // there the lightweight fit render is enough.
+                            enableZoom = !commentsOpen,
+                            // Only the centred page may gate the pager; ignore a
+                            // composed neighbour's reports defensively.
+                            onZoomedChanged = { zoomed ->
+                                if (pagerState.currentPage == page) {
+                                    zoomedPageActive = zoomed
+                                }
+                            },
                         )
                     }
                 }
@@ -2141,6 +2167,7 @@ private fun CommentsPanelContent(
                     onDraftChanged = { onAction(MomentDetailUiAction.DescriptionDraftChanged(it)) },
                     onSave = { onAction(MomentDetailUiAction.SaveDescriptionEdit) },
                     onCancel = { onAction(MomentDetailUiAction.CancelDescriptionEdit) },
+                    onDelete = { onAction(MomentDetailUiAction.RequestDeleteMoment) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -2288,6 +2315,23 @@ internal fun MomentCommentsSheet(
         scrimColor = Color.Transparent,
         sheetState = sheetState,
     )
+
+    // The description menu's Delete lands here. Wired in this entry point (the
+    // timeline feed sheet) the same way DetailContent wires it for reels — this
+    // path doesn't go through DetailContent, so without this the RequestDelete
+    // action would toggle showDeleteDialog with no dialog ever rendered.
+    if (uiState.showDeleteDialog) {
+        DeleteMomentDialog(
+            allowDeleteForEveryone = uiState.isMine,
+            onDeleteForMe = {
+                onAction(MomentDetailUiAction.ConfirmDeleteMoment(forEveryone = false))
+            },
+            onDeleteForEveryone = {
+                onAction(MomentDetailUiAction.ConfirmDeleteMoment(forEveryone = true))
+            },
+            onDismiss = { onAction(MomentDetailUiAction.DismissDeleteDialog) },
+        )
+    }
 
     val deleteCommentTarget = uiState.deleteCommentDialogTarget
     if (deleteCommentTarget != null) {
@@ -2926,6 +2970,7 @@ private fun MomentDescriptionSection(
     onDraftChanged: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -2987,16 +3032,55 @@ private fun MomentDescriptionSection(
                         .padding(top = 8.dp),
                 )
                 if (isMine) {
-                    IconButton(onClick = onStartEdit) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = stringResource(
-                                MR.string.moments_detail_edit_description,
-                            ),
-                        )
-                    }
+                    MomentDescriptionMenu(
+                        onEdit = onStartEdit,
+                        onDelete = onDelete,
+                    )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Author-only overflow next to a moment's description. Replaces the standalone
+ * edit pencil with a [MoreVert] menu so the same surface offers both **Edit
+ * description** and **Delete** — and because this description section is shown
+ * from both the reels detail pane and the timeline's [MomentCommentsSheet],
+ * surfacing delete here is what gives the feed a delete path (the reels-only
+ * immersive top-bar [MomentOverflowMenu] never appears over the feed).
+ */
+@Composable
+private fun MomentDescriptionMenu(
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = stringResource(MR.string.moments_detail_menu_more),
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.moments_detail_edit_description)) },
+                onClick = {
+                    expanded = false
+                    onEdit()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(MR.string.moments_detail_menu_delete)) },
+                onClick = {
+                    expanded = false
+                    onDelete()
+                },
+            )
         }
     }
 }

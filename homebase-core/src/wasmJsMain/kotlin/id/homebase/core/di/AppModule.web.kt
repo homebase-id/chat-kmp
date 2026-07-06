@@ -4,13 +4,17 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.WebFileOperationsProvider
+import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseSizeProbe
+import id.homebase.api.sync.database.DefaultDatabaseSizeProbe
 import id.homebase.chat.dice.ShakeDetector
 import id.homebase.chat.image.PlatformFileFetcher
 import id.homebase.core.audio.AudioPlayer
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.audio.getAudioPlayer
+import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
+import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.gallery.GalleryCache
 import id.homebase.core.gallery.PlatformGalleryManager
 import id.homebase.core.image.AnimatedSkiaDecoder
@@ -36,10 +40,11 @@ actual fun platformModule(): Module = module {
     single<PlatformGalleryManager> { WebGalleryManager() }
     single { GalleryCache(get<PlatformGalleryManager>()) }
     single<PlatformInfo> { WebPlatformInfo() }
+    single<DiagnosticsCrashTrigger> { NoOpDiagnosticsCrashTrigger }
     single<AudioRecorder> { WebAudioRecorder() }
     single<AudioPlayer> { getAudioPlayer() }
     single<AudioWaveFormGenerator> { WebAudioWaveFormGenerator() }
-    single<DatabaseSizeProbe> { WebDatabaseSizeProbe() }
+    single<DatabaseSizeProbe> { DefaultDatabaseSizeProbe(DatabaseDriverFactory()) }
     single<UpdateAppManager> { WebUpdateAppManager() }
     single<ShakeDetector> { WebShakeDetector() }
 

@@ -5,6 +5,7 @@ import id.homebase.api.PlatformType
 import id.homebase.api.getPlatform
 import id.homebase.api.client.SharedSecretEncryptedPayload
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.createPlatformHttpClient
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -17,7 +18,6 @@ import id.homebase.api.sync.DriveWebSocketUpsertWorker
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.toBase64
-import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -71,7 +71,7 @@ class OdinWebSocketClient(
     private val MAX_RECONNECT_DELAY_BACKGROUND_MS = 30_000L
     private var closed = false
 
-    private val client = HttpClient {
+    private val client = createPlatformHttpClient {
         // TODO: enable per-message deflate compression via WebSocketDeflateExtension once
         //  server support is confirmed (RFC 7692 / permessage-deflate).
         //  install(WebSockets) { extensions { install(WebSocketDeflateExtension) } }
@@ -122,6 +122,12 @@ class OdinWebSocketClient(
     private val notificationBufferMutex = Mutex()
 
     private var notificationFlushJob: Job? = null
+
+    // The in-flight dispatch of a coalesced batch. Kept SEPARATE from [notificationFlushJob]
+    // (the cancellable debounce window) so that a newly-arrived notification resetting the
+    // burst window cancels only the pending delay — never a dispatch already underway. Each
+    // new batch's dispatch joins the previous one, so batches still run strictly in order.
+    private var notificationDispatchJob: Job? = null
 
     private val NOTIFICATION_BURST_MS = 200L
 
@@ -387,23 +393,32 @@ class OdinWebSocketClient(
             notificationBuffer += notification
         }
 
-        // cancel pending flush
+        // Reset the coalescing window only. This cancels the *delay*, not any dispatch
+        // already running — that lives in notificationDispatchJob (see below).
         notificationFlushJob?.cancel()
 
         notificationFlushJob = scope.launch {
             delay(NOTIFICATION_BURST_MS)
 
-            val batch = notificationBufferMutex.withLock {
-                val snapshot = notificationBuffer.toList()
+            // Snapshot the batch and hand off to a dispatch job under the same lock, so the
+            // snapshot-and-chain is atomic w.r.t. a concurrent flush. launch() does not
+            // suspend, so the lock is held only briefly.
+            notificationBufferMutex.withLock {
+                val batch = notificationBuffer.toList()
                 notificationBuffer.clear()
-                snapshot
-            }
+                if (batch.isEmpty()) return@launch
 
-            for (n in batch) {
-                try {
-                    dispatchNotification(n)
-                } catch (e: Exception) {
-                    Logger.e(e) { "Failed to dispatch notification type=${n.notificationType}, data=${n.data.take(200)}" }
+                val previousDispatch = notificationDispatchJob
+                notificationDispatchJob = scope.launch {
+                    // Preserve ordering: don't start this batch until the previous one finished.
+                    previousDispatch?.join()
+                    for (n in batch) {
+                        try {
+                            dispatchNotification(n)
+                        } catch (e: Exception) {
+                            Logger.e(e) { "Failed to dispatch notification type=${n.notificationType}, data=${n.data.take(200)}" }
+                        }
+                    }
                 }
             }
         }
@@ -541,6 +556,56 @@ class OdinWebSocketClient(
                 )
             }
 
+
+            ClientNotificationType.connectionChanged -> {
+                val d = OdinSystemSerializer.deserialize<ConnectionChangedNotification>(
+                    notification.data
+                )
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.ConnectionChanged(
+                        identity = d.identity,
+                        change = d.change,
+                        circleId = d.circleId,
+                    )
+                )
+            }
+
+            ClientNotificationType.circleDefinitionChanged -> {
+                val d = OdinSystemSerializer.deserialize<CircleDefinitionChangedNotification>(
+                    notification.data
+                )
+                eventBus.emit(
+                    BackendEvent.CircleNetworkEvent.CircleDefinitionChanged(
+                        circleId = d.circleId,
+                        change = d.change,
+                    )
+                )
+            }
+
+            ClientNotificationType.publicProfileContentPublished -> {
+                val d = OdinSystemSerializer.deserialize<PublicProfileContentPublishedNotification>(
+                    notification.data
+                )
+                eventBus.emit(BackendEvent.PublicProfileContentPublished(d.artifact))
+            }
+
+            ClientNotificationType.liveRelay -> {
+                val d = OdinSystemSerializer.deserialize<LiveRelayReceivedNotification>(
+                    notification.data
+                )
+                Logger.i(tag = "LiveRelay") {
+                    "RECV from=${d.senderOdinId.domainName} ch=${d.channelKey} " +
+                        "bytes=${d.blob.length} receivedAt=${d.receivedAt}"
+                }
+                eventBus.emit(
+                    BackendEvent.LiveRelayReceived(
+                        senderOdinId = d.senderOdinId,
+                        channelKey = d.channelKey,
+                        blob = d.blob,
+                        receivedAt = d.receivedAt,
+                    )
+                )
+            }
 
             ClientNotificationType.appNotificationAdded -> {
             }

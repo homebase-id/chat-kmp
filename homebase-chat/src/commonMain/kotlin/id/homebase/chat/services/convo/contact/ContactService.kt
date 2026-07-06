@@ -1,17 +1,20 @@
 package id.homebase.chat.services.convo.contact
 
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.toContactUiModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class ContactService(
-    private val driveContacts: DriveContactService,
+    private val contactRepository: ContactRepository,
     private val connections: ConnectionService,
     private val scope: CoroutineScope
 ) {
@@ -28,12 +31,12 @@ class ContactService(
         if (started) return
         started = true
 
-        driveContacts.start()
+        // ContactRepository is started by the post-auth bootstrap; we only need connections here.
         connections.start()
 
         scope.launch {
             combine(
-                driveContacts.contacts,
+                contactRepository.contacts.map { list -> list.mapNotNull { it.toContactUiModel() } },
                 connections.connections
             ) { contacts, connectionState ->
 
@@ -63,15 +66,11 @@ class ContactService(
         }
     }
 
-    fun resolveByOdinId(odinId: OdinId): ContactUiModel? {
-        return contactByOdinId.value[odinId] ?: ContactUiModel(
-            id = odinId.toHashId(),
-            odinId = odinId,
-            name = odinId.domainName,
-            avatarInitials = "",
-            avatarUrl = "",
-            connection = null,
-            connectionState = ContactConnectionState.NotConnected
-        )
-    }
+    /**
+     * Resolves the saved contact for [odinId], or an identity-only fallback (domain name,
+     * domain-derived initials, canonical public-image URL) when none exists — never null,
+     * never blank avatar fields.
+     */
+    fun resolveByOdinId(odinId: OdinId): ContactUiModel =
+        contactByOdinId.value[odinId] ?: ContactUiModel.fallbackFor(odinId)
 }

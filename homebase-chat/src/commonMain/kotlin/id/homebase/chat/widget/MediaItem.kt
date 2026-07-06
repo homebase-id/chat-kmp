@@ -61,6 +61,7 @@ import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
 import id.homebase.core.image.rememberFullScreenImagePrefetch
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
@@ -111,6 +112,8 @@ fun MediaItem(
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
+    liveControls: LiveLocationBubbleControls? = null,
+    locationHeaderDescriptor: LocationPreviewDescriptor? = null,
     shape: Shape =
         RoundedCornerShape(
             topStart = Dimens.Message.cornerRadius,
@@ -184,6 +187,8 @@ fun MediaItem(
                     keyHeader = KeyHeader(payloadIv, keyHeader.aesKey),
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
+                    isUploading = isUploading,
+                    localImagePath = (localContext as? LocalAttachmentContext.Image)?.localFilePath,
                     modifier = baseModifier,
                 )
             } else {
@@ -196,23 +201,26 @@ fun MediaItem(
         }
 
         payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> {
-            val locationDescriptors = remember(payload.descriptorContent) {
+            // NEW messages carry the descriptor in the header (locationHeaderDescriptor); OLD ones
+            // parse it from the payload's descriptorContent. Header wins when present.
+            val payloadDescriptor = remember(payload.descriptorContent) {
                 payload.descriptorContent?.let { content ->
                     try {
                         OdinSystemSerializer.deserialize<List<LocationPreviewDescriptor>>(
                             content
-                        )
+                        ).firstOrNull()
                     } catch (_: Exception) {
                         null
                     }
                 }
             }
+            val descriptor = locationHeaderDescriptor ?: payloadDescriptor
 
             val payloadIv = payload.iv?.let { Base64.decode(it) }
 
-            if (payloadIv != null && locationDescriptors != null) {
+            if (payloadIv != null && descriptor != null) {
                 LocationPreviewCard(
-                    descriptor = locationDescriptors[0],
+                    descriptor = descriptor,
                     fileId = fileId,
                     driveId = driveId,
                     payloadKey = payload.key,
@@ -220,6 +228,10 @@ fun MediaItem(
                     previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                         ?: previewThumbnail,
                     modifier = baseModifier,
+                    onLongPress = onLongPress?.let { lp -> { lp(Offset.Zero) } },
+                    // Live-share only on new-format (header-descriptor) messages; an old payload-only
+                    // location can't be edited via updateMessage, so don't offer the toggle there.
+                    liveControls = liveControls.takeIf { locationHeaderDescriptor != null },
                 )
             } else {
                 MediaPlaceholder(
@@ -279,6 +291,11 @@ fun MediaItem(
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
                             requestedSize = imageSize,
+                            // Native thumbnail sizes this image actually has, so the
+                            // loader requests/caches by a native size — matching the
+                            // sender's optimistic seed (sharp thumb through finalizing)
+                            // and deduplicating the disk cache across measured sizes.
+                            availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                             lastModified = payload.lastModified,
                             isEncrypted = true,
                             // Pass the real payload content type so the loader
@@ -538,6 +555,36 @@ fun MediaItem(
             )
         }
 
+        contentType == "application/pdf" -> {
+            val pdfPreviewData =
+                remember(driveId, fileId, payload.key, payload.lastModified) {
+                    val previewThumb = payload.previewThumbnail?.toEmbeddedThumb() ?: previewThumbnail
+                    val payloadIv = payload.iv?.let { Base64.decode(it) }
+                    if (previewThumb == null || payloadIv == null) return@remember null
+                    HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payload.key,
+                        previewThumbnail = previewThumb,
+                        requestedSize = ImageSize.THUMB_MEDIUM,
+                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
+                        lastModified = payload.lastModified,
+                        isEncrypted = true,
+                        payloadContentType = contentType,
+                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
+                    )
+                }
+            DocumentMediaItem(
+                payload = payload,
+                modifier = baseModifier,
+                onDownloadClick = { onClick?.invoke() },
+                onLongPress = { onLongPress?.invoke(Offset.Zero) },
+                isDownloading = isDownloading,
+                previewImageData = pdfPreviewData,
+                showDownloadButton = false,
+            )
+        }
+
         contentType == "application/zip" ||
                 contentType == "application/x-rar-compressed" ||
                 contentType == "application/vnd.android.package-archive" ||
@@ -553,8 +600,9 @@ fun MediaItem(
         }
 
         else -> {
-            // Unsupported media type
-            println("Unsupported media type: $contentType")
+            // Unsupported media type — log to the app log (Kermit) rather than
+            // stdout so it actually lands in homebase.log for diagnosis.
+            Logger.w(tag = "MediaItem") { "Unsupported media type: $contentType" }
             MediaPlaceholder(
                 emoji = "❓",
                 label = "Unknown",

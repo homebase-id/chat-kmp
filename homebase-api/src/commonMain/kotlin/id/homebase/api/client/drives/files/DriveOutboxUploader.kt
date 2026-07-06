@@ -2,9 +2,16 @@ package id.homebase.api.client.drives.files
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.KeyHeader
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.upload.CreateFileResult
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.PayloadUploadReceipt
 import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.LocalAppData
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
@@ -20,6 +27,7 @@ import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
 import kotlin.uuid.Uuid
@@ -29,6 +37,8 @@ class DriveOutboxUploader(
     private val fileProvider: DriveFileProvider,
     private val operationsProvider: DriveFileOperationsProvider,
     private val reactionProvider: DriveFileGroupReactionProvider,
+    private val databaseManager: DatabaseManager,
+    private val credentialsManager: CredentialsManager,
 ) : OutboxUploader {
 
     override suspend fun upload(
@@ -47,42 +57,13 @@ class DriveOutboxUploader(
                 DeleteFilesByGroupId -> deleteFilesByGroupId(outboxRecord)
             }
         } catch (e: ClientException) {
-            if (e.status == 400) {
-                // Self-recipient: the outbox item's recipient list contains the
-                // logged-in identity. The server will reject this forever, so drop
-                // the row rather than scheduling 20 retries. Title-match because the
-                // server returns errorCode=UnhandledScenario for this case; there's
-                // no dedicated enum value. Mirrors the VersionTagMismatch pattern
-                // below: return normally and OutboxSync deletes the row.
-                if (e.message?.startsWith("Cannot transfer to yourself") == true) {
-                    Logger.w(
-                        "$TAG upload: dropping outbox item ${outboxRecord.uniqueId} " +
-                                "uploadType=${outboxRecord.uploadType} — terminal: ${e.message}"
-                    )
-                    return
-                }
-                // Title-match in addition to the structured errorCode because the server
-                // sometimes collapses VersionTagMismatch into errorCode=UnhandledScenario
-                // while preserving the title text "Mismatching version tag …". Without
-                // this fallback the outbox burns 20 attempts (~48h) on a stale tag.
-                val isVersionTagMismatch =
-                    e.errorCode == OdinClientErrorCode.VersionTagMismatch ||
-                            e.message?.contains("Mismatching version tag", ignoreCase = true) == true
-                if (isVersionTagMismatch) {
-                    Logger.w(
-                        "$TAG upload: dropping outbox item ${outboxRecord.uniqueId} " +
-                                "uploadType=${outboxRecord.uploadType} driveId=${outboxRecord.driveId} " +
-                                "— VersionTagMismatch (errorCode=${e.errorCode}): ${e.message}"
-                    )
-                    return
-                }
-                Logger.e(
-                    "$TAG upload: 400 for outbox item ${outboxRecord.uniqueId} " +
-                            "uploadType=${outboxRecord.uploadType} errorCode=${e.errorCode} " +
-                            "— will retry (server message: ${e.message})"
-                )
-                throw e
-            }
+            // Always rethrow — never swallow a terminal error by returning
+            // normally. Doing so used to make OutboxSync take the success path
+            // and emit ItemCompleted for an upload the server rejected (the
+            // bubble showed *sent* for a message that never landed). All
+            // permanent-vs-retryable classification lives in
+            // [classifyPermanentFailure]; OutboxSync drops permanent failures
+            // with an honest OutboxItemDropped.
             Logger.e(
                 "$TAG upload: failing outbox item ${outboxRecord.uniqueId} " +
                         "uploadType=${outboxRecord.uploadType} status=${e.status} " +
@@ -126,6 +107,14 @@ class DriveOutboxUploader(
                             "recipientStatus=${rStatus.entries.joinToString { "${it.key}=${it.value}" }}"
                 )
             }
+            // Best-effort, MUST never throw: an exception after a successful
+            // upload would read as upload failure to OutboxSync and re-send
+            // the file.
+            if (result != null) {
+                runCatching { rekeyCacheAfterCreate(request, result) }.onFailure {
+                    Logger.w("$TAG uploadNewFile: cache rekey failed (non-fatal) uniqueId=${request.metadata.appData.uniqueId}", it)
+                }
+            }
         // region Recovery: missing conversation file
         // If the server already has a file with this uniqueId (e.g. stale/archived
         // from a previous install), convert the failed UploadNewFile into an
@@ -154,6 +143,39 @@ class DriveOutboxUploader(
             throw e
         }
         // endregion
+    }
+
+    /**
+     * Move the file's seeded payload-cache entries from the optimistic
+     * (client-minted) fileId to the server-assigned one, now that the upload
+     * response tells us both the new fileId and — via [CreateFileResult.payloads]
+     * receipts — each payload's server `lastModified` (the version segment of
+     * the thumbnail cache key). Doing this here, rather than at sync-back,
+     * works for every drive (chat, Vault, Moments), needs no UI state, and
+     * lands before the synced file re-renders under the new fileId.
+     *
+     * The old fileId comes from the local optimistic record, which still holds
+     * it at this moment (sync-back hasn't replaced the row yet). No local
+     * record, or one already carrying the server fileId → nothing to move.
+     * On servers that pre-date the receipts field, thumbs are skipped (their
+     * target keys need the server lastModified) and only payload entries move;
+     * the orphaned thumb seeds age out via LRU.
+     */
+    private suspend fun rekeyCacheAfterCreate(request: UploadFileRequest, result: CreateFileResult) {
+        val uniqueId = request.metadata.appData.uniqueId ?: return
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val local = databaseManager.driveMainIndex
+            .selectHomebaseFileByUnique(identityId, request.driveId, uniqueId) ?: return
+        if (local.fileId == result.fileId) return
+
+        val descriptors = stampDescriptorsWithReceipts(local.fileMetadata.payloads.orEmpty(), result.payloads)
+        if (descriptors.isEmpty()) return
+
+        fileProvider.rekeyCachedFile(request.driveId, local.fileId, result.fileId, descriptors)
+        Logger.d(
+            "$TAG rekeyCacheAfterCreate: moved cache entries uniqueId=$uniqueId " +
+                    "old=${local.fileId} new=${result.fileId} receipts=${result.payloads.size}"
+        )
     }
 
     // region Recovery: missing conversation file — retry UploadNewFile as update
@@ -188,13 +210,51 @@ class DriveOutboxUploader(
                     "recipients=${original.transitOptions?.recipients?.size ?: 0}"
         )
 
-        // original.metadata is already encrypted (encryptContent was called before
-        // the request was serialized into the outbox). Just stamp the versionTag.
-        val metadataWithVersionTag = original.metadata.copy(
-            versionTag = versionTag
-        )
+        // Lost-ack recovery: the original UploadNewFile already landed on the
+        // server (that's *why* it reports ExistingFileWithUniqueId) — only the
+        // success response was lost to a dropped connection. For a
+        // payload-carrying request we can neither skip nor replay the update:
+        // re-sending the pre-encrypted bytes reuses the original payload IV, and
+        // the server rejects an unchanged IV with MustRotateKeyHeaderIvWhenUpdating
+        // ("When updating a file, you must change the Iv") on every retry —
+        // a deterministic ~48h loop (see the homebase.log image-to-Leela stall).
+        // The bytes on disk are sealed under that IV so we can't safely re-key
+        // them in memory. But we don't need to: the server already holds our
+        // file and payloads under our own key. Mark the row complete (Sent).
+        if (serverFileIsOurLandedCreate(original, serverFile)) {
+            Logger.i(
+                "$TAG retryAsUpdate: server already holds our create for uniqueId=$uniqueId " +
+                        "(AES key matches, payload(s) present) — treating as Sent (lost-ack create), " +
+                        "skipping the payload-IV-reuse update that the server would reject"
+            )
+            return
+        }
 
-        val updateRequest = UpdateFileByUniqueIdRequest(
+        // The server rejects an update whose AES key differs from the existing
+        // file's ("AES key must match"). When the client's key has diverged
+        // (local DB lost the key and minted a fresh one, or a replaceEnqueue
+        // superseded an in-flight create carrying a different key), re-encrypt
+        // a header-only request with the SERVER's key — the owner can always
+        // read it off the fetched header. Payload-carrying requests can't be
+        // re-keyed (bytes are pre-encrypted on disk); they fall through to the
+        // standard path and, on divergence, the server rejection drops the row
+        // (see OutboxFailureClassifier).
+        val rekeyed = rekeyedUpdateForExistingServerFile(
+            original = original,
+            serverKeyHeader = serverFile.keyHeader,
+            serverVersionTag = versionTag,
+        )
+        if (rekeyed != null) {
+            Logger.w(
+                "$TAG retryAsUpdate: local AES key diverged from the server file for uniqueId=$uniqueId — " +
+                        "re-encrypted the header with the server's key"
+            )
+        }
+
+        // Standard path: original.metadata is already encrypted (encryptContent
+        // was called before the request was serialized into the outbox). Just
+        // stamp the versionTag.
+        val updateRequest = rekeyed ?: UpdateFileByUniqueIdRequest(
             driveId = original.driveId,
             uniqueId = uniqueId,
             keyHeader = original.keyHeader,
@@ -209,7 +269,7 @@ class DriveOutboxUploader(
                     generatePayloadIv = false
                 )
             ),
-            metadata = metadataWithVersionTag,
+            metadata = original.metadata.copy(versionTag = versionTag),
             payloads = original.payloads,
             thumbnails = original.thumbnails
         )
@@ -380,4 +440,131 @@ class DriveOutboxUploader(
         const val ToggleReaction = 8L
         const val DeleteFilesByGroupId = 9L
     }
+}
+
+/**
+ * Root-cause fix for the "AES key must match" drop (see
+ * OutboxFailureClassifier): when `retryAsUpdate` converts a failed
+ * UploadNewFile into an update and the client's AES key has diverged from the
+ * server file's, re-encrypt the request with the SERVER's key (fresh IV) so
+ * the update is acceptable instead of deterministically rejected.
+ *
+ * Returns null when re-keying doesn't apply and the standard versionTag-stamp
+ * path is correct or the only option:
+ *  - the request isn't encrypted, or the server header has no usable key;
+ *  - the keys already match (the common case — e.g. chat's edit-coalesce
+ *    reuses the pending create's key);
+ *  - the request carries payloads or thumbnails: their bytes are
+ *    pre-encrypted on disk with the client key, and re-encrypting
+ *    arbitrarily large media in memory is not safe. Those requests take the
+ *    standard path; on divergence the server rejects and the row drops with
+ *    the classifier's reason — the owning flows self-heal (location
+ *    re-flushes its buffer, chat offers Retry).
+ *
+ * Pure given its inputs (plus IV randomness) — unit-tested in
+ * RetryAsUpdateRekeyTest.
+ */
+@OptIn(ExperimentalEncodingApi::class)
+internal suspend fun rekeyedUpdateForExistingServerFile(
+    original: UploadFileRequest,
+    serverKeyHeader: KeyHeader,
+    serverVersionTag: Uuid?,
+): UpdateFileByUniqueIdRequest? {
+    if (!original.metadata.isEncrypted) return null
+    if (serverKeyHeader == KeyHeader.empty()) return null
+    if (original.payloads.isNotEmpty() || original.thumbnails.isNotEmpty()) return null
+    if (original.keyHeader.aesKey == serverKeyHeader.aesKey) return null
+    val uniqueId = original.metadata.appData.uniqueId ?: return null
+
+    val newKeyHeader = KeyHeader(
+        iv = ByteArrayUtil.getRndByteArray(16),
+        aesKey = serverKeyHeader.aesKey,
+    )
+
+    // encryptContent stored Base64(AES(plaintext, clientKey)) — recover the
+    // plaintext with the client key, re-encrypt with the server key.
+    val reEncryptedContent = original.metadata.appData.content?.let { contentB64 ->
+        val plaintext = original.keyHeader.decrypt(Base64.decode(contentB64))
+        Base64.encode(newKeyHeader.encryptDataAes(plaintext))
+    }
+
+    return UpdateFileByUniqueIdRequest(
+        driveId = original.driveId,
+        uniqueId = uniqueId,
+        keyHeader = newKeyHeader,
+        instructions = FileUpdateInstructionSet(
+            transferIv = ByteArrayUtil.getRndByteArray(16),
+            locale = UpdateLocale.Local,
+            recipients = original.transitOptions?.recipients ?: emptyList(),
+            manifest = UpdateManifest.build(
+                payloads = emptyList(),
+                toDeletePayloads = null,
+                thumbnails = emptyList(),
+                generatePayloadIv = false,
+            ),
+        ),
+        metadata = original.metadata.copy(
+            versionTag = serverVersionTag,
+            appData = original.metadata.appData.copy(content = reEncryptedContent),
+        ),
+        payloads = emptyList(),
+        thumbnails = emptyList(),
+    )
+}
+
+/**
+ * Prepare a local file's payload descriptors for a cache re-key by stamping
+ * each with its upload receipt's server-assigned `uid`/`lastModified` (the
+ * thumbnail cache key's version segment). A descriptor with no matching
+ * receipt — an old server that doesn't return receipts — keeps its payload
+ * entry movable but has its thumbnail list stripped: without the server
+ * lastModified its thumb target keys can't be computed, so those seeds are
+ * left to age out via LRU rather than copied to dead keys.
+ */
+internal fun stampDescriptorsWithReceipts(
+    localPayloads: List<PayloadDescriptor>,
+    receipts: List<PayloadUploadReceipt>,
+): List<PayloadDescriptor> {
+    val receiptsByKey = receipts.associateBy { it.key.lowercase() }
+    return localPayloads.map { descriptor ->
+        val receipt = receiptsByKey[descriptor.key.lowercase()]
+        if (receipt != null) {
+            descriptor.copy(uid = receipt.uid, lastModified = receipt.lastModified)
+        } else {
+            descriptor.copy(thumbnails = null)
+        }
+    }
+}
+
+/**
+ * True when the server file already carrying our uniqueId is OUR OWN
+ * already-landed create whose success ack was lost (e.g. the connection
+ * dropped right after the server created the file — the
+ * `SocketException: Software caused connection abort` case). The signal:
+ *
+ *  - the request is payload-carrying (header-only divergence is handled by
+ *    [rekeyedUpdateForExistingServerFile]; only payload requests hit the
+ *    unrecoverable "must change the Iv" loop);
+ *  - the server file's AES key equals ours — a random 256-bit key only matches
+ *    if the server file is the one *we* created, not a stale/foreign file that
+ *    happens to share the (also random) uniqueId;
+ *  - every payload we were uploading is already present in the server header,
+ *    so nothing is missing and there is genuinely nothing left to send.
+ *
+ * When this holds, [DriveOutboxUploader.retryAsUpdate] returns without issuing
+ * the update PATCH — the row completes and the message shows Sent — instead of
+ * replaying the original payload IV, which the server rejects forever.
+ *
+ * Pure given its inputs — unit-tested in RetryAsUpdateRecoverLostAckTest.
+ */
+internal fun serverFileIsOurLandedCreate(
+    original: UploadFileRequest,
+    serverFile: HomebaseFile,
+): Boolean {
+    if (original.payloads.isEmpty()) return false
+    val serverKey = serverFile.keyHeader
+    if (serverKey == KeyHeader.empty()) return false
+    if (original.keyHeader.aesKey != serverKey.aesKey) return false
+    val serverPayloadKeys = serverFile.fileMetadata.payloads?.mapTo(mutableSetOf()) { it.key } ?: emptySet()
+    return original.payloads.all { it.key in serverPayloadKeys }
 }

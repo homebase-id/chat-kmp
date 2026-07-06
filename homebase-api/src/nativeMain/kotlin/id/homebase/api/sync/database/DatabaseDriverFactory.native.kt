@@ -13,12 +13,14 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSNumber
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLIsExcludedFromBackupKey
+import platform.Foundation.NSUserDomainMask
 
 actual class DatabaseDriverFactory {
     actual fun createDriver(passphrase: String?): SqlDriver {
@@ -70,9 +72,8 @@ actual class DatabaseDriverFactory {
         // lazily after this call. The per-file calls are belt-and-suspenders
         // for the primary .db so the attribute is set even if a future iOS
         // build refuses to honour directory-level exclusion.
-        excludeFromBackup("${NSHomeDirectory()}/databases")
-        for (suffix in DB_SUFFIXES) {
-            val path = "${NSHomeDirectory()}/databases/$DB_FILE_NAME$suffix"
+        excludeFromBackup(iosDatabasesDir())
+        for (path in databaseFiles()) {
             if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
                 excludeFromBackup(path)
             }
@@ -81,15 +82,24 @@ actual class DatabaseDriverFactory {
         return driver
     }
 
-    // NativeSqliteDriver resolves `name` to "${NSHomeDirectory()}/databases/<name>"
-    // under the hood; report the same path here so the shared recovery deletes
-    // the file the driver was looking at.
-    actual fun dbFilePath(): String = "${NSHomeDirectory()}/databases/$DB_FILE_NAME"
-
-    private companion object {
-        val DB_SUFFIXES = arrayOf("", "-wal", "-shm", "-journal")
-    }
+    // sqliter (NativeSqliteDriver's engine) resolves a bare `name` to
+    // "<NSApplicationSupportDirectory>/databases/<name>" — see
+    // co.touchlab.sqliter.DatabaseFileContext.iosDirPath. Report that exact path so the
+    // shared recovery (deleteOnDiskFiles) and backup-exclusion target the file the driver
+    // actually opened. (A previous "${NSHomeDirectory()}/databases" assumption was wrong —
+    // it pointed at a non-existent dir, so recovery and backup-exclusion silently no-op'd.)
+    actual fun dbFilePath(): String = "${iosDatabasesDir()}/$DB_FILE_NAME"
 }
+
+/**
+ * The directory sqliter stores databases in on Apple targets:
+ * `<NSApplicationSupportDirectory>/databases`. Mirrors
+ * `co.touchlab.sqliter.DatabaseFileContext.iosDirPath("databases")` so our delete /
+ * backup-exclusion / size logic targets exactly where the driver puts the file.
+ */
+internal fun iosDatabasesDir(): String =
+    (NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, true)
+        .first() as String) + "/databases"
 
 /**
  * Set `NSURLIsExcludedFromBackupKey = true` on [path] so iCloud / Finder /

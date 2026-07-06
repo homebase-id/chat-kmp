@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Trust the platform CAs as normal, PLUS the bundled ISRG (Let's Encrypt) roots — ISRG Root X1
+  and ISRG Root X2 — so the app can validate Let's Encrypt certificates even on devices whose
+  system trust store is missing them.
+
+  Why: identity certs (e.g. queralt.dominion.id) are genuine Let's Encrypt ECDSA certs that
+  chain to ISRG Root X2. Some Android devices — observed on Android 13 / MIUI — ship a system
+  store WITHOUT ISRG Root X2, so the app fails with "Trust anchor for certification path not
+  found" while Chrome (its own root store) works. Bundling the roots fixes it for every such
+  user, regardless of OEM trust-store lag.
+
+  Security: this only ADDS two well-known public roots. It keeps `system` and does NOT add
+  `user`, so it does not trust user-installed CAs (no MITM/VPN interception loophole) and does
+  not weaken validation. cleartextTrafficPermitted="true" preserves the prior manifest
+  `android:usesCleartextTraffic="true"` (a network-security-config overrides that attribute).
+
+  Maintenance: ISRG Root X1 valid to 2035, ISRG Root X2 valid to 2040. Fetched from
+  https://letsencrypt.org/certs/ — SHA-256: X1 96:BC:EC:06:…:08:C6, X2 69:72:9B:8E:…:14:70.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/isrg_root_x1" />
+            <certificates src="@raw/isrg_root_x2" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

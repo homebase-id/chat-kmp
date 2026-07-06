@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -167,12 +168,22 @@ private fun StickerTile(
     }
 }
 
-/** Small centered spinner used for a sticker tile that is uploading / loading its thumbnail. */
+/**
+ * Small centered spinner used for a sticker tile that is uploading / loading its thumbnail.
+ * Matches the sent-image upload treatment (a white indicator + translucent track on a dark
+ * scrim, see [id.homebase.chat.widget.MediaMessage]) so a still-uploading sticker reads the
+ * same as any other media that is still arriving, instead of the default `primary` blue.
+ */
 @Composable
 private fun StickerTileSpinner(modifier: Modifier = Modifier) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier.background(Color.Black.copy(alpha = 0.35f)),
+        contentAlignment = Alignment.Center,
+    ) {
         CircularProgressIndicator(
             modifier = Modifier.sizeIn(maxWidth = 20.dp, maxHeight = 20.dp),
+            color = Color.White,
+            trackColor = Color.White.copy(alpha = 0.2f),
             strokeWidth = 2.dp,
         )
     }

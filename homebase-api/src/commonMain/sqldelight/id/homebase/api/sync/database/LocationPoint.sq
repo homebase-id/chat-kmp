@@ -1,0 +1,126 @@
+import kotlin.uuid.Uuid;
+
+-- Local buffer for GPS points captured by the Location add-on, drained into
+-- per-device per-UTC-hour track files on the Location drive by
+-- LocationTrackUploaderService. Drain semantics: rows are stamped with the
+-- target file's uniqueId on enqueue (markFlushed) but KEPT — marked, not
+-- deleted — until the hour they belong to has closed, so every flush
+-- re-serializes the complete hour (the file is a whole-document replace). The
+-- outbox confirmation deletes them only once the hour is closed
+-- (deleteFlushedIfHourClosed); failures un-stamp them (clearFlushMark) so the
+-- next flush retries.
+CREATE TABLE IF NOT EXISTS LocationPoint(
+  t INTEGER NOT NULL PRIMARY KEY,  -- capture time, epoch ms; INSERT OR REPLACE dedups
+  lat REAL NOT NULL,
+  lon REAL NOT NULL,
+  acc REAL,                        -- horizontal accuracy, meters
+  alt REAL,                        -- altitude, meters
+  altAcc REAL,                     -- vertical accuracy, meters
+  spd REAL,                        -- speed, m/s
+  hdg REAL,                        -- heading/bearing, degrees
+  src TEXT NOT NULL,               -- gps | net | fused | slc
+  fg INTEGER NOT NULL,             -- 1 when captured in foreground precise mode
+  steps INTEGER,                   -- pedometer steps since the previous point (delta), or null
+  bat INTEGER,                     -- battery %, 0..100, or null
+  flushedFileUid BLOB AS Uuid      -- hour-file uniqueId once part of an enqueued flush
+);
+
+insertPoint:
+INSERT OR REPLACE INTO LocationPoint(t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, steps, bat, flushedFileUid)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL);
+
+-- Hours (epoch ms / 3600000) that still have rows not yet part of an enqueued flush.
+selectPendingHours:
+SELECT DISTINCT (t / 3600000) AS hourBucket
+FROM LocationPoint
+WHERE flushedFileUid IS NULL
+ORDER BY hourBucket;
+
+-- Every row of an hour (marked and unmarked) — a flush re-serializes the full hour.
+selectByTimeRange:
+SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, steps, bat
+FROM LocationPoint
+WHERE t >= ? AND t < ?
+ORDER BY t;
+
+markFlushed:
+UPDATE LocationPoint
+SET flushedFileUid = ?
+WHERE t >= ? AND t < ?;
+
+clearFlushMark:
+UPDATE LocationPoint
+SET flushedFileUid = NULL
+WHERE flushedFileUid = ?;
+
+deleteByFlushUid:
+DELETE FROM LocationPoint
+WHERE flushedFileUid = ?;
+
+-- Rows still on this device (enqueued or not).
+countAll:
+SELECT COUNT(*) FROM LocationPoint;
+
+-- Rows not yet part of an enqueued hour file — the UI's "waiting to upload"
+-- count. (Marked rows are already uploaded and kept only until the hour closes,
+-- so they must NOT count as pending.)
+countUnmarked:
+SELECT COUNT(*) FROM LocationPoint
+WHERE flushedFileUid IS NULL;
+
+-- Distinct hour buckets (epoch ms / 3600000) that still hold any rows. Used to
+-- finalize a closed hour (flush its complete contents one last time) even when
+-- no new points have arrived to put it in selectPendingHours.
+selectHoursWithRows:
+SELECT DISTINCT (t / 3600000) AS hourBucket
+FROM LocationPoint
+ORDER BY hourBucket;
+
+-- Drain a confirmed hour's rows, but ONLY once the hour has closed (its bucket
+-- is strictly before the current one). While the hour is still open we keep the
+-- marked rows so the next flush re-serializes the COMPLETE hour — the hour file
+-- is a whole-document replace, so dropping rows mid-hour truncates it. All rows
+-- of a given flush share one hour, so this deletes all-or-nothing.
+deleteFlushedIfHourClosed:
+DELETE FROM LocationPoint
+WHERE flushedFileUid = :fileUid
+  AND (t / 3600000) < (:nowMs / 3600000);
+
+countSince:
+SELECT COUNT(*) FROM LocationPoint
+WHERE t >= ?;
+
+-- Rows captured since ? that are not yet serialized into any hour file.
+-- Used by the "points today" computation: hour files carry the counts for
+-- everything already enqueued; these rows are the not-yet-flushed remainder.
+countUnmarkedSince:
+SELECT COUNT(*) FROM LocationPoint
+WHERE t >= ? AND flushedFileUid IS NULL;
+
+-- Un-uploaded rows older than ? (epoch ms). Drives the "upload anyway, even in
+-- battery saver, if there's a >24h un-uploaded backlog" safety override so the
+-- user's history can't sit on-device indefinitely while saver is on.
+countUnmarkedOlderThan:
+SELECT COUNT(*) FROM LocationPoint
+WHERE t < ? AND flushedFileUid IS NULL;
+
+selectLatest:
+SELECT t, lat, lon, acc, alt, altAcc, spd, hdg, src, fg, steps, bat
+FROM LocationPoint
+ORDER BY t DESC
+LIMIT 1;
+
+-- Retention sweep: bounds buffer growth when uploads are persistently failing.
+deleteOlderThan:
+DELETE FROM LocationPoint
+WHERE t < ?;
+
+-- Delete a day's (or any half-open range's) buffer rows — the local half of the
+-- history "delete this day" action; the hour files on the drive are soft-deleted
+-- separately.
+deleteByTimeRange:
+DELETE FROM LocationPoint
+WHERE t >= ? AND t < ?;
+
+deleteAll:
+DELETE FROM LocationPoint;

@@ -5,7 +5,7 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.data.ConversationUiModel
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.SendMessageResult
 import id.homebase.chat.services.StatusMessageData
 import kotlin.time.Instant

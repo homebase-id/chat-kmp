@@ -59,7 +59,10 @@ import id.homebase.chat.widget.LocationPreviewCard
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.image.ImageSize
+import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
@@ -100,6 +103,15 @@ fun MomentMediaItem(
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
+    // Render photos through [ZoomableSubSamplingImage] so the user can
+    // pinch-zoom/pan/double-tap inline (timeline + reels). Off by default so
+    // non-photo contexts and callers that don't want inline zoom keep the
+    // lightweight HomebaseImage/AsyncImage path. Only affects image payloads.
+    enableZoom: Boolean = false,
+    // Reports `true` while the zoomed-in photo is panned past fit and `false`
+    // when it returns to fit. The host (carousel pager) uses it to suspend
+    // page-swiping so panning a zoomed photo doesn't flip pages.
+    onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =
         RoundedCornerShape(
             topStart = Dimens.Message.cornerRadius,
@@ -212,6 +224,55 @@ fun MomentMediaItem(
             }
         }
 
+        contentType.startsWith("image/") && enableZoom -> {
+            val imageLocalContext = localContext as? LocalAttachmentContext.Image
+            val zoomSource = remember(
+                imageLocalContext?.localFilePath,
+                driveId, fileId, payload.key, payload.lastModified,
+            ) {
+                val localPath = imageLocalContext?.localFilePath
+                if (localPath != null) {
+                    SubSamplingImageSource.LocalFile(filePath = localPath)
+                } else {
+                    val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                    val imageData = HomebaseImageData(
+                        driveId = driveId,
+                        fileId = fileId,
+                        payloadKey = payload.key,
+                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                            ?: previewThumbnail,
+                        requestedSize = imageSize,
+                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
+                        lastModified = payload.lastModified,
+                        isEncrypted = true,
+                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
+                        // Zoom needs the original payload so panning into a
+                        // pinched photo shows real detail, not an upscaled thumb.
+                        loadFullPayload = true,
+                    )
+                    SubSamplingImageSource.Remote(imageData)
+                }
+            }
+            if (zoomSource != null) {
+                ZoomableSubSamplingImage(
+                    source = zoomSource,
+                    modifier = finalModifier,
+                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                    // At base scale the component doesn't consume taps, so this
+                    // still opens comments/detail; while zoomed it pans instead.
+                    onTap = onClick,
+                    onZoomedChanged = onZoomedChanged,
+                    // Moments pass null hero aspect (container-level sharedBounds
+                    // path, like chat) — see ZoomableSubSamplingImage docs.
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    sharedContentStateKey = "image-${fileId}-${payload.key}",
+                )
+            } else {
+                Box(modifier = finalModifier)
+            }
+        }
+
         contentType.startsWith("image/") -> {
             val imageLocalContext = localContext as? LocalAttachmentContext.Image
             if (imageLocalContext != null) {
@@ -257,6 +318,7 @@ fun MomentMediaItem(
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: previewThumbnail,
                             requestedSize = imageSize,
+                            availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                             lastModified = payload.lastModified,
                             isEncrypted = true,
                             keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
@@ -317,6 +379,7 @@ fun MomentMediaItem(
                         previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                             ?: previewThumbnail,
                         requestedSize = ImageSize.THUMB_MEDIUM,
+                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                         lastModified = payload.lastModified,
                         isEncrypted = true,
                         keyHeader = perPayloadKeyHeader,

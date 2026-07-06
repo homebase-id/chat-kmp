@@ -17,7 +17,14 @@ class DriveSyncWorker(appContext: Context, params: WorkerParameters) :
     CoroutineWorker(appContext, params), KoinComponent {
 
     override suspend fun doWork(): Result {
-        Logger.i(tag = "DriveSyncWorker") { "doWork: starting (attempt=$runAttemptCount)" }
+        // queueLatencyMs = push-received → worker-run delay (#988). Under ExistingWorkPolicy.KEEP
+        // the stamp belongs to the FIRST enqueue of a coalesced group, so a large value alongside
+        // multiple "enqueue:" lines is coalescing/deferral evidence, not a clock bug.
+        val enqueuedAtMs = inputData.getLong(DriveFcmService.KEY_ENQUEUED_AT_MS, -1L)
+        Logger.i(tag = "DriveSyncWorker") {
+            val latency = if (enqueuedAtMs > 0) "${System.currentTimeMillis() - enqueuedAtMs}" else "unknown"
+            "doWork: starting (attempt=$runAttemptCount queueLatencyMs=$latency)"
+        }
         val title = inputData.getString(DriveFcmService.KEY_TITLE)
         val body = inputData.getString(DriveFcmService.KEY_BODY)
         val data = inputData.keyValueMap
