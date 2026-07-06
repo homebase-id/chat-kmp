@@ -74,10 +74,13 @@ class NotificationService: UNNotificationServiceExtension {
         )
         content.sound = .default
 
-        // Group by conversation for chat notifications
+        // Group by conversation for chat notifications. Content-less pushes get the
+        // Reply-only category — no Mark as Read when there's nothing to read (#983).
         if isChatNotification(appId: appId) {
             content.threadIdentifier = typeId
-            content.categoryIdentifier = "MESSAGE_CATEGORY"
+            content.categoryIdentifier = hasRealContent(unEncryptedMessage)
+                ? "MESSAGE_CATEGORY"
+                : "MESSAGE_NO_CONTENT_CATEGORY"
         }
 
         // Fetch sender avatar and apply Communication style
@@ -243,6 +246,16 @@ class NotificationService: UNNotificationServiceExtension {
 
     private func isChatNotification(appId: String) -> Bool {
         [Self.chatAppId, Self.chatAppIdUuid, Self.mailAppId, Self.communityAppId].contains(appId)
+    }
+
+    /// Sender-side placeholder body for chat pushes — not real content. Keep in
+    /// sync with `CONTENTLESS_PLACEHOLDER` in the shared NotificationService.kt.
+    private static let contentlessPlaceholder = "You have a new message"
+
+    /// Mirrors the `hasContent` test in the shared NotificationService.kt.
+    private func hasRealContent(_ unEncryptedMessage: String?) -> Bool {
+        guard let message = unEncryptedMessage, !message.isEmpty else { return false }
+        return message != Self.contentlessPlaceholder
     }
 
     private func formatBody(
