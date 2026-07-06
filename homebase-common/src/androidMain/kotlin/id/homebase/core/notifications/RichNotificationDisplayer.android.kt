@@ -198,7 +198,12 @@ actual class RichNotificationDisplayer actual constructor() {
             .setShowsUserInterface(false)
             .build()
 
-        // Mark as Read action
+        builder.addAction(replyAction)
+
+        // Mark as Read only when the notification carries real content (#983) —
+        // you can't sensibly mark-as-read a "You have a new message" placeholder.
+        if (!data.hasContent) return
+
         val readIntent = Intent(ACTION_MARK_READ).apply {
             setPackage(context.packageName)
             putExtra(EXTRA_CONVERSATION_ID, conversationId)
@@ -217,7 +222,6 @@ actual class RichNotificationDisplayer actual constructor() {
             .setShowsUserInterface(false)
             .build()
 
-        builder.addAction(replyAction)
         builder.addAction(readAction)
     }
 
