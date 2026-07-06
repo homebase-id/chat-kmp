@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -47,12 +48,8 @@ internal fun GuardedComposerSheet(
     var hasUnsaved by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
 
-    // No confirmValueChange veto: rejecting Hidden mid-fling leaves the sheet
-    // with no anchor to absorb the velocity (skipPartiallyExpanded removes
-    // PartiallyExpanded), so it oscillates between Expanded and Hidden forever
-    // (#997). Instead the sheet settles Hidden normally; every dismissal path
-    // (swipe, scrim, back) then fires onDismissRequest, where the unsaved
-    // guard lives — cancel re-shows the sheet with the draft intact.
+    // No confirmValueChange veto — rejecting Hidden mid-fling oscillates the
+    // sheet forever (#997); the unsaved guard lives in onDismissRequest instead.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val requestClose: () -> Unit = {
@@ -63,15 +60,15 @@ internal fun GuardedComposerSheet(
     ModalBottomSheet(
         onDismissRequest = { if (hasUnsaved) showDiscardConfirm = true else onDismiss() },
         sheetState = sheetState,
+        // Zero insets: the defaults pad inside the draggable surface, so sheet
+        // height tracks sheet position and the anchors oscillate on fling (#997).
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
         content(sheetState, requestClose) { hasUnsaved = it }
     }
 
     if (showDiscardConfirm) {
-        // Keep editing: a swipe/scrim/back dismissal already settled the sheet
-        // Hidden before onDismissRequest fired, so bring it back; when the
-        // dialog came from the close button the sheet is still expanded and
-        // show() is a no-op.
+        // A swipe/scrim/back dismissal already settled Hidden — bring the sheet back.
         val keepEditing: () -> Unit = {
             showDiscardConfirm = false
             scope.launch { sheetState.show() }
@@ -81,8 +78,6 @@ internal fun GuardedComposerSheet(
             title = { Text(stringResource(MR.string.composer_discard_title)) },
             text = { Text(stringResource(MR.string.composer_discard_message)) },
             confirmButton = {
-                // Discard: drop the sheet outright (the host removes it from
-                // composition; it is already Hidden on the swipe/scrim/back path).
                 TextButton(onClick = {
                     showDiscardConfirm = false
                     onDismiss()
