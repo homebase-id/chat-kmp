@@ -22,6 +22,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.core.diagnostics.installGpuTextDiagnostics
+import id.homebase.core.diagnostics.installMemoryDiagnostics
 import id.homebase.core.crash.CrashMetadata
 import id.homebase.core.crash.CrashReporting
 import id.homebase.core.logging.LoggerConfig
@@ -132,6 +133,9 @@ fun initializeApp() {
     // Detect main-thread stalls and log them to homebase.log. On iOS the stack itself can't be
     // captured from a background thread, but the "stalled for Nms" breadcrumb is still recorded.
     MainThreadWatchdog().start()
+
+    // Memory context attached to a MainThreadWatchdog stall breadcrumb (see MemoryDiagnostics).
+    installMemoryDiagnostics()
 
     // Field instrumentation for the intermittent iOS blank-text bug (stale GPU glyph atlas). Logs a
     // ColdStart snapshot now and observes foreground-after-idle + memory warnings — the moments it
