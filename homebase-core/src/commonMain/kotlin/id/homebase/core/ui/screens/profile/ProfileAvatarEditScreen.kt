@@ -44,7 +44,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
 import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
@@ -96,24 +95,6 @@ fun ProfileAvatarEditScreen(
         }
     }
 
-    // Only one tier can have a photo mid-pick/crop at a time — render whichever is active.
-    val editingTier = uiState.anonymous.takeIf { it.pendingSourceAttachment != null }
-        ?: uiState.connected.takeIf { it.pendingSourceAttachment != null }
-    if (editingTier != null) {
-        MediaAttachmentEditor(
-            attachments = listOf(editingTier.pendingSourceAttachment!!),
-            currentPage = 0,
-            onPageChanged = {},
-            onCropImage = { attachmentId ->
-                viewModel.onAction(ProfileAvatarEditAction.CropRequested(editingTier.visibility, attachmentId))
-            },
-            onDismiss = {
-                viewModel.onAction(ProfileAvatarEditAction.PhotoEditorDismissed(editingTier.visibility))
-            },
-        )
-        return
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -143,8 +124,8 @@ fun ProfileAvatarEditScreen(
                 description = stringResource(MR.string.profile_avatar_edit_anonymous_desc),
                 tier = uiState.anonymous,
                 onPick = { anonymousPicker.launch() },
-                onRemove = { viewModel.onAction(ProfileAvatarEditAction.DeleteClicked(ProfileVisibility.ANONYMOUS)) },
-                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.UploadClicked(ProfileVisibility.ANONYMOUS)) },
+                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.ANONYMOUS)) },
+                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.ANONYMOUS)) },
             ) {
                 val existing = uiState.anonymous.existing
                 val imageData = existing?.photoImageData()
@@ -176,8 +157,8 @@ fun ProfileAvatarEditScreen(
                 description = stringResource(MR.string.profile_avatar_edit_connected_desc),
                 tier = uiState.connected,
                 onPick = { connectedPicker.launch() },
-                onRemove = { viewModel.onAction(ProfileAvatarEditAction.DeleteClicked(ProfileVisibility.CONNECTED)) },
-                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.UploadClicked(ProfileVisibility.CONNECTED)) },
+                onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED)) },
+                onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED)) },
             ) {
                 val existing = uiState.connected.existing
                 val imageData = existing?.photoImageData()
@@ -239,6 +220,7 @@ private fun PhotoTierSection(
                             contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
                             modifier = Modifier.fillMaxSize(),
                         )
+                        tier.pendingRemoval -> EmptyAvatarPlaceholder()
                         tier.existing != null -> existingPhotoContent()
                         else -> EmptyAvatarPlaceholder()
                     }
@@ -252,26 +234,22 @@ private fun PhotoTierSection(
                 }
             }
             Spacer(Modifier.width(16.dp))
-            if (tier.pendingCroppedAvatar == null && tier.existing != null) {
+            if (tier.pendingCroppedAvatar == null && tier.existing != null && !tier.pendingRemoval) {
                 TextButton(onClick = onRemove, enabled = !tier.isDeleting) {
-                    if (tier.isDeleting) {
-                        CircularProgressIndicator(modifier = Modifier.height(16.dp), strokeWidth = 2.dp)
-                    } else {
-                        Text(stringResource(MR.string.profile_avatar_edit_remove))
-                    }
+                    Text(stringResource(MR.string.profile_avatar_edit_remove))
                 }
             }
         }
 
-        if (tier.pendingCroppedAvatar != null) {
+        if (tier.pendingCroppedAvatar != null || tier.pendingRemoval) {
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onSaveClicked,
-                enabled = tier.canUpload,
+                enabled = tier.canSave,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (tier.isUploading) {
-                    CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
+                if (tier.isUploading || tier.isDeleting) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 } else {
                     Text(stringResource(MR.string.profile_avatar_edit_upload))
                 }

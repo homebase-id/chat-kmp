@@ -1,5 +1,6 @@
 package id.homebase.api.client.auth
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.identity.PublicIdentityRepository
@@ -20,6 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 private const val PUBLIC_PROFILE_REFRESH_DEBOUNCE_MS = 300L
+private const val TAG = "OwnerSessionRepository"
 
 class OwnerSessionRepository(
     private val publicIdentityRepository: PublicIdentityRepository,
@@ -58,13 +60,7 @@ class OwnerSessionRepository(
     private fun onPublicProfileContentPublished(artifact: PublicProfileArtifact) {
         val odinId = _user.value?.odinId ?: return
 
-        when (artifact) {
-            PublicProfileArtifact.ProfileImage ->
-                scope.launch { publicProfileProviderCached.invalidateImage(odinId) }
-            PublicProfileArtifact.ProfileCard ->
-                scope.launch { publicProfileProviderCached.invalidateProfile(odinId) }
-            PublicProfileArtifact.SiteData, PublicProfileArtifact.Unknown -> {}
-        }
+        scope.launch { invalidateCachedArtifact(odinId, artifact) }
 
         debouncedRefreshJob?.cancel()
         debouncedRefreshJob = scope.launch {
@@ -73,9 +69,51 @@ class OwnerSessionRepository(
         }
     }
 
+    /**
+     * For the client that itself just wrote [artifact] (e.g. the avatar edit screen after an
+     * upload/delete), rather than [load] directly. The server's own
+     * `publicProfileContentPublished` echo of this same write will arrive over the websocket too,
+     * but only after this call — and by then it would derive the *same* cache-bust key this
+     * client already recomputes from `sitedata.json`, so its cache invalidation would be too late
+     * to matter (nothing would ever re-request that now-permanently-memory-cached URL again).
+     * Invalidating here, before [load] builds and requests the new cache-busted URL, closes that
+     * race for the uploading client; [onPublicProfileContentPublished] above still covers every
+     * other client, for which the websocket notification is the only signal available.
+     */
+    suspend fun reloadAfterOwnPublish(odinId: OdinId, artifact: PublicProfileArtifact) {
+        val before = _user.value
+        invalidateCachedArtifact(odinId, artifact)
+        load(odinId)
+        val after = _user.value
+        Logger.d(tag = TAG) {
+            "reloadAfterOwnPublish artifact=$artifact " +
+                "fileId ${before?.profileImageFileId} -> ${after?.profileImageFileId}, " +
+                "lastModified ${before?.profileImageLastModified} -> ${after?.profileImageLastModified}"
+        }
+    }
+
+    private suspend fun invalidateCachedArtifact(odinId: OdinId, artifact: PublicProfileArtifact) {
+        when (artifact) {
+            PublicProfileArtifact.ProfileImage -> publicProfileProviderCached.invalidateImage(odinId)
+            PublicProfileArtifact.ProfileCard -> publicProfileProviderCached.invalidateProfile(odinId)
+            PublicProfileArtifact.SiteData, PublicProfileArtifact.Unknown -> {}
+        }
+    }
+
     suspend fun load(odinId: OdinId) {
-        // Emit a minimal fallback immediately so the UI can render without waiting for HTTP.
-        _user.value = fallback(odinId)
+        // Emit a minimal fallback immediately so the UI can render without waiting for HTTP —
+        // but only on a cold load (no session yet). On a reload of an already-populated session
+        // (e.g. reloadAfterOwnPublish, or the websocket-triggered refresh), skipping straight to
+        // fetch() avoids a real photo's profileImageLastModified ever flickering to null: that
+        // momentary null is a real emission, not just an implementation detail, so any avatar
+        // composable on-screen at that instant requests the un-parameterized `/pub/image` URL and
+        // Coil caches whatever the server returns under that query-less key forever. From then on
+        // every genuine no-photo state (which also has profileImageLastModified = null) resolves
+        // to that same cached URL and silently reuses those stale bytes instead of asking the
+        // server again.
+        if (_user.value == null) {
+            _user.value = fallback(odinId)
+        }
         _user.value = fetch(odinId)
     }
 

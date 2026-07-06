@@ -35,22 +35,25 @@ data class PhotoTierUiState(
     val visibility: ProfileVisibility,
     /** The currently-uploaded attribute for this tier, if any — null means "not set". */
     val existing: ProfileAttribute? = null,
-    /** Just-picked, not-yet-cropped photo. Non-null drives the [id.homebase.chat.widget.MediaAttachmentEditor] overlay. */
-    val pendingSourceAttachment: AttachmentPendingFile.FileImage? = null,
     /** Cropped local preview, not yet uploaded. */
     val pendingCroppedAvatar: AttachmentPendingFile.FileImage? = null,
+    /** User tapped Remove on [existing] — staged locally, not yet sent to the server. The tier
+     *  renders as empty and [existing] is only actually deleted when Save is pressed. */
+    val pendingRemoval: Boolean = false,
     val isUploading: Boolean = false,
     val isDeleting: Boolean = false,
 ) {
     val canUpload: Boolean get() = pendingCroppedAvatar != null && !isUploading
+    val canSave: Boolean get() = canUpload || (pendingRemoval && !isDeleting)
 }
 
 sealed interface ProfileAvatarEditAction {
+    /** Photo was picked — goes straight into the (mandatory, square-locked) crop pipeline. */
     data class PhotoPicked(val visibility: ProfileVisibility, val file: PlatformFile) : ProfileAvatarEditAction
-    data class CropRequested(val visibility: ProfileVisibility, val attachmentId: Uuid) : ProfileAvatarEditAction
-    data class PhotoEditorDismissed(val visibility: ProfileVisibility) : ProfileAvatarEditAction
-    data class UploadClicked(val visibility: ProfileVisibility) : ProfileAvatarEditAction
-    data class DeleteClicked(val visibility: ProfileVisibility) : ProfileAvatarEditAction
+    /** Commits whatever is currently pending for this tier — a cropped upload or a staged removal. */
+    data class SaveClicked(val visibility: ProfileVisibility) : ProfileAvatarEditAction
+    /** Stages [PhotoTierUiState.existing] for removal; does not call the server. */
+    data class RemoveClicked(val visibility: ProfileVisibility) : ProfileAvatarEditAction
     data object BackClicked : ProfileAvatarEditAction
 }
 

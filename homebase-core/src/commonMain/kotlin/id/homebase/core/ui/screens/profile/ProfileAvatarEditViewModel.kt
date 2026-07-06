@@ -11,6 +11,7 @@ import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfilePhotoTooLargeException
 import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.ProfileVisibility
+import id.homebase.api.client.websockets.PublicProfileArtifact
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.ImageFormat
 import id.homebase.api.image.ImageUtils
@@ -120,11 +121,8 @@ class ProfileAvatarEditViewModel(
     fun onAction(action: ProfileAvatarEditAction) {
         when (action) {
             is ProfileAvatarEditAction.PhotoPicked -> onPhotoPicked(action.visibility, action.file)
-            is ProfileAvatarEditAction.CropRequested -> onCropRequested(action.visibility, action.attachmentId)
-            is ProfileAvatarEditAction.PhotoEditorDismissed ->
-                updateTier(action.visibility) { it.copy(pendingSourceAttachment = null) }
-            is ProfileAvatarEditAction.UploadClicked -> upload(action.visibility)
-            is ProfileAvatarEditAction.DeleteClicked -> delete(action.visibility)
+            is ProfileAvatarEditAction.SaveClicked -> save(action.visibility)
+            is ProfileAvatarEditAction.RemoveClicked -> stageRemoval(action.visibility)
             ProfileAvatarEditAction.BackClicked -> _events.tryEmit(ProfileAvatarEditEvent.Back)
         }
     }
@@ -145,18 +143,16 @@ class ProfileAvatarEditViewModel(
         else -> error("Unsupported profile photo tier: $visibility")
     }
 
+    /**
+     * Cropping a profile photo is mandatory (the server requires a square image), unlike chat
+     * attachments where crop is one of several optional edits before sending — so a picked photo
+     * goes straight into the crop pipeline instead of landing on an intermediate preview screen
+     * with a crop tool the user would have to notice and choose to use.
+     */
     private fun onPhotoPicked(visibility: ProfileVisibility, file: PlatformFile) {
-        updateTier(visibility) {
-            it.copy(pendingSourceAttachment = AttachmentPendingFile.FileImage(id = Uuid.random(), file = file))
-        }
-    }
-
-    private fun onCropRequested(visibility: ProfileVisibility, attachmentId: Uuid) {
-        val source = tierState(visibility).pendingSourceAttachment
-            ?.takeIf { it.attachmentId == attachmentId } ?: return
         viewModelScope.launch {
             try {
-                val bytes = source.file.readBytes()
+                val bytes = file.readBytes()
                 val requestId = Uuid.random()
                 cropRequestVisibility[requestId] = visibility
                 cropResultBus.postSource(requestId, bytes)
@@ -185,13 +181,27 @@ class ProfileAvatarEditViewModel(
         val tempPath = fileOperationsProvider.writeBytesToTempFile(bytes, "profile_avatar_", ".jpg")
         updateTier(visibility) {
             it.copy(
-                pendingSourceAttachment = null,
+                // A freshly-picked photo supersedes any staged removal for this tier.
+                pendingRemoval = false,
                 pendingCroppedAvatar = AttachmentPendingFile.FileImage(
                     id = Uuid.random(),
                     file = platformFileFromPath(tempPath),
                 ),
             )
         }
+    }
+
+    private fun save(visibility: ProfileVisibility) {
+        val tier = tierState(visibility)
+        when {
+            tier.pendingCroppedAvatar != null -> upload(visibility)
+            tier.pendingRemoval -> commitRemoval(visibility)
+        }
+    }
+
+    private fun stageRemoval(visibility: ProfileVisibility) {
+        if (tierState(visibility).existing == null) return
+        updateTier(visibility) { it.copy(pendingRemoval = true) }
     }
 
     private fun upload(visibility: ProfileVisibility) {
@@ -225,8 +235,14 @@ class ProfileAvatarEditViewModel(
                 // Best-effort refresh so Settings picks up a new Anonymous photo — the public
                 // sitedata.json this reads from may lag briefly server-side, and won't reflect a
                 // CONNECTED-visibility photo at all (expected — that's not publicly readable).
+                // Invalidate the cached image bytes ourselves first — see
+                // OwnerSessionRepository.reloadAfterOwnPublish's doc for why the
+                // publicProfileContentPublished websocket echo of this same upload arrives too
+                // late to prevent Settings from rendering stale bytes at the new cache-bust URL.
                 if (visibility == ProfileVisibility.ANONYMOUS) {
-                    _state.value.currentAvatar?.odinId?.let { ownerSessionRepository.load(it) }
+                    _state.value.currentAvatar?.odinId?.let {
+                        ownerSessionRepository.reloadAfterOwnPublish(it, PublicProfileArtifact.ProfileImage)
+                    }
                 }
                 updateTier(visibility) { it.copy(isUploading = false, pendingCroppedAvatar = null) }
             } catch (e: CancellationException) {
@@ -246,7 +262,7 @@ class ProfileAvatarEditViewModel(
         }
     }
 
-    private fun delete(visibility: ProfileVisibility) {
+    private fun commitRemoval(visibility: ProfileVisibility) {
         val existing = tierState(visibility).existing ?: return
         updateTier(visibility) { it.copy(isDeleting = true) }
 
@@ -261,11 +277,15 @@ class ProfileAvatarEditViewModel(
             }
 
             if (success) {
-                updateTier(visibility) { it.copy(isDeleting = false, existing = null) }
+                updateTier(visibility) { it.copy(isDeleting = false, pendingRemoval = false, existing = null) }
                 if (visibility == ProfileVisibility.ANONYMOUS) {
-                    _state.value.currentAvatar?.odinId?.let { ownerSessionRepository.load(it) }
+                    _state.value.currentAvatar?.odinId?.let {
+                        ownerSessionRepository.reloadAfterOwnPublish(it, PublicProfileArtifact.ProfileImage)
+                    }
                 }
             } else {
+                // Leave pendingRemoval set — the tier keeps rendering as removed and Save stays
+                // enabled so the user can simply retry, rather than losing the staged removal.
                 updateTier(visibility) { it.copy(isDeleting = false) }
                 _events.tryEmit(ProfileAvatarEditEvent.DeleteFailed(visibility))
             }
