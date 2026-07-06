@@ -29,9 +29,20 @@ fun PublicAvatar(
     odinId: OdinId,
     initials: String?,
     options: AvatarOptions,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /**
+     * Appended as `?v=<cacheBustKey>` so Coil treats a changed value as a distinct request/cache
+     * key instead of serving a stale in-memory image — the URL itself never otherwise changes,
+     * so without this a freshly-uploaded photo won't visibly update until the app restarts or
+     * Coil's memory cache is evicted for some unrelated reason. Pass e.g.
+     * `OwnerSession.profileImageLastModified` for the owner's own avatar; leave null (default)
+     * for any other identity, where no such signal exists client-side.
+     */
+    cacheBustKey: Long? = null,
 ) {
-    val imageUrl = odinId.publicImageUrl()
+    val imageUrl = odinId.publicImageUrl().let { url ->
+        if (cacheBustKey != null) "$url?v=$cacheBustKey" else url
+    }
 
     // Defense in depth. SingletonImageLoader is also rewired to this
     // instance in AppModule.{android,desktop,native}.kt, so a caller that

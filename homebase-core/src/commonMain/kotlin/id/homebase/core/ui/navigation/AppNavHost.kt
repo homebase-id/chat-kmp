@@ -118,6 +118,8 @@ import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
 import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
+import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
@@ -1198,6 +1200,35 @@ fun AppNavHost(
                                     onNavigateToLocation = openLocation,
                                     onNavigateToContactBookSettings = {
                                         navController.navigate(Route.ContactBookSettings)
+                                    },
+                                    onNavigateToProfileEdit = {
+                                        navController.navigate(Route.ProfileEdit)
+                                    },
+                                    onNavigateToProfileAvatarEdit = {
+                                        navController.navigate(Route.ProfileAvatarEdit)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileEdit> {
+                            if (isAuthenticated) {
+                                ProfileEditScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileAvatarEdit> {
+                            if (isAuthenticated) {
+                                ProfileAvatarEditScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(
+                                            Route.Crop(requestId.toString(), lockedAspect = "square")
+                                        )
                                     },
                                 )
                             }
