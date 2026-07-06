@@ -14,6 +14,8 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.convo.matchesSelfQuery
+import id.homebase.chat.services.convo.selfDisplayLabel
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -182,12 +184,7 @@ internal fun filterAndGroup(
 }
 
 /** True when [query] hits the signed-in user's own display name or handle (case-insensitive). */
-internal fun OwnerSession?.matchesQuery(query: String): Boolean {
-    if (this == null || query.isBlank()) return false
-    return displayName?.contains(query, ignoreCase = true) == true ||
-        odinId.toString().contains(query, ignoreCase = true)
-}
+internal fun OwnerSession?.matchesQuery(query: String): Boolean = matchesSelfQuery(query)
 
 /** Display label for the signed-in user: their name, or their handle when the name isn't loaded. */
-internal fun OwnerSession.displayLabel(): String =
-    displayName?.ifBlank { null } ?: odinId.domainName
+internal fun OwnerSession.displayLabel(): String = selfDisplayLabel()
