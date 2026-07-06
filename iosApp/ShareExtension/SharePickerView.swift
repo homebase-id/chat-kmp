@@ -3,6 +3,9 @@ import UIKit
 
 private let recentsCount = 5
 
+/// Mirrors ChatProtocol.ConversationWithYourselfId in KMP.
+private let selfConversationId = "e4ef2382-ab3c-405d-a8b5-ad3e09e980dd"
+
 /// Conversation picker UI for the share extension.
 /// Displays conversations in categorized sections: Recents, Contacts, Groups.
 /// Supports multi-select — user taps conversations to toggle selection, then taps Send.
@@ -10,6 +13,9 @@ struct SharePickerView: View {
     let conversations: [ShareableConversationSwift]
     /// Whether to offer "New Moment" as a destination (media present + Moments activated).
     var showMomentOption: Bool = false
+    /// Owner identity so searching your own name/handle surfaces Note to Self (#984).
+    var ownerDisplayName: String? = nil
+    var ownerDomain: String = ""
     let onSelect: ([String]) -> Void
     var onSelectMoment: () -> Void = {}
     let onCancel: () -> Void
@@ -23,8 +29,36 @@ struct SharePickerView: View {
 
     private var filtered: [ShareableConversationSwift] {
         conversations.filter {
-            $0.displayName.localizedCaseInsensitiveContains(searchText)
+            $0.displayName.localizedCaseInsensitiveContains(searchText) ||
+                ($0.id == selfConversationId && matchesSelfQuery(searchText))
         }
+    }
+
+    /// Mirrors KMP SelfSearch.matchesSelfQuery: query hits the owner's name or handle.
+    private func matchesSelfQuery(_ query: String) -> Bool {
+        if query.isEmpty { return false }
+        if let name = ownerDisplayName, name.localizedCaseInsensitiveContains(query) { return true }
+        return ownerDomain.localizedCaseInsensitiveContains(query)
+    }
+
+    /// "Name (you)" label for the self row, matching the Android picker.
+    private var selfLabel: String? {
+        let name = ownerDisplayName.flatMap { $0.isEmpty ? nil : $0 }
+            ?? (ownerDomain.isEmpty ? nil : ownerDomain)
+        return name.map { "\($0) (you)" }
+    }
+
+    private func displayModel(_ conversation: ShareableConversationSwift) -> ShareableConversationSwift {
+        guard conversation.id == selfConversationId, let label = selfLabel else { return conversation }
+        return ShareableConversationSwift(
+            id: conversation.id,
+            displayName: label,
+            avatarInitials: conversation.avatarInitials,
+            isGroup: conversation.isGroup,
+            participantCount: conversation.participantCount,
+            lastMessageTimestamp: conversation.lastMessageTimestamp,
+            avatarUrl: conversation.avatarUrl
+        )
     }
 
     private var recents: [ShareableConversationSwift] {
@@ -172,7 +206,7 @@ struct SharePickerView: View {
     private func conversationButton(_ conversation: ShareableConversationSwift) -> some View {
         Button(action: { toggleSelection(conversation.id) }) {
             ShareConversationRow(
-                conversation: conversation,
+                conversation: displayModel(conversation),
                 isSelected: selectedIds.contains(conversation.id)
             )
         }
