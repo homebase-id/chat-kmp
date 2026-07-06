@@ -70,7 +70,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           intentIdentifiers: [],
           options: []
       )
-      UNUserNotificationCenter.current().setNotificationCategories([messageCategory])
+      // Reply-only category for content-less pushes ("You have a new message"
+      // placeholder) — no Mark as Read when there's nothing to read (#983).
+      // The extension picks between the two categories.
+      let messageNoContentCategory = UNNotificationCategory(
+          identifier: "MESSAGE_NO_CONTENT_CATEGORY",
+          actions: [replyAction],
+          intentIdentifiers: [],
+          options: []
+      )
+      UNUserNotificationCenter.current().setNotificationCategories(
+          [messageCategory, messageNoContentCategory]
+      )
   }
 
   // Present notifications while the app is in the foreground
