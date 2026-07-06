@@ -27,7 +27,8 @@ import kotlin.math.sqrt
  * ### Pipeline cadences (one place, see #846)
  * Five independent knobs shape the foreground capture→submit→route flow; documented here so they're
  * greppable and don't silently drift:
- *  - OS acquisition: ~15 s / 10 m foreground (Android Fused), distance-filtered (iOS) — platform trackers.
+ *  - OS acquisition: the common per-profile table [TrackingProfile.spec] (15 s / 10 m live-fg,
+ *    30 s / 25 m history-fg, coarse bg) — both platform trackers translate it.
  *  - Store stationary-noise filter: [MIN_DISPLACEMENT_M] (8 m) AND [MIN_INTERVAL_MS] (20 s) — here.
  *  - Foreground flush ticker: 120 s — `LocationTrackingCoordinator.startTicker`.
  *  - History flush rate-gate: 60 s — `LocationTrackUploaderService`.

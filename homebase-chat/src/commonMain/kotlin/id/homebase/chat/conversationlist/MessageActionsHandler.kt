@@ -1034,6 +1034,10 @@ internal class MessageActionsHandler(
                 registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
+                // Arm the own-send follow before the send: this path adds no placeholder,
+                // so the consuming effect waits for this id to land in the list (#995).
+                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
+
                 // Location is a typed kind (= Event): the coordinate descriptor rides in the header
                 // (appData), the map PNG stays a chat_loc payload. Sending it through the typed path
                 // is what lets a live-share toggle edit the descriptor via updateMessage().
@@ -1122,6 +1126,10 @@ internal class MessageActionsHandler(
                 pendingMessageId = newMessageId
                 registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
+
+                // Arm the own-send follow before the send: this path adds no placeholder,
+                // so the consuming effect waits for this id to land in the list (#995).
+                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
 
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,

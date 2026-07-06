@@ -7,6 +7,7 @@ import kotlinx.cinterop.useContents
 import kotlinx.coroutines.launch
 import platform.CoreLocation.CLActivityTypeOther
 import platform.CoreLocation.CLLocation
+import platform.CoreLocation.CLLocationAccuracy
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
 import platform.CoreLocation.kCLLocationAccuracyBest
@@ -25,8 +26,8 @@ actual fun createLocationTracker(sink: LocationPointSink): LocationTracker =
  * Battery levers (the ones that demonstrably work — see the Anchor source dive):
  * - `pausesLocationUpdatesAutomatically = true` lets iOS suspend standard
  *   updates while the device is stationary.
- * - Background profile drops to hundred-meter accuracy with a 50m distance
- *   filter; foreground runs best-accuracy at 10m.
+ * - Per-profile accuracy/distance-filter comes from the common
+ *   [TrackingProfile.spec] table (#978).
  * - Significant-location-change monitoring is always on while tracking — it is
  *   the relaunch vector after the OS terminates the app
  *   (UIApplicationLaunchOptionsLocationKey → initializeApp →
@@ -49,7 +50,7 @@ private class AppleLocationTracker(
         override fun locationManager(manager: CLLocationManager, didUpdateLocations: List<*>) {
             val points = didUpdateLocations
                 .filterIsInstance<CLLocation>()
-                .map { it.toRawPoint(fg = isForegroundProfile(profile)) }
+                .map { it.toRawPoint(fg = profile.isForeground) }
             if (points.isEmpty()) return
             scope.launch { sink.submit(points) }
         }
@@ -101,30 +102,18 @@ private class AppleLocationTracker(
         // suspended/killed within minutes — it then only revives on a coarse significant-location
         // change, making a live share appear to update "only in the foreground". Passive history
         // keeps auto-pause on to save battery (a stationary user simply records fewer points).
-        val liveSharing = profile == TrackingProfile.LiveForeground ||
-            profile == TrackingProfile.LiveBackground
-        manager.pausesLocationUpdatesAutomatically = !liveSharing
-        when (profile) {
-            // Live (share / live-map view): best accuracy, tight filter — fresh fixes matter.
-            TrackingProfile.LiveForeground -> {
-                manager.desiredAccuracy = kCLLocationAccuracyBest
-                manager.distanceFilter = 10.0
-            }
-            // History-only foreground: balanced — no live consumer needs best accuracy (#846).
-            TrackingProfile.HistoryForeground -> {
-                manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-                manager.distanceFilter = 25.0
-            }
-            // Background (live or history): low power, OS-throttled — unchanged.
-            TrackingProfile.LiveBackground, TrackingProfile.HistoryBackground -> {
-                manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-                manager.distanceFilter = 50.0
-            }
-        }
+        manager.pausesLocationUpdatesAutomatically = !profile.isLive
+        val spec = profile.spec
+        manager.desiredAccuracy = spec.accuracy.toCLAccuracy()
+        manager.distanceFilter = spec.minDisplacementM
     }
 
-    private fun isForegroundProfile(profile: TrackingProfile): Boolean =
-        profile == TrackingProfile.LiveForeground || profile == TrackingProfile.HistoryForeground
+    // CL has no interval knob — spec.minIntervalMs is Android-only; iOS is distance-filtered.
+    private fun TrackingAccuracy.toCLAccuracy(): CLLocationAccuracy = when (this) {
+        TrackingAccuracy.Precise -> kCLLocationAccuracyBest
+        TrackingAccuracy.Balanced -> kCLLocationAccuracyNearestTenMeters
+        TrackingAccuracy.Coarse -> kCLLocationAccuracyHundredMeters
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class)
@@ -140,7 +129,7 @@ internal fun CLLocation.toRawPoint(fg: Boolean): RawLocationPoint {
         // CL uses negative values as "invalid" sentinels.
         spd = speed.takeIf { it >= 0 },
         hdg = course.takeIf { it >= 0 },
-        src = "gps",
+        src = LocationSources.GPS,
         fg = fg,
     )
 }
