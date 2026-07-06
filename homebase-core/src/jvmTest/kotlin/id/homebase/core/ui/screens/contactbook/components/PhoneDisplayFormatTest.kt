@@ -19,6 +19,12 @@ class PhoneDisplayFormatTest {
     }
 
     @Test
+    fun `formats Denmark numbers in pairs`() {
+        // Denmark's flat 8-digit plan is conventionally grouped in pairs.
+        assertEquals("+45 12 34 56 78", formatPhoneForDisplay("+4512345678"))
+    }
+
+    @Test
     fun `returns the input unchanged when it is not parseable E164`() {
         // Legacy/non-E.164 data must still be shown, not mangled.
         assertEquals("555-1234", formatPhoneForDisplay("555-1234"))

@@ -582,6 +582,13 @@ class OdinWebSocketClient(
                 )
             }
 
+            ClientNotificationType.publicProfileContentPublished -> {
+                val d = OdinSystemSerializer.deserialize<PublicProfileContentPublishedNotification>(
+                    notification.data
+                )
+                eventBus.emit(BackendEvent.PublicProfileContentPublished(d.artifact))
+            }
+
             ClientNotificationType.liveRelay -> {
                 val d = OdinSystemSerializer.deserialize<LiveRelayReceivedNotification>(
                     notification.data

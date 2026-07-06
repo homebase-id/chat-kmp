@@ -32,6 +32,8 @@ import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
 import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
+import id.homebase.api.client.profile.ProfileProvider
+import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
@@ -136,6 +138,11 @@ val apiModule = module {
     }
     singleOf(::ContactsProvider)
     singleOf(::ContactRepository)
+    // Owner profile-attribute editor: write client + read/orchestration (queries the ProfileDrive
+    // on demand; the drive is not in mandatorySyncDrives). Needs the ManageProfile permission +
+    // ProfileDrive Read grant from AppConfig.
+    factoryOf(::ProfileProvider)
+    factoryOf(::ProfileRepository)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)

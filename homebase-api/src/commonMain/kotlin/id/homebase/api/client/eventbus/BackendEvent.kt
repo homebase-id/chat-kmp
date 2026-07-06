@@ -4,6 +4,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.websockets.CircleDefinitionChangeType
 import id.homebase.api.client.websockets.ConnectionChangeType
 import id.homebase.api.client.websockets.Introduction
+import id.homebase.api.client.websockets.PublicProfileArtifact
 import id.homebase.api.common.OdinId
 import id.homebase.api.video.VideoProcessingPhase
 import kotlin.uuid.Uuid
@@ -299,5 +300,17 @@ sealed interface BackendEvent {
         val channelKey: String,
         val blob: String,
         val receivedAt: Long,
+    ) : BackendEvent
+
+    /**
+     * One of the owner's derived public-profile artifacts (`sitedata.json`, `/pub/image`,
+     * `/pub/profile`) was republished server-side — fired after ANY profile-attribute write, not
+     * just photo uploads. No diff payload; consumers should re-fetch the named [artifact]. Always
+     * about the logged-in owner's own identity (broadcast to every session for the tenant, never
+     * about a peer). See [id.homebase.api.client.auth.OwnerSessionRepository] for the primary
+     * consumer.
+     */
+    data class PublicProfileContentPublished(
+        val artifact: PublicProfileArtifact,
     ) : BackendEvent
 }
