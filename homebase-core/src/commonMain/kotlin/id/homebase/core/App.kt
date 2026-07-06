@@ -32,7 +32,10 @@ fun App(
     val prefState by userPreferences.preferenceState.collectAsStateWithLifecycle()
     val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme() else if (prefState.theme == ThemeState.Dark) true else false
 
-    HomebaseTheme(darkTheme = isDarkTheme) {
+    HomebaseTheme(
+        darkTheme = isDarkTheme,
+        followsSystemTheme = prefState.theme == ThemeState.System,
+    ) {
         AppNavHost(
             viewModel = koinInject(),
             navController = navController,
