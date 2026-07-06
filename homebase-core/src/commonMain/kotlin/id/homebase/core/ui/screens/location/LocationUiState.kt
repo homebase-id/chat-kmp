@@ -105,6 +105,10 @@ const val LOCATE_VERIFY_TTL_MS = 60_000L
 /** Age past which a locate row's freshness label renders in the warning (orange) color (#879). */
 const val LOCATE_AGE_WARN_MS = 2 * 60 * 60_000L
 
+/** How long a locate verify waits for the app to come online before attempting the POST, so an
+ *  expand right after cold start spins instead of flashing broken clouds (#998). */
+const val LOCATE_VERIFY_ONLINE_WAIT_MS = 15_000L
+
 /**
  * Whether a verify pass over "Who you can locate" should (re-)issue the temporal verify for a row
  * in this state: never while one is in flight; a successful DATA-BEARING [LocateVerifyStatus.Active]

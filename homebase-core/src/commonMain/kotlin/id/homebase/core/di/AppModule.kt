@@ -891,6 +891,7 @@ val appModule = module {
             liveShareService = get(),
             conversationService = get(),
             emergencyLocateService = get(),
+            authConnectionCoordinator = get(),
         )
     }
     // Manual block: the optional peerDomain (emergency-locate peer mode) arrives as a Koin
