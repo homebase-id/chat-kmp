@@ -34,7 +34,8 @@ class ShareViewController: UIViewController {
         }
 
         // 3. Load conversation cache from App Group
-        let (conversations, _, momentsActivated) = ShareConversationCacheReader.load()
+        let (conversations, _, momentsActivated, ownerDomain, ownerDisplayName) =
+            ShareConversationCacheReader.load()
 
         // "New Moment" needs media and an activated Moments feature — mirror the
         // Android picker's gating.
@@ -44,6 +45,8 @@ class ShareViewController: UIViewController {
         let pickerView = SharePickerView(
             conversations: conversations,
             showMomentOption: momentsActivated && hasMedia,
+            ownerDisplayName: ownerDisplayName,
+            ownerDomain: ownerDomain,
             onSelect: { [weak self] conversationIds in
                 self?.handleSelection(conversationIds: conversationIds)
             },
