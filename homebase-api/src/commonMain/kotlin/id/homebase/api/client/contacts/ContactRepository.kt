@@ -101,11 +101,21 @@ class ContactRepository(
         if (_isLoaded.value) return
         loadMutex.withLock {
             if (_isLoaded.value) return
-            loadAll()
+            loadAllLocked()
         }
     }
 
+    /**
+     * Serialized via [loadMutex] so the three trigger paths ([start], [ensureLoaded], the
+     * [BackendEvent.DriveEvent.Stopped] reload) can never run overlapping local-DB reads —
+     * overlapping reads race on the [_contacts] full-replace below, and the slower-finishing
+     * one used to win even when it captured a leaner, mid-sync snapshot (blank-then-reappear).
+     */
     suspend fun loadAll() {
+        loadMutex.withLock { loadAllLocked() }
+    }
+
+    private suspend fun loadAllLocked() {
         val creds = credentialsManager.getActiveCredentials() ?: run {
             _isLoaded.value = true
             return
@@ -167,7 +177,9 @@ class ContactRepository(
 
                 is BackendEvent.DriveEvent.Stopped -> {
                     if (event.driveId != driveId) return@collect
-                    if (event.totalCount > 0) {
+                    // Only a fully Completed sync is trustworthy as a full-replace source; an
+                    // Aborted/PermissionDenied round may reflect an incomplete resync attempt.
+                    if (event.totalCount > 0 && event.result is BackendEvent.DriveResult.Completed) {
                         try {
                             loadAll()
                         } catch (e: Exception) {
