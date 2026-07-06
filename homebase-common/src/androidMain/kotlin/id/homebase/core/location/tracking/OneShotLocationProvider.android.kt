@@ -88,7 +88,7 @@ private object AndroidOneShotLocationProvider : OneShotLocationProvider {
         alt = if (hasAltitude()) altitude else null,
         spd = if (hasSpeed()) speed.toDouble() else null,
         hdg = if (hasBearing()) bearing.toDouble() else null,
-        src = provider ?: "gps",
+        src = provider ?: LocationSources.GPS,
         fg = true,
     )
 }

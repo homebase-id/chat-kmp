@@ -8,7 +8,8 @@ package id.homebase.core.location.tracking
  *
  * Today only the two FOREGROUND profiles differ in their parameters; both background profiles map to
  * the same OS-throttled low-power cadence — the background / cold-wake path is intentionally left
- * untouched (changing it is higher risk, lower value, and OS-capped anyway).
+ * untouched (changing it is higher risk, lower value, and OS-capped anyway). The per-profile tuning
+ * values live in one common table, [TrackingProfile.spec].
  */
 enum class TrackingProfile {
     /** App foreground + a live consumer: high accuracy, tight interval/displacement. */
@@ -43,7 +44,7 @@ data class RawLocationPoint(
     val spd: Double? = null,
     /** Heading/bearing in degrees. */
     val hdg: Double? = null,
-    /** Capture source: gps | net | fused | slc (significant-location-change). */
+    /** Capture source, one of [LocationSources]: gps | net | fused | slc (significant-location-change). */
     val src: String,
     /** True when captured in foreground precise mode. */
     val fg: Boolean,

@@ -1551,7 +1551,12 @@ class ConversationStream(
             }
             _shareableConversations.value = shareable
             val momentsActivated = optionalDriveActivation.isActivated(momentsLabeledDrive)
-            shareCacheWriter.updateCache(shareable, domain, momentsActivated)
+            shareCacheWriter.updateCache(
+                shareable,
+                domain,
+                momentsActivated,
+                ownerDisplayName = ownerSessionRepository.user.value?.displayName,
+            )
 
             // Pre-cache group avatar images for the iOS share extension
             for (convo in conversations) {
