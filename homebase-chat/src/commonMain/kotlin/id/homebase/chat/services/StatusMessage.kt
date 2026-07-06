@@ -47,4 +47,19 @@ enum class StatusMessage() {
      *  emergency circle. Renders "X removed you as an emergency contact" AND drives a receive-side
      *  side-effect that clears the recipient's can-locate flag for the SENDER (core `clearICanLocate`). */
     EmergencyContactRevoked,
+
+    /** Sent by an emergency contact (the message's `originalAuthor`) when they activate the
+     *  emergency locate function against the recipient and retrieve their location history.
+     *  Carries [StatusMessageData.emergencyLocateExplanation] (the requester's justification),
+     *  [StatusMessageData.emergencyLocateWindowHours], and optionally
+     *  [StatusMessageData.emergencyLocateEmbargoUntilMs] — the "Ambush" flag: while
+     *  `now < embargoUntilMs` the RECIPIENT's client does not render this message
+     *  (MessageMapper returns null), so a captor inspecting the victim's phone sees nothing
+     *  for 24h. Render-only on receive — no side-effect handler.
+     *
+     *  Note: the recipient's server independently fires TemporalDriveAccessedNotification the
+     *  moment the requester reads the drive (odin-core, 1h-throttled, no justification text) —
+     *  the embargo cannot suppress that. A deferred-alert option on the server temporal API is
+     *  a possible future extension. */
+    EmergencyLocateRequested,
 }

@@ -13,6 +13,7 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.LiveShareReadiness
+import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -81,14 +83,36 @@ class ShareLocationViewModel(
     private var recenterSeq = 0
     /** Set once the user pans/zooms — a late first fix must not yank the map away anymore. */
     private var userMoved = false
+    /**
+     * Set once the map was seeded on an actual position (cached or fresh). Until then — the
+     * world-view fallback — the viewport center (Null Island) is meaningless: no pin, no
+     * geocode, no send.
+     */
+    private var hasRealPosition = false
 
     init {
-        // Seed the map on the last known position immediately (no flash of world view), then
-        // refine with a fresh fix — but only recenter while the user hasn't taken over.
-        locationService.lastKnown.value?.let { seedBbox(it.lat, it.lon) }
+        // Seed the map immediately with a world view — a null bbox leaves the map BLANK (no
+        // viewport → no tiles fetched). Then position it in two steps: the best CACHED
+        // coordinate at any age (memory / persisted history / OS last-known — instant, no
+        // radio; a map seed doesn't need freshness), then a fresh fix to refine. Each step
+        // recenters only while the user hasn't taken over.
+        _uiState.update {
+            it.copy(initialBbox = WORLD_BBOX, initialBboxKey = it.initialBboxKey + 1)
+        }
+        viewModelScope.launch { seedFromCachedThenFresh() }
+        // Hide the live banner while my share already covers this conversation (#966 follow-up).
         viewModelScope.launch {
-            val fix = locationService.requestLatestGps(GpsRequestReason.LiveMap)
-            if (fix is GpsFixResult.Success && !userMoved) seedBbox(fix.point.lat, fix.point.lon)
+            liveLocationShareService.recipients.collectLatest { roster ->
+                val recipients = runCatching {
+                    conversationStream.getRecipients(conversationId, emptyList(), null)
+                }.getOrDefault(emptyList())
+                val untilMs = liveShareCoverageUntilMs(
+                    roster = roster,
+                    recipientIds = recipients.map { it.domainName },
+                    nowMs = Clock.System.now().toEpochMilliseconds(),
+                )
+                _uiState.update { it.copy(ownLiveShareUntilMs = untilMs) }
+            }
         }
     }
 
@@ -97,10 +121,27 @@ class ShareLocationViewModel(
         super.onCleared()
     }
 
-    /** Screen callback when location permission lands — re-arms the GPS hold (LiveMap pattern). */
-    fun onPermissionGranted() = locationService.refreshGpsHold()
+    /**
+     * Screen callback when location permission lands — re-arms the GPS hold (LiveMap pattern)
+     * and retries the initial seed: on a first-ever open the init-time attempts fail with
+     * PermissionDenied (the prompt is still up), which used to leave the map on the fallback
+     * view until the screen was reopened.
+     */
+    fun onPermissionGranted() {
+        locationService.refreshGpsHold()
+        viewModelScope.launch { seedFromCachedThenFresh() }
+    }
+
+    private suspend fun seedFromCachedThenFresh() {
+        locationService.lastKnownCoordinates()?.let {
+            if (!userMoved) seedBbox(it.lat, it.lon)
+        }
+        val fix = locationService.requestLatestGps(GpsRequestReason.LiveMap)
+        if (fix is GpsFixResult.Success && !userMoved) seedBbox(fix.point.lat, fix.point.lon)
+    }
 
     private fun seedBbox(lat: Double, lon: Double) {
+        hasRealPosition = true
         val (x, y) = WebMercator.latLonToUnit(lat, lon)
         _uiState.update {
             it.copy(
@@ -117,6 +158,10 @@ class ShareLocationViewModel(
      */
     fun onMapCenterChanged(unitX: Double, unitY: Double, byUser: Boolean) {
         if (byUser) userMoved = true
+        // World-view fallback and the user hasn't picked a spot: the center is Null Island, not
+        // a location anyone means to share. Keep the pin unset (send stays disabled) and don't
+        // geocode — no "0.0, 0.0" chip.
+        if (!userMoved && !hasRealPosition) return
         val (lat, lon) = WebMercator.unitToLatLon(unitX, unitY)
         _uiState.update { it.copy(pinLat = lat, pinLon = lon) }
 
@@ -258,6 +303,8 @@ class ShareLocationViewModel(
 
     private companion object {
         const val TAG = "ShareLocationViewModel"
+        /** Unit-space bbox of the whole world — the no-fix fallback so the map never opens blank. */
+        val WORLD_BBOX = listOf(0.0, 0.0, 1.0, 1.0)
         const val GEOCODE_DEBOUNCE_MS = 700L
         const val RESOLVE_MIN_MOVE_METERS = 30.0
         const val METERS_PER_DEGREE = 111_320.0

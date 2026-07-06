@@ -43,6 +43,7 @@ fun MessageItem(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    ownLiveShareUntilMs: Long? = null,
 ) {
     val odinId: OdinId? = try {
         OdinId(currentOdinId)
@@ -60,7 +61,7 @@ fun MessageItem(
     // Live-location controls for the location bubble (ignored by non-location media). State (LIVE/
     // ENDED) is read from the message descriptor in the bubble; this only carries side + actions.
     val sentByYou = message.isAuthoredBy(odinId)
-    val liveLocationControls = remember(message.id, sentByYou) {
+    val liveLocationControls = remember(message.id, sentByYou, ownLiveShareUntilMs) {
         LiveLocationBubbleControls(
             sentByYou = sentByYou,
             onStart = { durationMs ->
@@ -71,6 +72,7 @@ fun MessageItem(
                 onUiAction(ConversationListUiAction.ShareLiveLocationBack(message.id, durationMs))
             },
             onOpenMap = { onUiAction(ConversationListUiAction.OpenLiveLocationMap) },
+            ownShareUntilMs = ownLiveShareUntilMs,
         )
     }
 

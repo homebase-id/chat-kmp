@@ -55,6 +55,8 @@ data class LocationUiState(
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
     val liveSharingVisible: Boolean = false,
+    /** An emergency locate request (notice + fetch) is running — the panel's Confirm is disabled. */
+    val locateSubmitInFlight: Boolean = false,
     /** People I'm sharing my live location with — deduped by identity, longest end-time. */
     val outgoingShares: List<OutgoingShareRow> = emptyList(),
     /** People sharing their live location with me — with the age of their last fix. */
@@ -68,10 +70,10 @@ data class LocationUiState(
  * Result of the per-entry temporal-access preflight for a "who I can locate" row. Expand-triggered
  * verifies show a spinner (visible feedback that the check is running); the periodic follow-up
  * passes while the section stays open are silent (the old value stays visible until the new result
- * lands, so the list doesn't flash spinners every minute). Resolved results carry
- * [Resolved.verifiedAtMs] so a re-expand within [LOCATE_VERIFY_TTL_MS] reuses them, while an older
- * result is re-verified (#950) — including [Unreachable], which retries on the next pass instead
- * of blanking the row.
+ * lands, so the list doesn't flash spinners every minute). Only a successful, data-bearing
+ * [Active] carries the [LOCATE_VERIFY_TTL_MS] cache ("they sent data back within 60s", #950);
+ * [Broken], [Unreachable], and a no-data [Active] re-verify on every pass so an error state
+ * clears the moment access/data returns instead of sticking across collapse/expand (#985).
  */
 sealed interface LocateVerifyStatus {
     /** Preflight in flight with the spinner requested (expand-triggered, or no prior result). */
@@ -90,27 +92,40 @@ sealed interface LocateVerifyStatus {
 
     /**
      * The verify threw (network/parse failure) — the peer's server is unreachable and access is
-     * unknown → disconnected icon. Inconclusive, so it must never look like [Broken]; being
-     * [Resolved] it is retried after the TTL like any other result.
+     * unknown → disconnected icon. Inconclusive, so it must never look like [Broken]; like every
+     * error result it is re-verified on the next pass (#985) instead of blanking the row.
      */
     data class Unreachable(override val verifiedAtMs: Long) : Resolved
 }
 
-/** Freshness window for a resolved locate-verify result: re-expands inside it reuse the cache. */
+/** Freshness window for a successful, DATA-BEARING locate-verify result: re-expands inside it
+ *  reuse the cache. Error/no-data results never cache (#985). */
 const val LOCATE_VERIFY_TTL_MS = 60_000L
 
 /** Age past which a locate row's freshness label renders in the warning (orange) color (#879). */
 const val LOCATE_AGE_WARN_MS = 2 * 60 * 60_000L
 
+/** How long a locate verify waits for the app to come online before attempting the POST, so an
+ *  expand right after cold start spins instead of flashing broken clouds (#998). */
+const val LOCATE_VERIFY_ONLINE_WAIT_MS = 15_000L
+
 /**
  * Whether a verify pass over "Who you can locate" should (re-)issue the temporal verify for a row
- * in this state: never while one is in flight, not while a resolved result is younger than
- * [LOCATE_VERIFY_TTL_MS], otherwise yes (never verified, or gone stale — including a stale
- * [LocateVerifyStatus.Unreachable], so a network blip retries instead of sticking).
+ * in this state: never while one is in flight; a successful DATA-BEARING [LocateVerifyStatus.Active]
+ * younger than [LOCATE_VERIFY_TTL_MS] is reused (the #950 "they sent data back within 60s" cache);
+ * everything else — [LocateVerifyStatus.Broken], [LocateVerifyStatus.Unreachable], a no-data
+ * Active, stale, or never verified — re-verifies, so an error state never sticks across
+ * collapse/expand (#985).
  */
 fun LocateVerifyStatus?.needsReverify(nowMs: Long): Boolean = when (this) {
     LocateVerifyStatus.Loading -> false
-    is LocateVerifyStatus.Resolved -> nowMs - verifiedAtMs >= LOCATE_VERIFY_TTL_MS
+    // Only a successful, data-bearing result earned the cache. A no-data Active re-verifies so
+    // a peer whose GPS just started reporting shows up on the next expand.
+    is LocateVerifyStatus.Active ->
+        newestModifiedMs == null || nowMs - verifiedAtMs >= LOCATE_VERIFY_TTL_MS
+    // Broken / Unreachable: an error result never caches — re-verify on every pass so a broken
+    // cloud clears the moment access/data returns (#985).
+    is LocateVerifyStatus.Resolved -> true
     null -> true
 }
 
@@ -191,9 +206,25 @@ sealed interface LocationUiAction {
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction
+
+    /** Confirm on the emergency locate panel: send the request notice (embargoed 24h when
+     *  [ambush]) and fetch [windowHours] of the peer's history over the temporal API. */
+    data class ConfirmEmergencyLocate(
+        val odinId: String,
+        val name: String,
+        val explanation: String,
+        val windowHours: Int,
+        val ambush: Boolean,
+    ) : LocationUiAction
 }
 
 sealed interface LocationUiEvent {
     data object Activated : LocationUiEvent
     data object CloseOnboarding : LocationUiEvent
+
+    /** Emergency retrieval succeeded — open the history viewer in peer mode. */
+    data class OpenPeerHistory(val peerDomain: String, val peerName: String) : LocationUiEvent
+
+    /** Emergency retrieval failed (the request notice was still sent) — snackbar. */
+    data object LocateFetchFailed : LocationUiEvent
 }

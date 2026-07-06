@@ -1,5 +1,6 @@
 package id.homebase.core.location.tracking
 
+import co.touchlab.kermit.Logger
 import id.homebase.core.permissions.isLocationPermissionGranted
 import kotlin.time.Clock
 
@@ -51,14 +52,44 @@ interface OneShotLocationProvider {
         cacheOnly: Boolean = false,
         nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     ): GpsFixResult {
-        if (!isLocationPermissionGranted()) return GpsFixResult.PermissionDenied
+        // Result logging lives HERE, in the shared policy method, so Android and iOS emit
+        // identical fix/timeout lines by construction (#988) — the platform actuals keep only
+        // their own low-level I/O breadcrumbs. Info level: these mirror into Crashlytics
+        // breadcrumbs and only fire behind LocationService's staleness + battery gates.
+        if (!isLocationPermissionGranted()) {
+            Logger.i(tag = TAG) { "getCurrentFix: permission denied" }
+            return GpsFixResult.PermissionDenied
+        }
         val cached = lastKnownFix()
         // Battery saver: serve whatever the OS already has and never power the radio.
-        if (cacheOnly) return cached?.let { GpsFixResult.Success(it) } ?: GpsFixResult.Unavailable
+        if (cacheOnly) {
+            val result = cached?.let { GpsFixResult.Success(it) } ?: GpsFixResult.Unavailable
+            Logger.i(tag = TAG) {
+                "getCurrentFix: battery-saver cache-only → " +
+                    (cached?.let { "cached fix (age=${nowMs() - it.t}ms)" } ?: "Unavailable")
+            }
+            return result
+        }
         // A cache fresher than the staleness tolerance avoids the radio; an older one falls through
         // so a force-on-stale capture actually acquires a fresh fix instead of echoing stale cache.
-        if (cached != null && nowMs() - cached.t <= maxAgeMs) return GpsFixResult.Success(cached)
-        return acquireFreshFix(timeoutMs)
+        if (cached != null && nowMs() - cached.t <= maxAgeMs) {
+            Logger.i(tag = TAG) {
+                "getCurrentFix: served cached fix (age=${nowMs() - cached.t}ms ≤ maxAge=${maxAgeMs}ms)"
+            }
+            return GpsFixResult.Success(cached)
+        }
+        Logger.d(tag = TAG) {
+            "getCurrentFix: acquiring fresh (timeoutMs=$timeoutMs cachedAgeMs=${cached?.let { nowMs() - it.t } ?: "none"})"
+        }
+        val fresh = acquireFreshFix(timeoutMs)
+        Logger.i(tag = TAG) {
+            "getCurrentFix: fresh result=" + when (fresh) {
+                is GpsFixResult.Success -> "Success src=${fresh.point.src}"
+                GpsFixResult.Timeout -> "Timeout (timeoutMs=$timeoutMs)"
+                else -> "$fresh"
+            }
+        }
+        return fresh
     }
 
     companion object {
@@ -66,6 +97,9 @@ interface OneShotLocationProvider {
 
         /** Default max age for accepting an OS last-known fix before forcing a live acquisition. */
         const val DEFAULT_MAX_AGE_MS = 15_000L
+
+        /** Shared tag for the policy-level result lines (platform actuals keep their own tags). */
+        const val TAG = "OneShotLocation"
     }
 }
 

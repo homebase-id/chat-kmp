@@ -22,6 +22,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.upload.PayloadBundle
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.deviceDisplayName
 import id.homebase.core.location.tracking.devicePlatform
@@ -80,6 +81,17 @@ class LocationTrackUploaderService(
     private val powerSaveMode: () -> Boolean = { false },
     /** App in the foreground? Wired in DI to the coordinator. Defaults true (always upload). */
     private val isAppForeground: () -> Boolean = { true },
+    /**
+     * Kick an outbox drain that works even without the websocket — wired in DI to
+     * `OutboxSync.send(force = true)` (#987). Called after a flush that actually enqueued.
+     * Rationale: every background wake that produces points (push, Android PendingIntent
+     * batches into a cold process, iOS SLC relaunch) funnels through [flush], but in those
+     * wakes the WS never connects, so the normal enqueue kick declines offline and the
+     * hour-file would strand until the next foreground connect. When online this is
+     * equivalent to the normal kick. Cost when genuinely offline: one fast-failing POST
+     * per flush, bounded by the 60s rate-gate + normal backoff.
+     */
+    private val drainNow: suspend () -> Unit = {},
 ) {
     private val logger = Logger.withTag(TAG)
     private val driveId = locationLabeledDrive.drive.alias
@@ -117,10 +129,23 @@ class LocationTrackUploaderService(
         deviceProfileEnsured = false
     }
 
-    /** Rate-gated flush — the entry point for tickers and background batch wakes. */
-    suspend fun flushIfDue() {
+    /**
+     * Rate-gated flush — the entry point for tickers and background batch wakes.
+     *
+     * [reason] is log-only (#988): a one-shot capture reason (e.g. PushReceived) promotes the
+     * skip-gate lines to Info so a dropped push-capture upload is diagnosable from the log,
+     * while the steady-state tracker/ticker path (null) keeps them at debug — this method runs
+     * on every persisted point batch, so unconditional Info would spam.
+     */
+    suspend fun flushIfDue(reason: GpsRequestReason? = null) {
         val now = nowMs()
-        if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) return
+        if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) {
+            logSkip(reason) {
+                "flushIfDue(${reason ?: "periodic"}): rate-gated " +
+                    "(nextEligibleInMs=${MIN_FLUSH_INTERVAL_MS - (now - lastFlushAttemptMs)})"
+            }
+            return
+        }
         val powerSave = powerSaveMode()
         val foreground = isAppForeground()
         // Battery saver + backgrounded → defer uploads to save power; local capture still persists
@@ -134,23 +159,31 @@ class LocationTrackUploaderService(
             false
         }
         if (shouldDeferBackgroundFlush(powerSave, foreground, hasStaleBacklog)) {
-            logger.d { "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms un-uploaded backlog" }
+            logSkip(reason) {
+                "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms " +
+                    "un-uploaded backlog (reason=${reason ?: "periodic"})"
+            }
             return
         }
-        flush()
+        flush(reason)
     }
 
-    suspend fun flush() {
+    /** Info for one-shot (push) triggered flushes, debug for the steady-state path (#988). */
+    private inline fun logSkip(reason: GpsRequestReason?, crossinline message: () -> String) {
+        if (reason != null) logger.i { message() } else logger.d { message() }
+    }
+
+    suspend fun flush(reason: GpsRequestReason? = null) {
         flushMutex.withLock {
             val now = nowMs()
             lastFlushAttemptMs = now
             if (!optionalDriveActivation.isActivated(locationLabeledDrive)) {
-                logger.d { "Flush skipped: Location add-on not activated (drive not mounted)" }
+                logSkip(reason) { "Flush skipped: Location add-on not activated (drive not mounted) reason=${reason ?: "periodic"}" }
                 return
             }
             if (credentialsManager.getActiveCredentials() == null) {
                 // Logged out / not yet logged in: points stay buffered.
-                logger.d { "Flush skipped: no active credentials — points stay buffered" }
+                logSkip(reason) { "Flush skipped: no active credentials — points stay buffered reason=${reason ?: "periodic"}" }
                 return
             }
             val hours = runCatching { buffer.selectPendingHours() }
@@ -172,19 +205,30 @@ class LocationTrackUploaderService(
                 // viewer devices (desktop/web) never reach this branch.
                 runCatching { ensureDeviceProfile() }
                     .onFailure { logger.e(it) { "ensureDeviceProfile failed" } }
-                logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize" }
+                logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize reason=${reason ?: "periodic"}" }
             }
+            var anyEnqueued = false
             for (hourBucket in hours + finalizeHours) {
                 runCatching { flushHour(hourBucket * HOUR_MS) }
+                    .onSuccess { enqueued -> anyEnqueued = anyEnqueued || enqueued }
                     .onFailure { logger.e(it) { "flushHour($hourBucket) failed" } }
+            }
+            if (anyEnqueued) {
+                // Drain even without the websocket (#987): background wakes (push,
+                // PendingIntent batch, SLC relaunch) never connect the WS, so the normal
+                // enqueue kick declines offline and the row would strand until the next
+                // foreground connect. Equivalent to the normal kick when online.
+                runCatching { drainNow() }
+                    .onFailure { logger.w(it) { "drainNow failed after flush" } }
             }
             refreshPendingCount()
         }
     }
 
-    private suspend fun flushHour(hourStartMs: Long) {
+    /** @return true when the hour was handed to the outbox (created or update-coalesced). */
+    private suspend fun flushHour(hourStartMs: Long): Boolean {
         val points = buffer.selectByTimeRange(hourStartMs, hourStartMs + HOUR_MS)
-        if (points.isEmpty()) return
+        if (points.isEmpty()) return false
 
         val uid = locationHourFileUid(deviceId.value, hourStartMs)
         val (headerJson, stored) = LocationTrackCodec.encodeHeader(deviceId.value, hourStartMs, points)
@@ -213,6 +257,7 @@ class LocationTrackUploaderService(
                     "mode=${if (existing == null) "create" else "update"} — rows stay buffered, will retry"
             }
         }
+        return enqueued
     }
 
     /**
@@ -342,6 +387,7 @@ class LocationTrackUploaderService(
                     replace = true,
                     originalRecipientCount = 0,
                     seedCache = false,
+                    priority = LOCATION_UPLOAD_PRIORITY,
                 ),
                 scope = scope,
             )
@@ -387,6 +433,7 @@ class LocationTrackUploaderService(
                     bundle = bundle,
                     metadata = unencryptedMetadata,
                     replace = true,
+                    priority = LOCATION_UPLOAD_PRIORITY,
                 ),
                 scope = scope,
             )
@@ -474,6 +521,11 @@ class LocationTrackUploaderService(
     }
 
     private companion object {
+        /** Outbox priority for hour-files: 0 outranks chat/moments (1) — an emergency-locate
+         *  point must never queue behind a media upload during a short push wake (#987).
+         *  Outbox checkout is ORDER BY priority ASC. */
+        const val LOCATION_UPLOAD_PRIORITY = 0L
+
         const val MIN_FLUSH_INTERVAL_MS = 60_000L
         const val RETENTION_MS = 7L * 24 * HOUR_MS
         const val DAY_MS = 24 * HOUR_MS

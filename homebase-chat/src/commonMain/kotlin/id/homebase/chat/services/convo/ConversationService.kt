@@ -37,6 +37,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.PayloadBundle
@@ -269,6 +270,13 @@ class ConversationService(
             } else {
                 audit.info("existing file is in usable state, no revive needed")
             }
+            // Re-map the DB file into the in-memory list: the row may be missing or a
+            // participants=[] placeholder (e.g. archived 1:1 opened via Contacts), and
+            // an immediate send would otherwise resolve zero recipients (#934).
+            runCatching { conversationStream.loadConversation(newConversationId) }
+                .onFailure { e ->
+                    Logger.w(e) { "createConversation: loadConversation($newConversationId) failed after existing-file return" }
+                }
             audit.checkPass("existingFileBranch")
             audit.finish("returned wasNewlyCreated=false (path=existing-file)")
             return CreateConversationResult(newConversationId, wasNewlyCreated = false)
@@ -423,6 +431,53 @@ class ConversationService(
             throw e
         } catch (e: Exception) {
             Logger.w(e) { "Failed to send emergency-contact designation to ${recipient.domainName}" }
+            null
+        }
+    }
+
+    /**
+     * Posts a [StatusMessage.EmergencyLocateRequested] status into the 1:1 with [recipient]: the
+     * local user has activated the emergency locate function and is retrieving the recipient's
+     * location history. Carries the requester's [explanation] and the retrieval [windowHours].
+     * When [ambush] is set, the message is still sent IMMEDIATELY but stamped with an embargo
+     * deadline (now + [EMERGENCY_LOCATE_AMBUSH_DELAY_MS]) — the recipient's client hides it until
+     * then (see [id.homebase.chat.services.MessageMapper]); the sender's copy is never hidden.
+     * Render-only on receive — no side-effect handler. Best-effort: returns the conversation id
+     * or null on failure (logged). Rethrows cancellation.
+     */
+    suspend fun sendEmergencyLocateRequest(
+        recipient: OdinId,
+        explanation: String,
+        windowHours: Int,
+        ambush: Boolean,
+    ): Uuid? {
+        return try {
+            val result = createConversation(
+                recipients = listOf(recipient),
+                title = null,
+                payloadBundle = null,
+            )
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = Uuid.random(),
+                conversationId = result.conversationId,
+                previousMessageUniqueId = result.conversationId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.EmergencyLocateRequested,
+                    subject = recipient,
+                    emergencyLocateExplanation = explanation
+                        .truncateToCodePoints(ChatProtocol.EMERGENCY_LOCATE_EXPLANATION_MAX_CODEPOINTS)
+                        .takeIf { it.isNotBlank() },
+                    emergencyLocateWindowHours = windowHours,
+                    emergencyLocateEmbargoUntilMs = if (ambush) {
+                        UnixTimeUtc.now().milliseconds + ChatProtocol.EMERGENCY_LOCATE_AMBUSH_DELAY_MS
+                    } else null,
+                ),
+            )
+            result.conversationId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Failed to send emergency-locate request to ${recipient.domainName}" }
             null
         }
     }

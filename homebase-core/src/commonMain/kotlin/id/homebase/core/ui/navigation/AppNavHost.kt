@@ -118,6 +118,7 @@ import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
+import id.homebase.core.ui.screens.vault.auth.VaultSessionTracker
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
@@ -140,6 +141,7 @@ import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
 import id.homebase.resources.location_label
+import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -293,6 +295,10 @@ fun AppNavHost(
             }
         }
     }
+
+    // Keeps the Vault biometric session alive across every Vault sub-screen — owned by
+    // the vault feature, not this nav host.
+    VaultSessionTracker(navController)
 
     // Track active conversation + auth guard + notification permission
     LaunchedEffect(authState, currentDestination) {
@@ -499,6 +505,7 @@ fun AppNavHost(
     }
 
     // Translate Location onboarding one-shot events into nav-stack changes.
+    val locateFetchFailedMsg = stringResource(MR.string.location_locate_fetch_failed)
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
             when (event) {
@@ -510,6 +517,18 @@ fun AppNavHost(
                     }
                 }
                 LocationUiEvent.CloseOnboarding -> navController.popBackStack()
+
+                is LocationUiEvent.OpenPeerHistory -> navController.navigate(
+                    Route.LocationPeerHistory(
+                        peerDomain = event.peerDomain,
+                        peerName = event.peerName,
+                    )
+                )
+
+                LocationUiEvent.LocateFetchFailed -> snackbarHostState.showSnackbar(
+                    message = locateFetchFailedMsg,
+                    duration = SnackbarDuration.Long,
+                )
             }
         }
     }
@@ -1327,6 +1346,25 @@ fun AppNavHost(
                                             popUpTo(Route.Location) { inclusive = false }
                                         }
                                     },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationPeerHistory> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationPeerHistory>()
+                                LocationHistoryScreen(
+                                    // key: a fresh VM per peer (initial day + traces come from
+                                    // that peer's retrieved data, resolved at construction).
+                                    viewModel = koinViewModel(
+                                        key = route.peerDomain,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(route.peerDomain)
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    subjectName = route.peerName,
+                                    allowDelete = false,
                                 )
                             }
                         }

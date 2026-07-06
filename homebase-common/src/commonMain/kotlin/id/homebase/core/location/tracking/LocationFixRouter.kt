@@ -1,6 +1,7 @@
 package id.homebase.core.location.tracking
 
 import co.touchlab.kermit.Logger
+import id.homebase.core.location.GpsRequestReason
 
 /**
  * THE single home of the "what does a captured GPS fix do?" decision (issue #835). Every capture
@@ -24,13 +25,22 @@ import co.touchlab.kermit.Logger
 class LocationFixRouter(
     private val store: LocationPointStore,
     private val allowHistory: () -> Boolean,
-    private val persistAsHistory: suspend (List<RawLocationPoint>) -> Unit,
+    private val persistAsHistory: suspend (List<RawLocationPoint>, GpsRequestReason?) -> Unit,
     private val relayLatest: suspend (RawLocationPoint) -> Unit,
 ) : LocationPointSink {
 
     private val logger = Logger.withTag("LocationFixRouter")
 
-    override suspend fun submit(points: List<RawLocationPoint>) {
+    /** Continuous-tracker / background-batch path: no one-shot reason. */
+    override suspend fun submit(points: List<RawLocationPoint>) = submit(points, null)
+
+    /**
+     * [reason] is log-only context threaded through persist→flush (#988): a one-shot capture
+     * (e.g. [GpsRequestReason.PushReceived]) tags every downstream hop line and lets the
+     * uploader log its skip-gates at Info for push-triggered flushes without spamming the
+     * steady-state tracker path (null). No routing decision reads it.
+     */
+    suspend fun submit(points: List<RawLocationPoint>, reason: GpsRequestReason?) {
         val accepted = store.dedup(points)
         if (accepted.isEmpty()) {
             if (points.isNotEmpty()) {
@@ -46,7 +56,7 @@ class LocationFixRouter(
         // 2. History — only when allowed.
         val persisted = allowHistory()
         if (persisted) {
-            runCatching { persistAsHistory(accepted) }
+            runCatching { persistAsHistory(accepted, reason) }
                 .onFailure { logger.e(it) { "persistAsHistory failed" } }
         }
 
@@ -56,7 +66,7 @@ class LocationFixRouter(
 
         logger.i {
             val verb = if (persisted) "Routed" else "Routed (history off)"
-            "$verb ${accepted.size}/${points.size} fixes (last src=${latest.src})"
+            "$verb ${accepted.size}/${points.size} fixes (last src=${latest.src} reason=${reason ?: "tracker"})"
         }
     }
 }

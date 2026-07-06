@@ -71,16 +71,20 @@ fun LocationHistoryScreen(
     viewModel: LocationHistoryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToDashboard: () -> Unit = {},
+    /** Non-null = emergency-locate peer mode: the contact's name titles the screen (#894). */
+    subjectName: String? = null,
+    /** False hides the delete-day menu — peer mode is a read-only view of someone else's data. */
+    allowDelete: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val deviceTz = remember { TimeZone.currentSystemDefault() }
-    // Subject-driven title: "You" for one's own history, a contact's name for the
-    // (future) emergency-locate view. This is the single seam that path feeds into;
-    // no hardcoded "you" further down. See #894.
-    val subjectName = stringResource(MR.string.you)
+    // Subject-driven title: "You" for one's own history, the contact's name for the
+    // emergency-locate view. This is the single seam that path feeds into; no
+    // hardcoded "you" further down. See #894.
+    val subjectTitle = subjectName ?: stringResource(MR.string.you)
 
     Scaffold(
         topBar = {
@@ -88,7 +92,7 @@ fun LocationHistoryScreen(
                 title = {
                     Column {
                         Text(
-                            text = subjectName,
+                            text = subjectTitle,
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -111,6 +115,7 @@ fun LocationHistoryScreen(
                     }
                 },
                 actions = {
+                    if (!allowDelete) return@TopAppBar
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
