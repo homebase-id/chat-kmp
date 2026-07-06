@@ -43,6 +43,9 @@ data class ContactDetailUiState(
     val requestDirection: RequestDirection? = null,
     /** True when this contact is the logged-in identity's own (self) contact. */
     val isSelf: Boolean = false,
+    /** Display name of the identity that introduced this contact, when the connection
+     *  originated from an introduction. Null otherwise. */
+    val introducedByName: String? = null,
     /**
      * `modified` timestamp of the newest file on this contact's location drive, captured by the last
      * temporal-access preflight (run on Sync). Non-null only after a successful verify that returned

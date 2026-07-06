@@ -29,6 +29,8 @@ import id.homebase.resources.contactbook_filter_all
 import id.homebase.resources.contactbook_no_results
 import id.homebase.resources.contactbook_requests_header
 import id.homebase.resources.contactbook_unvetted_empty
+import id.homebase.resources.contactbook_vetted
+import id.homebase.resources.contactbook_vetted_empty
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -49,6 +51,7 @@ fun ContactBookContent(
         val list = when (uiState.filter) {
             ContactFilter.ALL -> uiState.contacts
             ContactFilter.UNVETTED -> uiState.unvetted
+            ContactFilter.VETTED -> uiState.vetted
         }
 
         when {
@@ -63,6 +66,9 @@ fun ContactBookContent(
             list.isEmpty() && incomingRequests.isEmpty() -> when (uiState.filter) {
                 ContactFilter.UNVETTED ->
                     CenterText(stringResource(MR.string.contactbook_unvetted_empty))
+
+                ContactFilter.VETTED ->
+                    CenterText(stringResource(MR.string.contactbook_vetted_empty))
 
                 ContactFilter.ALL -> ContactBookEmptyState(
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
@@ -115,8 +121,6 @@ fun ContactBookContent(
                                 // Check shows whenever the identity is connected, in every
                                 // filter (an unvetted contact is still a connection).
                                 connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
-                                introducedBy = entry.odinId?.lowercase()
-                                    ?.let { uiState.introducedByDomain[it] },
                             )
                         }
                     }
@@ -161,6 +165,11 @@ private fun FilterRow(
             selected = filter == ContactFilter.UNVETTED,
             onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.UNVETTED)) },
             label = { Text(stringResource(MR.string.contactbook_circle_unvetted)) },
+        )
+        FilterChip(
+            selected = filter == ContactFilter.VETTED,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.VETTED)) },
+            label = { Text(stringResource(MR.string.contactbook_vetted)) },
         )
     }
 }
