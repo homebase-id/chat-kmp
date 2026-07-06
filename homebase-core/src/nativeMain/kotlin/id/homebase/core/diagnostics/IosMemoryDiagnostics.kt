@@ -19,8 +19,14 @@ private var installed = false
 /**
  * Wire up [MemoryDiagnostics] on iOS. Call once, early — from `MainViewController.initializeApp()`,
  * alongside [installGpuTextDiagnostics]. Idempotent.
+ *
+ * Named distinctly from `homebase-common`'s internal `installMemoryDiagnostics()` expect/actual —
+ * same package, different module, and Kotlin/Native's IR linker resolves top-level function
+ * signatures by package+name+params regardless of visibility, so an identical name there caused
+ * "IrSimpleFunctionSymbolImpl is already bound" once both klibs were linked into one framework
+ * (a collision `compileKotlin<Target>` doesn't surface — only a real `linkDebugFramework*` does).
  */
-fun installMemoryDiagnostics() {
+fun installIosMemoryDiagnostics() {
     if (installed) return
     installed = true
     MemoryDiagnostics.register(IosMemoryProbe)
