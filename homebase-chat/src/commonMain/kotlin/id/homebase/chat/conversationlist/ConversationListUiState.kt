@@ -133,14 +133,14 @@ data class MessageListUiState(
      *  the screen renders [id.homebase.chat.event.EventDetailDialog] keyed off
      *  this state. Null means no host-level event detail is open. */
     val replyTargetEventDetail: ReplyTargetEventDetail? = null,
-    /** One-time "follow my own send to the bottom" token. Set to a fresh value
-     *  whenever the user sends a message through the full-screen attachment
-     *  editor (image/video/file): closing that overlay tears [ConversationContent]
-     *  — and its layout-growth auto-follow effect — out of composition, so the
-     *  effect restarts with `previousTotal = 0` and never observes the placeholder
-     *  as growth. ConversationContent collects this token on (re)mount, animates to
-     *  the latest item, and dispatches [ConversationListUiAction.ConsumeScrollToLatestRequest]
-     *  to clear it. Null once consumed, so unrelated remounts (closing the image
+    /** One-time "follow my own send to the bottom" token — a user's own send must
+     *  always scroll the list to show it (#995). Armed with the new message id by
+     *  every send arm in MessageActionsHandler (addMessage / replyToMessage /
+     *  addMessageWithFiles); a text/reply/location send adds no placeholder, so
+     *  ConversationContent waits until the id is actually present in the merged
+     *  list (see [resolveOwnSendFollowTarget]) before animating to the latest item,
+     *  then dispatches [ConversationListUiAction.ConsumeScrollToLatestRequest] to
+     *  clear it. Null once consumed, so unrelated remounts (closing the image
      *  viewer) don't re-scroll. */
     val scrollToLatestRequest: Uuid? = null,
 )

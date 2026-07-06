@@ -16,6 +16,7 @@ class ShareConversationCacheWriter(
         conversations: List<ShareableConversation>,
         userDomain: String,
         momentsActivated: Boolean,
+        ownerDisplayName: String? = null,
     ) {
         try {
             val data = ShareConversationCacheData(
@@ -23,6 +24,7 @@ class ShareConversationCacheWriter(
                 updatedAt = kotlin.time.Clock.System.now().toEpochMilliseconds(),
                 userDomain = userDomain,
                 momentsActivated = momentsActivated,
+                ownerDisplayName = ownerDisplayName,
             )
             val encoded = json.encodeToString(data)
             cacheStorage.writeConversationCache(encoded)

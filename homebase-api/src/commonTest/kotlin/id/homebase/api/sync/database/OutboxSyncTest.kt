@@ -1299,4 +1299,152 @@ class OutboxSyncTest {
         assertEquals(0, uploader.uploaded.size)
         sync.clearCheckout(timeoutMs = 5_000)  // drain before db.close(); see file kdoc
     }
+
+    // ── send(force = true): the offline-bypass drain for background push wakes (#987) ──
+
+    private suspend fun DatabaseManager.insertRow(
+        driveId: Uuid = Uuid.random(),
+        uniqueId: Uuid = Uuid.random(),
+        priority: Long = 1,
+    ): Pair<Uuid, Uuid> {
+        outbox.insert(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = priority,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null
+        )
+        return driveId to uniqueId
+    }
+
+    @Test
+    fun forcedSend_drainsWhileOffline() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+        // Deliberately NEVER setOnline(true) — a background push wake has no websocket.
+
+        val itemCompleted = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemCompleted>().first()
+        }
+        testScheduler.runCurrent()
+
+        val (driveId, uniqueId) = db.insertRow()
+
+        assertFalse(sync.send(), "plain send() must still decline offline")
+        assertTrue(sync.send(force = true), "forced send must spawn a worker despite offline")
+
+        // Await-then-assert (testSuccessfulSend pattern): the await suspends the test
+        // coroutine, letting runTest drive the worker to completion.
+        val ev = itemCompleted.await()
+        assertEquals(driveId, ev.driveId)
+        assertEquals(uniqueId, ev.uniqueId)
+        assertEquals(1, uploader.uploaded.size, "the row must upload during the forced drain")
+        assertEquals(0L, db.outbox.count(), "the sent row must be deleted")
+        sync.clearCheckout(timeoutMs = 5_000)
+    }
+
+    @Test
+    fun forcedSend_doesNotFlipOnlineState() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val sync = OutboxSync(databaseManager = db, uploader = TestUploader(), eventBus = eventBus, scope = backgroundScope)
+        val completed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first()
+        }
+        testScheduler.runCurrent()
+        db.insertRow()
+
+        assertTrue(sync.send(force = true))
+        completed.await() // forced drain finished
+
+        assertFalse(sync.isCurrentlyOnline(), "force must not touch isOnline — the WS coordinator owns it")
+        assertFalse(sync.send(), "a later plain send() must still decline offline")
+        sync.clearCheckout(timeoutMs = 5_000)
+    }
+
+    @Test
+    fun forcedSendFailure_backsOffAndDoesNotSelfRetryOffline() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader().apply { shouldFail = true }
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+
+        val itemFailed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().first()
+        }
+        testScheduler.runCurrent()
+
+        db.insertRow()
+        assertTrue(sync.send(force = true))
+
+        itemFailed.await()
+        assertEquals(1L, db.outbox.count(), "failed row stays queued with backoff")
+        // The post-backoff re-kick calls plain send(), which declines offline — the bypass
+        // must never outlive the wake (verified by the send() gate; the row above proves no
+        // successful retry happened).
+        assertEquals(0, uploader.uploaded.size, "no upload may succeed while offline + failing")
+        sync.clearCheckout(timeoutMs = 5_000)
+    }
+
+    @Test
+    fun connectivityFailure_circuitBreaksPassAndDoesNotChargeAttempt() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader().apply {
+            // Transport-level failure (no HTTP response) — what airplane mode produces.
+            failureException = id.homebase.api.client.NetworkException(kotlinx.io.IOException("no route"))
+        }
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+
+        val itemFailed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.ItemFailed>().first()
+        }
+        testScheduler.runCurrent()
+
+        // 50-items scenario in miniature: only the FIRST popped row may be probed.
+        val (driveA, uidA) = db.insertRow(priority = 0)
+        val (driveB, uidB) = db.insertRow(priority = 1)
+
+        assertTrue(sync.send(force = true))
+        val failed = itemFailed.await()
+        assertEquals(uidA, failed.uniqueId)
+        sync.clearCheckout(timeoutMs = 5_000) // pass aborted; wait for the worker to finish
+
+        val rowA = db.outbox.selectByDriveAndUnique(driveA, uidA)
+        val rowB = db.outbox.selectByDriveAndUnique(driveB, uidB)
+        assertNotNull(rowA); assertNotNull(rowB)
+        // Probe row: checked back in UNCHARGED (attempt budget untouched), backoff stamped.
+        assertEquals(0L, rowA.checkOutCount, "connectivity failure must not charge the retry budget")
+        assertTrue(rowA.nextRunTime > 0, "probe row still gets a rate-bound nextRunTime")
+        // Second row: never popped — the circuit breaker aborted the pass.
+        assertEquals(0L, rowB.checkOutCount)
+        assertEquals(0L, rowB.nextRunTime, "row B must be untouched — pass aborted after the first probe")
+        assertEquals(0, uploader.uploaded.size)
+    }
+
+    @Test
+    fun forcedDrain_lowerPriorityNumberDrainsFirst() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val uploader = TestUploader()
+        val sync = OutboxSync(databaseManager = db, uploader = uploader, eventBus = eventBus, scope = backgroundScope)
+
+        val completed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first()
+        }
+        testScheduler.runCurrent()
+
+        // Chat-style row (priority 1) enqueued FIRST; location-style row (priority 0) second.
+        val (_, chatUid) = db.insertRow(priority = 1)
+        val (_, locationUid) = db.insertRow(priority = 0)
+
+        assertTrue(sync.send(force = true))
+        completed.await()
+
+        assertEquals(
+            listOf(locationUid, chatUid),
+            uploader.uploaded.map { it.uniqueId },
+            "checkout is ORDER BY priority ASC — priority 0 (location) must outrank 1 (chat/moments)",
+        )
+        sync.clearCheckout(timeoutMs = 5_000)
+    }
 }

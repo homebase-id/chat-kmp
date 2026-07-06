@@ -57,11 +57,14 @@ import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.convo.matchesShareQuery
+import id.homebase.chat.services.convo.selfDisplayLabel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_search_placeholder
+import id.homebase.resources.contactbook_self_you
 import id.homebase.resources.contacts
 import id.homebase.resources.conversations_selected
 import id.homebase.resources.groups
@@ -116,10 +119,12 @@ fun SharePickerScreen(
     // Gating on `ownerSession != null` left the conversation list empty while the
     // New Moment row (which only needs dataReady) still showed: the user could
     // share to a moment but not to a conversation.
+    val effectiveSession by remember {
+        derivedStateOf { synthesizeOwnerSession(ownerSession, credentials) }
+    }
     val enrichedConversations by remember {
         derivedStateOf {
-            val session = synthesizeOwnerSession(ownerSession, credentials)
-                ?: return@derivedStateOf emptyList()
+            val session = effectiveSession ?: return@derivedStateOf emptyList()
             val contactMap = contactsState.associateBy { it.odinId }
             conversationsData.items.map { enricher.enrich(it, contactMap, session) }
         }
@@ -138,7 +143,7 @@ fun SharePickerScreen(
                 enrichedConversations
             } else {
                 enrichedConversations.filter {
-                    it.getDisplayName().contains(searchQuery, ignoreCase = true)
+                    it.matchesShareQuery(searchQuery, effectiveSession)
                 }
             }
         }
@@ -263,6 +268,11 @@ fun SharePickerScreen(
                     CircularProgressIndicator()
                 }
             } else if (isSearchActive) {
+                // The surfaced self row reads as the user ("Name (you)"), consistent with
+                // the create-conversation self-search affordance (#902).
+                val selfLabel = effectiveSession?.let {
+                    stringResource(MR.string.contactbook_self_you, it.selfDisplayLabel())
+                }
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(
                         items = filteredConversations,
@@ -270,6 +280,7 @@ fun SharePickerScreen(
                     ) { enriched ->
                         ConversationPickerItem(
                             enriched = enriched,
+                            selfLabel = selfLabel,
                             isSelected = enriched.conversation.id in selectedIds,
                             onClick = {
                                 selectedIds = if (enriched.conversation.id in selectedIds) {
@@ -442,6 +453,7 @@ private fun ConversationPickerItem(
     enriched: EnrichedConversationUiModel,
     isSelected: Boolean,
     onClick: () -> Unit,
+    selfLabel: String? = null,
 ) {
     val conversation = enriched.conversation
     Row(
@@ -468,7 +480,7 @@ private fun ConversationPickerItem(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = enriched.getDisplayName(),
+                text = if (conversation.isWithSelf && selfLabel != null) selfLabel else enriched.getDisplayName(),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,

@@ -249,7 +249,10 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 }
             }
 
-            HomebaseTheme(darkTheme = isDarkTheme) {
+            HomebaseTheme(
+                darkTheme = isDarkTheme,
+                followsSystemTheme = prefState.theme == ThemeState.System,
+            ) {
                 Box(modifier = Modifier.fillMaxSize()) {
                 when (val state = screenState) {
                     is ShareScreenState.Picking -> {

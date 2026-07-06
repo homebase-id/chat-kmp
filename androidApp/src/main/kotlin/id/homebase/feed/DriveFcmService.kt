@@ -10,12 +10,16 @@ import androidx.work.WorkManager
 import co.touchlab.kermit.Logger
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.notifications.NotificationService
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.android.ext.android.inject
 
 class DriveFcmService : FirebaseMessagingService() {
 
     private val notificationService: NotificationService by inject()
+    private val pushLocationCapture: PushLocationCapture by inject()
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
@@ -65,6 +69,25 @@ class DriveFcmService : FirebaseMessagingService() {
         Logger.i(tag = "PushCapture") {
             "enqueue: uniqueWork=$WORK_TAG policy=KEEP expedited=downgradable-to-regular"
         }
+
+        // #987: the expedited work request above silently downgrades to DEFERRABLE when the
+        // Doze quota is exhausted — the worker (and its capture) can then run hours late.
+        // onMessageReceived itself executes inside the high-priority FCM wake (~10s budget,
+        // network up), so run the bounded capture + forced outbox drain inline, AFTER the
+        // worker enqueue so chat sync/notification display is never delayed. The worker's
+        // own captureAndUpload call later is a cheap coalesce (60s acquisition guard + 60s
+        // flush rate-gate + replace-enqueue) and the free retry leg if this inline drain
+        // failed. runBlocking is the accepted bridge here — FirebaseMessagingService has no
+        // goAsync, and returning early would drop the process's wake guarantee; a queued
+        // next FCM message waits ≤8s on this thread, which back-to-back pushes absorb via
+        // the last-known/nothing-pending fast paths.
+        Logger.i(tag = "PushCapture") { "inline-capture: starting budgetMs=$INLINE_CAPTURE_BUDGET_MS" }
+        runBlocking {
+            withTimeoutOrNull(INLINE_CAPTURE_BUDGET_MS + BUDGET_SLACK_MS) {
+                runCatching { pushLocationCapture.captureAndUpload(INLINE_CAPTURE_BUDGET_MS) }
+                    .onFailure { Logger.w(tag = "PushCapture", throwable = it) { "inline-capture: failed" } }
+            } ?: Logger.w(tag = "PushCapture") { "inline-capture: hard timeout at ${INLINE_CAPTURE_BUDGET_MS + BUDGET_SLACK_MS}ms" }
+        }
     }
 
     /** FCM priority ints per RemoteMessage: 1=high, 2=normal, 0=unknown. */
@@ -80,5 +103,12 @@ class DriveFcmService : FirebaseMessagingService() {
         const val KEY_BODY = "fcm_body"
         const val KEY_DATA_PREFIX = "fcm_data_"
         const val KEY_ENQUEUED_AT_MS = "fcm_enqueued_at_ms"
+
+        /** High-priority FCM grants ~10s of execution: 5s GPS cap + ~3s drain POST inside
+         *  an 8s budget, 2s process slack (#987). */
+        const val INLINE_CAPTURE_BUDGET_MS = 8_000L
+
+        /** Outer hard-stop margin over the cooperative budget (belt and braces). */
+        const val BUDGET_SLACK_MS = 1_000L
     }
 }

@@ -102,6 +102,12 @@ internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_
 private val COMPANION_AUTH_RESTORE_TIMEOUT = 2.seconds
 
 /**
+ * Sender-side placeholder body for chat pushes (ChatMessageSenderService) — not real
+ * content. Keep in sync with the same literal in the iOS NotificationServiceExtension.
+ */
+private const val CONTENTLESS_PLACEHOLDER = "You have a new message"
+
+/**
  * Resolves the companion-app redirect event, AWAITING auth restoration so a tap
  * from a killed app isn't dropped while `YouAuthFlowManager.restoreSession()` is
  * still loading credentials — the cold-start counterpart of the background-sync
@@ -383,6 +389,11 @@ class NotificationService(
                 // Attempt to decrypt notification body (placeholder for future encrypted support)
                 val decryptedMessage = decryptNotificationBody(notification)
 
+                // Real content only — not the sender-side placeholder (and not the
+                // NotificationBodyFormer fallback used when decryptedMessage is null).
+                val hasContent = !decryptedMessage.isNullOrEmpty() &&
+                        decryptedMessage != CONTENTLESS_PLACEHOLDER
+
                 val appName = notification.appDisplayName ?: "Homebase"
 
                 // Use decrypted message if available, otherwise format from payload
@@ -436,6 +447,7 @@ class NotificationService(
                     timestamp = notification.created,
                     payloadData = payloadMap,
                     silent = !shouldAlert,
+                    hasContent = hasContent,
                 )
 
                 if (isAppInForeground) {

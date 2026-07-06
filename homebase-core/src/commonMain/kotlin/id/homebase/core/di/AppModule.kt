@@ -110,6 +110,7 @@ import id.homebase.core.ui.screens.moments.CreateMomentGroupViewModel
 import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
+import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.momentsLabeledDrive
@@ -160,6 +161,7 @@ import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
+import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
@@ -173,6 +175,8 @@ import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
 import id.homebase.core.ui.screens.location.LocationTrackUploaderService
 import id.homebase.core.ui.screens.location.LocationViewModel
+import id.homebase.core.ui.screens.location.PushCaptureUploader
+import id.homebase.core.ui.screens.location.model.locationHourFileUid
 import id.homebase.core.ui.screens.location.devices.FindDeviceViewModel
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
@@ -308,6 +312,10 @@ val appModule = module {
             // un-uploaded backlog, still uploads). #878 follow-up.
             powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
             isAppForeground = { get<LocationTrackingCoordinator>().isForeground },
+            // Drain even without the websocket (#987): background wakes (push, PendingIntent
+            // batch, SLC relaunch) never flip OutboxSync online, so the normal enqueue kick
+            // declines and the hour-file would strand until the next foreground connect.
+            drainNow = { get<OutboxSync>().send(force = true) },
         )
     }
     single {
@@ -343,6 +351,22 @@ val appModule = module {
             scope = get(),
             // Battery saver: on-demand fixes go cache-only (no radio). #878 follow-up.
             powerSaveMode = { get<DeviceSensors>().isPowerSaveMode() },
+        )
+    }
+    // Push-wake capture+upload orchestrator (#987): gated capture, then a bounded forced
+    // outbox drain with row-verified confirmation, so the hour-file lands during the wake.
+    // Interface lives in homebase-common (NotificationEntry injects it); lambda seams keep
+    // the orchestration testable and mirror the persistAsHistory wiring style.
+    single<PushLocationCapture> {
+        PushCaptureUploader(
+            capture = { get<LocationService>().forceCaptureIfTracking(GpsRequestReason.PushReceived) },
+            pendingRow = { uid ->
+                get<OutboxSync>().pendingUploadType(locationLabeledDrive.drive.alias, uid) != null
+            },
+            drain = { get<OutboxSync>().send(force = true) },
+            events = get<EventBus>().events,
+            locationDriveId = locationLabeledDrive.drive.alias,
+            hourUid = { hourStart -> locationHourFileUid(get<LocationDeviceId>().value, hourStart) },
         )
     }
     // endregion
@@ -869,6 +893,7 @@ val appModule = module {
             liveShareService = get(),
             conversationService = get(),
             emergencyLocateService = get(),
+            authConnectionCoordinator = get(),
         )
     }
     // Manual block: the optional peerDomain (emergency-locate peer mode) arrives as a Koin

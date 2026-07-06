@@ -70,6 +70,18 @@ SET checkOutStamp=NULL,
     nextRunTime=:nextRunTime
 WHERE checkOutStamp=:checkOutStamp;
 
+-- Check a row back in WITHOUT counting the attempt (#987): connectivity-class failures
+-- (no network reaching the server) must not burn the MAX_RETRIES budget toward a
+-- permanent drop — an extended-offline stretch with background wakes could otherwise
+-- consume all attempts on hopeless probes and DROP queued items that today survive
+-- untouched until reconnect. nextRunTime still advances so hopeless probes stay
+-- rate-bounded.
+checkInUncharged:
+UPDATE Outbox
+SET checkOutStamp=NULL,
+    nextRunTime=:nextRunTime
+WHERE checkOutStamp=:checkOutStamp;
+
 -- Force a queued row's next attempt (e.g. "Try now" resetting a backed-off
 -- item to run immediately). Guarded on checkOutStamp IS NULL: an in-flight
 -- row's nextRunTime is owned by checkInFailed and must not be raced.
