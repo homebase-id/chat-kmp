@@ -404,7 +404,10 @@ class ConversationService(
      * (created if it doesn't exist yet). [StatusMessageData.subject] carries [recipient] so the
      * sender's own copy renders "You added {recipient}…"; the receiver's copy renders "{sender}
      * added you…" and drives the receive-side bit (see
-     * [id.homebase.chat.services.convo.ConversationStream.onEmergencyContactDesignated]).
+     * [id.homebase.chat.services.convo.ConversationStream.onEmergencyContactDesignated]) — then that
+     * copy is immediately soft-deleted/consumed, so it never sits in the receiver's history. A second
+     * [StatusMessage.EmergencyContactDesignatedNotice] status is chained right after it with the same
+     * text: it drives no side-effect and is never consumed, so it's what the receiver actually sees.
      *
      * Unlike the "conversation started" status this is posted on every designation (not just a
      * freshly-created thread). Best-effort: returns the conversation id on success, or null on
@@ -417,12 +420,22 @@ class ConversationService(
                 title = null,
                 payloadBundle = null,
             )
+            val designationMessageId = Uuid.random()
             chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = Uuid.random(),
+                messageUniqueId = designationMessageId,
                 conversationId = result.conversationId,
                 previousMessageUniqueId = result.conversationId,
                 statusMessage = StatusMessageData(
                     statusMessage = StatusMessage.EmergencyContactDesignated,
+                    subject = recipient,
+                ),
+            )
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = Uuid.random(),
+                conversationId = result.conversationId,
+                previousMessageUniqueId = designationMessageId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.EmergencyContactDesignatedNotice,
                     subject = recipient,
                 ),
             )
@@ -486,8 +499,10 @@ class ConversationService(
      * Mirror of [sendEmergencyContactDesignation]: notifies [recipient] that the local user has
      * removed them from their emergency circle, by posting a [StatusMessage.EmergencyContactRevoked]
      * status into their 1:1. Drives the receiver's [ConversationStream.onEmergencyContactRevoked]
-     * side-effect (clears the can-locate flag). Best-effort; returns the conversation id or null on
-     * failure (logged). Rethrows cancellation.
+     * side-effect (clears the can-locate flag) and is then consumed the same way the designation is —
+     * so a second, never-consumed [StatusMessage.EmergencyContactRevokedNotice] is chained right after
+     * it to give the receiver a visible "X removed you as an emergency contact" status line.
+     * Best-effort; returns the conversation id or null on failure (logged). Rethrows cancellation.
      */
     suspend fun sendEmergencyContactRevocation(recipient: OdinId): Uuid? {
         return try {
@@ -496,12 +511,22 @@ class ConversationService(
                 title = null,
                 payloadBundle = null,
             )
+            val revocationMessageId = Uuid.random()
             chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = Uuid.random(),
+                messageUniqueId = revocationMessageId,
                 conversationId = result.conversationId,
                 previousMessageUniqueId = result.conversationId,
                 statusMessage = StatusMessageData(
                     statusMessage = StatusMessage.EmergencyContactRevoked,
+                    subject = recipient,
+                ),
+            )
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = Uuid.random(),
+                conversationId = result.conversationId,
+                previousMessageUniqueId = revocationMessageId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.EmergencyContactRevokedNotice,
                     subject = recipient,
                 ),
             )

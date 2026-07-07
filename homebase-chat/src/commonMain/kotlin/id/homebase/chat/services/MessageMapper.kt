@@ -570,7 +570,8 @@ internal suspend fun renderStatusMessage(
             else TranslationUtil.getString(MR.string.chat_poll_ended_other, name, q)
         }
 
-        StatusMessage.EmergencyContactDesignated ->
+        StatusMessage.EmergencyContactDesignated,
+        StatusMessage.EmergencyContactDesignatedNotice ->
             when {
                 authorIsYou && subject != null ->
                     TranslationUtil.getString(MR.string.system_emergency_contact_designated_you, subject)
@@ -580,7 +581,8 @@ internal suspend fun renderStatusMessage(
                     TranslationUtil.getString(MR.string.system_emergency_contact_designated, name)
             }
 
-        StatusMessage.EmergencyContactRevoked ->
+        StatusMessage.EmergencyContactRevoked,
+        StatusMessage.EmergencyContactRevokedNotice ->
             when {
                 authorIsYou && subject != null ->
                     TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you, subject)

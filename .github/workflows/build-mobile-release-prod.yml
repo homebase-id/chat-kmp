@@ -211,15 +211,18 @@ jobs:
           # release link starts with a clean heap instead of inheriting 45+
           # minutes of accumulated daemon heap (build 27400310875 OOM).
           kotlin.native.disableCompilerDaemon=true
-          # 8g, not less: run 27407420160's GC log proved ~5.1 GB is genuinely
-          # live during linkReleaseFrameworkIosArm64 (full GC clearing soft refs
-          # reclaimed nothing at a 6g cap). 8g exceeds the runner's 7 GB RAM;
-          # macOS swap absorbs it, proven even with xcodebuild resident: run
-          # 27414487423's in-Xcode link completed at 8g. (A pre-build step that
-          # linked before fastlane was removed — embedAndSignAppleFrameworkForXcode
-          # configures the link differently, so the pre-built framework was not
-          # UP-TO-DATE and the ~60 min link ran twice.)
-          kotlin.native.jvmArgs=-Xmx8g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
+          # 12g, not 8g: run 28881233018's GC log (kn-gc-46490.log) showed the
+          # heap pinned at ~8187-8189M against the old 8g cap for ~20 minutes
+          # across 9 consecutive Full GCs (30-165s each), each reclaiming
+          # near-zero bytes — G1 "GC overhead limit exceeded" thrashing, not a
+          # hard live-set wall. The final Full GC did free the heap down to
+          # 2935M, proving the peak working set (whole-program IR/analysis
+          # before final emission) is transient and reclaimable — it just
+          # needs more headroom than 8g to get through that peak without
+          # stalling out. 12g exceeds the runner's 7 GB RAM; macOS swap
+          # absorbed an 8g cap fine before (run 27414487423), so the extra 4g
+          # is expected to cost more wall-clock via swapping, not fail outright.
+          kotlin.native.jvmArgs=-Xmx12g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
           tail -n 15 gradle.properties
