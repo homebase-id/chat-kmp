@@ -7,10 +7,12 @@ package id.homebase.chat.widget
  * (`LocationPreviewDescriptor.liveShareUntilMs`). This only carries the side + the action callbacks.
  *
  * - [sentByYou] gates the start/stop links (you can only share/stop your own location message).
- * - [onStart]/[onStop] update this message's descriptor (set/clear the live window).
+ * - [onStart]/[onStop] update this message's descriptor (set/clear the live window). The duration
+ *   may be the `LIVE_SHARE_INDEFINITE` sentinel (indefinite pick from the menu, #1013).
  * - [onStartShareBack] shares YOUR live location from someone else's bubble — sends a new own
  *   message instead of touching theirs. Null duration = mirror the sender's live end-time
- *   (single tap on a LIVE bubble); non-null = picked from the menu on a fresh static bubble.
+ *   (single tap on a LIVE bubble); non-null = picked from the menu on a fresh static bubble —
+ *   either path may carry the indefinite sentinel.
  * - [onOpenMap] opens the Live Location map (used by either side when the share is live).
  */
 data class LiveLocationBubbleControls(

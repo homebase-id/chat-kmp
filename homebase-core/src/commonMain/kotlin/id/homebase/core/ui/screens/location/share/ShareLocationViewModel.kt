@@ -18,6 +18,7 @@ import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.LocationService
+import id.homebase.core.location.liveShareEndTimeMs
 import id.homebase.core.location.tracking.DemandReason
 import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.resources.MR
@@ -247,6 +248,7 @@ class ShareLocationViewModel(
     /**
      * Start a live share for [durationMs]: own live-at-creation message (from the ACTUAL current
      * position) + relay roster, both on the same absolute end-time. Gated on share readiness.
+     * [durationMs] may be the [LIVE_SHARE_INDEFINITE] sentinel (share until explicitly stopped).
      */
     fun startLiveShare(durationMs: Long) {
         if (_uiState.value.isSending) return
@@ -263,7 +265,7 @@ class ShareLocationViewModel(
                     _events.emit(ShareLocationUiEvent.ShowError(MR.string.chat_location_unavailable))
                     return@launch
                 }
-                val untilMs = Clock.System.now().toEpochMilliseconds() + durationMs
+                val untilMs = liveShareEndTimeMs(Clock.System.now().toEpochMilliseconds(), durationMs)
                 val preview = previewProvider.getLocationPreview(fix.point.lat, fix.point.lon)
                 val descriptor = LocationPreviewPayloadBuilder.descriptorFor(preview)
                     .copy(caption = captionOrNull(), liveShareUntilMs = untilMs)
