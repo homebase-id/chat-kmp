@@ -636,6 +636,7 @@ private fun EditableFieldGroup(
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                content(selectedTier)
                 TierToggle(selected = selectedTier, onSelect = { selectedTier = it })
                 Text(
                     text = stringResource(
@@ -648,7 +649,6 @@ private fun EditableFieldGroup(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                content(selectedTier)
             }
         }
     }
@@ -816,6 +816,7 @@ private fun AddAttributeDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                AttributeFields(spec.type, value, onChange)
                 TierToggle(selected = tier, onSelect = { tier = it })
                 Text(
                     text = stringResource(
@@ -828,7 +829,6 @@ private fun AddAttributeDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                AttributeFields(spec.type, value, onChange)
             }
         },
         confirmButton = {
