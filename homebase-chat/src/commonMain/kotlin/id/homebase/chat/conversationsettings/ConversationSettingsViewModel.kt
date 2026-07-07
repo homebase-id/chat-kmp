@@ -12,13 +12,9 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
-import id.homebase.chat.services.livelocation.INCOMING_SHARE_STALE_MS
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.livelocation.LiveLocationShareService
-import id.homebase.chat.services.livelocation.incomingLiveShareUntilMs
-import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
-import id.homebase.chat.services.livelocation.liveSharePinUntilMs
-import id.homebase.chat.services.livelocation.quantizeLiveShareDeadlineUp
+import id.homebase.chat.services.livelocation.conversationLiveSharePinUntilMs
 import id.homebase.core.ui.navigation.Route
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -32,6 +28,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Clock
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 class ConversationSettingsViewModel(
@@ -167,13 +164,14 @@ class ConversationSettingsViewModel(
     }
 
     /**
-     * Drives this screen's live-share pin, consistent with the chat-list and in-chat pins (#1012):
-     * lit when I'm sharing with anyone in this conversation (outgoing) OR the other party is sharing
-     * their live location with me (incoming, from live-relay freshness), whichever ends later.
+     * Drives this screen's live-share pin via [conversationLiveSharePinUntilMs] — the same
+     * function the in-chat pin uses, so the two can never diverge (#1012): lit when I'm sharing
+     * with anyone in this conversation (outgoing) OR the other party is sharing their live location
+     * with me (incoming, quantized live-relay freshness), whichever ends later.
      *
-     * The other participants are resolved through [ConversationStream.getRecipients] — the same seam
-     * the in-chat pin uses — so both pins agree and we inherit its empty-participants re-map fallback
-     * (#934). [ConversationStream.conversations] is a combine source so the pin re-resolves once the
+     * The other participants are resolved through [ConversationStream.getRecipients] — again the
+     * in-chat pin's seam — inheriting its empty-participants re-map fallback (#934).
+     * [ConversationStream.conversations] is a combine source so the pin re-resolves once the
      * conversation row hydrates (otherwise an already-running outgoing share with no incoming stream
      * could leave the pin dark until the next roster/relay event). Note-to-self has no other party.
      */
@@ -188,14 +186,22 @@ class ConversationSettingsViewModel(
             ) { roster, positions, _ -> roster to positions }
                 .collectLatest { (roster, positions) ->
                     val now = Clock.System.now().toEpochMilliseconds()
-                    val others = runCatching {
-                        conversationStream.getRecipients(conversationId, emptyList(), null)
-                    }.getOrDefault(emptyList())
-                    val own = liveShareAnyUntilMs(roster, others.map { it.domainName }, now)
-                    val incoming = quantizeLiveShareDeadlineUp(
-                        incomingLiveShareUntilMs(positions, others, INCOMING_SHARE_STALE_MS, now),
-                    )
-                    _uiState.update { it.copy(liveShareUntilMs = liveSharePinUntilMs(own, incoming)) }
+                    // Re-resolves per relay packet during an incoming stream; slow-path log is the
+                    // evidence gate for whether caching is ever needed (#1012 review).
+                    val (others, took) = measureTimedValue {
+                        runCatching {
+                            conversationStream.getRecipients(conversationId, emptyList(), null)
+                        }.getOrDefault(emptyList())
+                    }
+                    if (took.inWholeMilliseconds >= 5) {
+                        Logger.i(tag = "LiveRelay") {
+                            "settings pin getRecipients slow conv=$conversationId " +
+                                "took=${took.inWholeMilliseconds}ms (re-runs per relay packet — cache if this recurs)"
+                        }
+                    }
+                    _uiState.update {
+                        it.copy(liveShareUntilMs = conversationLiveSharePinUntilMs(roster, positions, others, now))
+                    }
                 }
         }
     }

@@ -1,6 +1,7 @@
 package id.homebase.chat.services.livelocation
 
 import id.homebase.api.client.liverelay.LiveLocationPoint
+import id.homebase.api.client.liverelay.TimedRecipient
 import id.homebase.api.common.OdinId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -93,5 +94,45 @@ class IncomingLiveShareTest {
         assertEquals(50L, liveSharePinUntilMs(50L, null))
         assertEquals(50L, liveSharePinUntilMs(null, 50L))
         assertEquals(80L, liveSharePinUntilMs(30L, 80L))
+    }
+
+    // --- Composed per-surface helpers (the pins' single source of truth) ---
+
+    @Test
+    fun conversationPinLightsForEitherDirectionAndScopesToParticipants() {
+        val alice = OdinId("alice.com")
+        val roster = listOf(TimedRecipient("alice.com", endTimeMs = now + 30_000))
+        val positions = pos("alice.com" to now - 1_000, "carol.com" to now) // carol not a participant
+
+        // Outgoing only: my roster entry wins when incoming is absent.
+        assertEquals(
+            now + 30_000,
+            conversationLiveSharePinUntilMs(roster, emptyMap(), listOf(alice), now),
+        )
+        // Incoming only: quantized freshness deadline.
+        assertEquals(
+            quantizeLiveShareDeadlineUp(now - 1_000 + stale),
+            conversationLiveSharePinUntilMs(emptyList(), positions, listOf(alice), now),
+        )
+        // Both: the later (incoming, 1h) wins over outgoing (30s). Non-participant carol is ignored.
+        assertEquals(
+            quantizeLiveShareDeadlineUp(now - 1_000 + stale),
+            conversationLiveSharePinUntilMs(roster, positions, listOf(alice), now),
+        )
+        // Neither.
+        assertNull(conversationLiveSharePinUntilMs(emptyList(), emptyMap(), listOf(alice), now))
+    }
+
+    @Test
+    fun globalPinLightsForEitherDirectionUnscoped() {
+        val roster = listOf(TimedRecipient("bob.com", endTimeMs = now + 30_000))
+        val positions = pos("carol.com" to now - 1_000) // any sender counts, no participant filter
+
+        assertEquals(now + 30_000, globalLiveSharePinUntilMs(roster, emptyMap(), now))
+        assertEquals(
+            quantizeLiveShareDeadlineUp(now - 1_000 + stale),
+            globalLiveSharePinUntilMs(emptyList(), positions, now),
+        )
+        assertNull(globalLiveSharePinUntilMs(emptyList(), emptyMap(), now))
     }
 }

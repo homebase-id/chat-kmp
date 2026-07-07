@@ -1,5 +1,6 @@
 package id.homebase.chat.services.livelocation
 
+import id.homebase.api.client.liverelay.TimedRecipient
 import id.homebase.api.common.OdinId
 
 /**
@@ -34,6 +35,41 @@ fun quantizeLiveShareDeadlineUp(untilMs: Long?, quantumMs: Long = INCOMING_SHARE
  *  null when neither is active. Shared by the chat-list, in-chat, and details pins (#1012). */
 fun liveSharePinUntilMs(ownUntilMs: Long?, incomingUntilMs: Long?): Long? =
     listOfNotNull(ownUntilMs, incomingUntilMs).maxOrNull()
+
+/**
+ * The complete pin deadline for a CONVERSATION surface (in-chat top bar, details screen): my
+ * outgoing share to any of [otherParticipants] OR one of them sharing with me (quantized incoming
+ * freshness), whichever ends later; null when neither. The single source of truth for the
+ * per-conversation pin math — the in-chat and details pins call this same function so they can
+ * never diverge (#1012 review).
+ */
+fun conversationLiveSharePinUntilMs(
+    roster: List<TimedRecipient>,
+    positions: Map<OdinId, LivePosition>,
+    otherParticipants: Collection<OdinId>,
+    nowMs: Long,
+): Long? = liveSharePinUntilMs(
+    liveShareAnyUntilMs(roster, otherParticipants.map { it.domainName }, nowMs),
+    quantizeLiveShareDeadlineUp(
+        incomingLiveShareUntilMs(positions, otherParticipants, INCOMING_SHARE_STALE_MS, nowMs),
+    ),
+)
+
+/**
+ * The complete pin deadline for the GLOBAL chat-overview surface: I'm sharing with anyone at all OR
+ * anyone is sharing with me, whichever ends later; null when neither. Counterpart of
+ * [conversationLiveSharePinUntilMs] for the unscoped list pin.
+ */
+fun globalLiveSharePinUntilMs(
+    roster: List<TimedRecipient>,
+    positions: Map<OdinId, LivePosition>,
+    nowMs: Long,
+): Long? = liveSharePinUntilMs(
+    liveShareAnyUntilMs(roster, null, nowMs),
+    quantizeLiveShareDeadlineUp(
+        incomingLiveShareAnyUntilMs(positions, INCOMING_SHARE_STALE_MS, nowMs),
+    ),
+)
 
 /**
  * When someone — anyone — is sharing their live location with me, and until when: the latest

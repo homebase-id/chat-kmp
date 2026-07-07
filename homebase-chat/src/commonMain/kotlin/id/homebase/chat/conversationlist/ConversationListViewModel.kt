@@ -32,13 +32,10 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
-import id.homebase.chat.services.livelocation.INCOMING_SHARE_STALE_MS
 import id.homebase.chat.services.livelocation.ShareBackResult
-import id.homebase.chat.services.livelocation.incomingLiveShareAnyUntilMs
-import id.homebase.chat.services.livelocation.incomingLiveShareUntilMs
-import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
+import id.homebase.chat.services.livelocation.conversationLiveSharePinUntilMs
+import id.homebase.chat.services.livelocation.globalLiveSharePinUntilMs
 import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
-import id.homebase.chat.services.livelocation.quantizeLiveShareDeadlineUp
 import id.homebase.chat.services.livelocation.shareLiveLocationBack
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.chat.services.convo.ConversationEnricher
@@ -97,6 +94,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.time.Clock
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -377,34 +375,33 @@ class ConversationListViewModel(
                 .collectLatest { (conversationId, roster, positions) ->
                     val nowMs = Clock.System.now().toEpochMilliseconds()
                     _uiState.update {
-                        it.copy(
-                            ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs),
-                            // Quantized so a streaming peer's ever-advancing deadline doesn't churn
-                            // the top bar on every relay packet (#1012 review).
-                            incomingLiveShareAnyUntilMs = quantizeLiveShareDeadlineUp(
-                                incomingLiveShareAnyUntilMs(positions, INCOMING_SHARE_STALE_MS, nowMs),
-                            ),
-                        )
+                        it.copy(liveSharePinAnyUntilMs = globalLiveSharePinUntilMs(roster, positions, nowMs))
                     }
                     var fullUntilMs: Long? = null
-                    var anyUntilMs: Long? = null
-                    var incomingUntilMs: Long? = null
+                    var pinUntilMs: Long? = null
                     conversationId?.let { id ->
-                        val recipients = runCatching {
-                            conversationStream.getRecipients(id, emptyList(), null)
-                        }.getOrDefault(emptyList())
-                        val recipientIds = recipients.map { it.domainName }
-                        fullUntilMs = liveShareCoverageUntilMs(roster, recipientIds, nowMs)
-                        anyUntilMs = liveShareAnyUntilMs(roster, recipientIds, nowMs)
-                        incomingUntilMs = quantizeLiveShareDeadlineUp(
-                            incomingLiveShareUntilMs(positions, recipients, INCOMING_SHARE_STALE_MS, nowMs),
-                        )
+                        // positions re-emits per relay packet during an incoming stream, so this
+                        // re-resolves per packet. Normally an in-memory lookup; the placeholder-row
+                        // fallback (#934) hits the DB — the slow-path log below is the evidence
+                        // gate for whether per-conversation caching is ever worth it (#1012 review).
+                        val (recipients, took) = measureTimedValue {
+                            runCatching {
+                                conversationStream.getRecipients(id, emptyList(), null)
+                            }.getOrDefault(emptyList())
+                        }
+                        if (took.inWholeMilliseconds >= 5) {
+                            Logger.i(tag = "LiveRelay") {
+                                "pin getRecipients slow conv=$id took=${took.inWholeMilliseconds}ms " +
+                                    "(re-runs per relay packet — cache if this recurs)"
+                            }
+                        }
+                        fullUntilMs = liveShareCoverageUntilMs(roster, recipients.map { it.domainName }, nowMs)
+                        pinUntilMs = conversationLiveSharePinUntilMs(roster, positions, recipients, nowMs)
                     }
                     _messagesUiState.update {
                         it.copy(
                             ownLiveShareUntilMs = fullUntilMs,
-                            ownLiveShareInConversationUntilMs = anyUntilMs,
-                            incomingLiveShareInConversationUntilMs = incomingUntilMs,
+                            liveSharePinInConversationUntilMs = pinUntilMs,
                         )
                     }
                 }
@@ -935,12 +932,6 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.OpenLocationSetup -> {
-                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
-            }
-
-            is ConversationListUiAction.OpenLocationDashboard -> {
-                // Same navigation as setup: openLocation routes to the dashboard when the add-on
-                // is activated — always true while a share is running (the pin's only tap path).
                 sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
             }
 

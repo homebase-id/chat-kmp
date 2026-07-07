@@ -118,7 +118,6 @@ import id.homebase.chat.dice.DiceRollComposerSheet
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.dice.computeBattleChainCap
 import id.homebase.chat.services.content.MessageContent
-import id.homebase.chat.services.livelocation.liveSharePinUntilMs
 import id.homebase.chat.event.EventComposerSheet
 import id.homebase.chat.groodle.GroodleComposerSheet
 import id.homebase.chat.poll.PollComposerSheet
@@ -762,10 +761,7 @@ fun ConversationContent(
                         // One pin, either direction (#1012): my outgoing share OR someone sharing
                         // with me here. Tapping opens the live map (shows my dot + every sharer).
                         LiveShareIndicator(
-                            untilMs = liveSharePinUntilMs(
-                                uiState.ownLiveShareInConversationUntilMs,
-                                uiState.incomingLiveShareInConversationUntilMs,
-                            ),
+                            untilMs = uiState.liveSharePinInConversationUntilMs,
                             onClick = {
                                 onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                             },

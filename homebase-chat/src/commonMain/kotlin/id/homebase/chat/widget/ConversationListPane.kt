@@ -65,7 +65,6 @@ import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
-import id.homebase.chat.services.livelocation.liveSharePinUntilMs
 import id.homebase.chat.conversationlist.ConversationListContentState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiState
@@ -226,10 +225,7 @@ fun ConversationListPane(
                             // One pin, either direction (#1012): I'm sharing with anyone OR anyone
                             // is sharing with me. Tapping opens the live map.
                             LiveShareIndicator(
-                                untilMs = liveSharePinUntilMs(
-                                    uiState.ownLiveShareAnyUntilMs,
-                                    uiState.incomingLiveShareAnyUntilMs,
-                                ),
+                                untilMs = uiState.liveSharePinAnyUntilMs,
                                 onClick = {
                                     onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                                 },
