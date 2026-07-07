@@ -542,6 +542,10 @@ fun ConversationContent(
     var pendingCameraLaunch by remember { mutableStateOf(false) }
     LaunchedEffect(pendingCameraLaunch) {
         if (pendingCameraLaunch) {
+            // Closing the dropdown hands focus back to the input, which pops the keyboard up during
+            // the wait below; clear focus + hide it so the keyboard doesn't flash before the camera.
+            focusManager.clearFocus()
+            keyboardController?.hide()
             delay(250) // let the DropdownMenu popup finish dismissing before FileKit presents
             cameraLauncher.launch()
             pendingCameraLaunch = false // reset AFTER launch — resetting first cancels this effect
