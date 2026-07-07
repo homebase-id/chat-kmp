@@ -281,6 +281,7 @@ fun ContactDetailScreen(
                             Spacer(modifier = Modifier.height(if (tabs.size > 1) 12.dp else 20.dp))
                             when (current) {
                                 ContactDetailTab.DETAILS -> {
+                                    uiState.introducedByName?.let { IntroducedBySection(it) }
                                     ContactFieldsSection(
                                         entry = entry,
                                         expanded = detailsExpanded,

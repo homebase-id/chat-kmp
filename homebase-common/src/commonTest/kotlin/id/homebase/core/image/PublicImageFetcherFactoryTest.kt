@@ -127,4 +127,23 @@ class PublicImageFetcherFactoryTest {
         val odinId = OdinId("frodo.digital")
         assertEquals(odinId, resolveOdinId(odinId.publicImageUrl().toUri()))
     }
+
+    // =========================================================
+    // Cache-busting query string (?v=<lastModified>) — see PublicAvatar's
+    // cacheBustKey param. The suffix match must still resolve correctly with
+    // one appended, or the owner's own avatar refresh silently stops using
+    // this Fetcher (and its cache) entirely.
+    // =========================================================
+
+    @Test
+    fun resolveOdinId_uriWithCacheBustQuery_matches() {
+        val uri = "https://frodo.digital/pub/image?v=1699999999".toUri()
+        assertEquals("frodo.digital", resolveOdinId(uri)?.toString())
+    }
+
+    @Test
+    fun resolveOdinId_stringWithCacheBustQuery_matches() {
+        val odinId = resolveOdinId("https://frodo.digital/pub/image?v=1699999999")
+        assertEquals("frodo.digital", odinId?.toString())
+    }
 }

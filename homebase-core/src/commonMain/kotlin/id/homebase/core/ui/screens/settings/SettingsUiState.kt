@@ -21,12 +21,17 @@ sealed interface SettingsUiAction {
     data object OpenOwnerConsoleClicked : SettingsUiAction
     data object ProfileInfoClicked : SettingsUiAction
     data object SecuritySetupClicked : SettingsUiAction
+    data object AvatarClicked : SettingsUiAction
 }
 
 /** One-off events for side effects (navigation). */
 sealed interface SettingsUiEvent {
     data object LoggedOut : SettingsUiEvent
     data class OpenUrl(val url: String): SettingsUiEvent
+    /** Open the in-app standard-profile editor. */
+    data object NavigateToProfileEdit : SettingsUiEvent
+    /** Open the dedicated avatar pick/crop/upload screen. */
+    data object NavigateToProfileAvatarEdit : SettingsUiEvent
 }
 
 sealed interface SettingsUiDialog {

@@ -23,6 +23,14 @@ sealed class Route {
     data object Settings : Route()
 
     @Serializable
+    @SerialName("profile-edit")
+    data object ProfileEdit : Route()
+
+    @Serializable
+    @SerialName("profile-avatar-edit")
+    data object ProfileAvatarEdit : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 
@@ -214,7 +222,7 @@ sealed class Route {
 
     @Serializable
     @SerialName("crop")
-    data class Crop(val requestId: String) : Route()
+    data class Crop(val requestId: String, val lockedAspect: String? = null) : Route()
 
     @Serializable
     @SerialName("draw")

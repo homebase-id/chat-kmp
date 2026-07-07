@@ -172,6 +172,7 @@ fun ConversationListPane(
                                                     }),
                                                 animatedVisibilityScope = this@AnimatedVisibility,
                                                 sharedTransitionScope = null,
+                                                cacheBustKey = session.profileImageLastModified,
                                             )
                                         }
 

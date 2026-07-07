@@ -94,6 +94,7 @@ fun CropScreen(
                     onReset = { viewModel.onUiAction(CropEditorUiAction.ResetClicked) },
                     onUndo = { viewModel.onUiAction(CropEditorUiAction.UndoClicked) },
                     onRedo = { viewModel.onUiAction(CropEditorUiAction.RedoClicked) },
+                    hideAspectSwitcher = uiState.aspectSwitcherHidden,
                 )
             }
         },

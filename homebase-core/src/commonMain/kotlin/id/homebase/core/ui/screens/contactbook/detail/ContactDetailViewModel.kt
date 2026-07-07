@@ -13,6 +13,7 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationsettings.GroupInCommonItem
@@ -164,10 +165,20 @@ class ContactDetailViewModel(
                 val entry = synced?.withOverride(overrides[synced.uniqueId])
                 val domain = entry?.odinId
                 val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
-                val status = domain?.let { d ->
-                    conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }
-                        ?.value?.status
+                val registration = domain?.let { d ->
+                    conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }?.value
                 }
+                val status = registration?.status
+                // Resolved to a saved contact's name when we have one, else the raw introducer domain.
+                val introducedByName = registration
+                    ?.takeIf {
+                        it.connectionRequestOrigin == ConnectionRequestOrigin.Introduction &&
+                            it.introducerOdinId != null
+                    }
+                    ?.introducerOdinId?.domainName?.let { introducer ->
+                        contacts.firstOrNull { it.odinId.equals(introducer, ignoreCase = true) }
+                            ?.displayName ?: introducer
+                    }
                 val requestDirection = domain?.let { d ->
                     when {
                         bundle.incoming.any { it.senderOdinId.domainName.equals(d, ignoreCase = true) } ->
@@ -199,6 +210,7 @@ class ContactDetailViewModel(
                         isLoading = false,
                         isSelf = isSelf,
                         requestDirection = requestDirection,
+                        introducedByName = introducedByName,
                     )
                 }
             }
