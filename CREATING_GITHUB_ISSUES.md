@@ -124,6 +124,32 @@ When the user attaches files to the chat, include them in the issue.
 If you're unsure whether an attachment is text or binary, prefer inline embedding for
 anything human-readable.
 
+### When an attachment doesn't arrive (it often doesn't — check first)
+
+Chat uploads are **unreliable** — an image/log the user "attached" frequently does **not**
+reach the workspace. Before assuming you have it:
+
+- **Check the uploads dir by mtime:**
+  `ls -lat /home/seifert/.claude/uploads/<session-id>/ | head`. The freshest file (right
+  extension, timestamp ≈ now) is the new attachment. If the newest file is old/unrelated,
+  it **didn't arrive.**
+- **If it didn't arrive:** say so plainly and ask the user to **re-attach** — for a
+  visual/layout bug the image is load-bearing, so prefer waiting over guessing. If they've
+  tried more than once (or it's urgent), **file text-only** with a clear *"screenshot
+  didn't come through — root cause below is a hypothesis; confirm against the image and
+  I'll embed it"* note, and mark any visual root cause as **tentative**.
+- A missing attachment is a workspace glitch, not the user forgetting — don't ask "did you
+  attach it?", just check the dir and re-request.
+
+### PII discretion on screenshots
+
+Default to **text-only** (describe the bug precisely) when a screenshot shows a **real
+face** or **real contact names / handles / addresses** — even if the user says "not PII" —
+unless they explicitly clear that specific image. Test/fictional identities
+(`frodo.baggins.demo.rocks`, `gandalf.grey.demo.rocks`, etc.) are fine to embed; a real
+person's avatar or a real contact's name is not. A precise written description of the
+visual usually lets the assignee reproduce without the image.
+
 ---
 
 ## Body template — Bug
@@ -224,6 +250,18 @@ Notes:
 - **Correct in place, not in comments.** When new info arrives for a filed issue, edit
   the body (and title) so it stays the single source of truth; delete correction
   comments once folded in. See "Updating an issue after new information".
+- **Search before filing; cross-link.** Check open issues
+  (`gh issue list --search "…"`) for an existing/related ticket before creating a new
+  one — extend or cross-reference rather than duplicate. When a bug shares a root cause
+  or surface with another (a shared widget, a dedup key, a verify state, a crash class),
+  say so and link it so it's fixed once.
+- **Ground it, but don't overclaim.** File with exact `file:line` refs (an Explore pass
+  first), yet mark an unproven mechanism as a **hypothesis**, not fact — and never state
+  an *inference* as an *observation* (e.g. "the whole list blanks" when only one section
+  was seen; "the build includes X" without checking git ancestry). If a claim rests on a
+  guess, say what would confirm it. Hold a well-grounded position when the user pushes
+  back, but concede immediately when they give a real counter-argument and say what
+  changed your mind.
 - **Plan-ready over terse.** Err toward more context. The "Scope for the plan"
   section is what separates a filed ticket from a `/plan` prompt.
 - **Evidence over guesses** (see CLAUDE.md). Prefer a stack trace to a hunch; if the
