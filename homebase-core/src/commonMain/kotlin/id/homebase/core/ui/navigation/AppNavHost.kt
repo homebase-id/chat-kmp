@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
@@ -626,9 +627,14 @@ fun AppNavHost(
                     }
                 }
 
-                Column {
+                val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
+                Column(
+                    // statusBarsPadding consumes the inset, so screens in the NavHost
+                    // below don't re-pad while the banner occupies the top edge.
+                    modifier = if (showUpdateBanner) Modifier.statusBarsPadding() else Modifier,
+                ) {
                     if (isOnTopLevelScreen) {
-                        if (uiState.updateAvailable) {
+                        if (showUpdateBanner) {
                             UpdateAvailableBanner(
                                 versionName = uiState.updateAvailableVersion,
                                 onUpdateClick = { viewModel.triggerUpdate() }
@@ -1100,6 +1106,9 @@ fun AppNavHost(
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(Route.ChatList, inclusive = false)
+                                    },
+                                    onNavigateToLiveLocationMap = {
+                                        navController.navigate(Route.LocationLive)
                                     },
                                 )
                             }

@@ -98,6 +98,20 @@ class LiveShareRosterTest {
     }
 
     @Test
+    fun indefiniteSentinelEntryIsAlwaysLiveAndRemovableOnlyByMatchingStop() {
+        // The reserved indefinite end-time (LIVE_SHARE_INDEFINITE in homebase-common — a fixed
+        // 2100-01-01 timestamp; this module doesn't depend on it, so the literal is used). The
+        // roster's generic `endTimeMs > nowMs` math must keep it live at any realistic now and
+        // never prune it — only an exact {recipient, end-time} stop removes it.
+        val indefinite = 4_102_444_800_000L
+        val roster = LiveShareRoster.add(emptyList(), listOf("a"), endTimeMs = indefinite, nowMs = 0)
+        val decadesLater = 3_000_000_000_000L // year ~2065
+        assertEquals(roster, LiveShareRoster.live(roster, nowMs = decadesLater))
+        assertEquals(listOf("a"), LiveShareRoster.liveRecipientIds(roster, nowMs = decadesLater))
+        assertTrue(LiveShareRoster.remove(roster, recipients = listOf("a"), endTimeMs = indefinite).isEmpty())
+    }
+
+    @Test
     fun removeRecipients_removesSeveralPeopleAndIsNoOpForUnknown() {
         val roster = listOf(TimedRecipient("a", 100), TimedRecipient("b", 200), TimedRecipient("c", 300))
         // A subset of people drops all their entries...
