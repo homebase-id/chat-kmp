@@ -27,8 +27,8 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.localDayStart
 import id.homebase.core.ui.screens.location.history.shiftDay
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.core.ui.screens.location.livelocation.LIVE_STALE_MS
-import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.core.util.initials
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
