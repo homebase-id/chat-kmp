@@ -155,8 +155,13 @@ Default to **text-only** (describe the bug precisely) when a screenshot shows a 
 face** or **real contact names / handles / addresses** — even if the user says "not PII" —
 unless they explicitly clear that specific image. Test/fictional identities
 (`frodo.baggins.demo.rocks`, `gandalf.grey.demo.rocks`, etc.) are fine to embed; a real
-person's avatar or a real contact's name is not. A precise written description of the
-visual usually lets the assignee reproduce without the image.
+**third-party** person's avatar or a real contact's name is not. A precise written
+description of the visual usually lets the assignee reproduce without the image.
+
+**Exception — the team is fine to show.** It's OK to embed a screenshot even if it shows
+a real **team member** — **Michael Seifert, Todd Mitchell, Bishwa(jeet), or Sebastian**
+(the insiders / assignees). The concern is a *third party's* face / name / handle, not
+the team's own.
 
 ---
 
