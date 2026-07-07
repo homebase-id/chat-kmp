@@ -49,10 +49,10 @@ import kotlin.uuid.Uuid
  * ([ChatBubbleTestTags]).
  *
  * The bug it guards: a 2+-image gallery above a caption used to be pinned to a fixed
- * album width, leaving an empty strip beside the images when the caption was wider,
- * and the edge-to-edge media never lined up with the 12dp-inset caption. The core
- * invariants below (margins align + media fills the content column with no asymmetric
- * strip) FAIL on the pre-fix code and PASS after it.
+ * album width, leaving an empty strip beside the images. The fix renders the gallery
+ * full-bleed (edge-to-edge to the bubble) with only the caption inset 12dp — so the
+ * core invariant below (media reaches both bubble edges, caption inset) FAILS on the
+ * pre-fix code and PASSES after it.
  */
 @OptIn(ExperimentalTestApi::class, ExperimentalEncodingApi::class)
 class BubbleLayoutInvariantTest {
@@ -176,24 +176,26 @@ class BubbleLayoutInvariantTest {
     // ---- tests ------------------------------------------------------------
 
     /**
-     * THE fix. For every 2/3/4-image gallery that sits above a caption:
-     *  - the media's left edge lines up with the caption's left edge (margins align), and
-     *  - the media is symmetrically inset — no asymmetric empty strip beside the images
-     *    (the "blue gap"), and
-     *  - for a full-width caption the media's right edge lines up with the caption's.
-     * All within the bubble.
+     * THE fix (#964, full-bleed). For every 2/3/4-image gallery that sits above a
+     * caption the images run EDGE-TO-EDGE to the bubble — no blue strip beside them —
+     * while the caption below keeps its own 12dp inset (the messenger convention,
+     * matching this app's media-only bubbles):
+     *  - media.left == bubble.left and media.right == bubble.right (full-bleed, no gap), and
+     *  - the caption is inset from the bubble's left edge (not flush with the media), and
+     *  - the caption stays within the bubble.
      *
-     * On the pre-fix code the gallery is pinned to a fixed album width (edge-to-edge,
-     * L=0) while the caption is inset 12dp, so both the align and the no-gap checks fail.
+     * On the pre-fix code the gallery was pinned to a fixed album width and inset 12dp to
+     * line up with the caption, leaving the strip the user reported; the edge-to-edge
+     * checks below fail on that layout and pass once the media inset is removed.
      */
     @Test
-    fun galleryWithCaption_marginsAlign_andNoGap() = runComposeUiTest {
+    fun galleryWithCaption_mediaFullBleed_captionInset() = runComposeUiTest {
         val cases = buildList {
             for (sent in listOf(true, false))
                 for (images in listOf(2, 3, 4))
                     for (cap in listOf(Caption.SHORT, Caption.LONG, Caption.BLOCK))
                         add(Case("${images}img/${cap}/${if (sent) "sent" else "recv"}", sent, images, cap))
-            // reply above a captioned gallery must not disturb the alignment
+            // reply above a captioned gallery must not disturb the full-bleed media
             add(Case("2img/LONG/sent+reply", true, 2, Caption.LONG, reply = true))
             add(Case("3img/BLOCK/recv+reply", false, 3, Caption.BLOCK, reply = true))
         }
@@ -206,38 +208,26 @@ class BubbleLayoutInvariantTest {
 
             fun check(cond: Boolean, why: String) { if (!cond) failures += "[${case.name}] $why" }
 
-            val leftInset = media.left.value - bubble.left.value
-            val rightInset = bubble.right.value - media.right.value
-
-            // Margins align: media and caption share a left edge.
-            check(approx(media.left.value, caption.left.value),
-                "media.left=${media.left.value} != caption.left=${caption.left.value}")
-            // No asymmetric strip: media is symmetrically inset inside the bubble
-            // (pre-fix the right strip was ~the whole caption overhang).
-            check(approx(leftInset, rightInset),
-                "asymmetric insets: left=$leftInset right=$rightInset (gap beside images)")
-            // Media reaches the content-column right edge (no gap between media and it).
-            check(approx(media.right.value, bubble.right.value - leftInset),
-                "media.right=${media.right.value} does not fill content (bubble.right=${bubble.right.value}, inset=$leftInset)")
-            // Everything within the bubble.
-            check(media.left.value >= bubble.left.value - tol && media.right.value <= bubble.right.value + tol,
-                "media overflows bubble")
+            // Full-bleed: the gallery reaches BOTH bubble edges — this is the "no strip
+            // beside the images" the fix restores.
+            check(approx(media.left.value, bubble.left.value),
+                "media.left=${media.left.value} != bubble.left=${bubble.left.value} (left strip)")
+            check(approx(media.right.value, bubble.right.value),
+                "media.right=${media.right.value} != bubble.right=${bubble.right.value} (right strip)")
+            // The caption is inset from the bubble edge (not flush with the full-bleed media).
+            check(caption.left.value > bubble.left.value + tol,
+                "caption should be inset from bubble edge: caption.left=${caption.left.value} bubble.left=${bubble.left.value}")
+            // Caption stays within the bubble.
             check(caption.left.value >= bubble.left.value - tol && caption.right.value <= bubble.right.value + tol,
                 "caption overflows bubble")
-
-            // A full-width caption ends exactly where the media does.
-            if (case.caption == Caption.LONG || case.caption == Caption.BLOCK) {
-                check(approx(media.right.value, caption.right.value),
-                    "media.right=${media.right.value} != caption.right=${caption.right.value}")
-            }
         }
-        assertTrue(failures.isEmpty(), "gallery+caption invariant failures:\n" + failures.joinToString("\n"))
+        assertTrue(failures.isEmpty(), "gallery full-bleed invariant failures:\n" + failures.joinToString("\n"))
     }
 
     /**
-     * Consistent edge inset: the left inset of the gallery from the bubble edge is the
-     * SAME across every gallery+caption case (it is the caption's own inset, not a
-     * per-count value). Guards against a count-dependent album offset creeping back.
+     * Consistent edge inset: the gallery's left offset from the bubble edge is the SAME
+     * across every gallery+caption case — now 0 (full-bleed), and crucially not a
+     * per-image-count value. Guards against a count-dependent album offset creeping back.
      */
     @Test
     fun galleryWithCaption_consistentEdgeInset() = runComposeUiTest {

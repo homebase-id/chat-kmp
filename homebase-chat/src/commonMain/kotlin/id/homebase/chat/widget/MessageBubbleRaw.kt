@@ -297,14 +297,11 @@ fun MessageBubbleRaw(
                 !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
-    // #964: a 2+-image album (MediaGallery) sitting above a caption. Only this case
-    // has the fixed-width gap + edge-to-edge margin mismatch the fix addresses — a
-    // single image already adapts to its aspect, so it is left untouched.
+    // #964: a 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
+    // the images run edge-to-edge to the bubble, and only the caption below keeps its
+    // 12dp inset (the messenger convention, matching this app's media-only bubbles). A
+    // single image already renders edge-to-edge, so it is untouched.
     val isGallery = (filteredPayloads?.size ?: 0) >= 2
-    // #964: the album is inset horizontally to line up with the 12dp-padded caption
-    // below it (media was drawn edge-to-edge while the caption is inset). Applied only
-    // to the caption-bearing text+media paths and only to a gallery.
-    val galleryInset = if (isGallery) Modifier.padding(horizontal = 12.dp) else Modifier
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
@@ -636,10 +633,10 @@ fun MessageBubbleRaw(
                         )
                     }
                     if (hasMedia) {
-                        // #964: a gallery fills the (caption-driven) bubble width and is
-                        // inset 12dp to line up with the caption; a single image is
+                        // #964: a gallery fills the full bubble width edge-to-edge; the
+                        // caption below keeps its own 12dp inset. A single image is
                         // rendered exactly as before.
-                        Box(modifier = if (isGallery) Modifier.fillMaxWidth().then(galleryInset) else Modifier) {
+                        Box(modifier = if (isGallery) Modifier.fillMaxWidth() else Modifier) {
                             MediaMessage(
                                 payloads = filteredPayloads.toPersistentList(),
                                 decryptedFiles = decryptedFiles,
@@ -742,11 +739,12 @@ fun MessageBubbleRaw(
                                 )
                             }
                             if (hasMedia) {
-                                // #964: inset a gallery 12dp to line up with the caption
-                                // (which the custom Layout below clamps to the media width).
-                                // Stays one measurable, so the index math is unchanged. A
-                                // single image keeps its edge-to-edge, aspect-driven render.
-                                Box(modifier = galleryInset) {
+                                // #964: a gallery renders full-bleed (edge-to-edge). The
+                                // custom Layout below clamps the caption to the media width,
+                                // and the caption Row's own 12dp padding insets the text —
+                                // so the images reach the bubble edges with no strip beside
+                                // them. Stays one measurable, so the index math is unchanged.
+                                Box {
                                     MediaMessage(
                                         payloads = filteredPayloads.toPersistentList(),
                                         decryptedFiles = decryptedFiles,
@@ -769,8 +767,8 @@ fun MessageBubbleRaw(
                                         downloadingFiles = downloadingFiles,
                                         uploadStatus = uploadStatus,
                                         // The custom Layout below already clamps the caption to
-                                        // the media width, so there is no gap to fill here — only
-                                        // the 12dp inset (galleryInset) is needed for alignment.
+                                        // the media width, so there is no gap to fill — the
+                                        // gallery renders full-bleed at its album width.
                                         fillWidth = false,
                                     )
                                 }
