@@ -61,6 +61,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.ui.screens.location.livelocation.AGE_LABEL_AFTER_MS
@@ -77,6 +78,7 @@ import id.homebase.resources.location_dashboard_live_open
 import id.homebase.resources.location_dashboard_live_section
 import id.homebase.resources.location_dashboard_perm_banner
 import id.homebase.resources.location_dashboard_share_until
+import id.homebase.resources.location_dashboard_share_until_stopped
 import id.homebase.resources.location_dashboard_sharing_with
 import id.homebase.resources.location_dashboard_sharing_with_you
 import id.homebase.resources.location_dashboard_stop_confirm_body
@@ -622,10 +624,14 @@ private fun OutgoingShareRowItem(
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
-                text = stringResource(
-                    MR.string.location_dashboard_share_until,
-                    formatUntilTime(Instant.fromEpochMilliseconds(row.untilMs)),
-                ),
+                text = if (row.untilMs == LIVE_SHARE_INDEFINITE) {
+                    stringResource(MR.string.location_dashboard_share_until_stopped)
+                } else {
+                    stringResource(
+                        MR.string.location_dashboard_share_until,
+                        formatUntilTime(Instant.fromEpochMilliseconds(row.untilMs)),
+                    )
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

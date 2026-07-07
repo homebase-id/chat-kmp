@@ -346,7 +346,11 @@ sealed interface ConversationListUiAction {
 
     // region Live location sharing
 
-    /** Start (or extend) a live share on [messageId]'s location: sets liveShareUntilMs = now + duration. */
+    /**
+     * Start (or extend) a live share on [messageId]'s location: sets liveShareUntilMs to the
+     * absolute end-time derived from [durationMs] via liveShareEndTimeMs — [durationMs] may be
+     * the LIVE_SHARE_INDEFINITE sentinel (share until explicitly stopped).
+     */
     data class StartLiveLocationShare(
         val messageId: Uuid,
         val durationMs: Long,

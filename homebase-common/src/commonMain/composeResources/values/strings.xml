@@ -1378,6 +1378,7 @@
     <string name="location_dashboard_sharing_with">Sharing with</string>
     <string name="location_dashboard_sharing_with_you">Sharing with you</string>
     <string name="location_dashboard_share_until">until %1$s</string>
+    <string name="location_dashboard_share_until_stopped">until stopped</string>
     <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>
     <string name="location_dashboard_stop_everyone">Stop sharing with everyone</string>
     <string name="location_dashboard_stop_confirm_title">Stop all sharing?</string>
@@ -1387,13 +1388,14 @@
     <string name="live_share_duration_prompt">Share live location for</string>
     <string name="stop_sharing">Stop sharing</string>
     <string name="live_share_active">Live location · %1$s left</string>
+    <string name="live_share_active_indefinite">Live location · until stopped</string>
     <string name="live_share_ended">Live share ended</string>
     <string name="live_share_15m">15 minutes</string>
     <string name="live_share_30m">30 minutes</string>
     <string name="live_share_1h">1 hour</string>
     <string name="live_share_2h">2 hours</string>
     <string name="live_share_4h">4 hours</string>
-    <string name="live_share_24h">24 hours</string>
+    <string name="live_share_indefinite">Until you turn it off</string>
     <string name="share_location_title">Share location</string>
     <string name="share_location_recenter_cd">Center on your current location</string>
     <string name="share_location_resolving">Finding address…</string>
