@@ -390,9 +390,18 @@ sealed interface ConversationListUiAction {
     /** Open the Live Location map (tap a live location bubble's map). */
     data object OpenLiveLocationMap : ConversationListUiAction
 
+    /** Open the full-screen share-location screen (attachment sheet → Location). */
+    data class OpenShareLocation(val conversationId: Uuid) : ConversationListUiAction
+
     /** Open the location setup screen — from the "set up location" prompt shown when a live share
      *  can't start because location isn't ready. */
     data object OpenLocationSetup : ConversationListUiAction
+
+    /** Tap on the top-bar "you're sharing" pin (#816) — opens the location dashboard, which lists
+     *  every outgoing live share with per-person stop + stop-all. Routes through the same
+     *  navigation as [OpenLocationSetup]; an active share implies the add-on is activated, so it
+     *  lands on the dashboard rather than onboarding. */
+    data object OpenLocationDashboard : ConversationListUiAction
 
     // endregion
 }

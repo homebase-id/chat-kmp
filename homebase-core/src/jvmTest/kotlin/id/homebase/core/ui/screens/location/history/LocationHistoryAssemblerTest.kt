@@ -186,4 +186,36 @@ class LocationHistoryAssemblerTest {
     fun singleDeviceTraces_empty_is_empty() {
         assertTrue(LocationHistoryAssembler.singleDeviceTraces(emptyList(), deviceA).isEmpty())
     }
+
+    /**
+     * The emergency-locate peer viewer's day build (LocationHistoryViewModel.peerDayTraces):
+     * retrieved hour-files grouped by device, points filtered to the day, gap-segmented per
+     * device via [LocationHistoryAssembler.singleDeviceTraces]. Pinned here as the same
+     * composition over the public assembler API.
+     */
+    @Test
+    fun peerDayComposition_groupsByDeviceAndFiltersToDay() {
+        val hours = listOf(
+            hour(deviceA, listOf(point(dayStart + 2000), point(dayStart - 1))), // one out-of-day
+            hour(deviceA, listOf(point(dayStart + 5000))),
+            hour(deviceB, listOf(point(dayEnd), point(dayStart + 100))), // dayEnd exclusive
+        )
+        val traces = hours
+            .groupBy { it.deviceId }
+            .flatMap { (deviceId, deviceHours) ->
+                val dayPoints = deviceHours
+                    .flatMap { it.points }
+                    .filter { it.t in dayStart until dayEnd }
+                LocationHistoryAssembler.singleDeviceTraces(dayPoints, deviceId)
+            }
+
+        assertEquals(2, traces.size)
+        val a = traces.first { it.deviceId == deviceA }
+        assertEquals(
+            listOf(dayStart + 2000, dayStart + 5000),
+            a.segments.flatten().map { it.t },
+        )
+        val b = traces.first { it.deviceId == deviceB }
+        assertEquals(listOf(dayStart + 100), b.segments.flatten().map { it.t })
+    }
 }

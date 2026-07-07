@@ -492,6 +492,10 @@
     <string name="system_emergency_contact_revoked">%1$s removed you as an emergency contact</string>
     <string name="system_emergency_contact_revoked_you">You removed %1$s as an emergency contact</string>
     <string name="system_emergency_contact_revoked_you_unknown">You removed an emergency contact</string>
+    <string name="system_emergency_locate_requested">%1$s activated the emergency function and requested your location data: %2$s</string>
+    <string name="system_emergency_locate_requested_unknown">%1$s activated the emergency function and requested your location data</string>
+    <string name="system_emergency_locate_requested_you">You requested %1$s's emergency location data: %2$s</string>
+    <string name="system_emergency_locate_requested_you_unknown">You requested %1$s's emergency location data</string>
     <string name="system_group_heal_local_cleanup_both">Removed broken local copies (group + admins) as part of heal</string>
     <string name="system_group_heal_local_cleanup_main">Removed broken local copy (group) as part of heal</string>
     <string name="system_group_heal_local_cleanup_admin">Removed broken local copy (admins) as part of heal</string>
@@ -1332,6 +1336,18 @@
     <string name="location_locatable_broken_cd">No longer connected</string>
     <string name="location_locate_no_data">no data</string>
     <string name="location_locatable_unreachable_cd">Can't reach their server</string>
+    <string name="location_locate_panel_title">Emergency location request</string>
+    <string name="location_locate_panel_explainer">You're about to activate an emergency function for %1$s and you will receive their location data. %1$s will be made aware you made this request — if you abuse it, expect to be removed as an emergency contact.</string>
+    <string name="location_locate_reason_hint">Describe why you need to retrieve the emergency location data.</string>
+    <string name="location_locate_window_label">How far back</string>
+    <string name="location_locate_last_point">Their last data point is from %1$s ago</string>
+    <string name="location_locate_last_point_none">They have no data points yet</string>
+    <string name="location_locate_window_hours">Last %1$d hours</string>
+    <string name="location_locate_window_days">Last %1$d days</string>
+    <string name="location_locate_ambush_label">Ambush</string>
+    <string name="location_locate_ambush_explainer">If you believe the person might be held hostage, check this box to delay the notification to the person for 24 hours.</string>
+    <string name="location_locate_confirm">Request location data</string>
+    <string name="location_locate_fetch_failed">Couldn't retrieve their location data. The request notice was still sent.</string>
     <string name="location_emergency_access_section">Who can locate you</string>
     <string name="location_emergency_access_manage">Add emergency contacts</string>
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
@@ -1363,6 +1379,7 @@
     <string name="live_location_marker_cd">%1$s's live location</string>
     <string name="live_location_you">You</string>
     <string name="live_location_age_minutes">%1$dm</string>
+    <string name="location_sharing_indicator_cd">You're sharing your live location</string>
     <string name="location_dashboard_live_section">Live location sharing</string>
     <string name="location_dashboard_live_open">Open live map</string>
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
@@ -1387,6 +1404,12 @@
     <string name="live_share_2h">2 hours</string>
     <string name="live_share_4h">4 hours</string>
     <string name="live_share_24h">24 hours</string>
+    <string name="share_location_title">Share location</string>
+    <string name="share_location_recenter_cd">Center on your current location</string>
+    <string name="share_location_resolving">Finding address…</string>
+    <string name="share_location_comment_hint">Add a comment</string>
+    <string name="share_location_live_banner">Share live location</string>
+    <string name="share_location_send_cd">Send location</string>
     <string name="live_share_enable_location_title">Turn on location to share</string>
     <string name="live_share_enable_location_body">To share your live location, set up location on this device first so it can send your position.</string>
     <string name="live_share_enable_location_cta">Set up location</string>
@@ -1417,7 +1440,9 @@
     <string name="contactbook_tab_contacts">Contacts</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
+    <string name="contactbook_vetted">Vetted</string>
     <string name="contactbook_unvetted_empty">No unvetted connections.</string>
+    <string name="contactbook_vetted_empty">No vetted connections.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
@@ -1557,5 +1582,63 @@
     <string name="storage_diagnostics_header">Diagnostics (dev)</string>
     <string name="storage_diagnostics_force_native_crash">Force native crash (test)</string>
     <string name="storage_diagnostics_force_runtime_crash">Force app crash (test)</string>
+
+    <!-- Profile editor -->
+    <string name="profile_edit_title">Edit profile</string>
+    <string name="profile_edit_save">Save</string>
+    <string name="profile_edit_load_failed">Couldn't load your profile.</string>
+    <string name="profile_edit_retry">Retry</string>
+    <string name="profile_edit_error_forbidden">This app doesn't have permission to edit your profile. Re-grant access by extending permissions in the owner console, then try again.</string>
+    <string name="profile_edit_error_save">Couldn't save your profile. Please try again.</string>
+    <string name="profile_edit_given_name">First name</string>
+    <string name="profile_edit_surname">Last name</string>
+    <string name="profile_edit_additional_name">Middle name</string>
+    <string name="profile_edit_nickname">Nickname</string>
+    <string name="profile_edit_status">Status</string>
+    <string name="profile_edit_birthday">Birthday</string>
+    <string name="profile_edit_birthday_hint">YYYY-MM-DD</string>
+    <string name="profile_edit_email">Email</string>
+    <string name="profile_edit_email_label">Email label</string>
+    <string name="profile_edit_email_label_hint">e.g. Personal, Work</string>
+    <string name="profile_edit_phone">Phone</string>
+    <string name="profile_edit_phone_label">Phone label</string>
+    <string name="profile_edit_phone_label_hint">e.g. Mobile, Home, Work</string>
+    <string name="profile_edit_address_label">Address label</string>
+    <string name="profile_edit_address_label_hint">e.g. Home, Work</string>
+    <string name="profile_edit_address1">Address line 1</string>
+    <string name="profile_edit_address2">Address line 2</string>
+    <string name="profile_edit_postcode">Postcode</string>
+    <string name="profile_edit_city">City</string>
+    <string name="profile_edit_country">Country</string>
+    <string name="profile_edit_twitter">Twitter</string>
+    <string name="profile_edit_facebook">Facebook</string>
+    <string name="profile_edit_instagram">Instagram</string>
+    <string name="profile_edit_tiktok">TikTok</string>
+    <string name="profile_edit_linkedin">LinkedIn</string>
+
+    <string name="profile_edit_visibility_public">Public</string>
+    <string name="profile_edit_visibility_connected">Vetted</string>
+    <string name="profile_edit_public_hint">Visible to everyone, including people you haven't connected with.</string>
+    <string name="profile_edit_connected_fallback_hint">Leave blank to show vetted contacts your Public value instead.</string>
+    <string name="profile_edit_preview_enter">Preview</string>
+    <string name="profile_edit_preview_exit">Back to editing</string>
+    <string name="profile_edit_preview_section_public">Public</string>
+    <string name="profile_edit_preview_section_public_desc">Visible to everyone, including people you haven't connected with.</string>
+    <string name="profile_edit_preview_section_vetted">Vetted</string>
+    <string name="profile_edit_preview_section_vetted_desc">Visible to your vetted (confirmed) connections.</string>
+    <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
+
+    <!-- Avatar editor -->
+    <string name="profile_avatar_edit_title">Change photo</string>
+    <string name="cd_profile_avatar_change_photo">Change photo</string>
+    <string name="profile_avatar_edit_acl_anonymous">Public photo</string>
+    <string name="profile_avatar_edit_acl_connected">Vetted photo</string>
+    <string name="profile_avatar_edit_anonymous_desc">Visible to anyone, even people you're not connected to.</string>
+    <string name="profile_avatar_edit_connected_desc">Visible only to vetted contacts — can be a different photo than your public one.</string>
+    <string name="profile_avatar_edit_upload">Save</string>
+    <string name="profile_avatar_edit_remove">Remove</string>
+    <string name="profile_avatar_edit_error_upload">Couldn't upload your photo. Please try again.</string>
+    <string name="profile_avatar_edit_error_too_large">That photo is too large — please choose a smaller one.</string>
+    <string name="profile_avatar_edit_error_delete">Couldn't remove your photo. Please try again.</string>
 
 </resources>

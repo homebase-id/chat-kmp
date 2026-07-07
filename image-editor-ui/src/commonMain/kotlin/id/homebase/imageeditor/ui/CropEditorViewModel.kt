@@ -43,6 +43,10 @@ class CropEditorViewModel(
     val requestId: Uuid = (savedStateHandle.get<String>("requestId")
         ?: savedStateHandle.toRoute<Route.Crop>().requestId).let(Uuid::parse)
 
+    /** Same dual-path read as [requestId] — the share editor mount has no typed route to fall back to. */
+    private val lockedAspect: String? = savedStateHandle.get<String>("lockedAspect")
+        ?: runCatching { savedStateHandle.toRoute<Route.Crop>() }.getOrNull()?.lockedAspect
+
     /** Free the bus entry when the cropper screen goes away — confirmed or aborted.
      *  postResult() closes the channel on the confirm path; this covers the back-out
      *  path so the caller's resultsFor(requestId) collector can't suspend forever. */
@@ -70,6 +74,9 @@ class CropEditorViewModel(
 
     private var loaded: Boolean = false
 
+    /** Set once in [load] — [CropEditorUiAction.ResetClicked] must restore this instead of Free/unlocked. */
+    private var lockedToSquare: Boolean = false
+
     /**
      * Run the preprocessor and configure the [EditorModel]. Idempotent; safe
      * to call from a [LaunchedEffect].
@@ -95,11 +102,20 @@ class CropEditorViewModel(
             }
             previewBitmap = prep.previewBytes.toImageBitmap()
             model.onImageReady(prep.naturalSize)
-            // Default aspect = Free → start unlocked so the user can drag
-            // any corner without being constrained.
-            model.setCropAspectLock(false)
             if (!visibleViewportPx.isEmpty()) {
                 model.setVisibleViewPort(visibleViewportPx)
+            }
+            val squareLocked = lockedAspect == "square"
+            lockedToSquare = squareLocked
+            if (squareLocked) {
+                // Caller (e.g. avatar crop) pre-locks a fixed aspect instead of the
+                // default Free/unlocked start.
+                model.setFixedRatio(AspectMode.Square.ratio)
+                model.setCropAspectLock(true)
+            } else {
+                // Default aspect = Free → start unlocked so the user can drag
+                // any corner without being constrained.
+                model.setCropAspectLock(false)
             }
             snapshotMatrices()
             _uiState.update {
@@ -108,6 +124,9 @@ class CropEditorViewModel(
                     naturalSize = prep.naturalSize,
                     canUndo = model.canUndo(),
                     canRedo = model.canRedo(),
+                    aspectMode = if (squareLocked) AspectMode.Square else AspectMode.Free,
+                    cropAspectLocked = squareLocked,
+                    aspectSwitcherHidden = squareLocked,
                 )
             }
         }
@@ -149,12 +168,17 @@ class CropEditorViewModel(
             }
             CropEditorUiAction.ResetClicked -> {
                 model.reset()
-                model.setCropAspectLock(false)
+                if (lockedToSquare) {
+                    model.setFixedRatio(AspectMode.Square.ratio)
+                    model.setCropAspectLock(true)
+                } else {
+                    model.setCropAspectLock(false)
+                }
                 snapshotMatrices()
                 _uiState.update {
                     it.copy(
-                        aspectMode = AspectMode.Free,
-                        cropAspectLocked = false,
+                        aspectMode = if (lockedToSquare) AspectMode.Square else AspectMode.Free,
+                        cropAspectLocked = lockedToSquare,
                         freeRotationDegrees = 0f,
                         canUndo = false,
                         canRedo = false,

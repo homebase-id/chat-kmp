@@ -93,6 +93,7 @@ import id.homebase.resources.contactbook_detail_more
 import id.homebase.resources.contactbook_detail_none
 import id.homebase.resources.contactbook_detail_no_recent_media
 import id.homebase.resources.contactbook_detail_recent_media
+import id.homebase.resources.connections_introduced_by
 import id.homebase.resources.conversation_groups_in_common
 import id.homebase.resources.conversation_media_see_all
 import org.jetbrains.compose.resources.stringResource
@@ -251,6 +252,19 @@ fun TabEmptyMessage(text: String) {
             textAlign = TextAlign.Center,
         )
     }
+}
+
+/** "Introduced by X" line shown above the contact details, when the connection originated
+ *  from an introduction. */
+@Composable
+fun IntroducedBySection(introducedByName: String) {
+    Text(
+        text = stringResource(MR.string.connections_introduced_by, introducedByName),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    Spacer(modifier = Modifier.height(12.dp))
 }
 
 /** Muted single-line hint used by sections for their empty / not-connected states. */

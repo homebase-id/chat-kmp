@@ -23,6 +23,14 @@ sealed class Route {
     data object Settings : Route()
 
     @Serializable
+    @SerialName("profile-edit")
+    data object ProfileEdit : Route()
+
+    @Serializable
+    @SerialName("profile-avatar-edit")
+    data object ProfileAvatarEdit : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 
@@ -194,6 +202,12 @@ sealed class Route {
     @SerialName("location-history")
     data object LocationHistory : Route()
 
+    /** Read-only history viewer for a contact's emergency-retrieved location data
+     *  (memory-only store; see EmergencyLocateStore). */
+    @Serializable
+    @SerialName("location-peer-history")
+    data class LocationPeerHistory(val peerDomain: String, val peerName: String) : Route()
+
     @Serializable
     @SerialName("location-live")
     data object LocationLive : Route()
@@ -203,8 +217,12 @@ sealed class Route {
     data class LocationFindDevice(val deviceId: String? = null) : Route()
 
     @Serializable
+    @SerialName("location-share")
+    data class LocationShare(val conversationId: String) : Route()
+
+    @Serializable
     @SerialName("crop")
-    data class Crop(val requestId: String) : Route()
+    data class Crop(val requestId: String, val lockedAspect: String? = null) : Route()
 
     @Serializable
     @SerialName("draw")

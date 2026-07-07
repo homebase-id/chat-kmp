@@ -121,6 +121,7 @@ fun LocationDashboardContent(
     onOpenSetup: () -> Unit,
     onManageEmergencyAccess: () -> Unit,
     onLocatableExpandedChange: (Boolean) -> Unit,
+    onLocateContact: (ContactUiModel) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -324,6 +325,15 @@ fun LocationDashboardContent(
                 rowTrailing = { member ->
                     LocateStatusTrailing(uiState.whoICanLocateStatus[member.odinId.domainName])
                 },
+                // Tap opens the emergency retrieval panel — only rows whose temporal access
+                // verified Active; Broken/Unreachable/Loading rows stay inert (the trailing
+                // icon is the explanation).
+                memberClick = { member ->
+                    val status = uiState.whoICanLocateStatus[member.odinId.domainName]
+                    if (status is LocateVerifyStatus.Active) {
+                        { onLocateContact(member) }
+                    } else null
+                },
             )
         }
 
@@ -458,11 +468,14 @@ private fun PeopleListBody(
     emptyText: String,
     onExpandedChange: ((Boolean) -> Unit)? = null,
     rowTrailing: (@Composable (ContactUiModel) -> Unit)? = null,
+    /** Per-member tap action; return null for an inert row (no ripple, no handler). */
+    memberClick: ((ContactUiModel) -> (() -> Unit)?)? = null,
 ) {
     var expanded by remember { mutableStateOf(false) }
     // Report every open/close so the (optional) per-entry preflight loop starts on each expand and
-    // stops on collapse; per-row results younger than the TTL are skipped downstream, so a quick
-    // re-expand is cheap. Leaving composition (navigating away) counts as a close.
+    // stops on collapse; successful data-bearing results younger than the TTL are skipped
+    // downstream, so a quick re-expand is cheap — error/no-data rows re-verify on every expand
+    // so a broken cloud can't stick (#985). Leaving composition (navigating away) counts as a close.
     LaunchedEffect(expanded) { onExpandedChange?.invoke(expanded) }
     DisposableEffect(Unit) { onDispose { onExpandedChange?.invoke(false) } }
     when {
@@ -500,9 +513,14 @@ private fun PeopleListBody(
                     Column {
                         members.forEach { member ->
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                            val onClick = memberClick?.invoke(member)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .then(
+                                        if (onClick != null) Modifier.clickable(onClick = onClick)
+                                        else Modifier
+                                    )
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),

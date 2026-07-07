@@ -91,6 +91,7 @@ fun CropBottomBar(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     modifier: Modifier = Modifier,
+    hideAspectSwitcher: Boolean = false,
 ) {
     Row(
         modifier = modifier
@@ -123,15 +124,17 @@ fun CropBottomBar(
                 contentDescription = stringResource(Res.string.crop_action_flip),
             )
         }
-        IconButton(onClick = onAspectLockToggle) {
-            Crossfade(targetState = aspectLocked) { locked ->
-                Icon(
-                    imageVector = if (locked) Icons.Default.Lock else Icons.Default.LockOpen,
-                    contentDescription = stringResource(
-                        if (locked) Res.string.crop_action_lock_aspect_off
-                        else Res.string.crop_action_lock_aspect
-                    ),
-                )
+        if (!hideAspectSwitcher) {
+            IconButton(onClick = onAspectLockToggle) {
+                Crossfade(targetState = aspectLocked) { locked ->
+                    Icon(
+                        imageVector = if (locked) Icons.Default.Lock else Icons.Default.LockOpen,
+                        contentDescription = stringResource(
+                            if (locked) Res.string.crop_action_lock_aspect_off
+                            else Res.string.crop_action_lock_aspect
+                        ),
+                    )
+                }
             }
         }
         AssistChip(
@@ -146,26 +149,28 @@ fun CropBottomBar(
             },
         )
 
-        AspectChip(
-            label = stringResource(Res.string.crop_aspect_free),
-            selected = aspectMode == AspectMode.Free,
-            onClick = { onAspectChange(AspectMode.Free) },
-        )
-        AspectChip(
-            label = stringResource(Res.string.crop_aspect_square),
-            selected = aspectMode == AspectMode.Square,
-            onClick = { onAspectChange(AspectMode.Square) },
-        )
-        AspectChip(
-            label = stringResource(Res.string.crop_aspect_4_3),
-            selected = aspectMode == AspectMode.R_4_3,
-            onClick = { onAspectChange(AspectMode.R_4_3) },
-        )
-        AspectChip(
-            label = stringResource(Res.string.crop_aspect_16_9),
-            selected = aspectMode == AspectMode.R_16_9,
-            onClick = { onAspectChange(AspectMode.R_16_9) },
-        )
+        if (!hideAspectSwitcher) {
+            AspectChip(
+                label = stringResource(Res.string.crop_aspect_free),
+                selected = aspectMode == AspectMode.Free,
+                onClick = { onAspectChange(AspectMode.Free) },
+            )
+            AspectChip(
+                label = stringResource(Res.string.crop_aspect_square),
+                selected = aspectMode == AspectMode.Square,
+                onClick = { onAspectChange(AspectMode.Square) },
+            )
+            AspectChip(
+                label = stringResource(Res.string.crop_aspect_4_3),
+                selected = aspectMode == AspectMode.R_4_3,
+                onClick = { onAspectChange(AspectMode.R_4_3) },
+            )
+            AspectChip(
+                label = stringResource(Res.string.crop_aspect_16_9),
+                selected = aspectMode == AspectMode.R_16_9,
+                onClick = { onAspectChange(AspectMode.R_16_9) },
+            )
+        }
     }
 }
 

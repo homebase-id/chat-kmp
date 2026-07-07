@@ -19,4 +19,10 @@ data class LiveLocationBubbleControls(
     val onStop: () -> Unit,
     val onStartShareBack: (durationMs: Long?) -> Unit,
     val onOpenMap: () -> Unit,
+    /**
+     * When MY live share already fully covers this conversation: the absolute end of that
+     * coverage, else null. While set and in the future, the bubble hides its "share live
+     * location" offers — no invitation to start a share that's already running (#966 follow-up).
+     */
+    val ownShareUntilMs: Long? = null,
 )

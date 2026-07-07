@@ -22,6 +22,18 @@ class StatusMessageData(
 
     /** Set on [StatusMessage.PollEnded]. References the originating poll message. */
     val pollMessageId: Uuid? = null,
+
+    /** Set on [StatusMessage.EmergencyLocateRequested]. The requester's free-text justification. */
+    val emergencyLocateExplanation: String? = null,
+
+    /** Set on [StatusMessage.EmergencyLocateRequested]. How far back the requester pulled, in hours. */
+    val emergencyLocateWindowHours: Int? = null,
+
+    /** Set on [StatusMessage.EmergencyLocateRequested] when the "Ambush" toggle was on: absolute
+     *  epoch ms until which the RECIPIENT's client must not render this message (sender-computed
+     *  send-time + 24h; absolute-deadline convention mirrors live-share's liveShareUntilMs).
+     *  The sender's own view is never embargoed. */
+    val emergencyLocateEmbargoUntilMs: Long? = null,
 )
 
 @Serializable

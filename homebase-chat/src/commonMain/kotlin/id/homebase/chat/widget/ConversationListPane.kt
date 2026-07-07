@@ -172,6 +172,7 @@ fun ConversationListPane(
                                                     }),
                                                 animatedVisibilityScope = this@AnimatedVisibility,
                                                 sharedTransitionScope = null,
+                                                cacheBustKey = session.profileImageLastModified,
                                             )
                                         }
 
@@ -221,6 +222,12 @@ fun ConversationListPane(
                         }
                     }, actions = {
                         if (!uiState.isSearchActive) {
+                            LiveShareIndicator(
+                                untilMs = uiState.ownLiveShareAnyUntilMs,
+                                onClick = {
+                                    onUiAction(ConversationListUiAction.OpenLocationDashboard)
+                                },
+                            )
                             IconButton(
                                 onClick = {
                                     onUiAction(

@@ -70,7 +70,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           intentIdentifiers: [],
           options: []
       )
-      UNUserNotificationCenter.current().setNotificationCategories([messageCategory])
+      // Reply-only category for content-less pushes ("You have a new message"
+      // placeholder) — no Mark as Read when there's nothing to read (#983).
+      // The extension picks between the two categories.
+      let messageNoContentCategory = UNNotificationCategory(
+          identifier: "MESSAGE_NO_CONTENT_CATEGORY",
+          actions: [replyAction],
+          intentIdentifiers: [],
+          options: []
+      )
+      UNUserNotificationCenter.current().setNotificationCategories(
+          [messageCategory, messageNoContentCategory]
+      )
   }
 
   // Present notifications while the app is in the foreground
@@ -181,6 +192,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           guard let key = k as? String, key != "aps" else { continue }
           if let str = v as? String { data[key] = str }
       }
+      // Hop 1 of the push→capture chain (#988) — lands in homebase.log via the exported
+      // Kotlin bridge (Kermit is up: initializeApp ran in didFinishLaunching). appState
+      // raw values: 0=active, 1=inactive, 2=background. The delegate runs on the main
+      // thread, so reading applicationState here is legal.
+      PushChainLoggingKt.logPushChain(
+          hop: "received(ios)",
+          detail: "appState=\(application.applicationState.rawValue) hasAps=\(aps != nil) dataKeys=\(data.count)")
       let entry = NotificationEntry.companion.fromKoin()
       entry.onPushArrivedAsync(title: title, body: body, data: data) { success in
           completionHandler(success == true ? .newData : .failed)

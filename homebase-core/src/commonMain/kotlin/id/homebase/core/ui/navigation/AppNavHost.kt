@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
@@ -31,6 +34,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
@@ -113,10 +117,14 @@ import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
 import id.homebase.core.ui.screens.location.history.LocationHistoryScreen
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationScreen
 import id.homebase.core.ui.screens.location.onboarding.LocationOnboardingScreen
+import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
+import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
+import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
+import id.homebase.core.ui.screens.vault.auth.VaultSessionTracker
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
@@ -139,6 +147,7 @@ import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
 import id.homebase.resources.location_label
+import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -292,6 +301,10 @@ fun AppNavHost(
             }
         }
     }
+
+    // Keeps the Vault biometric session alive across every Vault sub-screen — owned by
+    // the vault feature, not this nav host.
+    VaultSessionTracker(navController)
 
     // Track active conversation + auth guard + notification permission
     LaunchedEffect(authState, currentDestination) {
@@ -498,6 +511,7 @@ fun AppNavHost(
     }
 
     // Translate Location onboarding one-shot events into nav-stack changes.
+    val locateFetchFailedMsg = stringResource(MR.string.location_locate_fetch_failed)
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
             when (event) {
@@ -509,6 +523,18 @@ fun AppNavHost(
                     }
                 }
                 LocationUiEvent.CloseOnboarding -> navController.popBackStack()
+
+                is LocationUiEvent.OpenPeerHistory -> navController.navigate(
+                    Route.LocationPeerHistory(
+                        peerDomain = event.peerDomain,
+                        peerName = event.peerName,
+                    )
+                )
+
+                LocationUiEvent.LocateFetchFailed -> snackbarHostState.showSnackbar(
+                    message = locateFetchFailedMsg,
+                    duration = SnackbarDuration.Long,
+                )
             }
         }
     }
@@ -524,6 +550,10 @@ fun AppNavHost(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        // Leave the top inset to each screen: consuming it here pads everything
+        // below the status bar, so no screen's TopAppBar can extend behind it.
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets
+            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
         bottomBar = {
             if (showBottomNavigationBar) {
                 NavigationBar {
@@ -597,9 +627,14 @@ fun AppNavHost(
                     }
                 }
 
-                Column {
+                val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
+                Column(
+                    // statusBarsPadding consumes the inset, so screens in the NavHost
+                    // below don't re-pad while the banner occupies the top edge.
+                    modifier = if (showUpdateBanner) Modifier.statusBarsPadding() else Modifier,
+                ) {
                     if (isOnTopLevelScreen) {
-                        if (uiState.updateAvailable) {
+                        if (showUpdateBanner) {
                             UpdateAvailableBanner(
                                 versionName = uiState.updateAvailableVersion,
                                 onUpdateClick = { viewModel.triggerUpdate() }
@@ -901,6 +936,9 @@ fun AppNavHost(
                                     // the add-on isn't activated, else the dashboard (which requests
                                     // permission) — covers both "not set up" gate-fail cases.
                                     onNavigateToLocationSetup = openLocation,
+                                    onNavigateToShareLocation = { conversationId ->
+                                        navController.navigate(Route.LocationShare(conversationId))
+                                    },
                                     onNavigateToContactInfo = {
                                         // 1:1 contact info is the full contact-detail screen
                                         // (keyed by the contact uniqueId = md5(odinId)).
@@ -1169,6 +1207,35 @@ fun AppNavHost(
                                     onNavigateToContactBookSettings = {
                                         navController.navigate(Route.ContactBookSettings)
                                     },
+                                    onNavigateToProfileEdit = {
+                                        navController.navigate(Route.ProfileEdit)
+                                    },
+                                    onNavigateToProfileAvatarEdit = {
+                                        navController.navigate(Route.ProfileAvatarEdit)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileEdit> {
+                            if (isAuthenticated) {
+                                ProfileEditScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.ProfileAvatarEdit> {
+                            if (isAuthenticated) {
+                                ProfileAvatarEditScreen(
+                                    viewModel = koinViewModel(),
+                                    onBack = { navController.popBackStack() },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(
+                                            Route.Crop(requestId.toString(), lockedAspect = "square")
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -1327,6 +1394,25 @@ fun AppNavHost(
                             }
                         }
 
+                        composable<Route.LocationPeerHistory> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationPeerHistory>()
+                                LocationHistoryScreen(
+                                    // key: a fresh VM per peer (initial day + traces come from
+                                    // that peer's retrieved data, resolved at construction).
+                                    viewModel = koinViewModel(
+                                        key = route.peerDomain,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(route.peerDomain)
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    subjectName = route.peerName,
+                                    allowDelete = false,
+                                )
+                            }
+                        }
+
                         composable<Route.LocationLive> {
                             if (isAuthenticated) {
                                 LiveLocationScreen(
@@ -1334,6 +1420,26 @@ fun AppNavHost(
                                     onNavigateBack = { navController.popBackStack() },
                                     // Maps-off CTA → location/maps setup (Route.Location when
                                     // activated, else onboarding), reusing the shared nav lambda.
+                                    onOpenSetup = openLocation,
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationShare> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.LocationShare>()
+                                ShareLocationScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.conversationId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parse(route.conversationId)
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    // Maps-off / enable-location CTA → location setup (dashboard or
+                                    // onboarding), reusing the shared nav lambda.
                                     onOpenSetup = openLocation,
                                 )
                             }

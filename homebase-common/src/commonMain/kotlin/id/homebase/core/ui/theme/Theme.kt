@@ -87,6 +87,8 @@ data class HomebaseExtendedColors(
         val bubbleSentSurface: androidx.compose.ui.graphics.Color,
         val bubbleSentOnSurface: androidx.compose.ui.graphics.Color,
         val warning: androidx.compose.ui.graphics.Color,
+        /** Live-location sharing indicator (#816) — Homebase purple, same value both themes. */
+        val liveSharing: androidx.compose.ui.graphics.Color,
 )
 
 private val LightExtendedColors =
@@ -110,6 +112,7 @@ private val LightExtendedColors =
                 bubbleSentSurface = LightColors.Primary,
                 bubbleSentOnSurface = LightColors.OnPrimary,
                 warning = ExtendedColors.Warning,
+                liveSharing = ExtendedColors.LiveSharing,
         )
 
 private val DarkExtendedColors =
@@ -133,6 +136,7 @@ private val DarkExtendedColors =
                 bubbleSentSurface = LightColors.Primary,
                 bubbleSentOnSurface = LightColors.OnPrimary,
                 warning = ExtendedColors.Warning,
+                liveSharing = ExtendedColors.LiveSharing,
         )
 
 val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors }
@@ -141,12 +145,20 @@ val LocalHomebaseExtendedColors = staticCompositionLocalOf { LightExtendedColors
  * Homebase app theme with dark/light mode support. Uses Signal-based color palette.
  *
  * @param darkTheme Whether to use dark theme. Defaults to system setting.
+ * @param followsSystemTheme Whether [darkTheme] merely mirrors the OS setting (the
+ * user picked "System") rather than forcing a variant — see [UpdateEdgeToEdge].
  * @param content The content to display with this theme.
  */
 @Composable
-fun HomebaseTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun HomebaseTheme(
+        darkTheme: Boolean = isSystemInDarkTheme(),
+        followsSystemTheme: Boolean = true,
+        content: @Composable () -> Unit
+) {
         val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
         val extendedColors = if (darkTheme) DarkExtendedColors else LightExtendedColors
+
+        UpdateEdgeToEdge(darkTheme, followsSystemTheme)
 
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
                 MaterialTheme(

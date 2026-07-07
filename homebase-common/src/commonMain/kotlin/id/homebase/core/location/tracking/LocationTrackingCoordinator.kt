@@ -111,6 +111,15 @@ class LocationTrackingCoordinator(
     fun isCaptureWanted(): Boolean =
         (preferences.allowLocationHistory.value || liveShareActive()) && canRunGps()
 
+    /**
+     * The [isCaptureWanted] inputs spelled out for the log, so a skipped push-capture line
+     * says WHICH condition closed the gate (#988) instead of just "skipped". All four reads
+     * are the same cheap, non-suspending calls [applyGpsHold] performs on every re-eval.
+     */
+    fun captureGateExplanation(): String =
+        "allowHistory=${preferences.allowLocationHistory.value} liveShare=${liveShareActive()} " +
+            "trackerAvailable=${tracker.isAvailable} permission=${isLocationPermissionGranted()}"
+
     /** The acquisition profile for the current foreground state + consumers (#846). */
     private fun currentProfile(): TrackingProfile =
         demand.resolveProfile(isForeground, preferences.allowLocationHistory.value, liveShareActive())
