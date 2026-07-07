@@ -249,9 +249,13 @@ private fun ProfileForm(
     var showAddSheet by remember { mutableStateOf(false) }
     var addDialogTarget by remember { mutableStateOf<Pair<AttributeSpec, ProfileVisibility>?>(null) }
 
-    val missingPublic = ATTRIBUTE_SPECS.filter { displayValueFor(it.type, uiState.anonymousValues) == null }
-    val missingVetted = ATTRIBUTE_SPECS.filter { displayValueFor(it.type, uiState.connectedValues) == null }
-    val hasMissing = missingPublic.isNotEmpty() || missingVetted.isNotEmpty()
+    // An attribute qualifies once it's missing from either tier — if it already has a value in one
+    // tier, that tier's row is already on screen and its own Public|Vetted toggle can add the other.
+    val missingAttributes = ATTRIBUTE_SPECS.filter {
+        displayValueFor(it.type, uiState.anonymousValues) == null ||
+            displayValueFor(it.type, uiState.connectedValues) == null
+    }
+    val hasMissing = missingAttributes.isNotEmpty()
 
     Box(modifier = modifier) {
         Column(
@@ -299,11 +303,10 @@ private fun ProfileForm(
 
     if (showAddSheet) {
         AddAttributeSheet(
-            missingPublic = missingPublic,
-            missingVetted = missingVetted,
-            onPick = { spec, tier ->
+            missing = missingAttributes,
+            onPick = { spec ->
                 showAddSheet = false
-                addDialogTarget = spec to tier
+                addDialogTarget = spec to ProfileVisibility.ANONYMOUS
             },
             onDismiss = { showAddSheet = false },
         )
@@ -737,9 +740,8 @@ private fun displayValueFor(type: String, values: Map<ProfileField, String>): St
 
 @Composable
 private fun AddAttributeSheet(
-    missingPublic: List<AttributeSpec>,
-    missingVetted: List<AttributeSpec>,
-    onPick: (AttributeSpec, ProfileVisibility) -> Unit,
+    missing: List<AttributeSpec>,
+    onPick: (AttributeSpec) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AdaptiveSheet(onDismiss = onDismiss) {
@@ -755,27 +757,8 @@ private fun AddAttributeSheet(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
-            if (missingPublic.isNotEmpty()) {
-                Text(
-                    text = stringResource(MR.string.profile_edit_preview_section_public),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                )
-                missingPublic.forEach { spec ->
-                    AddAttributeRow(spec) { onPick(spec, ProfileVisibility.ANONYMOUS) }
-                }
-            }
-            if (missingVetted.isNotEmpty()) {
-                Text(
-                    text = stringResource(MR.string.profile_edit_preview_section_vetted),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-                )
-                missingVetted.forEach { spec ->
-                    AddAttributeRow(spec) { onPick(spec, ProfileVisibility.CONNECTED) }
-                }
+            missing.forEach { spec ->
+                AddAttributeRow(spec) { onPick(spec) }
             }
         }
     }
