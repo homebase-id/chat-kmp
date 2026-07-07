@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.profile.ProfileAttribute
@@ -58,6 +59,24 @@ import org.jetbrains.compose.resources.stringResource
 /** One resolved field, ready to render the way contact details are: icon, label, single-line value. */
 private data class PreviewRow(val icon: ImageVector, val label: String, val value: String)
 
+/** Given/additional/surname joined into one display line — shared with [ProfileEditScreen]'s
+ *  per-attribute-group row display so both screens agree on what "the name" reads as. */
+internal fun profileNameValue(values: Map<ProfileField, String>): String? = listOfNotNull(
+    values[ProfileField.GIVEN_NAME]?.ifBlank { null },
+    values[ProfileField.ADDITIONAL_NAME]?.ifBlank { null },
+    values[ProfileField.SURNAME]?.ifBlank { null },
+).joinToString(" ").ifBlank { null }
+
+/** Street lines, then "postcode city", then country, comma-joined — same single-line format
+ *  ContactBookEntry.location uses for contact addresses. Shared with [ProfileEditScreen]. */
+internal fun profileAddressValue(values: Map<ProfileField, String>): String? = listOfNotNull(
+    values[ProfileField.ADDRESS1]?.ifBlank { null },
+    values[ProfileField.ADDRESS2]?.ifBlank { null },
+    listOfNotNull(values[ProfileField.POSTCODE]?.ifBlank { null }, values[ProfileField.CITY]?.ifBlank { null })
+        .joinToString(" ").ifBlank { null },
+    values[ProfileField.COUNTRY]?.ifBlank { null },
+).joinToString(", ").ifBlank { null }
+
 /**
  * Read-only simulation of the owner's profile, rendered contact-detail style. Public — what
  * everyone sees — is listed first; Vetted below shows everything a vetted contact sees: their own
@@ -82,24 +101,8 @@ internal fun ProfilePreview(
     val lblTiktok = stringResource(MR.string.profile_edit_tiktok)
     val lblLinkedin = stringResource(MR.string.profile_edit_linkedin)
 
-    fun nameValue(values: Map<ProfileField, String>): String? = listOfNotNull(
-        values[ProfileField.GIVEN_NAME]?.ifBlank { null },
-        values[ProfileField.ADDITIONAL_NAME]?.ifBlank { null },
-        values[ProfileField.SURNAME]?.ifBlank { null },
-    ).joinToString(" ").ifBlank { null }
-
-    // Street lines, then "postcode city", then country, comma-joined — same single-line format
-    // ContactBookEntry.location uses for contact addresses.
-    fun addressValue(values: Map<ProfileField, String>): String? = listOfNotNull(
-        values[ProfileField.ADDRESS1]?.ifBlank { null },
-        values[ProfileField.ADDRESS2]?.ifBlank { null },
-        listOfNotNull(values[ProfileField.POSTCODE]?.ifBlank { null }, values[ProfileField.CITY]?.ifBlank { null })
-            .joinToString(" ").ifBlank { null },
-        values[ProfileField.COUNTRY]?.ifBlank { null },
-    ).joinToString(", ").ifBlank { null }
-
     fun rowsFor(values: Map<ProfileField, String>): List<PreviewRow> = buildList {
-        nameValue(values)?.let { add(PreviewRow(Icons.Outlined.Person, lblName, it)) }
+        profileNameValue(values)?.let { add(PreviewRow(Icons.Outlined.Person, lblName, it)) }
         values[ProfileField.NICKNAME]?.takeIf { it.isNotBlank() }
             ?.let { add(PreviewRow(Icons.Outlined.Badge, lblNickname, it)) }
         values[ProfileField.STATUS]?.takeIf { it.isNotBlank() }
@@ -114,7 +117,7 @@ internal fun ProfilePreview(
             val label = values[ProfileField.PHONE_LABEL]?.takeIf { l -> l.isNotBlank() } ?: lblPhone
             add(PreviewRow(Icons.Outlined.Call, label, formatPhoneForDisplay(it)))
         }
-        addressValue(values)?.let {
+        profileAddressValue(values)?.let {
             val label = values[ProfileField.ADDRESS_LABEL]?.takeIf { l -> l.isNotBlank() } ?: lblLocation
             add(PreviewRow(Icons.Outlined.LocationOn, label, it))
         }
@@ -206,16 +209,21 @@ private fun PreviewPhoto(photo: ProfileAttribute?) {
 
 @Composable
 private fun PreviewSectionHeader(title: String, description: String) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
         )
         Text(
             text = description,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }
