@@ -3,6 +3,7 @@
 package id.homebase.core.ui.screens.profile
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import coil3.compose.AsyncImage
+import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
 import id.homebase.resources.MR
@@ -127,25 +129,7 @@ fun ProfileAvatarEditScreen(
                 onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.ANONYMOUS)) },
                 onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.ANONYMOUS)) },
             ) {
-                val existing = uiState.anonymous.existing
-                val imageData = existing?.photoImageData()
-                LaunchedEffect(existing?.id) {
-                    if (existing != null && imageData == null) {
-                        // photoImageData() already logged the specific reason.
-                        Logger.w(tag = "ProfileAvatarEditScreen") {
-                            "Anonymous photo attribute ${existing.id} present but not renderable — placeholder shown"
-                        }
-                    }
-                }
-                if (imageData != null) {
-                    HomebaseImage(
-                        imageData = imageData,
-                        modifier = Modifier.fillMaxSize(),
-                        contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
-                    )
-                } else {
-                    EmptyAvatarPlaceholder()
-                }
+                ExistingAvatarContent(uiState.anonymous.existing, "ProfileAvatarEditScreen")
             }
 
             Spacer(Modifier.height(24.dp))
@@ -160,59 +144,86 @@ fun ProfileAvatarEditScreen(
                 onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED)) },
                 onSaveClicked = { viewModel.onAction(ProfileAvatarEditAction.SaveClicked(ProfileVisibility.CONNECTED)) },
             ) {
-                val existing = uiState.connected.existing
-                val imageData = existing?.photoImageData()
-                LaunchedEffect(existing?.id) {
-                    if (existing != null && imageData == null) {
-                        // photoImageData() already logged the specific reason.
-                        Logger.w(tag = "ProfileAvatarEditScreen") {
-                            "Connected photo attribute ${existing.id} present but not renderable — placeholder shown"
-                        }
-                    }
-                }
-                if (imageData != null) {
-                    HomebaseImage(
-                        imageData = imageData,
-                        modifier = Modifier.fillMaxSize(),
-                        contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
-                    )
-                } else {
-                    EmptyAvatarPlaceholder()
-                }
+                ExistingAvatarContent(uiState.connected.existing, "ProfileAvatarEditScreen")
             }
         }
     }
 }
 
+/** Renders a tier's currently-stored photo (both tiers fetch/decrypt the same way), or a
+ *  placeholder when there's none — shared by [ProfileAvatarEditScreen] and the compact photo
+ *  picker embedded directly in [ProfileEditScreen]'s Public/Vetted sections. */
+@Composable
+internal fun ExistingAvatarContent(existing: ProfileAttribute?, logTag: String) {
+    val imageData = existing?.photoImageData()
+    LaunchedEffect(existing?.id) {
+        if (existing != null && imageData == null) {
+            // photoImageData() already logged the specific reason.
+            Logger.w(tag = logTag) {
+                "Photo attribute ${existing.id} present but not renderable — placeholder shown"
+            }
+        }
+    }
+    if (imageData != null) {
+        HomebaseImage(
+            imageData = imageData,
+            modifier = Modifier.fillMaxSize(),
+            contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
+        )
+    } else {
+        EmptyAvatarPlaceholder()
+    }
+}
+
 /**
- * One [ProfileVisibility] tier's photo slot: a circular preview (tap to pick a new photo),
- * a "Remove" action when a photo is currently stored, and a Save button once a crop is pending.
- * [existingPhotoContent] renders the currently-stored photo (both tiers render the same way — an
- * authenticated/decrypted [id.homebase.core.image.HomebaseImageData] fetch — the callback just
- * keeps this composable itself agnostic to that).
+ * One [ProfileVisibility] tier's photo slot: a circular preview, a "Remove" action when a photo is
+ * currently stored, and a Save button once a crop is pending. [existingPhotoContent] renders the
+ * currently-stored photo (both tiers render the same way — an authenticated/decrypted
+ * [id.homebase.core.image.HomebaseImageData] fetch — the callback just keeps this composable itself
+ * agnostic to that). [title]/[description] are omitted (null) when embedded somewhere that already
+ * has its own section header — see [ProfileEditScreen].
+ *
+ * [controlsVisible] hides the camera badge and Remove button until [onPhotoTap] fires (tapping the
+ * photo directly picks when `true`, e.g. the standalone editor; when `false`, [ProfileEditScreen]
+ * uses it to gate the same reveal-on-tap behavior its attribute rows already use).
  */
 @Composable
-private fun PhotoTierSection(
-    title: String,
-    description: String,
+internal fun PhotoTierSection(
     tier: PhotoTierUiState,
     onPick: () -> Unit,
     onRemove: () -> Unit,
     onSaveClicked: () -> Unit,
+    title: String? = null,
+    description: String? = null,
+    controlsVisible: Boolean = true,
+    centered: Boolean = false,
+    onPhotoTap: (() -> Unit)? = null,
     existingPhotoContent: @Composable () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(text = title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (title != null) {
+            Text(text = title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(4.dp))
+        }
+        if (description != null) {
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+        Row(
+            modifier = if (centered) Modifier.fillMaxWidth() else Modifier,
+            horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(contentAlignment = Alignment.BottomEnd) {
-                Box(modifier = Modifier.size(96.dp).clip(CircleShape).clickable(onClick = onPick)) {
+                Box(
+                    modifier = Modifier.size(96.dp).clip(CircleShape).clickable(
+                        onClick = if (controlsVisible) onPick else (onPhotoTap ?: onPick)
+                    ),
+                ) {
                     val cropped = tier.pendingCroppedAvatar
                     when {
                         cropped != null -> AsyncImage(
@@ -225,16 +236,18 @@ private fun PhotoTierSection(
                         else -> EmptyAvatarPlaceholder()
                     }
                 }
-                FilledIconButton(onClick = onPick, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        imageVector = Icons.Filled.PhotoCamera,
-                        contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
-                        modifier = Modifier.size(18.dp),
-                    )
+                if (controlsVisible) {
+                    FilledIconButton(onClick = onPick, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            imageVector = Icons.Filled.PhotoCamera,
+                            contentDescription = stringResource(MR.string.cd_profile_avatar_change_photo),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.width(16.dp))
-            if (tier.pendingCroppedAvatar == null && tier.existing != null && !tier.pendingRemoval) {
+            if (controlsVisible && tier.pendingCroppedAvatar == null && tier.existing != null && !tier.pendingRemoval) {
+                Spacer(Modifier.width(16.dp))
                 TextButton(onClick = onRemove, enabled = !tier.isDeleting) {
                     Text(stringResource(MR.string.profile_avatar_edit_remove))
                 }
@@ -259,7 +272,7 @@ private fun PhotoTierSection(
 }
 
 @Composable
-private fun EmptyAvatarPlaceholder() {
+internal fun EmptyAvatarPlaceholder() {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,

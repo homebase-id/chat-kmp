@@ -1224,7 +1224,13 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 ProfileEditScreen(
                                     viewModel = koinViewModel(),
+                                    avatarViewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(
+                                            Route.Crop(requestId.toString(), lockedAspect = "square")
+                                        )
+                                    },
                                 )
                             }
                         }
