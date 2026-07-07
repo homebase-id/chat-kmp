@@ -22,6 +22,13 @@ object ChatProtocol {
     const val ConversationAdminFileType = 8890
     const val ChatStatusMessageDataType = 202
 
+    /** Ambush embargo on [StatusMessage.EmergencyLocateRequested]: how long the recipient's
+     *  client hides the request notice (see StatusMessageData.emergencyLocateEmbargoUntilMs). */
+    const val EMERGENCY_LOCATE_AMBUSH_DELAY_MS = 24L * 60 * 60 * 1000
+
+    /** Cap on the requester's free-text justification riding the status-message header. */
+    const val EMERGENCY_LOCATE_EXPLANATION_MAX_CODEPOINTS = 280
+
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
@@ -105,7 +112,9 @@ object ChatProtocol {
 
     const val ARCHIVAL_STATUS_DELETED = 2
 
-    const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = "pld_desc"
+    // Single source of truth lives in homebase-upload's UploadProtocol; delegated here so
+    // existing chat call sites stay unchanged.
+    const val DEFAULT_PAYLOAD_DESCRIPTOR_KEY = id.homebase.upload.UploadProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY
 
     const val PAYLOAD_KEY_MESSAGE_WEB = "chat_web"
     const val PAYLOAD_KEY_LINKS = "chat_links"

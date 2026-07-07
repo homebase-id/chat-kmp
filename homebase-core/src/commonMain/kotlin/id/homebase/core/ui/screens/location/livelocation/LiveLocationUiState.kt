@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.location.livelocation
 
+import id.homebase.api.common.OdinId
+
 /**
  * A friend you're sharing with (or yourself), reduced to what the live map renders. [key] is stable
  * across store emissions (the OdinId domain, or "self") so each avatar composable instance — and its
@@ -9,7 +11,8 @@ data class LiveMarker(
     val key: String,
     val lat: Double,
     val lon: Double,
-    val avatarUrl: String?,
+    /** Whose avatar to render (via PublicAvatar); null only when own identity is unknown. */
+    val odinId: OdinId?,
     val initials: String,
     /** Age of this position (now − receivedAt) in ms; drives the staleness label. */
     val ageMs: Long,

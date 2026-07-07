@@ -14,7 +14,9 @@ import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.api.client.contacts.resolveDisplayName
 import id.homebase.api.client.contacts.socialHandles
+import id.homebase.api.common.publicImageUrl
 import id.homebase.core.contactbook.iCanLocate
+import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.core.image.HomebaseImageData
@@ -68,6 +70,8 @@ data class ContactBookEntry(
     val source: String? = null,
     /** Pending (optimistic, not yet confirmed by the drive). */
     val isPending: Boolean = false,
+    /** Synthetic entry representing the signed-in user; rendered with a "(you)" suffix. */
+    val isSelf: Boolean = false,
     // Image-display fields (carried so a stored avatar can render without a
     // second drive read). Null when the contact has no uploaded photo.
     val driveId: Uuid? = null,
@@ -75,12 +79,21 @@ data class ContactBookEntry(
     val isEncrypted: Boolean = false,
     val previewThumbnail: EmbeddedThumb? = null,
     val imagePayload: PayloadDescriptor? = null,
+    /**
+     * Present when a user override has been applied (see [withOverride]): holds the *synced*
+     * (peer-profile) original of each overridden field, so the UI can show "their profile says …".
+     * Null when this entry carries no override.
+     */
+    val syncedOverlay: ContactFieldOverlay? = null,
+    /** Extra, app-local phone numbers / emails the user added beyond the single canonical slot. */
+    val additionalPhones: List<String> = emptyList(),
+    val additionalEmails: List<String> = emptyList(),
 ) {
     /** Has a Homebase identity behind it (vs a plain phone/email contact). */
     val hasOdinId: Boolean get() = !odinId.isNullOrBlank()
 
     /** Public avatar endpoint for identity contacts; null for plain contacts. */
-    val avatarUrl: String? get() = odinId?.takeIf { it.isNotBlank() }?.let { "https://$it/pub/image" }
+    val avatarUrl: String? get() = odinId?.takeIf { it.isNotBlank() }?.let { publicImageUrl(it) }
 
     val avatarInitials: String get() = displayName.initials()
 
@@ -94,12 +107,13 @@ data class ContactBookEntry(
             return if (c in 'A'..'Z') c.toString() else "#"
         }
 
-    /** Secondary line under the name in list rows. */
-    val subtitle: String? get() = odinId ?: phone ?: email
+    /** Secondary line under the name in list rows. A phone falls through to a country-aware
+     *  display format; non-E.164 legacy values are shown as stored. */
+    val subtitle: String? get() = odinId ?: phone?.let { formatPhoneForDisplay(it) } ?: email
 
     /**
-     * The full postal address formatted for display, one component per line:
-     * street lines, then "postcode city", then country. Null when nothing is set.
+     * The full postal address formatted for display on a single line: street lines, then
+     * "postcode city", then country, joined with commas. Null when nothing is set.
      */
     val location: String?
         get() = listOfNotNull(
@@ -108,7 +122,7 @@ data class ContactBookEntry(
             listOfNotNull(postcode?.ifBlank { null }, city?.ifBlank { null })
                 .joinToString(" ").ifBlank { null },
             country?.ifBlank { null },
-        ).joinToString("\n").ifBlank { null }
+        ).joinToString(", ").ifBlank { null }
 
     fun matches(query: String): Boolean {
         if (query.isBlank()) return true

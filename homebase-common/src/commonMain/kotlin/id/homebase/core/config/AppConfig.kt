@@ -172,6 +172,10 @@ val appPermissions: List<AppPermissionType> =
         AppPermissionType.ReceiveDataFromOtherIdentitiesOnMyBehalf,
         AppPermissionType.SendPushNotifications,
         AppPermissionType.SendIntroductions,
+        // Required to write the owner's standard-profile attributes (in-app profile editor);
+        // without it PUT /api/v2/profile/attributes returns 403. Paired with the ProfileDrive
+        // Read grant below, which lets the editor read current values to prefill the form.
+        AppPermissionType.ManageProfile,
     )
 
 // Target drive access requests (general — excludes feed drive)
@@ -196,8 +200,18 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             description = " ",
             permissions = listOf(DrivePermission.Read, DrivePermission.Write)
         ),
-
-        )
+        // Read-only grant on the ProfileDrive so the in-app profile editor can read the owner's
+        // current standard-profile attributes (id + versionTag + values) to prefill the form.
+        // Writes don't need drive Write here — they go through the ManageProfile-gated
+        // /api/v2/profile/attributes endpoint, not a direct drive upload.
+        TargetDriveAccessRequest(
+            alias = profileLabeledDrive.drive.alias.toString(),
+            type = profileLabeledDrive.drive.type.toString(),
+            name = "Profile Drive",
+            description = "Drive which contains your profile information",
+            permissions = listOf(DrivePermission.Read)
+        ),
+    )
 
 val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(

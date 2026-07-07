@@ -131,11 +131,15 @@ actual fun VideoPlayerSurface(
     paused: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val playerPool = koinInject<AVPlayerPool>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<NSURL?>(null) }
+    // Streamed-to-file MP4 temp (hbvid_res_*, #845) — deleted on dispose; the
+    // startup sweep is the backstop.
+    var tempFilePath by remember(data) { mutableStateOf<String?>(null) }
     val notificationObservers = remember(data) { mutableListOf<NSObjectProtocol>() }
 
     DisposableEffect(data) {
@@ -163,6 +167,7 @@ actual fun VideoPlayerSurface(
             }
             notificationObservers.clear()
             tempDir?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
+            tempFilePath?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
         }
     }
 
@@ -230,7 +235,7 @@ actual fun VideoPlayerSurface(
         onProgress(0f)
         withContext(Dispatchers.Main) {
             try {
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
                         // preload, so StateFlow's initial value and every subsequent emit lands.
@@ -304,24 +309,14 @@ actual fun VideoPlayerSurface(
                         state = VpsState.Playing(player = player, timeObserver = timeObserver, sessionId = sessionId)
                         onProgress(1f)
                     }
-                    is VideoContent.Mp4 -> {
+                    is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
+                    is VideoContent.Mp4File -> {
                         onProgress(0.5f)
-                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
-                        val mp4Url = if (preloadedPath != null) {
-                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
-                            NSURL.fileURLWithPath(preloadedPath)
-                        } else {
-                            val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
-                                .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
-                            NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
-                            tempDir = dir
-                            val url = dir.URLByAppendingPathComponent("video.mp4")!!
-                            val (_, writeElapsed) = measureTimedValue {
-                                content.bytes.toNSData().writeToURL(url, atomically = true)
-                            }
-                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
-                            url
-                        }
+                        // Already streamed to a disposable hbvid_res_* temp by the
+                        // resolver (#845) — no whole-payload RAM buffer, no second
+                        // temp-file write. Deleted on dispose (see tempFilePath).
+                        tempFilePath = content.filePath
+                        val mp4Url = NSURL.fileURLWithPath(content.filePath)
                         onProgress(0.8f)
                         val player = if (useInlineOptimizations) {
                             val item = AVPlayerItem(uRL = mp4Url)

@@ -2,6 +2,7 @@ package id.homebase.core.image
 
 import coil3.toUri
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.core.image.PublicImageFetcher.Companion.resolveOdinId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -109,5 +110,40 @@ class PublicImageFetcherFactoryTest {
     fun resolveOdinId_uriWithSubdomain_preservesOdinId() {
         val uri = "https://sub.frodo.digital/pub/image".toUri()
         assertEquals("sub.frodo.digital", resolveOdinId(uri)?.toString())
+    }
+
+    // =========================================================
+    // Builder ↔ matcher round-trip
+    //
+    // publicImageUrl() (homebase-api) is the single producer of the
+    // /pub/image URL; resolveOdinId() is its consumer-side matcher. If
+    // either side drifts, avatar loads silently fall through to the
+    // plain NetworkFetcher and bypass the homebase-public-images-v2
+    // cache — this locks the two together.
+    // =========================================================
+
+    @Test
+    fun resolveOdinId_roundTripsCanonicalBuilderUrl() {
+        val odinId = OdinId("frodo.digital")
+        assertEquals(odinId, resolveOdinId(odinId.publicImageUrl().toUri()))
+    }
+
+    // =========================================================
+    // Cache-busting query string (?v=<lastModified>) — see PublicAvatar's
+    // cacheBustKey param. The suffix match must still resolve correctly with
+    // one appended, or the owner's own avatar refresh silently stops using
+    // this Fetcher (and its cache) entirely.
+    // =========================================================
+
+    @Test
+    fun resolveOdinId_uriWithCacheBustQuery_matches() {
+        val uri = "https://frodo.digital/pub/image?v=1699999999".toUri()
+        assertEquals("frodo.digital", resolveOdinId(uri)?.toString())
+    }
+
+    @Test
+    fun resolveOdinId_stringWithCacheBustQuery_matches() {
+        val odinId = resolveOdinId("https://frodo.digital/pub/image?v=1699999999")
+        assertEquals("frodo.digital", odinId?.toString())
     }
 }

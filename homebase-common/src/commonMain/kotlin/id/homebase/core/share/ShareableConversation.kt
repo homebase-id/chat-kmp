@@ -32,4 +32,7 @@ data class ShareConversationCacheData(
     // destination (it can't reach the main app's DB). Defaults false so older
     // caches deserialize cleanly.
     val momentsActivated: Boolean = false,
+    // Owner's display name, so the iOS share extension can surface Note to Self
+    // when the user searches their own name (#984). Nullable for older caches.
+    val ownerDisplayName: String? = null,
 )

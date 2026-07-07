@@ -93,7 +93,14 @@ private suspend fun FileMetadata.decryptAppData(
     val encryptedBytes = try {
         Base64.decode(content)
     } catch (e: Throwable) {
-        throw FileDecryptionException.ContentBase64DecodeFailed(e)
+        // Mirrors the AES-decrypt soft-fail immediately below: one file's undecodable content
+        // must not take down the whole batch (DriveQueryProvider.mapQueryBatchResponse's
+        // documented contract). A caller-side parser (e.g. ProfileAttributeParse) that requires
+        // a `type` key on this placeholder will safely treat the file as unparseable and skip it.
+        Logger.e("Base64 decode failure for AppData content: ${e.message}")
+        return withDecryptedContent(
+            """{"message":"Decryption Failure","deliveryStatus":50,"isEdited":false}""".toByteArray(Charsets.UTF_8)
+        )
     }
 
 //    val decryptedBytes = try {

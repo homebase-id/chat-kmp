@@ -32,6 +32,11 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.services.livelocation.ShareBackResult
+import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
+import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
+import id.homebase.chat.services.livelocation.shareLiveLocationBack
+import id.homebase.core.location.GpsRequestReason
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
@@ -44,6 +49,7 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.config.stickerLabeledDrive
@@ -55,10 +61,12 @@ import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
 import id.homebase.resources.MR
 import id.homebase.resources.chat_introduce_preflight_in_progress
+import id.homebase.resources.chat_location_unavailable
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.conversation_jump_message_unavailable
+import id.homebase.resources.live_share_ended
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -148,6 +156,7 @@ class ConversationListViewModel(
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
     private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
     private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
+    private val locationService: id.homebase.core.location.LocationService,
 ) : ViewModel() {
 
     companion object {
@@ -344,6 +353,40 @@ class ConversationListViewModel(
                 _uiState.update { it.copy(ownerSession = session) }
                 _messagesUiState.update { it.copy(ownerSession = session) }
             }
+        }
+
+        // Track MY live-share state against the open conversation and globally. FULL coverage
+        // hides the bubbles' "share live location" offers (starting a share that's already
+        // running is confusing, and a second tap would create a duplicate live message — #966
+        // follow-up). ANY coverage + the global value drive the purple sharing pins in the
+        // conversation and chat-list top bars (#816). No ticker here: the pin/bubble composables
+        // derive visibility from `now < untilMs` with their own exact-deadline tickers.
+        viewModelScope.launch {
+            combine(
+                ActiveConversation.conversation,
+                liveLocationShareService.recipients,
+            ) { conversationId, roster -> conversationId to roster }
+                .collectLatest { (conversationId, roster) ->
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    _uiState.update {
+                        it.copy(ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs))
+                    }
+                    var fullUntilMs: Long? = null
+                    var anyUntilMs: Long? = null
+                    conversationId?.let { id ->
+                        val recipientIds = runCatching {
+                            conversationStream.getRecipients(id, emptyList(), null)
+                        }.getOrDefault(emptyList()).map { it.domainName }
+                        fullUntilMs = liveShareCoverageUntilMs(roster, recipientIds, nowMs)
+                        anyUntilMs = liveShareAnyUntilMs(roster, recipientIds, nowMs)
+                    }
+                    _messagesUiState.update {
+                        it.copy(
+                            ownLiveShareUntilMs = fullUntilMs,
+                            ownLiveShareInConversationUntilMs = anyUntilMs,
+                        )
+                    }
+                }
         }
 
         // Post-create preflight collector. CreateConversationGroupViewModel emits the
@@ -658,7 +701,10 @@ class ConversationListViewModel(
         viewModelScope.launch {
             authConnectionCoordinator.connectionState
                 .collectLatest { state ->
-                    _uiState.update { it.copy(connectionStatus = state.toConnectionStatus()) }
+                    val status = state.toConnectionStatus()
+                    _uiState.update { it.copy(connectionStatus = status) }
+                    // Drives the media upload overlay's online-only "Sending" spinner (#948).
+                    _messagesUiState.update { it.copy(isConnected = status == AppConnectionStatus.Connected) }
                 }
         }
 
@@ -863,7 +909,17 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
             }
 
+            is ConversationListUiAction.OpenShareLocation -> {
+                sendEvent(ConversationListUiEvent.NavigateToShareLocation(action.conversationId.toString()))
+            }
+
             is ConversationListUiAction.OpenLocationSetup -> {
+                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
+            }
+
+            is ConversationListUiAction.OpenLocationDashboard -> {
+                // Same navigation as setup: openLocation routes to the dashboard when the add-on
+                // is activated — always true while a share is running (the pin's only tap path).
                 sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
             }
 
@@ -895,6 +951,40 @@ class ConversationListViewModel(
                 val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
                 if (untilMs != null) liveLocationShareService.stop(recipients, untilMs)
                 updateLocationLiveShare(action.messageId, Clock.System.now().toEpochMilliseconds())
+            }
+
+            // Share back from someone ELSE's location bubble (#966). Their message is never
+            // touched (liveShareUntilMs is only ever written on the sharer's own message) —
+            // shareLiveLocationBack sends a NEW lightweight live message of our own and starts
+            // the relay; see its doc for the mirror-the-sender's-window semantics.
+            is ConversationListUiAction.ShareLiveLocationBack -> viewModelScope.launch {
+                if (!liveShareReadiness.isReady()) {
+                    _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
+                    return@launch
+                }
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                val result = shareLiveLocationBack(
+                    durationMs = action.durationMs,
+                    senderLiveShareUntilMs =
+                        (msg.messageContent as? MessageContent.Location)?.descriptor?.liveShareUntilMs,
+                    nowMs = Clock.System.now().toEpochMilliseconds(),
+                    getFix = { locationService.requestLatestGps(GpsRequestReason.LiveMap) },
+                    send = { descriptor ->
+                        chatMessageSenderService.sendNewTypedMessage(
+                            messageUniqueId = Uuid.random(),
+                            conversationId = msg.conversationId,
+                            content = MessageContent.Location(descriptor),
+                            previousMessageUniqueId = null,
+                        )
+                    },
+                    startRelay = { untilMs -> liveLocationShareService.start(recipients, untilMs) },
+                )
+                when (result) {
+                    ShareBackResult.Expired -> sendEvent(ShowInfoMessage(MR.string.live_share_ended))
+                    ShareBackResult.NoFix -> sendEvent(ShowInfoMessage(MR.string.chat_location_unavailable))
+                    ShareBackResult.Sent -> Unit
+                }
             }
 
             is ConversationListUiAction.SearchBackClicked -> {

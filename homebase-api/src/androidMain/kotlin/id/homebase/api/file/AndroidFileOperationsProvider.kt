@@ -114,10 +114,38 @@ class AndroidFileOperationsProvider(
         return File(path).length()
     }
 
+    override suspend fun sourceExists(path: String): Boolean = withContext(Dispatchers.IO) {
+        if (path.startsWith("content://") || path.startsWith("content:")) {
+            // getFileSize's SIZE-column query returns 0 for a perfectly valid URI that
+            // doesn't expose OpenableColumns.SIZE, so don't gate on size here. Opening
+            // the stream is the authoritative "still readable?" check and also surfaces
+            // a revoked grant (SecurityException) as "missing".
+            runCatching {
+                context.contentResolver.openInputStream(path.toUri())?.use { true } ?: false
+            }.getOrDefault(false)
+        } else {
+            File(path).exists()
+        }
+    }
+
     override suspend fun writeBytesToTempFile(
         bytes: ByteArray, prefix: String, suffix: String
+    ): String = writeBytesIn(CacheAudit.UPLOAD_TEMP_DIR_NAME, bytes, prefix, suffix)
+
+    // Encrypted, ready-to-transmit payloads live in the durable staging dir (#842) — under
+    // noBackupFilesDir, NOT cacheDir: cacheDir is OS-reclaimable under storage pressure, which
+    // deleted staged payloads out from under long-lived outbox rows (the ENOENT retry loop).
+    // noBackupFilesDir (not filesDir) because the outbox DB is excluded from backup rules — a
+    // future backup enablement must not restore staged files whose rows didn't ride along.
+    // The interface default routes writeBytesToOutboxTempFile through this dir.
+    override fun getOutboxStagingDirectory(): String =
+        File(context.noBackupFilesDir, OUTBOX_STAGING_DIR_NAME).apply { mkdirs() }.absolutePath
+
+    private suspend fun writeBytesIn(
+        dirName: String, bytes: ByteArray, prefix: String, suffix: String
     ): String = withContext(Dispatchers.IO) {
-        val file = File.createTempFile(prefix, suffix, context.cacheDir)
+        val tempDir = File(context.cacheDir, dirName).apply { mkdirs() }
+        val file = File.createTempFile(prefix, suffix, tempDir)
         file.writeBytes(bytes)
         file.path
     }

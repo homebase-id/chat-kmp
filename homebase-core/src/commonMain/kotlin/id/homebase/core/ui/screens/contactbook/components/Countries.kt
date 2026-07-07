@@ -31,6 +31,41 @@ fun splitE164(value: String): Pair<Country?, String> {
     return country to national.filter { it.isDigit() }
 }
 
+/**
+ * Formats a stored E.164 number for **display** ("+1 (415) 555-0123") using the dial-code table.
+ * NANP numbers get the familiar `(area) prefix-line` shape; everything else is grouped generically
+ * (`+CC` then national digits in readable chunks). Display-only — the stored value stays E.164.
+ *
+ * Returns the input unchanged when it can't be parsed (not E.164, or an unknown dial code), so
+ * legacy/unrecognized data is still shown rather than mangled.
+ */
+fun formatPhoneForDisplay(e164: String): String {
+    val v = e164.trim()
+    val (country, national) = splitE164(v)
+    if (!v.startsWith("+") || country == null || national.isEmpty()) return v
+    // North American Numbering Plan: +1 (NXX) NXX-XXXX.
+    if (country.dialCode == "1" && national.length == 10) {
+        return "+1 (${national.substring(0, 3)}) ${national.substring(3, 6)}-${national.substring(6)}"
+    }
+    // Denmark: flat 8-digit plan (no area codes), conventionally grouped in pairs.
+    if (country.dialCode == "45" && national.length == 8) {
+        return "+45 ${national.chunked(2).joinToString(" ")}"
+    }
+    return "+${country.dialCode} ${groupNationalDigits(national)}"
+}
+
+/** Groups national digits into readable chunks of three, merging a lone trailing digit into the
+ *  previous group so we never leave a one-digit orphan (e.g. "12345678" → "123 456 78"). */
+private fun groupNationalDigits(digits: String): String {
+    if (digits.length <= 4) return digits
+    val groups = digits.chunked(3).toMutableList()
+    if (groups.size >= 2 && groups.last().length == 1) {
+        val orphan = groups.removeAt(groups.lastIndex)
+        groups[groups.lastIndex] = groups.last() + orphan
+    }
+    return groups.joinToString(" ")
+}
+
 private fun c(iso: String, name: String, dial: String) = Country(iso, name, dial)
 
 /** ISO 3166-1 territories with ITU calling codes. Sorted by name in the picker. */

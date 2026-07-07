@@ -112,7 +112,6 @@ import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
-import id.homebase.api.client.location.LocationPreviewProvider
 import co.touchlab.kermit.Logger
 import id.homebase.chat.dice.BattleRollSheet
 import id.homebase.chat.dice.DiceRollComposerSheet
@@ -124,13 +123,7 @@ import id.homebase.chat.groodle.GroodleComposerSheet
 import id.homebase.chat.poll.PollComposerSheet
 import id.homebase.chat.event.EventDetailDialog
 import id.homebase.chat.event.EventRsvp
-import id.homebase.core.location.rememberCurrentGps
-import id.homebase.core.location.tracking.GpsFixResult
-import id.homebase.resources.chat_location_map_preview_unavailable
-import id.homebase.resources.chat_location_permission_denied
-import id.homebase.resources.chat_location_unavailable
 import id.homebase.chat.services.renderer.PayloadRenderer
-import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiSheet
@@ -140,6 +133,7 @@ import id.homebase.chat.conversationlist.RecipientGroupModel
 import id.homebase.chat.conversationlist.RecipientModel
 import id.homebase.chat.conversationlist.RecipientType
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.chat.conversationlist.resolveOwnSendFollowTarget
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.createconversation.GroupOrConversationItem
 import id.homebase.chat.data.ConversationState
@@ -213,6 +207,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -225,6 +220,10 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
+
+/** Upper bound on waiting for an own send to appear in the list before the
+ *  follow token is consumed unscrolled (the send failed or was gated out). */
+private const val OWN_SEND_FOLLOW_TIMEOUT_MS = 5_000L
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -265,54 +264,7 @@ fun ConversationContent(
     // too, via `MessageInputBar`'s onPayloadRenderersChange callback.
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
-    // Location-share flow. Triggered from the AttachmentOptions sheet → GPS launcher → fetch
-    // a static map preview from the (dev-stub) provider → append a LocationPreviewRenderer to
-    // the composer's staging slot. The composer renders/cancels it via the same path as link
-    // previews; nothing here knows the bubble shape.
-    val locationPreviewProvider: LocationPreviewProvider = koinInject()
-    var isFetchingLocation by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val locationPermissionDeniedMsg = stringResource(MR.string.chat_location_permission_denied)
-    val locationUnavailableMsg = stringResource(MR.string.chat_location_unavailable)
-    val locationMapPreviewUnavailableMsg = stringResource(MR.string.chat_location_map_preview_unavailable)
-    val currentLocationLauncher = rememberCurrentGps { result ->
-        isFetchingLocation = false
-        when (result) {
-            is GpsFixResult.Success -> {
-                Logger.d(tag = "LocationShare") {
-                    "fix received lat=${result.point.lat} lon=${result.point.lon} → fetching preview"
-                }
-                coroutineScope.launch {
-                    isFetchingLocation = true
-                    try {
-                        val preview = locationPreviewProvider.getLocationPreview(
-                            result.point.lat, result.point.lon,
-                        )
-                        // Always stage — coordinates alone are useful even without a map image.
-                        payloadRenderers = payloadRenderers.filterNot { it is LocationPreviewRenderer } +
-                            LocationPreviewRenderer(preview)
-                        if (preview.imageUrl == null) {
-                            Logger.w(tag = "LocationShare") {
-                                "preview returned with no image (map service down or offline) — coords-only"
-                            }
-                            snackbarHostState.showSnackbar(locationMapPreviewUnavailableMsg)
-                        }
-                    } finally {
-                        isFetchingLocation = false
-                    }
-                }
-            }
-            is GpsFixResult.PermissionDenied -> {
-                Logger.d(tag = "LocationShare") { "permission denied" }
-                coroutineScope.launch { snackbarHostState.showSnackbar(locationPermissionDeniedMsg) }
-            }
-            is GpsFixResult.Unavailable,
-            is GpsFixResult.Timeout -> {
-                Logger.d(tag = "LocationShare") { "fix unavailable" }
-                coroutineScope.launch { snackbarHostState.showSnackbar(locationUnavailableMsg) }
-            }
-        }
-    }
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -436,20 +388,37 @@ fun ConversationContent(
         }
     }
 
-    // One-time own-send follow for sends that route through the full-screen
-    // attachment editor (image/video/file). Closing that overlay remounts this
-    // composable with the pending placeholder already in the list, so the
-    // layout-growth auto-follow above starts at previousTotal = 0 and never sees
-    // growth. The ViewModel sets scrollToLatestRequest in the same update that
-    // adds the placeholder and clears the overlay; we wait for the freshly
-    // mounted list to lay out, follow it to the bottom, then consume the token.
-    // Skipped (but still consumed) when paged into history — jumpToLatestAfterOwnSend
-    // handles that case with a ScrollToLatest reload once the send completes.
+    // One-time own-send follow: every send arm sets scrollToLatestRequest so the
+    // user's own message always lands visible, even when scrolled up into history
+    // (#995). Attachment sends put a placeholder in the list in the same update
+    // that arms the token (and remount this composable, which is why the
+    // layout-growth auto-follow above can't cover them — it restarts with
+    // previousTotal = 0). Text/reply/location sends have NO placeholder — the
+    // message reaches uiState.messages asynchronously via the optimistic-write
+    // round-trip — so wait until the requested id is actually in the merged data
+    // AND laid out before following; scrolling earlier targets the previous last
+    // item. Skipped (but still consumed) when paged into history —
+    // jumpToLatestAfterOwnSend handles that case with a ScrollToLatest reload
+    // once the send completes.
+    val messagesForOwnSend = rememberUpdatedState(uiState.messages)
+    val pendingForOwnSend = rememberUpdatedState(uiState.pendingOutgoing)
     LaunchedEffect(uiState.scrollToLatestRequest) {
-        if (uiState.scrollToLatestRequest == null) return@LaunchedEffect
+        val requestedId = uiState.scrollToLatestRequest ?: return@LaunchedEffect
         if (!uiState.hasNewerMessages) {
-            val total = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
-            listState.animateScrollToItem(total - 1)
+            // Bounded so a failed send (whose message never arrives) can't pin
+            // the token armed forever; consume runs either way.
+            withTimeoutOrNull(OWN_SEND_FOLLOW_TIMEOUT_MS) {
+                val target = snapshotFlow {
+                    resolveOwnSendFollowTarget(
+                        requestedId = requestedId,
+                        messages = messagesForOwnSend.value,
+                        pendingOutgoing = pendingForOwnSend.value,
+                        conversationId = conversation.conversation.id,
+                        laidOutItemCount = listState.layoutInfo.totalItemsCount,
+                    ) ?: -1
+                }.first { it > 0 }
+                listState.animateScrollToItem(target - 1)
+            }
         }
         onUiAction(ConversationListUiAction.ConsumeScrollToLatestRequest)
     }
@@ -699,6 +668,7 @@ fun ConversationContent(
 
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
+        LocalUploadConnected provides uiState.isConnected,
     ) {
     Scaffold(
         modifier = Modifier,
@@ -788,6 +758,12 @@ fun ConversationContent(
                 },
                 actions = {
                     if (!uiState.isSearchActive) {
+                        LiveShareIndicator(
+                            untilMs = uiState.ownLiveShareInConversationUntilMs,
+                            onClick = {
+                                onUiAction(ConversationListUiAction.OpenLocationDashboard)
+                            },
+                        )
                         IconButton(onClick = { showConversationMenu = true }) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
@@ -1163,6 +1139,7 @@ fun ConversationContent(
                                                 searchQuery = uiState.searchQuery,
                                                 isCurrentSearchResult = isFocused,
                                                 chainCap = chainCap,
+                                                ownLiveShareUntilMs = uiState.ownLiveShareUntilMs,
                                             )
                                         }
                                     }
@@ -1502,7 +1479,7 @@ fun ConversationContent(
                             editExistingMode = uiState.isEditingMessageId != null,
                             showSendButton = showSendButton,
                             isRecordingActive = isRecordingActive,
-                            isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
+                            isSendingMessage = uiState.isSendingMessage,
                             onSendMessage = {
                                 performSend(textFieldState.toMarkdown(), payloadRenderers)
                             },
@@ -1518,7 +1495,7 @@ fun ConversationContent(
                                 focusRequester = focusRequester,
                                 editExistingMode = uiState.isEditingMessageId != null,
                                 showingEmojiSheet = showEmojiSheet,
-                                isSendingMessage = uiState.isSendingMessage || isFetchingLocation,
+                                isSendingMessage = uiState.isSendingMessage,
                                 showActionButtons = false,
                                 onSendStateChanged = { showSendButton = it },
                                 onRecordingStateChanged = { isRecordingActive = it },
@@ -1637,8 +1614,9 @@ fun ConversationContent(
                     }, onLocationClick = {
                         Logger.d(tag = "LocationShare") { "share location clicked" }
                         showAttachmentSheet = false
-                        isFetchingLocation = true
-                        currentLocationLauncher.launch()
+                        onUiAction(
+                            ConversationListUiAction.OpenShareLocation(conversation.conversation.id)
+                        )
                     }, onEventClick = {
                         showAttachmentSheet = false
                         showEventComposer = true

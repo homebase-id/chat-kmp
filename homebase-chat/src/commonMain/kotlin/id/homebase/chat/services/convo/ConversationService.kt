@@ -37,9 +37,13 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.api.toBase64
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundle
-import id.homebase.chat.services.PayloadBundleEncryptor
+import id.homebase.upload.MediaUploadSpec
+import id.homebase.upload.PayloadBundle
+import id.homebase.upload.PayloadBundleEncryptor
+import id.homebase.upload.UploadOutcome
+import id.homebase.upload.UploadService
 import id.homebase.chat.services.GroupHealCleanupInfo
 import id.homebase.chat.services.GroupHealInfo
 import id.homebase.chat.services.StatusMessage
@@ -77,6 +81,12 @@ import kotlin.uuid.Uuid
 class ConversationService(
     private val credentialsManager: CredentialsManager,
     private val payloadBundleEncryptionService: PayloadBundleEncryptor,
+    // Shared upload pipeline — the conversation-CREATE file (writeConversationFile) routes its
+    // encrypt+enqueue through here (#844). The conversation-UPDATE path (updateConversationInternal)
+    // deliberately stays a documented guard exception: it's a hot, multi-purpose mutation method
+    // (archival/participants/leaveGroup/heal) where the encrypt-new-avatar branch is rare, so
+    // routing it all through UploadService is high blast radius for little benefit.
+    private val uploadService: UploadService,
     private val dbm: DatabaseManager,
     private val introductionProvider: IntroductionSender,
     private val scope: CoroutineScope,
@@ -260,6 +270,13 @@ class ConversationService(
             } else {
                 audit.info("existing file is in usable state, no revive needed")
             }
+            // Re-map the DB file into the in-memory list: the row may be missing or a
+            // participants=[] placeholder (e.g. archived 1:1 opened via Contacts), and
+            // an immediate send would otherwise resolve zero recipients (#934).
+            runCatching { conversationStream.loadConversation(newConversationId) }
+                .onFailure { e ->
+                    Logger.w(e) { "createConversation: loadConversation($newConversationId) failed after existing-file return" }
+                }
             audit.checkPass("existingFileBranch")
             audit.finish("returned wasNewlyCreated=false (path=existing-file)")
             return CreateConversationResult(newConversationId, wasNewlyCreated = false)
@@ -419,6 +436,53 @@ class ConversationService(
     }
 
     /**
+     * Posts a [StatusMessage.EmergencyLocateRequested] status into the 1:1 with [recipient]: the
+     * local user has activated the emergency locate function and is retrieving the recipient's
+     * location history. Carries the requester's [explanation] and the retrieval [windowHours].
+     * When [ambush] is set, the message is still sent IMMEDIATELY but stamped with an embargo
+     * deadline (now + [EMERGENCY_LOCATE_AMBUSH_DELAY_MS]) — the recipient's client hides it until
+     * then (see [id.homebase.chat.services.MessageMapper]); the sender's copy is never hidden.
+     * Render-only on receive — no side-effect handler. Best-effort: returns the conversation id
+     * or null on failure (logged). Rethrows cancellation.
+     */
+    suspend fun sendEmergencyLocateRequest(
+        recipient: OdinId,
+        explanation: String,
+        windowHours: Int,
+        ambush: Boolean,
+    ): Uuid? {
+        return try {
+            val result = createConversation(
+                recipients = listOf(recipient),
+                title = null,
+                payloadBundle = null,
+            )
+            chatMessageSenderService.sendStatusMessage(
+                messageUniqueId = Uuid.random(),
+                conversationId = result.conversationId,
+                previousMessageUniqueId = result.conversationId,
+                statusMessage = StatusMessageData(
+                    statusMessage = StatusMessage.EmergencyLocateRequested,
+                    subject = recipient,
+                    emergencyLocateExplanation = explanation
+                        .truncateToCodePoints(ChatProtocol.EMERGENCY_LOCATE_EXPLANATION_MAX_CODEPOINTS)
+                        .takeIf { it.isNotBlank() },
+                    emergencyLocateWindowHours = windowHours,
+                    emergencyLocateEmbargoUntilMs = if (ambush) {
+                        UnixTimeUtc.now().milliseconds + ChatProtocol.EMERGENCY_LOCATE_AMBUSH_DELAY_MS
+                    } else null,
+                ),
+            )
+            result.conversationId
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "Failed to send emergency-locate request to ${recipient.domainName}" }
+            null
+        }
+    }
+
+    /**
      * Mirror of [sendEmergencyContactDesignation]: notifies [recipient] that the local user has
      * removed them from their emergency circle, by posting a [StatusMessage.EmergencyContactRevoked]
      * status into their 1:1. Drives the receiver's [ConversationStream.onEmergencyContactRevoked]
@@ -489,13 +553,6 @@ class ConversationService(
         }
         // ---- end DEBUG ----
 
-        val encryptedBundle = payloadBundleEncryptionService.encryptBundle(
-            conversationId,
-            payloadBundle,
-            keyHeader.aesKey,
-            scope
-        )
-
         val metadata = UploadFileMetadata(
             allowDistribution = true,
             isEncrypted = true,
@@ -504,20 +561,10 @@ class ConversationService(
                 tags = if (isGroup) listOf(ChatProtocol.ConversationGroupTag) else null,
                 fileType = ChatProtocol.ConversationFileType,
                 content = OdinSystemSerializer.serialize(content),
-                previewThumbnail = encryptedBundle.previewThumbs.minByOrNull { it.pixelWidth }
+                // previewThumbs pass through encryption unchanged, so derive the header's preview
+                // from the plaintext bundle — UploadService encrypts the bundle internally.
+                previewThumbnail = payloadBundle?.previewThumbs?.minByOrNull { it.pixelWidth }
             ),
-        )
-
-        val request = UploadFileRequest(
-            driveId = chatDrive,
-            keyHeader = keyHeader,
-            metadata = metadata.encryptContent(keyHeader),
-            transitOptions = TransitOptions(
-                recipients = transitRecipients,
-                useAppNotification = false
-            ),
-            payloads = encryptedBundle.payloads,
-            thumbnails = encryptedBundle.thumbnails
         )
 
         // ---- DEBUG instrumentation ----
@@ -570,14 +617,32 @@ class ConversationService(
                 audit.finish("ABORTED at conversationStream.loadConversation")
                 throw e   // original code did not catch — preserve propagation
             }
-        audit.step(3, "outboxSync.tryEnqueue(UploadFileRequest)")
-        val enqueued = outboxSync.tryEnqueue(request)
-        audit.info("STEP 3 returned $enqueued")
-        audit.check("outboxEnqueue", enqueued.enqueued, "outboxSync.tryEnqueue → $enqueued — file will not be uploaded; conversation creation effectively failed")
+        // Encrypt + build request + enqueue via the shared pipeline. writeOptimistic=false: the
+        // optimistic writeNewFile above already ran (this method's write→readback→loadConversation→
+        // enqueue ordering is deliberate, opposite of UploadService's enqueue→write). seedCache=false:
+        // a conversation file has no chat-bubble thumbnail to seed.
+        audit.step(3, "uploadService.upload (encrypt + enqueue)")
+        val outcome = uploadService.upload(
+            MediaUploadSpec(
+                driveId = chatDrive,
+                uniqueId = conversationId,
+                keyHeader = keyHeader,
+                bundle = payloadBundle,
+                metadata = metadata,
+                transit = TransitOptions(recipients = transitRecipients, useAppNotification = false),
+                originalRecipientCount = transitRecipients.size,
+                writeOptimistic = false,
+                seedCache = false,
+            ),
+            scope = scope,
+        )
+        val enqueued = outcome is UploadOutcome.Enqueued
+        audit.info("STEP 3 outcome=$outcome")
+        audit.check("outboxEnqueue", enqueued, "uploadService.upload → $outcome — file will not be uploaded; conversation creation effectively failed")
         val outboxAfter = dbm.outbox.count()
         audit.post("counts: outboxRows=$outboxAfter (delta=${outboxAfter - outboxBefore}, expected ≥+1 if enqueue succeeded)")
         audit.finish("returned $enqueued")
-        return enqueued.enqueued
+        return enqueued
         // ---- end DEBUG ----
     }
 

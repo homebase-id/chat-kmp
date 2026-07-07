@@ -43,6 +43,14 @@ data class ConversationListUiState(
     val connectionStatus: AppConnectionStatus = AppConnectionStatus.Connecting,
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
+    /**
+     * Latest end-time across ALL my active outgoing live shares, else null — drives the purple
+     * sharing pin in the chat-list top bar (#816). Raw deadline: the pin composable derives
+     * visibility from `now < untilMs` with its own ticker, so a stale past-value after expiry is
+     * harmless until the next roster emission. See [MessageListUiState.ownLiveShareInConversationUntilMs]
+     * for the per-conversation (ANY-coverage) variant.
+     */
+    val ownLiveShareAnyUntilMs: Long? = null,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
     /** Non-null while a long-ish service op is in flight. Drives the full-screen
@@ -69,6 +77,7 @@ data class MessageListUiState(
     val decryptedFiles: ImmutableMap<DecryptedFileKey, String> = persistentMapOf(),
     val userDefaultReactions: ImmutableList<String> = persistentListOf(),
     val uploadProgress: ImmutableMap<Uuid, UploadStatus> = persistentMapOf(),
+    val isConnected: Boolean = true,
     val isLoadingMessages: Boolean = true,
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
@@ -101,6 +110,21 @@ data class MessageListUiState(
      *  trim discards the newer slice; drives the bottom spinner, the FAB's
      *  ScrollToLatest branch, and gates auto-follow on incoming messages. */
     val hasNewerMessages: Boolean = false,
+    /**
+     * When MY live share FULLY covers this conversation's recipients: the absolute end of that
+     * coverage, else null. While set (and in the future), location bubbles hide their "share
+     * live location" offers — no invitations to start a share that's already running (#966
+     * follow-up). Deliberately a different predicate from [ownLiveShareInConversationUntilMs]
+     * (ANY-coverage, the #816 pin) — don't unify them.
+     */
+    val ownLiveShareUntilMs: Long? = null,
+    /**
+     * Latest end-time among my active shares to ANY participant of this conversation, else null —
+     * drives the purple sharing pin in the conversation top bar (#816). ANY-coverage: sharing
+     * with one member of a group lights the pin, while [ownLiveShareUntilMs] (FULL coverage,
+     * offer suppression) stays null. Raw deadline; the pin composable handles expiry itself.
+     */
+    val ownLiveShareInConversationUntilMs: Long? = null,
     /** A loadOlder fetch is in flight; suppresses re-entry. */
     val isLoadingOlder: Boolean = false,
     /** A loadNewer fetch is in flight; suppresses re-entry. */
@@ -109,14 +133,14 @@ data class MessageListUiState(
      *  the screen renders [id.homebase.chat.event.EventDetailDialog] keyed off
      *  this state. Null means no host-level event detail is open. */
     val replyTargetEventDetail: ReplyTargetEventDetail? = null,
-    /** One-time "follow my own send to the bottom" token. Set to a fresh value
-     *  whenever the user sends a message through the full-screen attachment
-     *  editor (image/video/file): closing that overlay tears [ConversationContent]
-     *  — and its layout-growth auto-follow effect — out of composition, so the
-     *  effect restarts with `previousTotal = 0` and never observes the placeholder
-     *  as growth. ConversationContent collects this token on (re)mount, animates to
-     *  the latest item, and dispatches [ConversationListUiAction.ConsumeScrollToLatestRequest]
-     *  to clear it. Null once consumed, so unrelated remounts (closing the image
+    /** One-time "follow my own send to the bottom" token — a user's own send must
+     *  always scroll the list to show it (#995). Armed with the new message id by
+     *  every send arm in MessageActionsHandler (addMessage / replyToMessage /
+     *  addMessageWithFiles); a text/reply/location send adds no placeholder, so
+     *  ConversationContent waits until the id is actually present in the merged
+     *  list (see [resolveOwnSendFollowTarget]) before animating to the latest item,
+     *  then dispatches [ConversationListUiAction.ConsumeScrollToLatestRequest] to
+     *  clear it. Null once consumed, so unrelated remounts (closing the image
      *  viewer) don't re-scroll. */
     val scrollToLatestRequest: Uuid? = null,
 )
@@ -309,6 +333,15 @@ sealed interface FullScreenOverlay {
         val payload: PayloadDescriptor,
         val localFilePath: String? = null,
         val uploadMessageId: Uuid? = null,
+    ) : FullScreenOverlay
+
+    @Immutable
+    data class PdfViewerData(
+        val messageId: Uuid,
+        val fileId: Uuid,
+        val payloadKey: String,
+        val title: String,
+        val userDate: Instant,
     ) : FullScreenOverlay
 }
 

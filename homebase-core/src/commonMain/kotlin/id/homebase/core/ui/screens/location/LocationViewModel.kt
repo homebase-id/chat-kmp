@@ -3,20 +3,23 @@ package id.homebase.core.ui.screens.location
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.toContactUiModel
+import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
-import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
@@ -27,6 +30,9 @@ import id.homebase.core.ui.screens.location.history.shiftDay
 import id.homebase.core.ui.screens.location.livelocation.LIVE_STALE_MS
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
 import id.homebase.core.util.initials
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,12 +42,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 
 class LocationViewModel(
@@ -55,10 +64,13 @@ class LocationViewModel(
     private val contactRepository: ContactRepository,
     private val connectionService: ConnectionService,
     private val contactService: ContactService,
-    private val emergencyContactReconciler: EmergencyContactReconciler,
+    private val temporalDriveReadProvider: TemporalDriveReadProvider,
     private val credentialsManager: CredentialsManager,
     private val receiveStore: LiveLocationReceiveStore,
     private val liveShareService: LiveLocationShareService,
+    private val conversationService: ConversationService,
+    private val emergencyLocateService: EmergencyLocateService,
+    private val authConnectionCoordinator: AuthConnectionCoordinator,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -97,6 +109,9 @@ class LocationViewModel(
     // Synchronous one-shot guard for the auto-activate collector below — see MomentsViewModel.
     private var activationKicked = false
 
+    // The location drive we preflight per "who I can locate" entry (same alias the reconciler uses).
+    private val locationDrive = locationLabeledDrive.drive.alias
+
     init {
         // "Who can locate you" = the members of our emergency-location-access circle. We host this
         // circle on our OWN identity, so its membership is the source of truth — no app-data flag.
@@ -110,7 +125,7 @@ class LocationViewModel(
                 val members = circleState.membersOf(EMERGENCY_LOCATION_CIRCLE_ID)
                     .asSequence()
                     .filterNot { it == self }
-                    .mapNotNull { contactService.resolveByOdinId(OdinId(it)) }
+                    .map { contactService.resolveByOdinId(OdinId(it)) }
                     .sortedBy { it.name.lowercase() }
                     .toList()
                 _uiState.update {
@@ -137,10 +152,6 @@ class LocationViewModel(
                     }
                 }
         }
-
-        // On dashboard open, reconcile the iCanLocate cache against the authoritative temporal-access
-        // grant so a lost revocation (stale flag) self-corrects. Best-effort, one-shot per open.
-        viewModelScope.launch { runCatching { emergencyContactReconciler.reconcile() } }
 
         viewModelScope.launch {
             locationPermissionViewModel.permissionsGranted
@@ -241,7 +252,6 @@ class LocationViewModel(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
                             avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
-                            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
                             untilMs = entries.maxOf { it.endTimeMs },
                         )
                     }
@@ -257,7 +267,6 @@ class LocationViewModel(
                             odinId = id,
                             name = contact?.name?.ifEmpty { null } ?: id,
                             avatarInitials = contact?.avatarInitials?.ifEmpty { null } ?: id.initials(),
-                            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
                             ageMs = now - lp.receivedAtMs,
                         )
                     }
@@ -290,6 +299,119 @@ class LocationViewModel(
         while (true) {
             emit(Unit)
             delay(30_000L)
+        }
+    }
+
+    /** Runs the periodic locatable-verify loop while the section is expanded; null when collapsed. */
+    private var locatableVerifyJob: Job? = null
+
+    /**
+     * Expanded: start the link-freshness loop — an immediate [verifyLocatablePass], then one every
+     * [LOCATE_VERIFY_TTL_MS] so ages and states stay current while the section is open. Every
+     * expand (re-)starts the loop; the per-row TTL inside the pass is what makes a quick re-expand
+     * cheap. The expand-triggered pass shows spinners (visible feedback that a verify is running);
+     * the periodic follow-ups are silent so the open list doesn't flash a spinner every minute.
+     * Collapsed: cancel the loop (and any in-flight verifies with it) and sweep Loading
+     * placeholders — a cancelled first verify must not leave a stuck Loading that blocks the next
+     * expand forever (needsReverify(Loading) == false).
+     *
+     * A sibling collector re-runs a silent pass whenever the app comes online, so a row that
+     * timed out to Unreachable while offline clears the moment the connection arrives instead of
+     * waiting out the TTL (#998). Rows still inside their online-wait are in Loading →
+     * needsReverify == false → the reconnect pass skips them while their own in-flight verify
+     * wakes on the same transition.
+     */
+    private fun setLocatableExpanded(expanded: Boolean) {
+        if (expanded) {
+            if (locatableVerifyJob?.isActive == true) return
+            locatableVerifyJob = viewModelScope.launch {
+                launch {
+                    authConnectionCoordinator.isOnline
+                        .drop(1) // skip the replayed current value; react to transitions only
+                        .filter { it }
+                        .collect { verifyLocatablePass(showSpinner = false) }
+                }
+                var expandTriggered = true
+                while (true) {
+                    verifyLocatablePass(showSpinner = expandTriggered)
+                    expandTriggered = false
+                    delay(LOCATE_VERIFY_TTL_MS)
+                }
+            }
+        } else {
+            locatableVerifyJob?.cancel()
+            locatableVerifyJob = null
+            _uiState.update { s ->
+                s.copy(
+                    whoICanLocateStatus =
+                        s.whoICanLocateStatus.filterValues { it != LocateVerifyStatus.Loading },
+                )
+            }
+        }
+    }
+
+    /**
+     * One preflight pass over the "who I can locate" entries: does the peer still grant us temporal
+     * read access to their location drive, and how fresh is their newest data? Members are verified
+     * in parallel child coroutines and the pass returns once all resolve, so loop iterations never
+     * overlap a still-running verify. Members with a verify in flight or a result younger than
+     * [LOCATE_VERIFY_TTL_MS] are skipped (#950). [showSpinner] (the expand-triggered pass) marks
+     * each verifying row Loading so the user sees the verify happen; the periodic follow-up passes
+     * pass false and keep the old value visible until the new result lands, so an open list never
+     * flashes spinners every minute. A row with no prior result always spins. Each verify first
+     * waits up to [LOCATE_VERIFY_ONLINE_WAIT_MS] for the app to be online (#998) — a no-op when it
+     * already is — so an expand right after cold start spins instead of flashing broken clouds. A
+     * network/parse failure after that is inconclusive → [LocateVerifyStatus.Unreachable]
+     * (disconnected icon, retried after the TTL), never [Broken]; this mirrors
+     * [EmergencyContactReconciler]'s leave-untouched rule.
+     */
+    private suspend fun verifyLocatablePass(showSpinner: Boolean) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        coroutineScope {
+            _uiState.value.whoICanLocate.forEach { member ->
+                val key = member.odinId.domainName
+                val current = _uiState.value.whoICanLocateStatus[key]
+                if (!current.needsReverify(now)) return@forEach
+                if (showSpinner || current == null) {
+                    _uiState.update {
+                        it.copy(whoICanLocateStatus = it.whoICanLocateStatus + (key to LocateVerifyStatus.Loading))
+                    }
+                }
+                launch {
+                    // Just-opened app: hold the row in Loading for up to
+                    // LOCATE_VERIFY_ONLINE_WAIT_MS while the connection comes up, so a
+                    // not-online-yet expand spins instead of flashing broken clouds (#998).
+                    // Already online → first{} returns immediately; still offline after the
+                    // wait → the verify throws and records Unreachable as before.
+                    withTimeoutOrNull(LOCATE_VERIFY_ONLINE_WAIT_MS) {
+                        authConnectionCoordinator.isOnline.first { it }
+                    }
+                    val status = try {
+                        temporalDriveReadProvider.verifyTemporalAccess(member.odinId, locationDrive)
+                    } catch (e: CancellationException) {
+                        throw e // never record a cancelled verify as Unreachable
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val verifiedAt = Clock.System.now().toEpochMilliseconds()
+                    _uiState.update {
+                        val next = when {
+                            // Inconclusive (threw) → Unreachable; the TTL retries it next pass.
+                            status == null ->
+                                it.whoICanLocateStatus + (key to LocateVerifyStatus.Unreachable(verifiedAt))
+                            // Gate on hasAccess alone (windowSeconds is not a reliable discriminator, #875).
+                            !status.hasAccess ->
+                                it.whoICanLocateStatus + (key to LocateVerifyStatus.Broken(verifiedAt))
+                            // newestFileModified == 0 (ZeroTime) means no files yet → Active(null) = "no data".
+                            else -> it.whoICanLocateStatus + (key to LocateVerifyStatus.Active(
+                                newestModifiedMs = status.newestFileModified.milliseconds.takeIf { ms -> ms > 0 },
+                                verifiedAtMs = verifiedAt,
+                            ))
+                        }
+                        it.copy(whoICanLocateStatus = next)
+                    }
+                }
+            }
         }
     }
 
@@ -350,12 +472,51 @@ class LocationViewModel(
                 viewModelScope.launch { liveShareService.stopAll() }
             }
 
+            is LocationUiAction.SetLocatableExpanded -> setLocatableExpanded(action.expanded)
+
+            is LocationUiAction.ConfirmEmergencyLocate -> confirmEmergencyLocate(action)
+
             // Permission requests are dispatched at the screen level (the
             // PermissionsManager is composition-scoped); the VM only receives
             // status updates via updatePermissionStatus.
             LocationUiAction.RequestWhileInUseClicked,
             LocationUiAction.RequestAlwaysClicked,
             LocationUiAction.OpenSystemSettingsClicked -> Unit
+        }
+    }
+
+    /**
+     * Emergency locate confirm: send the request notice FIRST (durable accountability — the
+     * peer is told even if the subsequent read fails, deliberately), then fetch their history
+     * over the temporal API into the memory-only store, then navigate to the peer viewer.
+     */
+    private fun confirmEmergencyLocate(action: LocationUiAction.ConfirmEmergencyLocate) {
+        if (_uiState.value.locateSubmitInFlight) return
+        val status = _uiState.value.whoICanLocateStatus[action.odinId]
+        if (status !is LocateVerifyStatus.Active) return
+        _uiState.update { it.copy(locateSubmitInFlight = true) }
+        viewModelScope.launch {
+            try {
+                val peer = OdinId(action.odinId)
+                conversationService.sendEmergencyLocateRequest(
+                    recipient = peer,
+                    explanation = action.explanation,
+                    windowHours = action.windowHours,
+                    ambush = action.ambush,
+                )
+                val result = emergencyLocateService.fetch(
+                    peer = peer,
+                    displayName = action.name,
+                    windowMs = action.windowHours * 3_600_000L,
+                )
+                when (result) {
+                    is EmergencyLocateService.FetchResult.Success ->
+                        _events.tryEmit(LocationUiEvent.OpenPeerHistory(action.odinId, action.name))
+                    else -> _events.tryEmit(LocationUiEvent.LocateFetchFailed)
+                }
+            } finally {
+                _uiState.update { it.copy(locateSubmitInFlight = false) }
+            }
         }
     }
 

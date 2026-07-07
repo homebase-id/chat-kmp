@@ -87,6 +87,36 @@ class LocationService(
     private var lastAcquireStartMs = 0L
 
     /**
+     * The best cached coordinate available RIGHT NOW, at ANY age, without powering the radio —
+     * the "where should a map start" primitive (#966 share screen). [lastKnown] is memory-only
+     * and null after a process restart even though the device knew its position seconds ago;
+     * this consults the cold sources too, newest wins:
+     *  1. the in-memory last point (warm process — instant),
+     *  2. the latest persisted history row (cold process, history on),
+     *  3. the OS last-known fix (cold process; on Android this survives app restarts).
+     * The winner is published back into [lastKnown], so subsequent calls — and every other
+     * consumer of the store (live-map self dot, relay hydration) — see it immediately. Returns
+     * null only when no source has ever seen a position (fresh install / permission never
+     * granted / GPS never on). Callers that need a FRESH position use [requestLatestGps]; the
+     * two compose: seed a map from this, then refine with a fresh fix.
+     */
+    suspend fun lastKnownCoordinates(): RawLocationPoint? {
+        lastKnown.value?.let { return it }
+        runCatching { pointStore.refresh() }
+            .onFailure { logger.d(it) { "lastKnownCoordinates: history re-seed failed" } }
+        val persisted = lastKnown.value
+        val osFix = if (permissionGranted()) {
+            runCatching { oneShot.lastKnownFix() }
+                .onFailure { logger.d(it) { "lastKnownCoordinates: OS last-known failed" } }
+                .getOrNull()
+        } else null
+        val best = listOfNotNull(persisted, osFix).maxByOrNull { it.t } ?: return null
+        if (best !== persisted) pointStore.publishLastKnown(best)
+        logger.d { "lastKnownCoordinates: served (age=${nowMs() - best.t}ms src=${best.src})" }
+        return best
+    }
+
+    /**
      * Get the current position, idempotently and battery-aware. Returns the cached [lastKnown] if it's
      * fresher than [GpsRequestReason.staleAfterMs]; otherwise does a one-shot fetch (capped by
      * [GpsRequestReason.timeoutMs]). Does NOT request permission — returns [GpsFixResult.PermissionDenied]
@@ -161,7 +191,7 @@ class LocationService(
             nowMs = nowMs,
         )
         if (result is GpsFixResult.Success) {
-            router.submit(listOf(result.point)) // route so the fetched fix isn't wasted
+            router.submit(listOf(result.point), reason) // route so the fetched fix isn't wasted
             logger.i { "requestLatestGps($reason): fetched & routed (src=${result.point.src})" }
         } else {
             logger.i { "requestLatestGps($reason): fetch did not yield a fix ($result)" }
@@ -176,10 +206,14 @@ class LocationService(
      * Returns null when nothing wants a capture.
      */
     suspend fun forceCaptureIfTracking(reason: GpsRequestReason): GpsFixResult? {
+        // Info (not debug): a closed gate is the most common reason a push produced no fresh
+        // point (#988), and only Info+ lines mirror into Crashlytics breadcrumbs. Frequency is
+        // bounded by the triggers (push arrival, app-open) — no spam risk.
         if (!coordinator.isCaptureWanted()) {
-            logger.d { "forceCaptureIfTracking($reason): skipped — no persistent consumer wants GPS" }
+            logger.i { "forceCaptureIfTracking($reason): skipped — ${coordinator.captureGateExplanation()}" }
             return null
         }
+        logger.i { "forceCaptureIfTracking($reason): gate open — requesting fix" }
         return requestLatestGps(reason)
     }
 

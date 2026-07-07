@@ -1,6 +1,8 @@
 package id.homebase.chat.services.requests
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.AutoConnectOutcome
 import id.homebase.api.client.connections.ConnectionRequestResult
 import id.homebase.api.client.connections.ConnectionRequestHeader
@@ -261,13 +263,48 @@ class ConnectionRequestService(
      * UI flips "Invited" → (removed) and the conversation's 1:1 status flips to Connected
      * immediately. The server also emits a websocket event for both sides, but we don't want
      * the UI to wait on round-trip latency.
+     *
+     * If the sender already withdrew the request (cancel-outgoing's best-effort remote
+     * withdrawal beat us here — see [ConnectionRequestProvider.cancelOutgoingRequest]), the
+     * accept call fails with [OdinClientErrorCode.IncomingRequestNotFound]. That's authoritative:
+     * drop our stale copy too so it doesn't linger in the UI, then rethrow so the caller can show
+     * a specific "this request was withdrawn" message instead of a generic failure.
      */
     suspend fun acceptIncomingRequest(senderId: OdinId) {
-        connectionRequestProvider.acceptIncomingRequest(senderId)
+        try {
+            connectionRequestProvider.acceptIncomingRequest(senderId)
+        } catch (e: ClientException) {
+            if (e.errorCode == OdinClientErrorCode.IncomingRequestNotFound) {
+                removeFromIncoming(senderId)
+                refresh()
+            }
+            throw e
+        }
         contactRepository.sync(senderId)
         removeFromIncoming(senderId)
         refresh()
         connectionService.refresh()
+    }
+
+    /**
+     * Rejects (declines) an incoming connection request and drops it from the pending list. The
+     * sender isn't notified; the request simply disappears. Optimistically removes it so the UI
+     * updates without waiting on the round trip, then refreshes to reconcile with the server.
+     */
+    suspend fun rejectIncomingRequest(senderId: OdinId) {
+        connectionRequestProvider.rejectIncomingRequest(senderId)
+        removeFromIncoming(senderId)
+        refresh()
+    }
+
+    /**
+     * Cancels (withdraws) an outgoing connection request we previously sent and drops it from the
+     * pending list. Optimistically removes it, then refreshes to reconcile with the server.
+     */
+    suspend fun cancelOutgoingRequest(recipientId: OdinId) {
+        connectionRequestProvider.cancelOutgoingRequest(recipientId)
+        removeFromOutgoing(recipientId)
+        refresh()
     }
 
     private suspend fun markIncomingOptimistically(sender: OdinId) {

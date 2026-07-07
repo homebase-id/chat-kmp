@@ -147,6 +147,9 @@ object ExtendedColors {
     val Warning = Color(0xFFFF9800)
     val Info = Color(0xFF2196F3)
 
+    // Live-location sharing indicator (#816) — Homebase purple, same value both themes.
+    val LiveSharing = Color(0xFF9C27B0)
+
     // Requests banner
     val RequestBanner = Color(0xFFFFD9A3)
     val OnRequestBanner = Color(0xFF3D2C1A)

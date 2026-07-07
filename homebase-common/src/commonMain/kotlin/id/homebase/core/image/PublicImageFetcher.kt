@@ -10,6 +10,7 @@ import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.PUB_IMAGE_PATH
 import okio.Buffer
 
 class PublicImageFetcher(
@@ -53,16 +54,21 @@ class PublicImageFetcher(
          * [String] (convenience in tests, avoids standing up a real Coil
          * pipeline). Tested in `PublicImageFetcherFactoryTest` — keep this
          * helper and its tests in sync if the URL shape changes.
+         *
+         * Strips a trailing `?...` query string before matching — callers that need the image
+         * to actually reload after it changes server-side (e.g. the owner's own avatar after a
+         * new upload) append a cache-busting `?v=<lastModified>` so Coil treats it as a distinct
+         * request/cache-key; the underlying odinId/path shape is unaffected.
          */
         internal fun resolveOdinId(data: Any): OdinId? {
             val url = when (data) {
                 is Uri -> data.toString()
                 is String -> data
                 else -> return null
-            }
-            if (!url.contains("/pub/image")) return null
+            }.substringBefore('?')
+            if (!url.contains(PUB_IMAGE_PATH)) return null
             return OdinId(
-                url.removePrefix("https://").removeSuffix("/pub/image")
+                url.removePrefix("https://").removeSuffix(PUB_IMAGE_PATH)
             )
         }
     }

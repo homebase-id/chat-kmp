@@ -39,6 +39,7 @@ enum class AppPermissionType(val value: Int) {
     ReadWhoIFollow(80),
     ReadMyFollowers(130),
     ManageFeed(150),
+    ManageProfile(170),
     SendDataToOtherIdentitiesOnMyBehalf(210),
     ReceiveDataFromOtherIdentitiesOnMyBehalf(305),
     SendPushNotifications(405),

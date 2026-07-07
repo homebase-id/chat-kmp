@@ -357,12 +357,34 @@ sealed interface ConversationListUiAction {
         val messageId: Uuid,
     ) : ConversationListUiAction
 
+    /**
+     * Share your live location back from someone ELSE's location bubble. Never touches their
+     * message — sends a NEW lightweight live location message of your own (no map payload) and
+     * starts the relay. [messageId] is the received bubble, used to resolve the conversation and,
+     * when [durationMs] is null, the sender's own live end-time to mirror: a single tap on a LIVE
+     * bubble shares back for exactly the sender's remaining window so both shares end together.
+     * Non-null [durationMs] comes from the duration menu on a received static (fresh) bubble.
+     */
+    data class ShareLiveLocationBack(
+        val messageId: Uuid,
+        val durationMs: Long?,
+    ) : ConversationListUiAction
+
     /** Open the Live Location map (tap a live location bubble's map). */
     data object OpenLiveLocationMap : ConversationListUiAction
+
+    /** Open the full-screen share-location screen (attachment sheet → Location). */
+    data class OpenShareLocation(val conversationId: Uuid) : ConversationListUiAction
 
     /** Open the location setup screen — from the "set up location" prompt shown when a live share
      *  can't start because location isn't ready. */
     data object OpenLocationSetup : ConversationListUiAction
+
+    /** Tap on the top-bar "you're sharing" pin (#816) — opens the location dashboard, which lists
+     *  every outgoing live share with per-person stop + stop-all. Routes through the same
+     *  navigation as [OpenLocationSetup]; an active share implies the add-on is activated, so it
+     *  lands on the dashboard rather than onboarding. */
+    data object OpenLocationDashboard : ConversationListUiAction
 
     // endregion
 }

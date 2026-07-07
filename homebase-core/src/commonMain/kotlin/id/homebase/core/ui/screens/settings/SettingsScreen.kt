@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,7 +75,6 @@ import id.homebase.resources.cancel
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
-import id.homebase.resources.settings_connections
 import id.homebase.resources.settings_delete_account
 import id.homebase.resources.settings_delete_account_dialog_text
 import id.homebase.resources.settings_delete_account_dialog_title
@@ -101,7 +101,6 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBackClick: () -> Unit,
-    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
@@ -110,6 +109,8 @@ fun SettingsScreen(
     onNavigateToVaultSettings: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToContactBookSettings: () -> Unit,
+    onNavigateToProfileEdit: () -> Unit,
+    onNavigateToProfileAvatarEdit: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -125,6 +126,16 @@ fun SettingsScreen(
             is SettingsUiEvent.OpenUrl -> {
                 viewModel.eventConsumed()
                 uriHandler.openUrl(event.url)
+            }
+
+            SettingsUiEvent.NavigateToProfileEdit -> {
+                viewModel.eventConsumed()
+                onNavigateToProfileEdit()
+            }
+
+            SettingsUiEvent.NavigateToProfileAvatarEdit -> {
+                viewModel.eventConsumed()
+                onNavigateToProfileAvatarEdit()
             }
         }
     }
@@ -161,7 +172,6 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             onBackClick = onBackClick,
-            onNavigateToConnections = onNavigateToConnections,
             onNavigateToNotifications = onNavigateToNotifications,
             onNavigateToAppearance = onNavigateToAppearance,
            onNavigateToVaultSettings = onNavigateToVaultSettings,
@@ -170,6 +180,7 @@ fun SettingsScreen(
             onNavigateToMomentsSettings = onNavigateToMomentsSettings,
             onNavigateToLocation = onNavigateToLocation,
             onNavigateToContactBookSettings = onNavigateToContactBookSettings,
+            onAvatarClick = { viewModel.onAction(SettingsUiAction.AvatarClicked) },
         )
 
         if (uiState.isLoggingOut) {
@@ -224,7 +235,6 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     onBackClick: () -> Unit,
-    onNavigateToConnections: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppearance: () -> Unit,
     onNavigateToStorage: () -> Unit,
@@ -233,6 +243,7 @@ fun SettingsUi(
     onNavigateToVaultSettings: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContactBookSettings: () -> Unit = {},
+    onAvatarClick: () -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
 
@@ -263,7 +274,10 @@ fun SettingsUi(
         ) {
             // Avatar
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onAvatarClick)
+                    .padding(vertical = 24.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -276,7 +290,8 @@ fun SettingsUi(
                             size = 96.dp,
                         ),
                         sharedTransitionScope = null,
-                        animatedVisibilityScope = null
+                        animatedVisibilityScope = null,
+                        cacheBustKey = ownerSession.profileImageLastModified,
                     )
                     Spacer(modifier = Modifier.width(24.dp))
                     Column {
@@ -294,12 +309,6 @@ fun SettingsUi(
             }
             Spacer(modifier = Modifier.height(8.dp))
             SettingsSectionHeader(stringResource(MR.string.settings_section_general))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.People,
-                text = stringResource(MR.string.settings_connections),
-                onClick = onNavigateToConnections
-            )
-            Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(
                 imageVector = Icons.Outlined.Person,
                 text = stringResource(MR.string.settings_profile_info),
@@ -452,7 +461,6 @@ fun SettingsUiPreview() {
             uiState = SettingsUiState(),
             onAction = {},
             onBackClick = {},
-            onNavigateToConnections = {},
             onNavigateToNotifications = {},
             onNavigateToAppearance = {},
             onNavigateToVaultSettings = {},

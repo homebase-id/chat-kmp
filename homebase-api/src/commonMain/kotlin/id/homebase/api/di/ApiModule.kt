@@ -17,6 +17,7 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -31,6 +32,8 @@ import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
 import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
+import id.homebase.api.client.profile.ProfileProvider
+import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
@@ -91,6 +94,7 @@ val apiModule = module {
     factoryOf(::DriveUploadProvider)
 
     factoryOf(::DriveFileProvider)
+    factoryOf(::PayloadDownloadService)
     factory<VideoPrefetchDriveAccess> { get<DriveFileProvider>() }
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
@@ -122,24 +126,23 @@ val apiModule = module {
             driveFileProvider.getFileHeaderByUid(driveId, uniqueId)
         }
     }
-    // Reads a contact's on-demand ext_data payload (bios), decrypting under the file's key. Same
-    // narrow-seam pattern as ContactHeaderReader so ContactRepository stays off the drive-file graph.
+    // Reads + decrypts a contact's on-demand payloads (ext_data bios, appextdata). The list/index
+    // header omits per-payload IVs, so go through the full file header for the IV + file key, then
+    // decrypt via the normal cached payload path. Narrow seam (like ContactHeaderReader) keeps
+    // ContactRepository off the drive-file graph and fakeable in tests.
     single<ContactPayloadReader> {
         val driveFileProvider = get<DriveFileProvider>()
-        ContactPayloadReader { driveId, fileId, key, keyHeader ->
-            driveFileProvider.getPayloadBytesDecrypted(
-                driveId = driveId,
-                fileId = fileId,
-                key = key,
-                keyHeader = keyHeader,
-                chunkStart = null,
-                chunkLength = null,
-                onDownloadProgress = null,
-            )?.bytes
+        ContactPayloadReader { driveId, fileId, payloadKey ->
+            driveFileProvider.getPayloadBytesDecryptedViaResponseHeader(driveId, fileId, payloadKey)
         }
     }
     singleOf(::ContactsProvider)
     singleOf(::ContactRepository)
+    // Owner profile-attribute editor: write client + read/orchestration (queries the ProfileDrive
+    // on demand; the drive is not in mandatorySyncDrives). Needs the ManageProfile permission +
+    // ProfileDrive Read grant from AppConfig.
+    factoryOf(::ProfileProvider)
+    factoryOf(::ProfileRepository)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)

@@ -3,7 +3,7 @@ package id.homebase.chat.services.convo
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatProtocol
-import id.homebase.chat.services.PayloadBundle
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.StatusMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals

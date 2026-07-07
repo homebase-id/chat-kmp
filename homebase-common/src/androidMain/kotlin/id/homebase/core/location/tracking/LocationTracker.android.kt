@@ -28,10 +28,8 @@ actual fun createLocationTracker(sink: LocationPointSink): LocationTracker =
  *   without a foreground service, at whatever cadence the OS allows.
  * - **Foreground overlay** (only for a foreground profile): a callback feeding
  *   [sink] directly for precise capture while the user has the app open. Its
- *   accuracy/cadence depends on the profile (#846): `LiveForeground` runs
- *   high-accuracy 15s/10m (a live share or the live map wants fresh fixes);
- *   `HistoryForeground` runs balanced 30s/25m (history-only doesn't need the
- *   battery cost of second-by-second precision). Removed on backgrounding; the
+ *   accuracy/cadence per profile comes from the common [TrackingProfile.spec]
+ *   table (#846, #978). Removed on backgrounding; the
  *   PendingIntent stays registered throughout so there is no gap, and the
  *   store's time/displacement dedup absorbs the overlap.
  *
@@ -67,11 +65,11 @@ private class AndroidLocationTracker(
         }
         runCatching {
             val request = LocationRequest.Builder(
-                Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-                BACKGROUND_INTERVAL_MS,
+                AndroidBackgroundBaseline.ACCURACY.toFusedPriority(),
+                AndroidBackgroundBaseline.INTERVAL_MS,
             )
-                .setMaxUpdateDelayMillis(BACKGROUND_MAX_DELAY_MS)
-                .setMinUpdateDistanceMeters(BACKGROUND_MIN_DISPLACEMENT_M)
+                .setMaxUpdateDelayMillis(AndroidBackgroundBaseline.MAX_DELAY_MS)
+                .setMinUpdateDistanceMeters(AndroidBackgroundBaseline.MIN_DISPLACEMENT_M.toFloat())
                 .build()
             fusedClient.requestLocationUpdates(request, backgroundPendingIntent())
             started = true
@@ -132,13 +130,22 @@ private class AndroidLocationTracker(
 
     private data class OverlayParams(val priority: Int, val intervalMs: Long, val minDisplacementM: Float)
 
-    /** Foreground overlay params per profile; null for background profiles (no precise overlay). */
-    private fun foregroundOverlayParams(profile: TrackingProfile): OverlayParams? = when (profile) {
-        TrackingProfile.LiveForeground ->
-            OverlayParams(Priority.PRIORITY_HIGH_ACCURACY, LIVE_FG_INTERVAL_MS, LIVE_FG_MIN_DISPLACEMENT_M)
-        TrackingProfile.HistoryForeground ->
-            OverlayParams(Priority.PRIORITY_BALANCED_POWER_ACCURACY, HISTORY_FG_INTERVAL_MS, HISTORY_FG_MIN_DISPLACEMENT_M)
-        TrackingProfile.LiveBackground, TrackingProfile.HistoryBackground -> null
+    /** [TrackingProfile.spec] translated to Fused units; null for background profiles (no precise overlay). */
+    private fun foregroundOverlayParams(profile: TrackingProfile): OverlayParams? {
+        if (!profile.isForeground) return null
+        val spec = profile.spec
+        return OverlayParams(
+            priority = spec.accuracy.toFusedPriority(),
+            intervalMs = checkNotNull(spec.minIntervalMs) { "foreground spec must set minIntervalMs" },
+            minDisplacementM = spec.minDisplacementM.toFloat(),
+        )
+    }
+
+    private fun TrackingAccuracy.toFusedPriority(): Int = when (this) {
+        TrackingAccuracy.Precise -> Priority.PRIORITY_HIGH_ACCURACY
+        TrackingAccuracy.Balanced -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        // Never registered on Android: background profiles run the baseline only (no overlay).
+        TrackingAccuracy.Coarse -> error("no Fused registration uses Coarse")
     }
 
     private fun backgroundPendingIntent(): PendingIntent {
@@ -156,19 +163,6 @@ private class AndroidLocationTracker(
 
     private companion object {
         const val PENDING_INTENT_REQUEST_CODE = 5610
-
-        const val BACKGROUND_INTERVAL_MS = 60_000L
-        const val BACKGROUND_MAX_DELAY_MS = 600_000L
-        const val BACKGROUND_MIN_DISPLACEMENT_M = 25f
-
-        // Live foreground (share or live-map view): high accuracy, frequent — fresh fixes matter.
-        const val LIVE_FG_INTERVAL_MS = 15_000L
-        const val LIVE_FG_MIN_DISPLACEMENT_M = 10f
-
-        // History-only foreground: balanced power, larger displacement. No live consumer needs
-        // second-by-second precision, so trade freshness for battery (#846). Tune on-device.
-        const val HISTORY_FG_INTERVAL_MS = 30_000L
-        const val HISTORY_FG_MIN_DISPLACEMENT_M = 25f
     }
 }
 
@@ -181,6 +175,6 @@ internal fun android.location.Location.toRawPoint(fg: Boolean): RawLocationPoint
     altAcc = if (hasVerticalAccuracy()) verticalAccuracyMeters.toDouble() else null,
     spd = if (hasSpeed()) speed.toDouble() else null,
     hdg = if (hasBearing()) bearing.toDouble() else null,
-    src = "fused",
+    src = LocationSources.FUSED,
     fg = fg,
 )

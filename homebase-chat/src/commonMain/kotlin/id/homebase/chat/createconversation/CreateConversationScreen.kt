@@ -55,15 +55,12 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
-import id.homebase.core.connections.ConnectRequestAction
-import id.homebase.core.connections.ConnectRequestBottomSheet
-import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_new_conversation
-import id.homebase.resources.chat_new_conversation_connection_request
+import id.homebase.resources.chat_new_conversation_new_contact
 import id.homebase.resources.chat_new_conversation_new_group
 import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_no_contacts_found
@@ -72,6 +69,7 @@ import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.connections_refresh
 import id.homebase.resources.cd_not_selected
 import id.homebase.resources.cd_selected
+import id.homebase.resources.contactbook_self_you
 import id.homebase.resources.contacts
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
@@ -81,10 +79,10 @@ import kotlin.uuid.Uuid
 @Composable
 fun CreateConversationScreen(
     viewModel: CreateConversationViewModel,
-    connectRequestViewModel: ConnectRequestViewModel,
     onNavigateBack: () -> Unit,
     onShowConversation: (conversationId: Uuid) -> Unit,
     onShowCreateGroup: () -> Unit,
+    onAddContact: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -120,15 +118,7 @@ fun CreateConversationScreen(
         uiState = uiState,
         searchTextState = viewModel.searchTextState,
         onUiAction = viewModel::onUiAction,
-        onConnectionRequestClicked = {
-            connectRequestViewModel.onAction(ConnectRequestAction.OpenDialog)
-        },
-    )
-
-    ConnectRequestBottomSheet(
-        viewModel = connectRequestViewModel,
-        snackbarHostState = snackbarHostState,
-        onNavigateToConversation = onShowConversation,
+        onNewContactClicked = onAddContact,
     )
 }
 
@@ -139,7 +129,7 @@ fun CreateConversationUi(
     uiState: CreateConversationUiState,
     searchTextState: TextFieldState,
     onUiAction: (CreateConversationUiAction) -> Unit,
-    onConnectionRequestClicked: () -> Unit,
+    onNewContactClicked: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
 
@@ -258,27 +248,40 @@ fun CreateConversationUi(
                         }
 
                         is CreateConversationListItem.NoteToSelf -> {
+                            val self = item.self
                             item {
-                                ListItemAction(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    imageVector = Icons.AutoMirrored.Filled.StickyNote2,
-                                    text = stringResource(MR.string.chat_note_to_self),
-                                    onClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) }
-                                )
+                                if (self != null) {
+                                    // Self surfaced by a name search: render as a contact row with
+                                    // the user's own avatar + "Name (you)"; tap still opens note-to-self.
+                                    ContactItem(
+                                        name = stringResource(MR.string.contactbook_self_you, self.name),
+                                        subTitle = stringResource(MR.string.chat_note_to_self),
+                                        odinId = self.odinId,
+                                        avatarInitials = self.initials,
+                                        onContactClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) },
+                                    )
+                                } else {
+                                    ListItemAction(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        imageVector = Icons.AutoMirrored.Filled.StickyNote2,
+                                        text = stringResource(MR.string.chat_note_to_self),
+                                        onClick = { onUiAction(CreateConversationUiAction.CreateSelfConversation) }
+                                    )
+                                }
                             }
                         }
 
-                        is CreateConversationListItem.ConnectionRequest -> {
+                        is CreateConversationListItem.NewContact -> {
                             item {
                                 ListItemAction(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 4.dp),
                                     imageVector = Icons.Default.PersonAdd,
-                                    text = stringResource(MR.string.chat_new_conversation_connection_request),
-                                    onClick = onConnectionRequestClicked,
+                                    text = stringResource(MR.string.chat_new_conversation_new_contact),
+                                    onClick = onNewContactClicked,
                                 )
                             }
                         }

@@ -150,3 +150,14 @@ fun AsciiDomainName.toOdinId(): OdinId = OdinId(this.domainName)
 
 /** `OdinId` → deterministic `Uuid` (implicit) */
 fun OdinId.asUuid(): Uuid = toHashId()
+
+/* ----------------------------- Public profile-image URL ----------------------------- */
+
+/** Path suffix of the public profile-image endpoint; shared with PublicImageFetcher's URL matching. */
+const val PUB_IMAGE_PATH = "/pub/image"
+
+/** Canonical public-image URL for a raw domain string (use the OdinId overload when one is in hand). */
+fun publicImageUrl(domain: String): String = "https://$domain$PUB_IMAGE_PATH"
+
+/** Canonical public profile-image URL — the single source of truth for the /pub/image URL shape. */
+fun OdinId.publicImageUrl(): String = publicImageUrl(domainName)

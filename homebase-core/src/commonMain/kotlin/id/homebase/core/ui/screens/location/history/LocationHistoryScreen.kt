@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.formatMediumDate
@@ -51,10 +52,10 @@ import id.homebase.resources.location_history_next_day
 import id.homebase.resources.location_history_pick_date
 import id.homebase.resources.location_history_previous_day
 import id.homebase.resources.location_history_title
-import id.homebase.resources.location_history_you
 import id.homebase.resources.location_menu_more
 import id.homebase.resources.menu_back
 import id.homebase.resources.ok
+import id.homebase.resources.you
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -70,17 +71,41 @@ fun LocationHistoryScreen(
     viewModel: LocationHistoryViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToDashboard: () -> Unit = {},
+    /** Non-null = emergency-locate peer mode: the contact's name titles the screen (#894). */
+    subjectName: String? = null,
+    /** False hides the delete-day menu — peer mode is a read-only view of someone else's data. */
+    allowDelete: Boolean = true,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showPicker by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val deviceTz = remember { TimeZone.currentSystemDefault() }
+    // Subject-driven title: "You" for one's own history, the contact's name for the
+    // emergency-locate view. This is the single seam that path feeds into; no
+    // hardcoded "you" further down. See #894.
+    val subjectTitle = subjectName ?: stringResource(MR.string.you)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.location_history_title)) },
+                title = {
+                    Column {
+                        Text(
+                            text = subjectTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = stringResource(MR.string.location_history_title),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -90,6 +115,7 @@ fun LocationHistoryScreen(
                     }
                 },
                 actions = {
+                    if (!allowDelete) return@TopAppBar
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
@@ -161,14 +187,13 @@ fun LocationHistoryScreen(
             }
 
             // The map, dwell dots, stats and 24h scrubber are the reusable player.
-            // "(you)" makes it clear this is your own data — the same header the
-            // emergency feature uses for a relative's name.
+            // The subject now lives in the title (#894), so no in-map header line —
+            // the map grows into the reclaimed height.
             DayPlaybackMap(
                 traces = uiState.traces,
                 dayStartMs = uiState.dayStartMs,
                 showMapTiles = uiState.showMapTiles,
                 isLoading = uiState.isLoading,
-                subjectName = stringResource(MR.string.location_history_you),
                 allowLocationHistory = uiState.allowLocationHistory,
                 onEnableTracking = onNavigateToDashboard,
                 modifier = Modifier.weight(1f),

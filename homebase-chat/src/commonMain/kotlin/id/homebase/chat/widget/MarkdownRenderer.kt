@@ -42,6 +42,7 @@ import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
 import com.mikepenz.markdown.model.markdownDimens
 import com.mikepenz.markdown.model.markdownPadding
+import com.mikepenz.markdown.model.rememberMarkdownState
 import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.api.util.withChatHardLineBreaks
@@ -252,8 +253,18 @@ fun ChatMarkdown(
         ),
     )
 
-    Markdown(
+    // Parse the markdown SYNCHRONOUSLY (immediate = true) so the block bubble measures
+    // at its final height on the first frame. The default async parse renders an empty
+    // loading placeholder for ~400ms then jumps to full height, reflowing the message
+    // list — the "bubble shifts down" bug (#938). Chat bodies are size-capped (7 KB
+    // header) and the parse is remember(content)-memoized, so the synchronous cost is
+    // small; the library's "blocks composition" warning targets large documents.
+    val markdownState = rememberMarkdownState(
         content = content.withChatHardLineBreaks(),
+        immediate = true,
+    )
+    Markdown(
+        markdownState = markdownState,
         colors = colors,
         typography = typography,
         // Default is fillMaxSize(); a chat bubble must wrap its content.

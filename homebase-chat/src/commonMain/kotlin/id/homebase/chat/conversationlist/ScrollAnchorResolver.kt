@@ -80,3 +80,37 @@ internal fun resolveScrollToLatestPosition(
     if (lastMessageIndex < 0) return null
     return ScrollPosition(firstVisibleItemIndex = lastMessageIndex, triggerScroll = true)
 }
+
+/**
+ * Gate for the one-time own-send follow ([MessageListUiState.scrollToLatestRequest]).
+ *
+ * A plain-text/reply/location send has no optimistic placeholder — the message
+ * reaches [messages] asynchronously via the optimistic-write round-trip — so the
+ * consuming effect in `ConversationContent` must not scroll until (a) the requested
+ * message is actually in the merged data (as a real message or a pending
+ * placeholder) and (b) the LazyColumn has laid out at least that many items.
+ * Scrolling any earlier targets the previous last item and leaves the send below
+ * the fold (#995).
+ *
+ * Returns the laid-out item count whose last index (`count - 1`) is the scroll
+ * target, or `null` while the insert/layout hasn't caught up yet.
+ */
+internal fun resolveOwnSendFollowTarget(
+    requestedId: Uuid,
+    messages: List<MessageListContentModel>,
+    pendingOutgoing: List<PendingOutgoingMessage>,
+    conversationId: Uuid,
+    laidOutItemCount: Int,
+): Int? {
+    val realIds = messages.asSequence()
+        .filterIsInstance<MessageListContentModel.Message>()
+        .mapTo(HashSet()) { it.message.id }
+    // Mirrors ConversationContent's mergedItems interleave: a placeholder counts
+    // only for this conversation and only until its real message lands.
+    val pendingForConvo = pendingOutgoing.filter {
+        it.conversationId == conversationId && it.id !in realIds
+    }
+    val present = requestedId in realIds || pendingForConvo.any { it.id == requestedId }
+    val mergedCount = messages.size + pendingForConvo.size
+    return if (present && laidOutItemCount >= mergedCount) laidOutItemCount else null
+}

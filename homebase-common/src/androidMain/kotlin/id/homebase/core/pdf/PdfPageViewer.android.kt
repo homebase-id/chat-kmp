@@ -80,16 +80,15 @@ actual fun PdfPageViewer(
                 existing.documentUri = uri
             }
         },
-        onReset = { frameLayout ->
-            val activity = context as? FragmentActivity
-            if (activity != null) {
-                val fm = activity.supportFragmentManager
-                val fragment = fm.findFragmentByTag(fragmentTag)
-                if (fragment != null) {
-                    fm.beginTransaction().remove(fragment).commitAllowingStateLoss()
-                }
-            }
-        },
+        onReset = { removePdfFragment(context, fragmentTag) },
+        onRelease = { removePdfFragment(context, fragmentTag) },
         modifier = modifier,
     )
+}
+
+private fun removePdfFragment(context: Context, fragmentTag: String) {
+    val activity = context as? FragmentActivity ?: return
+    val fm = activity.supportFragmentManager
+    val fragment = fm.findFragmentByTag(fragmentTag) ?: return
+    fm.beginTransaction().remove(fragment).commitAllowingStateLoss()
 }

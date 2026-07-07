@@ -74,14 +74,24 @@ internal fun visibleTileKeys(vp: MapViewport, canvasSize: IntSize): List<MapTile
         val y1 = ceil((vp.centerY + halfH) * n).toInt().coerceIn(0, n - 1)
         val count = (x1 - x0 + 1) * (y1 - y0 + 1)
         if (count > MAX_TILES_PER_VIEW && zoom > MIN_TILE_ZOOM) continue
-        return buildList {
+        val keys = buildList {
             for (y in y0..y1) {
-                for (x in x0..x1) {
-                    add(MapTileKey(zoom, x, y))
-                    if (size >= MAX_TILES_PER_VIEW) return@buildList
-                }
+                for (x in x0..x1) add(MapTileKey(zoom, x, y))
             }
         }
+        if (keys.size <= MAX_TILES_PER_VIEW) return keys
+        // Over budget even at MIN_TILE_ZOOM (a portrait world view needs ~64 tiles). Keep the
+        // tiles NEAREST THE VIEWPORT CENTER rather than the first rows — a top-anchored cut
+        // rendered only the top band of the world with the rest of the screen bare (the "half
+        // a world map" on the #966 share screen's no-fix fallback). Center-out also fetches
+        // what the user is looking at first.
+        val cx = vp.centerX * n
+        val cy = vp.centerY * n
+        return keys.sortedBy { key ->
+            val dx = key.x + 0.5 - cx
+            val dy = key.y + 0.5 - cy
+            dx * dx + dy * dy
+        }.take(MAX_TILES_PER_VIEW)
     }
     return emptyList()
 }

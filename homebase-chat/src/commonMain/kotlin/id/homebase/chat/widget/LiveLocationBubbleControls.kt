@@ -8,11 +8,21 @@ package id.homebase.chat.widget
  *
  * - [sentByYou] gates the start/stop links (you can only share/stop your own location message).
  * - [onStart]/[onStop] update this message's descriptor (set/clear the live window).
+ * - [onStartShareBack] shares YOUR live location from someone else's bubble — sends a new own
+ *   message instead of touching theirs. Null duration = mirror the sender's live end-time
+ *   (single tap on a LIVE bubble); non-null = picked from the menu on a fresh static bubble.
  * - [onOpenMap] opens the Live Location map (used by either side when the share is live).
  */
 data class LiveLocationBubbleControls(
     val sentByYou: Boolean,
     val onStart: (durationMs: Long) -> Unit,
     val onStop: () -> Unit,
+    val onStartShareBack: (durationMs: Long?) -> Unit,
     val onOpenMap: () -> Unit,
+    /**
+     * When MY live share already fully covers this conversation: the absolute end of that
+     * coverage, else null. While set and in the future, the bubble hides its "share live
+     * location" offers — no invitation to start a share that's already running (#966 follow-up).
+     */
+    val ownShareUntilMs: Long? = null,
 )
