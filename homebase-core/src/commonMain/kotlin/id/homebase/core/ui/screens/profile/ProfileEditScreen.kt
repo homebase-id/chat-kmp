@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
 
 package id.homebase.core.ui.screens.profile
 
@@ -122,23 +122,43 @@ import id.homebase.resources.profile_edit_surname
 import id.homebase.resources.profile_edit_tiktok
 import id.homebase.resources.profile_edit_title
 import id.homebase.resources.profile_edit_twitter
+import id.homebase.resources.profile_avatar_edit_error_delete
+import id.homebase.resources.profile_avatar_edit_error_too_large
+import id.homebase.resources.profile_avatar_edit_error_upload
 import id.homebase.resources.profile_edit_visibility_connected
 import id.homebase.resources.profile_edit_visibility_public
 import id.homebase.resources.save
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 @Composable
 fun ProfileEditScreen(
     viewModel: ProfileEditViewModel,
+    avatarViewModel: ProfileAvatarEditViewModel,
     onBack: () -> Unit,
+    onNavigateToCropper: (Uuid) -> Unit,
 ) {
     val uiState by viewModel.state.collectAsStateWithLifecycle()
+    val avatarUiState by avatarViewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var previewMode by remember { mutableStateOf(false) }
 
     val errForbidden = stringResource(MR.string.profile_edit_error_forbidden)
     val errSave = stringResource(MR.string.profile_edit_error_save)
+    val errAvatarUpload = stringResource(MR.string.profile_avatar_edit_error_upload)
+    val errAvatarTooLarge = stringResource(MR.string.profile_avatar_edit_error_too_large)
+    val errAvatarDelete = stringResource(MR.string.profile_avatar_edit_error_delete)
+
+    val anonymousPhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        file?.let { avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.ANONYMOUS, it)) }
+    }
+    val connectedPhotoPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
+        file?.let { avatarViewModel.onAction(ProfileAvatarEditAction.PhotoPicked(ProfileVisibility.CONNECTED, it)) }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -147,6 +167,18 @@ fun ProfileEditScreen(
                 ProfileEditEvent.Back -> onBack()
                 ProfileEditEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
                 ProfileEditEvent.Error -> snackbarHostState.showSnackbar(errSave)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        avatarViewModel.events.collect { event ->
+            when (event) {
+                is ProfileAvatarEditEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
+                ProfileAvatarEditEvent.Back -> Unit // this screen's own back arrow drives navigation, not the avatar VM's.
+                is ProfileAvatarEditEvent.UploadFailed -> snackbarHostState.showSnackbar(errAvatarUpload)
+                is ProfileAvatarEditEvent.UploadTooLarge -> snackbarHostState.showSnackbar(errAvatarTooLarge)
+                is ProfileAvatarEditEvent.DeleteFailed -> snackbarHostState.showSnackbar(errAvatarDelete)
             }
         }
     }
@@ -197,6 +229,10 @@ fun ProfileEditScreen(
                 ProfileForm(
                     uiState = uiState,
                     onAction = viewModel::onAction,
+                    avatarUiState = avatarUiState,
+                    onAvatarAction = avatarViewModel::onAction,
+                    onPickAnonymousPhoto = { anonymousPhotoPicker.launch() },
+                    onPickConnectedPhoto = { connectedPhotoPicker.launch() },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -240,6 +276,10 @@ private fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
 private fun ProfileForm(
     uiState: ProfileEditUiState,
     onAction: (ProfileEditAction) -> Unit,
+    avatarUiState: ProfileAvatarEditUiState,
+    onAvatarAction: (ProfileAvatarEditAction) -> Unit,
+    onPickAnonymousPhoto: () -> Unit,
+    onPickConnectedPhoto: () -> Unit,
     modifier: Modifier,
 ) {
     // Which (section tier, attribute type) rows are currently expanded — keeps a row mounted (and
@@ -272,6 +312,9 @@ private fun ProfileForm(
                 uiState = uiState,
                 onAction = onAction,
                 editingRows = editingRows,
+                photoState = if (avatarUiState.isLoading) null else avatarUiState.anonymous,
+                onAvatarAction = onAvatarAction,
+                onPickPhoto = onPickAnonymousPhoto,
             )
 
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))
@@ -283,6 +326,9 @@ private fun ProfileForm(
                 uiState = uiState,
                 onAction = onAction,
                 editingRows = editingRows,
+                photoState = if (avatarUiState.isLoading) null else avatarUiState.connected,
+                onAvatarAction = onAvatarAction,
+                onPickPhoto = onPickConnectedPhoto,
             )
             // Clearance so the last row isn't hidden behind the floating action button.
             Spacer(Modifier.height(88.dp))
@@ -336,6 +382,9 @@ private fun ProfileFieldsSection(
     uiState: ProfileEditUiState,
     onAction: (ProfileEditAction) -> Unit,
     editingRows: SnapshotStateMap<Pair<ProfileVisibility, String>, Boolean>,
+    photoState: PhotoTierUiState?,
+    onAvatarAction: (ProfileAvatarEditAction) -> Unit,
+    onPickPhoto: () -> Unit,
 ) {
     val values = if (tier == ProfileVisibility.ANONYMOUS) uiState.anonymousValues else uiState.connectedValues
     val v: (ProfileField) -> String = { values[it].orEmpty() }
@@ -344,6 +393,28 @@ private fun ProfileFieldsSection(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         SectionHeader(title, description)
+
+        if (photoState != null) {
+            // Tapping the photo reveals the camera badge and Remove button, same as tapping an
+            // attribute row below reveals its Save button — collapses again once Save is pressed.
+            var photoRevealed by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                PhotoTierSection(
+                    tier = photoState,
+                    onPick = onPickPhoto,
+                    onRemove = { onAvatarAction(ProfileAvatarEditAction.RemoveClicked(tier)) },
+                    onSaveClicked = {
+                        onAvatarAction(ProfileAvatarEditAction.SaveClicked(tier))
+                        photoRevealed = false
+                    },
+                    controlsVisible = photoRevealed,
+                    centered = true,
+                    onPhotoTap = { photoRevealed = true },
+                ) {
+                    ExistingAvatarContent(photoState.existing, "ProfileEditScreen")
+                }
+            }
+        }
 
         val nameDisplay = profileNameValue(values)
         if (nameDisplay != null || editingRows[tier to ProfileAttributeTypes.NAME] == true) {
