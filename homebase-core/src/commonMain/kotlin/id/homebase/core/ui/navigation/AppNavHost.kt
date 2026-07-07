@@ -1101,6 +1101,9 @@ fun AppNavHost(
                                         navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(Route.ChatList, inclusive = false)
                                     },
+                                    onNavigateToLiveLocationMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
                                 )
                             }
                         }

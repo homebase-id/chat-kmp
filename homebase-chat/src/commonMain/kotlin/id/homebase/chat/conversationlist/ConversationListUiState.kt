@@ -51,6 +51,13 @@ data class ConversationListUiState(
      * for the per-conversation (ANY-coverage) variant.
      */
     val ownLiveShareAnyUntilMs: Long? = null,
+    /**
+     * Latest freshness deadline across everyone currently sharing their live location with me, else
+     * null — makes the same chat-list top-bar pin also light for INCOMING shares (#1012). Derived
+     * from live-relay freshness (`receivedAtMs + INCOMING_SHARE_STALE_MS`), not a share-window; the
+     * pin composable handles expiry. The rendered pin is `later-of(this, ownLiveShareAnyUntilMs)`.
+     */
+    val incomingLiveShareAnyUntilMs: Long? = null,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
     /** Non-null while a long-ish service op is in flight. Drives the full-screen
@@ -125,6 +132,13 @@ data class MessageListUiState(
      * offer suppression) stays null. Raw deadline; the pin composable handles expiry itself.
      */
     val ownLiveShareInConversationUntilMs: Long? = null,
+    /**
+     * Freshness deadline of the other participant(s) sharing their live location with me in THIS
+     * conversation, else null — makes the conversation top-bar pin also light for INCOMING shares
+     * (#1012). Derived from live-relay freshness (`receivedAtMs + INCOMING_SHARE_STALE_MS`). The
+     * rendered pin is `later-of(this, ownLiveShareInConversationUntilMs)`.
+     */
+    val incomingLiveShareInConversationUntilMs: Long? = null,
     /** A loadOlder fetch is in flight; suppresses re-entry. */
     val isLoadingOlder: Boolean = false,
     /** A loadNewer fetch is in flight; suppresses re-entry. */

@@ -758,10 +758,15 @@ fun ConversationContent(
                 },
                 actions = {
                     if (!uiState.isSearchActive) {
+                        // One pin, either direction (#1012): my outgoing share OR someone sharing
+                        // with me here. Tapping opens the live map (shows my dot + every sharer).
                         LiveShareIndicator(
-                            untilMs = uiState.ownLiveShareInConversationUntilMs,
+                            untilMs = listOfNotNull(
+                                uiState.ownLiveShareInConversationUntilMs,
+                                uiState.incomingLiveShareInConversationUntilMs,
+                            ).maxOrNull(),
                             onClick = {
-                                onUiAction(ConversationListUiAction.OpenLocationDashboard)
+                                onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                             },
                         )
                         IconButton(onClick = { showConversationMenu = true }) {

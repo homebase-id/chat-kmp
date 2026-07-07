@@ -32,7 +32,10 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.services.livelocation.INCOMING_SHARE_STALE_MS
 import id.homebase.chat.services.livelocation.ShareBackResult
+import id.homebase.chat.services.livelocation.incomingLiveShareAnyUntilMs
+import id.homebase.chat.services.livelocation.incomingLiveShareUntilMs
 import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
 import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
 import id.homebase.chat.services.livelocation.shareLiveLocationBack
@@ -155,6 +158,7 @@ class ConversationListViewModel(
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
     private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
+    private val liveLocationReceiveStore: id.homebase.chat.services.livelocation.LiveLocationReceiveStore,
     private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
     private val locationService: id.homebase.core.location.LocationService,
 ) : ViewModel() {
@@ -355,35 +359,46 @@ class ConversationListViewModel(
             }
         }
 
-        // Track MY live-share state against the open conversation and globally. FULL coverage
+        // Track live-share state against the open conversation and globally. FULL coverage
         // hides the bubbles' "share live location" offers (starting a share that's already
         // running is confusing, and a second tap would create a duplicate live message — #966
         // follow-up). ANY coverage + the global value drive the purple sharing pins in the
-        // conversation and chat-list top bars (#816). No ticker here: the pin/bubble composables
-        // derive visibility from `now < untilMs` with their own exact-deadline tickers.
+        // conversation and chat-list top bars (#816). The same pins also light for INCOMING shares
+        // (someone sharing with ME), derived from live-relay freshness over the receive store's
+        // positions (#1012). No ticker here: the pin/bubble composables derive visibility from
+        // `now < untilMs` with their own exact-deadline tickers.
         viewModelScope.launch {
             combine(
                 ActiveConversation.conversation,
                 liveLocationShareService.recipients,
-            ) { conversationId, roster -> conversationId to roster }
-                .collectLatest { (conversationId, roster) ->
+                liveLocationReceiveStore.positions,
+            ) { conversationId, roster, positions -> Triple(conversationId, roster, positions) }
+                .collectLatest { (conversationId, roster, positions) ->
                     val nowMs = Clock.System.now().toEpochMilliseconds()
                     _uiState.update {
-                        it.copy(ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs))
+                        it.copy(
+                            ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs),
+                            incomingLiveShareAnyUntilMs =
+                                incomingLiveShareAnyUntilMs(positions, INCOMING_SHARE_STALE_MS, nowMs),
+                        )
                     }
                     var fullUntilMs: Long? = null
                     var anyUntilMs: Long? = null
+                    var incomingUntilMs: Long? = null
                     conversationId?.let { id ->
-                        val recipientIds = runCatching {
+                        val recipients = runCatching {
                             conversationStream.getRecipients(id, emptyList(), null)
-                        }.getOrDefault(emptyList()).map { it.domainName }
+                        }.getOrDefault(emptyList())
+                        val recipientIds = recipients.map { it.domainName }
                         fullUntilMs = liveShareCoverageUntilMs(roster, recipientIds, nowMs)
                         anyUntilMs = liveShareAnyUntilMs(roster, recipientIds, nowMs)
+                        incomingUntilMs = incomingLiveShareUntilMs(positions, recipients, INCOMING_SHARE_STALE_MS, nowMs)
                     }
                     _messagesUiState.update {
                         it.copy(
                             ownLiveShareUntilMs = fullUntilMs,
                             ownLiveShareInConversationUntilMs = anyUntilMs,
+                            incomingLiveShareInConversationUntilMs = incomingUntilMs,
                         )
                     }
                 }

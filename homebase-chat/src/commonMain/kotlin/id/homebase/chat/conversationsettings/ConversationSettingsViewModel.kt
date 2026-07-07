@@ -12,6 +12,11 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.livelocation.INCOMING_SHARE_STALE_MS
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
+import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.chat.services.livelocation.incomingLiveShareUntilMs
+import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
 import id.homebase.core.ui.navigation.Route
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -19,9 +24,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class ConversationSettingsViewModel(
@@ -31,6 +38,8 @@ class ConversationSettingsViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val chatMessageStream: ChatMessageStream,
     private val contactService: ContactService,
+    private val liveLocationShareService: LiveLocationShareService,
+    private val liveLocationReceiveStore: LiveLocationReceiveStore,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.ConversationSettings>()
@@ -40,6 +49,7 @@ class ConversationSettingsViewModel(
     init {
         loadData()
         loadOverview()
+        observeLiveShare()
     }
 
 
@@ -150,6 +160,37 @@ class ConversationSettingsViewModel(
                 Logger.e("Failed to load conversation overview", e)
                 _uiState.update { it.copy(isOverviewLoading = false) }
             }
+        }
+    }
+
+    /**
+     * Drives this screen's live-share pin, consistent with the chat-list and in-chat pins (#1012):
+     * lit when I'm sharing with anyone in this conversation (outgoing) OR the other party is sharing
+     * their live location with me (incoming, from live-relay freshness), whichever ends later.
+     * Recipients are resolved per emission from the in-memory conversation (cheap, sync) so a
+     * still-loading or later-updated conversation resolves correctly. Note-to-self has no other
+     * party, so the pin never lights there.
+     */
+    private fun observeLiveShare() {
+        val conversationId = Uuid.parse(route.conversationId)
+        if (conversationId == ChatProtocol.ConversationWithYourselfId) return
+        viewModelScope.launch {
+            combine(
+                liveLocationShareService.recipients,
+                liveLocationReceiveStore.positions,
+            ) { roster, positions -> roster to positions }
+                .collect { (roster, positions) ->
+                    val now = Clock.System.now().toEpochMilliseconds()
+                    val self = ownerSessionRepository.user.value?.odinId
+                    val others = conversationStream.getConversationById(conversationId)
+                        ?.participants.orEmpty()
+                        .filter { it != self }
+                    val own = liveShareAnyUntilMs(roster, others.map { it.domainName }, now)
+                    val incoming = incomingLiveShareUntilMs(positions, others, INCOMING_SHARE_STALE_MS, now)
+                    _uiState.update {
+                        it.copy(liveShareUntilMs = listOfNotNull(own, incoming).maxOrNull())
+                    }
+                }
         }
     }
 

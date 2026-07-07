@@ -41,7 +41,7 @@ import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.permissions.isLocationPermissionGranted
 import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.emergency.EmergencyLocateStore
-import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -839,6 +839,7 @@ val appModule = module {
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
             liveLocationShareService = get(),
+            liveLocationReceiveStore = get(),
             liveShareReadiness = get(),
             locationService = get(),
         )

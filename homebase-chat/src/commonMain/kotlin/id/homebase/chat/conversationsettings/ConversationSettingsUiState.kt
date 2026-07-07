@@ -20,6 +20,13 @@ data class ConversationSettingsUiState(
     val isOverviewLoading: Boolean = true,
     val overview: ConversationOverview? = null,
     val groupsInCommon: ImmutableList<GroupInCommonItem> = persistentListOf(),
+    /**
+     * Live location active in this conversation — my outgoing share OR the other party sharing with
+     * me (#1012), whichever ends later; null when neither. Drives the purple pin in this screen's top
+     * bar, consistent with the chat-list and in-chat pins. Raw deadline; the pin composable expires
+     * itself.
+     */
+    val liveShareUntilMs: Long? = null,
     val uiEvent: ConversationSettingsUiEvent? = null,
 )
 

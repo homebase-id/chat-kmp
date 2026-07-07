@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.location.livelocation
+package id.homebase.chat.services.livelocation
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
