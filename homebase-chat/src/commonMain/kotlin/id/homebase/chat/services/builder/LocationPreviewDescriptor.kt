@@ -24,6 +24,11 @@ data class LocationPreviewDescriptor(
      * now >= value = ENDED. Set/cleared by updating this message's descriptor (see the live-share UX).
      * Defaults null + `explicitNulls = false` ⇒ omitted from JSON for static shares and ignored by
      * older clients.
+     *
+     * The value `LIVE_SHARE_INDEFINITE` (`id.homebase.core.location`, a fixed 2100-01-01 timestamp)
+     * is reserved: it marks an indefinite share (#1013) that stays LIVE until explicitly stopped.
+     * Consumers must equality-match it and show "until stopped" — never render it as a countdown
+     * or a date.
      */
     val liveShareUntilMs: Long? = null,
     /**
