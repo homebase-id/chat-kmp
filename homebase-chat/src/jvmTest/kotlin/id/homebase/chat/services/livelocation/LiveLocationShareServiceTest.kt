@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.common.OdinId
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OdinDatabase
+import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import id.homebase.core.location.tracking.DeviceSensors
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.RawLocationPoint
@@ -38,6 +39,15 @@ class LiveLocationShareServiceTest {
     private fun runShareTest(
         clock: () -> Long,
         body: suspend (LiveLocationShareService, Harness) -> Unit,
+    ) = runShareTestWithFactory(clock) { makeService, h -> body(makeService(), h) }
+
+    /**
+     * Like [runShareTest] but hands the body a service *factory* on one shared DB — building a
+     * second instance simulates a process restart (the constructor re-reads the persisted roster).
+     */
+    private fun runShareTestWithFactory(
+        clock: () -> Long,
+        body: suspend (makeService: () -> LiveLocationShareService, Harness) -> Unit,
     ) = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val db = DatabaseManager(
@@ -51,14 +61,16 @@ class LiveLocationShareServiceTest {
         )
         try {
             val h = Harness()
-            val service = LiveLocationShareService(
-                relay = { _, recipients, _ -> h.relayed += recipients; true },
-                locationPointStore = LocationPointStore(db, NoSensors()),
-                databaseManager = db,
-                onLiveShareChanged = { h.holdChanges++ },
-                nowMs = clock,
-            )
-            body(service, h)
+            val makeService = {
+                LiveLocationShareService(
+                    relay = { _, recipients, _ -> h.relayed += recipients; true },
+                    locationPointStore = LocationPointStore(db, NoSensors()),
+                    databaseManager = db,
+                    onLiveShareChanged = { h.holdChanges++ },
+                    nowMs = clock,
+                )
+            }
+            body(makeService, h)
         } finally {
             db.close()
         }
@@ -109,6 +121,58 @@ class LiveLocationShareServiceTest {
             assertTrue(h.relayed.isEmpty())
             // The roster emptied on this fix → coordinator told to re-evaluate (drop the GPS hold).
             assertTrue(h.holdChanges > holdChangesAfterStart)
+        }
+    }
+
+    // ── Indefinite shares (#1013): the reserved LIVE_SHARE_INDEFINITE end-time never auto-expires ──
+
+    @Test
+    fun indefiniteShareStillRelaysAfterAYear() {
+        var now = 5_000L
+        runShareTest({ now }) { service, h ->
+            service.start(listOf(OdinId("alice.com")), endTimeMs = LIVE_SHARE_INDEFINITE)
+            now += 365L * 24 * 60 * 60_000L
+            service.relayLatest(point(t = now))
+            assertEquals(listOf(listOf("alice.com")), h.relayed)
+            assertTrue(service.hasLiveShare())
+        }
+    }
+
+    @Test
+    fun indefiniteShareSurvivesProcessRestartAndReset() {
+        var now = 5_000L
+        runShareTestWithFactory({ now }) { makeService, h ->
+            makeService().start(listOf(OdinId("alice.com")), endTimeMs = LIVE_SHARE_INDEFINITE)
+            now = 90_000_000L // "days later", fresh process
+            val restarted = makeService()
+            assertTrue(restarted.hasLiveShare(), "persisted indefinite roster must reload on construction")
+            restarted.reset() // the onPostAuthenticated bootstrap must NOT prune it
+            assertTrue(restarted.hasLiveShare())
+            restarted.relayLatest(point(t = now))
+            assertEquals(listOf(listOf("alice.com")), h.relayed)
+        }
+    }
+
+    @Test
+    fun indefiniteShareEndsOnlyViaExplicitStop() {
+        var now = 5_000L
+        runShareTest({ now }) { service, h ->
+            service.start(listOf(OdinId("alice.com")), endTimeMs = LIVE_SHARE_INDEFINITE)
+            service.stop(listOf(OdinId("alice.com")), endTimeMs = LIVE_SHARE_INDEFINITE)
+            assertTrue(!service.hasLiveShare())
+            now = 10_000L
+            service.relayLatest(point(t = now))
+            assertTrue(h.relayed.isEmpty())
+        }
+    }
+
+    @Test
+    fun stopAllEndsIndefiniteShare() {
+        var now = 5_000L
+        runShareTest({ now }) { service, _ ->
+            service.start(listOf(OdinId("alice.com")), endTimeMs = LIVE_SHARE_INDEFINITE)
+            service.stopAll()
+            assertTrue(!service.hasLiveShare())
         }
     }
 }
