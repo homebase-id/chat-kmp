@@ -2,6 +2,7 @@ package id.homebase.chat.services.content
 
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
+import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -50,6 +51,23 @@ class LocationDescriptorRoundTripTest {
         assertFalse("caption" in json, "explicitNulls=false should omit unset caption: $json")
         assertFalse("imageWidth" in json, "explicitNulls=false should omit null imageWidth: $json")
         assertTrue("liveShareUntilMs" in json)
+    }
+
+    @Test
+    fun indefiniteSentinelEndTimeRoundTripsExactly() {
+        val descriptor = LocationPreviewDescriptor(
+            lat = 52.5,
+            lon = 13.4,
+            address = "",
+            hasImage = false,
+            imageWidth = null,
+            imageHeight = null,
+            liveShareUntilMs = LIVE_SHARE_INDEFINITE,
+        )
+        val json = MessageContentParser.serialize(MessageContent.Location(descriptor))
+        val parsed = MessageContentParser.parse(ChatProtocol.ChatLocationMessageDataType, json)
+        assertIs<MessageContent.Location>(parsed)
+        assertEquals(LIVE_SHARE_INDEFINITE, parsed.descriptor?.liveShareUntilMs)
     }
 
     @Test

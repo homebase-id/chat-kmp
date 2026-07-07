@@ -38,6 +38,7 @@ import id.homebase.chat.services.livelocation.globalLiveSharePinUntilMs
 import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
 import id.homebase.chat.services.livelocation.shareLiveLocationBack
 import id.homebase.core.location.GpsRequestReason
+import id.homebase.core.location.liveShareEndTimeMs
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
@@ -948,7 +949,7 @@ class ConversationListViewModel(
                     _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
                     return@launch
                 }
-                val untilMs = Clock.System.now().toEpochMilliseconds() + action.durationMs
+                val untilMs = liveShareEndTimeMs(Clock.System.now().toEpochMilliseconds(), action.durationMs)
                 val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
                 val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
                 updateLocationLiveShare(action.messageId, untilMs) // synced declaration → bubbles flip LIVE
