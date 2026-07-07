@@ -38,6 +38,7 @@ import id.homebase.chat.services.livelocation.incomingLiveShareAnyUntilMs
 import id.homebase.chat.services.livelocation.incomingLiveShareUntilMs
 import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
 import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
+import id.homebase.chat.services.livelocation.quantizeLiveShareDeadlineUp
 import id.homebase.chat.services.livelocation.shareLiveLocationBack
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.chat.services.convo.ConversationEnricher
@@ -378,8 +379,11 @@ class ConversationListViewModel(
                     _uiState.update {
                         it.copy(
                             ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs),
-                            incomingLiveShareAnyUntilMs =
+                            // Quantized so a streaming peer's ever-advancing deadline doesn't churn
+                            // the top bar on every relay packet (#1012 review).
+                            incomingLiveShareAnyUntilMs = quantizeLiveShareDeadlineUp(
                                 incomingLiveShareAnyUntilMs(positions, INCOMING_SHARE_STALE_MS, nowMs),
+                            ),
                         )
                     }
                     var fullUntilMs: Long? = null
@@ -392,7 +396,9 @@ class ConversationListViewModel(
                         val recipientIds = recipients.map { it.domainName }
                         fullUntilMs = liveShareCoverageUntilMs(roster, recipientIds, nowMs)
                         anyUntilMs = liveShareAnyUntilMs(roster, recipientIds, nowMs)
-                        incomingUntilMs = incomingLiveShareUntilMs(positions, recipients, INCOMING_SHARE_STALE_MS, nowMs)
+                        incomingUntilMs = quantizeLiveShareDeadlineUp(
+                            incomingLiveShareUntilMs(positions, recipients, INCOMING_SHARE_STALE_MS, nowMs),
+                        )
                     }
                     _messagesUiState.update {
                         it.copy(

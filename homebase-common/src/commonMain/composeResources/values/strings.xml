@@ -1369,7 +1369,7 @@
     <string name="live_location_marker_cd">%1$s's live location</string>
     <string name="live_location_you">You</string>
     <string name="live_location_age_minutes">%1$dm</string>
-    <string name="location_sharing_indicator_cd">Live location active in this chat</string>
+    <string name="location_sharing_indicator_cd">Live location active</string>
     <string name="location_dashboard_live_section">Live location sharing</string>
     <string name="location_dashboard_live_open">Open live map</string>
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>

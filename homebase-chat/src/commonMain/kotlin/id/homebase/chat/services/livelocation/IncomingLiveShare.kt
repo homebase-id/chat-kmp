@@ -16,6 +16,26 @@ import id.homebase.api.common.OdinId
 const val INCOMING_SHARE_STALE_MS: Long = 60 * 60 * 1000L
 
 /**
+ * Bucket size for stabilising the incoming synthetic deadline. Because the deadline is
+ * `receivedAtMs + stale`, a continuously-streaming peer would otherwise push a new (ever-advancing)
+ * value on every relay packet — changing the UiState every few seconds and forcing a top-bar
+ * recomposition + [id.homebase.chat.widget.LiveShareIndicator] ticker restart for the whole share
+ * (#1012 review). Rounding the deadline up to a 1-minute bucket keeps it identical across packets so
+ * StateFlow suppresses the no-op emissions; the ≤1-min later clear is negligible against a 1-h window.
+ */
+const val INCOMING_SHARE_QUANTUM_MS: Long = 60 * 1000L
+
+/** Round [untilMs] up to the next [quantumMs] boundary (never into the past) to stabilise it across
+ *  packets; null passes through. See [INCOMING_SHARE_QUANTUM_MS]. */
+fun quantizeLiveShareDeadlineUp(untilMs: Long?, quantumMs: Long = INCOMING_SHARE_QUANTUM_MS): Long? =
+    untilMs?.let { ((it + quantumMs - 1) / quantumMs) * quantumMs }
+
+/** The single pin deadline for a surface: the later of my outgoing share and an incoming share, or
+ *  null when neither is active. Shared by the chat-list, in-chat, and details pins (#1012). */
+fun liveSharePinUntilMs(ownUntilMs: Long?, incomingUntilMs: Long?): Long? =
+    listOfNotNull(ownUntilMs, incomingUntilMs).maxOrNull()
+
+/**
  * When someone — anyone — is sharing their live location with me, and until when: the latest
  * `receivedAtMs + [staleMs]` among senders with a still-fresh point, or null when none is fresh.
  * Unscoped (no conversation) — drives the single chat-overview top-bar pin ("is anyone live-sharing

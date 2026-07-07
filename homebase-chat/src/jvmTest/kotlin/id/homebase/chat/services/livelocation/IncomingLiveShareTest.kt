@@ -75,4 +75,23 @@ class IncomingLiveShareTest {
         val positions = pos("alice.com" to now - stale - 1)
         assertNull(incomingLiveShareUntilMs(positions, listOf(OdinId("alice.com")), stale, now))
     }
+
+    // --- Helpers ---
+
+    @Test
+    fun quantizeRoundsUpToBucketAndPassesNull() {
+        val q = INCOMING_SHARE_QUANTUM_MS
+        assertNull(quantizeLiveShareDeadlineUp(null, q))
+        assertEquals(q, quantizeLiveShareDeadlineUp(1, q))          // rounds up off-boundary
+        assertEquals(q, quantizeLiveShareDeadlineUp(q, q))          // exact boundary unchanged
+        assertEquals(2 * q, quantizeLiveShareDeadlineUp(q + 1, q))  // never rounds into the past
+    }
+
+    @Test
+    fun pinUntilIsLaterOfOwnAndIncomingOrNull() {
+        assertNull(liveSharePinUntilMs(null, null))
+        assertEquals(50L, liveSharePinUntilMs(50L, null))
+        assertEquals(50L, liveSharePinUntilMs(null, 50L))
+        assertEquals(80L, liveSharePinUntilMs(30L, 80L))
+    }
 }

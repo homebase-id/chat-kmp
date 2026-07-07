@@ -17,6 +17,8 @@ import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.livelocation.LiveLocationShareService
 import id.homebase.chat.services.livelocation.incomingLiveShareUntilMs
 import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
+import id.homebase.chat.services.livelocation.liveSharePinUntilMs
+import id.homebase.chat.services.livelocation.quantizeLiveShareDeadlineUp
 import id.homebase.core.ui.navigation.Route
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -24,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -167,9 +170,12 @@ class ConversationSettingsViewModel(
      * Drives this screen's live-share pin, consistent with the chat-list and in-chat pins (#1012):
      * lit when I'm sharing with anyone in this conversation (outgoing) OR the other party is sharing
      * their live location with me (incoming, from live-relay freshness), whichever ends later.
-     * Recipients are resolved per emission from the in-memory conversation (cheap, sync) so a
-     * still-loading or later-updated conversation resolves correctly. Note-to-self has no other
-     * party, so the pin never lights there.
+     *
+     * The other participants are resolved through [ConversationStream.getRecipients] — the same seam
+     * the in-chat pin uses — so both pins agree and we inherit its empty-participants re-map fallback
+     * (#934). [ConversationStream.conversations] is a combine source so the pin re-resolves once the
+     * conversation row hydrates (otherwise an already-running outgoing share with no incoming stream
+     * could leave the pin dark until the next roster/relay event). Note-to-self has no other party.
      */
     private fun observeLiveShare() {
         val conversationId = Uuid.parse(route.conversationId)
@@ -178,18 +184,18 @@ class ConversationSettingsViewModel(
             combine(
                 liveLocationShareService.recipients,
                 liveLocationReceiveStore.positions,
-            ) { roster, positions -> roster to positions }
-                .collect { (roster, positions) ->
+                conversationStream.conversations,
+            ) { roster, positions, _ -> roster to positions }
+                .collectLatest { (roster, positions) ->
                     val now = Clock.System.now().toEpochMilliseconds()
-                    val self = ownerSessionRepository.user.value?.odinId
-                    val others = conversationStream.getConversationById(conversationId)
-                        ?.participants.orEmpty()
-                        .filter { it != self }
+                    val others = runCatching {
+                        conversationStream.getRecipients(conversationId, emptyList(), null)
+                    }.getOrDefault(emptyList())
                     val own = liveShareAnyUntilMs(roster, others.map { it.domainName }, now)
-                    val incoming = incomingLiveShareUntilMs(positions, others, INCOMING_SHARE_STALE_MS, now)
-                    _uiState.update {
-                        it.copy(liveShareUntilMs = listOfNotNull(own, incoming).maxOrNull())
-                    }
+                    val incoming = quantizeLiveShareDeadlineUp(
+                        incomingLiveShareUntilMs(positions, others, INCOMING_SHARE_STALE_MS, now),
+                    )
+                    _uiState.update { it.copy(liveShareUntilMs = liveSharePinUntilMs(own, incoming)) }
                 }
         }
     }
