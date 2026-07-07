@@ -9,6 +9,10 @@ The goal: every issue body should read like a **`/plan` prompt** — enough cont
 evidence, and scope that a Claude agent (or a human) could open the repo and produce a
 reasonable implementation plan without a back-and-forth.
 
+If an issue has no clear evidence of a bug / solution, don't guess, but instead turn
+the issue into one of either making additional TESTs and / or log instrumentation so
+that the real issue can be discovered.
+
 ---
 
 ## Quick reference
@@ -18,6 +22,10 @@ reasonable implementation plan without a back-and-forth.
 - **Issue author (current gh login):** `Seifert69`
 - **Assignable users:** `2002Bishwajeet`, `acarlsen`, `odindevops`, `sebbarg`,
   `Seifert69`, `stef-coenen`, `toddmitchell`, `xcarpentier`
+- **Key people (name → GitHub login for `--assignee`):**
+  - Todd Mitchell → `toddmitchell`
+  - Michael Seifert → `Seifert69`
+  - Bishwajeet Prahi → `2002Bishwajeet` (heard as "Bishwa", and autocorrected to "Bushes")
 - **Labels in use:** `bug`, `enhancement`, `documentation`, `question`,
   `help wanted`, `good first issue`, `duplicate`, `invalid`, `wontfix`
 
