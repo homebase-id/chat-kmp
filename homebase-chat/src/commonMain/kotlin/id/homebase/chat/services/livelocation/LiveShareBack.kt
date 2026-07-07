@@ -1,6 +1,7 @@
 package id.homebase.chat.services.livelocation
 
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
+import id.homebase.core.location.liveShareEndTimeMs
 import id.homebase.core.location.tracking.GpsFixResult
 
 /** Outcome of a share-back attempt — the caller maps these to user feedback. */
@@ -23,7 +24,8 @@ enum class ShareBackResult {
  * [durationMs] null = mirror [senderLiveShareUntilMs], the sender's absolute end-time synced in
  * their header descriptor — a single tap on a LIVE bubble shares back for exactly the sender's
  * remaining window so both shares end together. Non-null = picked from the duration menu on a
- * received static (fresh) bubble.
+ * received static (fresh) bubble. Either path may carry the [LIVE_SHARE_INDEFINITE] sentinel
+ * (an indefinite pick, or mirroring a sender's indefinite share) — it passes through unchanged.
  *
  * [send] receives the ready descriptor; [startRelay] receives the SAME absolute end-time the
  * descriptor carries — the {recipient, endTime} pair is the roster's stop key, so the two halves
@@ -37,7 +39,7 @@ suspend fun shareLiveLocationBack(
     send: suspend (LocationPreviewDescriptor) -> Unit,
     startRelay: suspend (untilMs: Long) -> Unit,
 ): ShareBackResult {
-    val untilMs = durationMs?.let { nowMs + it } ?: senderLiveShareUntilMs
+    val untilMs = durationMs?.let { liveShareEndTimeMs(nowMs, it) } ?: senderLiveShareUntilMs
     if (untilMs == null || untilMs <= nowMs) return ShareBackResult.Expired
     val fix = getFix()
     if (fix !is GpsFixResult.Success) return ShareBackResult.NoFix

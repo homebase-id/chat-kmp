@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.LocationService

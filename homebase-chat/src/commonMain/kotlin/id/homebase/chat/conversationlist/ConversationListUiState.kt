@@ -44,13 +44,14 @@ data class ConversationListUiState(
     val driveIsSyncing: Boolean = false,
     val hasDriveError: Boolean = false,
     /**
-     * Latest end-time across ALL my active outgoing live shares, else null — drives the purple
-     * sharing pin in the chat-list top bar (#816). Raw deadline: the pin composable derives
+     * Deadline of the chat-list top-bar sharing pin, else null: the later of my outgoing shares
+     * (#816) and anyone sharing their live location with me (#1012, quantized live-relay
+     * freshness). Computed by `globalLiveSharePinUntilMs`. Raw deadline: the pin composable derives
      * visibility from `now < untilMs` with its own ticker, so a stale past-value after expiry is
-     * harmless until the next roster emission. See [MessageListUiState.ownLiveShareInConversationUntilMs]
-     * for the per-conversation (ANY-coverage) variant.
+     * harmless until the next roster/relay emission. See
+     * [MessageListUiState.liveSharePinInConversationUntilMs] for the per-conversation variant.
      */
-    val ownLiveShareAnyUntilMs: Long? = null,
+    val liveSharePinAnyUntilMs: Long? = null,
     val uiDialog: ConversationListUiDialog? = null,
     val uiEvent: ConversationListUiEvent? = null,
     /** Non-null while a long-ish service op is in flight. Drives the full-screen
@@ -114,17 +115,18 @@ data class MessageListUiState(
      * When MY live share FULLY covers this conversation's recipients: the absolute end of that
      * coverage, else null. While set (and in the future), location bubbles hide their "share
      * live location" offers — no invitations to start a share that's already running (#966
-     * follow-up). Deliberately a different predicate from [ownLiveShareInConversationUntilMs]
-     * (ANY-coverage, the #816 pin) — don't unify them.
+     * follow-up). Deliberately a different predicate from [liveSharePinInConversationUntilMs]
+     * (ANY-coverage pin) — don't unify them.
      */
     val ownLiveShareUntilMs: Long? = null,
     /**
-     * Latest end-time among my active shares to ANY participant of this conversation, else null —
-     * drives the purple sharing pin in the conversation top bar (#816). ANY-coverage: sharing
-     * with one member of a group lights the pin, while [ownLiveShareUntilMs] (FULL coverage,
-     * offer suppression) stays null. Raw deadline; the pin composable handles expiry itself.
+     * Deadline of the conversation top-bar sharing pin, else null: the later of my outgoing share
+     * to ANY participant of this conversation (#816 — one covered group member suffices, while
+     * [ownLiveShareUntilMs] / FULL coverage stays null) and a participant sharing their live
+     * location with me (#1012, quantized live-relay freshness). Computed by
+     * `conversationLiveSharePinUntilMs`. Raw deadline; the pin composable handles expiry itself.
      */
-    val ownLiveShareInConversationUntilMs: Long? = null,
+    val liveSharePinInConversationUntilMs: Long? = null,
     /** A loadOlder fetch is in flight; suppresses re-entry. */
     val isLoadingOlder: Boolean = false,
     /** A loadNewer fetch is in flight; suppresses re-entry. */
