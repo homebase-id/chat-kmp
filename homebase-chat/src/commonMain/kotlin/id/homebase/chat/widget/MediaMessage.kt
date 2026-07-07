@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
@@ -89,6 +90,9 @@ fun MediaMessage(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
+    /** #964: forwarded to [MediaGallery] so a 2+-image album stretches to the bubble
+     *  width in the caption path instead of leaving a gap. No effect on single media. */
+    fillWidth: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -110,7 +114,7 @@ fun MediaMessage(
         payloads.size == 1 && payloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
     }
 
-    Box(modifier = Modifier.animateContentSize()) {
+    Box(modifier = Modifier.testTag(ChatBubbleTestTags.MEDIA).animateContentSize()) {
         when (payloads.size) {
             1 -> {
                 // Stickers drop the opaque surface fill so transparent pixels show the
@@ -170,6 +174,7 @@ fun MediaMessage(
                     messageId = messageId,
                     downloadingFiles = downloadingFiles,
                     isUploading = uploadStatus != null,
+                    fillWidth = fillWidth,
                 )
             }
         }

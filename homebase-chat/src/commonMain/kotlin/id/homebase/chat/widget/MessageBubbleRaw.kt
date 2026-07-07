@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -296,6 +297,11 @@ fun MessageBubbleRaw(
                 !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
+    // #964: a 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
+    // the images run edge-to-edge to the bubble, and only the caption below keeps its
+    // 12dp inset (the messenger convention, matching this app's media-only bubbles). A
+    // single image already renders edge-to-edge, so it is untouched.
+    val isGallery = (filteredPayloads?.size ?: 0) >= 2
     // We store the result of the text layout to know where the last line ends
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
@@ -441,6 +447,7 @@ fun MessageBubbleRaw(
 
     Surface(
         modifier = modifier
+            .testTag(ChatBubbleTestTags.BUBBLE)
             .ifTrue(!isStickerBubble) { Modifier.clip(shape) }
             .ifTrue(isMobile()) {
                 Modifier.combinedClickable(
@@ -626,28 +633,34 @@ fun MessageBubbleRaw(
                         )
                     }
                     if (hasMedia) {
-                        MediaMessage(
-                            payloads = filteredPayloads.toPersistentList(),
-                            decryptedFiles = decryptedFiles,
-                            fileId = message.fileId,
-                            driveId = chatTargetDrive.alias,
-                            previewThumbnail = message.previewThumbnail,
-                            onMediaClick = onMediaClick,
-                            keyHeader = message.keyHeader,
-                            shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
-                                topStart = Dimens.Message.cornerRadius,
-                                topEnd = Dimens.Message.cornerRadius
-                            ) else RoundedCornerShape(0.dp),
-                            onMediaLongPress = { _, _ -> handleLongClick() },
-                        liveControls = liveControls,
-                        locationHeaderDescriptor = locationDescriptor,
-                            onRequestDecryptedFile = onRequestDecryptedFile,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                            messageId = message.id,
-                            downloadingFiles = downloadingFiles,
-                            uploadStatus = uploadStatus,
-                        )
+                        // #964: a gallery fills the full bubble width edge-to-edge; the
+                        // caption below keeps its own 12dp inset. A single image is
+                        // rendered exactly as before.
+                        Box(modifier = if (isGallery) Modifier.fillMaxWidth() else Modifier) {
+                            MediaMessage(
+                                payloads = filteredPayloads.toPersistentList(),
+                                decryptedFiles = decryptedFiles,
+                                fileId = message.fileId,
+                                driveId = chatTargetDrive.alias,
+                                previewThumbnail = message.previewThumbnail,
+                                onMediaClick = onMediaClick,
+                                keyHeader = message.keyHeader,
+                                shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
+                                    topStart = Dimens.Message.cornerRadius,
+                                    topEnd = Dimens.Message.cornerRadius
+                                ) else RoundedCornerShape(0.dp),
+                                onMediaLongPress = { _, _ -> handleLongClick() },
+                                liveControls = liveControls,
+                                locationHeaderDescriptor = locationDescriptor,
+                                onRequestDecryptedFile = onRequestDecryptedFile,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                messageId = message.id,
+                                downloadingFiles = downloadingFiles,
+                                uploadStatus = uploadStatus,
+                                fillWidth = isGallery,
+                            )
+                        }
                     }
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -656,6 +669,7 @@ fun MessageBubbleRaw(
                         // timestamp is placed below as its own row (next).
                         ChatMarkdown(
                             content = bodyText,
+                            modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
                             color = contentColor,
                             style = MaterialTheme.typography.bodyLarge,
                             searchQuery = effectiveSearchQuery,
@@ -725,28 +739,39 @@ fun MessageBubbleRaw(
                                 )
                             }
                             if (hasMedia) {
-                                MediaMessage(
-                                    payloads = filteredPayloads.toPersistentList(),
-                                    decryptedFiles = decryptedFiles,
-                                    fileId = message.fileId,
-                                    driveId = chatTargetDrive.alias,
-                                    previewThumbnail = message.previewThumbnail,
-                                    onMediaClick = onMediaClick,
-                                    keyHeader = message.keyHeader,
-                                    shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
-                                        topStart = Dimens.Message.cornerRadius,
-                                        topEnd = Dimens.Message.cornerRadius
-                                    ) else RoundedCornerShape(0.dp),
-                                    onMediaLongPress = { _, _ -> handleLongClick() },
-                        liveControls = liveControls,
-                        locationHeaderDescriptor = locationDescriptor,
-                                    onRequestDecryptedFile = onRequestDecryptedFile,
-                                    sharedTransitionScope = sharedTransitionScope,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                    messageId = message.id,
-                                    downloadingFiles = downloadingFiles,
-                                    uploadStatus = uploadStatus,
-                                )
+                                // #964: a gallery renders full-bleed (edge-to-edge). The
+                                // custom Layout below clamps the caption to the media width,
+                                // and the caption Row's own 12dp padding insets the text —
+                                // so the images reach the bubble edges with no strip beside
+                                // them. Stays one measurable, so the index math is unchanged.
+                                Box {
+                                    MediaMessage(
+                                        payloads = filteredPayloads.toPersistentList(),
+                                        decryptedFiles = decryptedFiles,
+                                        fileId = message.fileId,
+                                        driveId = chatTargetDrive.alias,
+                                        previewThumbnail = message.previewThumbnail,
+                                        onMediaClick = onMediaClick,
+                                        keyHeader = message.keyHeader,
+                                        shape = if (authorName == null && message.messageAppData.replyPreview == null) RoundedCornerShape(
+                                            topStart = Dimens.Message.cornerRadius,
+                                            topEnd = Dimens.Message.cornerRadius
+                                        ) else RoundedCornerShape(0.dp),
+                                        onMediaLongPress = { _, _ -> handleLongClick() },
+                                        liveControls = liveControls,
+                                        locationHeaderDescriptor = locationDescriptor,
+                                        onRequestDecryptedFile = onRequestDecryptedFile,
+                                        sharedTransitionScope = sharedTransitionScope,
+                                        animatedVisibilityScope = animatedVisibilityScope,
+                                        messageId = message.id,
+                                        downloadingFiles = downloadingFiles,
+                                        uploadStatus = uploadStatus,
+                                        // The custom Layout below already clamps the caption to
+                                        // the media width, so there is no gap to fill — the
+                                        // gallery renders full-bleed at its album width.
+                                        fillWidth = false,
+                                    )
+                                }
                             }
                             Row(
                                 modifier = Modifier.padding(
@@ -782,6 +807,7 @@ fun MessageBubbleRaw(
                                     }
                                     ChatMarkdown(
                                         content = bodyText,
+                                        modifier = Modifier.testTag(ChatBubbleTestTags.CAPTION),
                                         color = contentColor,
                                         style = MaterialTheme.typography.bodyLarge,
                                         searchQuery = effectiveSearchQuery,
