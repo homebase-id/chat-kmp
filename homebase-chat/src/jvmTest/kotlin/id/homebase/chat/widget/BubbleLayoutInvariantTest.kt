@@ -102,21 +102,33 @@ class BubbleLayoutInvariantTest {
         ),
     }
 
+    // #1028: the aspect-ratio dimension #964's suite was missing. The layout sizes
+    // off these descriptor pixels (no decode needed), so covering ratios is just
+    // parameterising pixelWidth/pixelHeight. TALL_PORTRAIT is the reported screenshot
+    // (a ~1080x2400 phone capture); it's the ratio that regressed.
+    private enum class Aspect(val w: Int, val h: Int) {
+        TALL_PORTRAIT(1080, 2400),
+        PORTRAIT(900, 1200),   // 3:4
+        SQUARE(1000, 1000),    // 1:1
+        LANDSCAPE(1200, 900),  // 4:3 — the only ratio #964 tested
+        PANORAMA(1920, 1080),  // 16:9
+    }
+
     private data class Case(
         val name: String,
         val sent: Boolean,
         val images: Int,
         val caption: Caption,
         val reply: Boolean = false,
+        val aspect: Aspect = Aspect.LANDSCAPE,
     )
 
-    private fun imagePayload(i: Int) = PayloadDescriptor(
+    private fun imagePayload(i: Int, aspect: Aspect = Aspect.LANDSCAPE) = PayloadDescriptor(
         key = "chat_img$i",
         contentType = "image/jpeg",
         iv = Base64.encode(ByteArray(16)),
-        // Landscape 4:3 so a single image resolves to a real (non-zero) width.
         previewThumbnail = ThumbnailDescriptor(
-            pixelWidth = 1200, pixelHeight = 900, contentType = "image/jpeg", content = "",
+            pixelWidth = aspect.w, pixelHeight = aspect.h, contentType = "image/jpeg", content = "",
         ),
     )
 
@@ -141,7 +153,7 @@ class BubbleLayoutInvariantTest {
             messageAppData = MessageAppData(replyPreview = reply),
             reactionPreview = null,
             previewThumbnail = null,
-            payloads = (0 until images).map { imagePayload(it) }.toPersistentList(),
+            payloads = (0 until images).map { imagePayload(it, aspect) }.toPersistentList(),
             keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
             versionTag = Uuid.random(),
             isPendingSend = false,
@@ -262,6 +274,48 @@ class BubbleLayoutInvariantTest {
                 failures += "[${case.name}] single image should span bubble width: media.right=${media.right.value} bubble.right=${bubble.right.value}"
         }
         assertTrue(failures.isEmpty(), "single-image invariant failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * #1028 — THE aspect-ratio-complete guard the #964 suite was missing. A SINGLE
+     * image + caption must never leave a bubble-background strip beside the image,
+     * for EVERY aspect ratio — not just the landscape 4:3 that #964 happened to test.
+     *
+     * The invariant (the same "no gap" one used for the gallery and the landscape
+     * single image): the media reaches BOTH bubble edges, so there is no colored void
+     * between the image and the bubble/caption edge —
+     *   media.left == bubble.left  and  media.right == bubble.right.
+     * Whether the convention is "media fills the bubble" or "bubble hugs the media",
+     * this holds; only a height-capped narrow image under a wider caption (the #1028
+     * bug) breaks it.
+     *
+     * TALL_PORTRAIT + LONG/BLOCK is the reported screenshot and the first case that
+     * fails on today's code (image height-capped narrow, caption widens the bubble →
+     * right-side strip) and passes after the fix.
+     */
+    @Test
+    fun singleImageWithCaption_noGap_everyAspectRatio() = runComposeUiTest {
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false))
+            for (aspect in Aspect.entries)
+                for (cap in listOf(Caption.SHORT, Caption.LONG, Caption.BLOCK)) {
+                    val case = Case(
+                        name = "1img/$aspect/$cap/${if (sent) "sent" else "recv"}",
+                        sent = sent, images = 1, caption = cap, aspect = aspect,
+                    )
+                    render(case)
+                    val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+                    val media = boundsOf(ChatBubbleTestTags.MEDIA)
+
+                    if (!approx(media.left.value, bubble.left.value))
+                        failures += "[${case.name}] left strip: media.left=${media.left.value} bubble.left=${bubble.left.value}"
+                    if (!approx(media.right.value, bubble.right.value))
+                        failures += "[${case.name}] right strip beside image: media.right=${media.right.value} bubble.right=${bubble.right.value}"
+                }
+        assertTrue(
+            failures.isEmpty(),
+            "single-image no-gap invariant failed for these aspect ratios:\n" + failures.joinToString("\n"),
+        )
     }
 
     /**

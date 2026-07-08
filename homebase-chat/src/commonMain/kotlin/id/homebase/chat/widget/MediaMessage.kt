@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,8 +92,10 @@ fun MediaMessage(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
-    /** #964: forwarded to [MediaGallery] so a 2+-image album stretches to the bubble
-     *  width in the caption path instead of leaving a gap. No effect on single media. */
+    /** #964/#1028: in the block-caption path, stretch the media to the bubble width so a
+     *  height-capped portrait/square image doesn't leave a strip beside it. Forwarded to
+     *  [MediaGallery] for a 2+-image album, and applied to a single photo here (fill + crop).
+     *  No effect on stickers or link-preview cards. */
     fillWidth: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
@@ -124,6 +128,20 @@ fun MediaMessage(
                 } else {
                     modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 }
+                // #1028: in the block-caption path (fillWidth) the bubble is sized by the
+                // caption, so a height-capped portrait/square photo would leave a blue strip
+                // beside it. Fill the bubble width and crop instead — same full-bleed
+                // convention the 2+-image gallery already uses. Stickers and link-preview
+                // cards keep their intrinsic sizing.
+                val fillsBubble = fillWidth && !isSticker && !isLinkPreview
+                val sizedModifier = if (fillsBubble) {
+                    widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
+                } else {
+                    widthModifier.heightIn(
+                        min = Dimens.MediaBubble.minHeight,
+                        max = Dimens.MediaBubble.maxHeight
+                    )
+                }
                 MediaItem(
                     payload = payloads[0],
                     fileId = fileId,
@@ -132,12 +150,9 @@ fun MediaMessage(
                         ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                     decryptedFiles = decryptedFiles,
                     keyHeader = keyHeader,
-                    modifier = widthModifier.heightIn(
-                        min = Dimens.MediaBubble.minHeight,
-                        max = Dimens.MediaBubble.maxHeight
-                    ),
+                    modifier = sizedModifier,
                     imageSize = ImageSize.THUMB_MEDIUM,
-                    preserveAspectRatio = preserveAspectRatio,
+                    preserveAspectRatio = if (fillsBubble) false else preserveAspectRatio,
                     isSticker = isSticker,
                     onClick = { onMediaClick?.invoke(payloads[0]) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },

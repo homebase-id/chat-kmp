@@ -633,10 +633,12 @@ fun MessageBubbleRaw(
                         )
                     }
                     if (hasMedia) {
-                        // #964: a gallery fills the full bubble width edge-to-edge; the
-                        // caption below keeps its own 12dp inset. A single image is
-                        // rendered exactly as before.
-                        Box(modifier = if (isGallery) Modifier.fillMaxWidth() else Modifier) {
+                        // #964/#1028: in the block-caption path the bubble sizes to its
+                        // widest child (the caption), so the media must fill that width
+                        // edge-to-edge — otherwise a height-capped narrow image (portrait,
+                        // square) leaves a blue strip beside it (#1028). Applies to both a
+                        // gallery and a single image; the caption below keeps its 12dp inset.
+                        Box(modifier = Modifier.fillMaxWidth()) {
                             MediaMessage(
                                 payloads = filteredPayloads.toPersistentList(),
                                 decryptedFiles = decryptedFiles,
@@ -658,7 +660,7 @@ fun MessageBubbleRaw(
                                 messageId = message.id,
                                 downloadingFiles = downloadingFiles,
                                 uploadStatus = uploadStatus,
-                                fillWidth = isGallery,
+                                fillWidth = true,
                             )
                         }
                     }
