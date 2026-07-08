@@ -607,7 +607,17 @@ fun MessageBubbleRaw(
                 // textLayoutResult, so there is no last-line tuck to lose here:
                 // this is exactly the below-placement the custom Layout already
                 // falls back to when textLayoutResult is null.
-                Column(modifier = Modifier.wrapContentWidth()) {
+                // #1028: a single captioned image hugs Signal's captioned-image width
+                // (240dp) so the block caption wraps at the image width instead of widening
+                // the bubble past a height-capped image (gap). Galleries and text-only block
+                // messages keep their natural width.
+                Column(
+                    modifier = if (hasMedia && !isGallery) {
+                        Modifier.width(Dimens.MediaBubble.maxWidth)
+                    } else {
+                        Modifier.wrapContentWidth()
+                    }
+                ) {
                     authorName?.let {
                         Text(
                             text = it,
@@ -633,12 +643,10 @@ fun MessageBubbleRaw(
                         )
                     }
                     if (hasMedia) {
-                        // #964/#1028: in the block-caption path the bubble sizes to its
-                        // widest child (the caption), so the media must fill that width
-                        // edge-to-edge — otherwise a height-capped narrow image (portrait,
-                        // square) leaves a blue strip beside it (#1028). Applies to both a
-                        // gallery and a single image; the caption below keeps its 12dp inset.
-                        Box(modifier = Modifier.fillMaxWidth()) {
+                        // #964: a gallery fills the full bubble width edge-to-edge; the caption
+                        // below keeps its 12dp inset. A single captioned image is pinned to
+                        // 240dp by MediaMessage (#1028) and the Column above hugs that width.
+                        Box(modifier = if (isGallery) Modifier.fillMaxWidth() else Modifier) {
                             MediaMessage(
                                 payloads = filteredPayloads.toPersistentList(),
                                 decryptedFiles = decryptedFiles,
@@ -660,7 +668,8 @@ fun MessageBubbleRaw(
                                 messageId = message.id,
                                 downloadingFiles = downloadingFiles,
                                 uploadStatus = uploadStatus,
-                                fillWidth = true,
+                                fillWidth = isGallery,
+                                hasCaption = true,
                             )
                         }
                     }
@@ -772,6 +781,10 @@ fun MessageBubbleRaw(
                                         // the media width, so there is no gap to fill — the
                                         // gallery renders full-bleed at its album width.
                                         fillWidth = false,
+                                        // #1028: a captioned single image is pinned to 240dp, so
+                                        // the caption-to-media-width clamp can't collapse a
+                                        // tall/tiny image's caption to one char per line.
+                                        hasCaption = true,
                                     )
                                 }
                             }

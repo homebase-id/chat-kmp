@@ -24,6 +24,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
@@ -107,6 +108,10 @@ class BubbleLayoutInvariantTest {
     // parameterising pixelWidth/pixelHeight. TALL_PORTRAIT is the reported screenshot
     // (a ~1080x2400 phone capture); it's the ratio that regressed.
     private enum class Aspect(val w: Int, val h: Int) {
+        // A near-1D strip. Height-capped it resolves to ~20dp wide; with a caption the
+        // inline path used to clamp the text to that width → one character per line
+        // (reported bug). Guards the captioned min-width floor.
+        TALL_STRIP(150, 2400),
         TALL_PORTRAIT(1080, 2400),
         PORTRAIT(900, 1200),   // 3:4
         SQUARE(1000, 1000),    // 1:1
@@ -278,23 +283,24 @@ class BubbleLayoutInvariantTest {
 
     /**
      * #1028 — THE aspect-ratio-complete guard the #964 suite was missing. A SINGLE
-     * image + caption must never leave a bubble-background strip beside the image,
-     * for EVERY aspect ratio — not just the landscape 4:3 that #964 happened to test.
+     * image + caption, for EVERY aspect ratio, must:
+     *  1. leave NO bubble-background strip beside the image
+     *     (media.left == bubble.left AND media.right == bubble.right), and
+     *  2. never collapse below Signal's captioned-image width
+     *     (media.width >= media_bubble_min_width_with_content = 240dp).
      *
-     * The invariant (the same "no gap" one used for the gallery and the landscape
-     * single image): the media reaches BOTH bubble edges, so there is no colored void
-     * between the image and the bubble/caption edge —
-     *   media.left == bubble.left  and  media.right == bubble.right.
-     * Whether the convention is "media fills the bubble" or "bubble hugs the media",
-     * this holds; only a height-capped narrow image under a wider caption (the #1028
-     * bug) breaks it.
+     * These are the two failure modes of the media/caption width coupling:
+     *  - a height-capped image NARROWER than a wider caption → a strip beside it
+     *    (the original #1028 report: TALL_PORTRAIT/SQUARE + BLOCK), and
+     *  - a height-capped image so narrow the inline path clamps the caption to it →
+     *    one character per line (TALL_STRIP + any caption; the follow-up report).
      *
-     * TALL_PORTRAIT + LONG/BLOCK is the reported screenshot and the first case that
-     * fails on today's code (image height-capped narrow, caption widens the bubble →
-     * right-side strip) and passes after the fix.
+     * Signal pins a captioned single image to media_bubble_max_width (== 240dp ==
+     * min_width_with_content), so both are covered by the same rule.
      */
     @Test
     fun singleImageWithCaption_noGap_everyAspectRatio() = runComposeUiTest {
+        val captionedMinWidth = Dimens.MediaBubble.minWidthWithContent.value
         val failures = mutableListOf<String>()
         for (sent in listOf(true, false))
             for (aspect in Aspect.entries)
@@ -311,6 +317,9 @@ class BubbleLayoutInvariantTest {
                         failures += "[${case.name}] left strip: media.left=${media.left.value} bubble.left=${bubble.left.value}"
                     if (!approx(media.right.value, bubble.right.value))
                         failures += "[${case.name}] right strip beside image: media.right=${media.right.value} bubble.right=${bubble.right.value}"
+                    val mediaWidth = media.right.value - media.left.value
+                    if (mediaWidth < captionedMinWidth - tol)
+                        failures += "[${case.name}] captioned image collapsed (char-per-line risk): media.width=$mediaWidth < $captionedMinWidth"
                 }
         assertTrue(
             failures.isEmpty(),
