@@ -115,6 +115,9 @@ actual fun VideoPlayerSurface(
     // to the pool — otherwise the recycled player would keep pushing frames to
     // a stale TextureView surface.
     var playerView by remember(data) { mutableStateOf<PlayerView?>(null) }
+    // Drives keep-screen-awake off the real ExoPlayer play state (#1025). Set in
+    // the diagnostics listener's onIsPlayingChanged; consumed by KeepScreenOn below.
+    var isPlayingState by remember(data) { mutableStateOf(false) }
     // The per-content-type first-frame listener (added in the HLS/MP4 branches
     // below) self-removes once `onRenderedFirstFrame` fires — but a surface
     // torn down BEFORE first frame (e.g. a fast swipe, or the autoplay gate
@@ -155,6 +158,10 @@ actual fun VideoPlayerSurface(
                 Logger.d(tag = "VideoIO") {
                     "player isPlaying=$isPlaying fileId=${data.fileId} key=${data.payloadKey}"
                 }
+                // Keep the screen awake only while actually playing (#1025); the
+                // KeepScreenOn effect below holds FLAG_KEEP_SCREEN_ON on the window
+                // and releases it the instant playback pauses/ends or on dispose.
+                isPlayingState = isPlaying
             }
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 Logger.d(tag = "VideoIO") {
@@ -164,12 +171,16 @@ actual fun VideoPlayerSurface(
         }
     }
 
+    // Hold the screen awake on the window while this surface is actively playing (#1025).
+    KeepScreenOn(isPlayingState)
+
     DisposableEffect(data) {
         onDispose {
             val p = exoPlayer
             Logger.d(tag = "VideoIO") {
                 "surface dispose: fileId=${data.fileId} key=${data.payloadKey} hadPlayer=${p != null}"
             }
+            isPlayingState = false
             playerView?.player = null
             if (p != null) {
                 // Detach BOTH listeners BEFORE returning the player to the
