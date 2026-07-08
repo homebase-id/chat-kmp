@@ -211,19 +211,22 @@ jobs:
           # release link starts with a clean heap instead of inheriting 45+
           # minutes of accumulated daemon heap (build 27400310875 OOM).
           kotlin.native.disableCompilerDaemon=true
-          # 8g EXPERIMENT round 3: round 2's 6g cap OOM'd outright
-          # (run 28931927413, "Java heap space" ~20 min into the link), so the
-          # no-devirt transient peak is >6g even though the settled live set is
-          # ~4.4G (run 28927080827: zero Full GCs at 12g, after-GC flat at
-          # ~4.4G from minute 12). Probing 8g: 3.6G headroom over live, and far
-          # less committed-into-swap than 12g on the 7 GB runner. If 8g
-          # thrashes/OOMs, the answer is devirt-off + 12g (proven green).
-          kotlin.native.jvmArgs=-Xmx8g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
-          # EXPERIMENT (ios-link-no-devirt-experiment): skip the K/N LTO phase that
-          # owns ~5.1 GB of the link's live set (MAT, run 27407420160). See the
-          # gated freeCompilerArgs block in homebase-core/build.gradle.kts.
-          # Expected: link peak drops well under the runner's 7 GB RAM (no swap),
-          # link time drops from ~56 min toward ~10-20 min; IPA somewhat larger.
+          # 12g, chosen from a measured Xmx ladder with devirtualization disabled
+          # (see IOS_RELEASE_LINK_OOM.md): the link's peak live set is ~6.1-6.5 GB
+          # (was ~8.2 GB with devirt on — run 28881233018 OOM'd at 8g). 6g OOM'd
+          # outright (run 28931927413, pinned at 6.1G through 56 no-op Full GCs);
+          # 8g was green but grazed the ceiling (run 28934048254, one 38s Full GC
+          # at the peak, ~3 min slower than 12g); 12g ran with ZERO Full GCs (run
+          # 28927080827, 65-min job) and leaves headroom for the peak's growth
+          # (~+1 GB June->July as the app grew). 12g exceeds the runner's 7 GB
+          # RAM; macOS swap absorbs the excess.
+          kotlin.native.jvmArgs=-Xmx12g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
+          # Skip the K/N LTO phase that owns the bulk of the release link's
+          # peak heap (~2 GB of live set, and growing with the app). Cuts the
+          # job from 86-99 min to ~65 min and ends the recurring OOM ratchet.
+          # Full evidence + safety analysis: IOS_RELEASE_LINK_OOM.md. The flag
+          # itself is applied by a gated freeCompilerArgs block in
+          # homebase-core/build.gradle.kts; only this workflow sets the property.
           homebase.native.disableDevirtualization=true
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
