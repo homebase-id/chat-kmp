@@ -8,6 +8,11 @@ on:
 
     # Allow manual triggering from GitHub UI
     workflow_dispatch:
+      inputs:
+        upload_to_testflight:
+          description: "Upload the IPA to TestFlight (untick for experiment/CI-debug runs)"
+          type: boolean
+          default: true
 
 #  push:
 #    branches: [main]
@@ -306,18 +311,19 @@ jobs:
           name: ios-app
           path: iosApp.ipa
 
-      # main only (schedule and normal dispatch both run on main): a
-      # workflow_dispatch on an experiment branch must never push its IPA to
-      # TestFlight.
+      # Nightlies always upload; manual dispatches are controlled by the
+      # upload_to_testflight checkbox (default ON — branch dispatches to test a
+      # feature build on the dev TestFlight app keep working; untick it for
+      # experiment/CI-debug runs). The prod workflow is stricter: main/tags only.
       - name: Setup App Store Connect API key
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'schedule' || inputs.upload_to_testflight == true
         run: |
           mkdir -p "${{ runner.temp }}/private_keys"
           echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
             "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
 
       - name: Upload to TestFlight
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'schedule' || inputs.upload_to_testflight == true
         run: |
           xcrun altool --upload-app \
             --type ios \
