@@ -74,6 +74,7 @@ class ConversationMessageBumpTest {
         content: String = "hi",
         isEdited: Boolean = false,
         isStatusMessage: Boolean = false,
+        isDeleted: Boolean = false,
     ) = MessageUiModel(
         id = Uuid.random(),
         globalTransitId = null,
@@ -88,7 +89,7 @@ class ConversationMessageBumpTest {
         displayName = author.domainName,
         localReadTimestamp = null as UnixTimeUtc?,
         isEdited = isEdited,
-        isDeleted = false,
+        isDeleted = isDeleted,
         isPendingSend = false,
         isStatusMessage = isStatusMessage,
         versionTag = Uuid.NIL,
@@ -229,24 +230,87 @@ class ConversationMessageBumpTest {
      */
     @Test
     fun reactionEcho_sameUserDate_returnsNull_noUnreadBump() {
-        // Convo's latestMessageTimestamp was set to T by the original
-        // peer message arrival. The reaction echo carries the same T.
+        // Seed realistically: the original peer message arrival sets the
+        // preview (content "hi", sender alice) and unread=1. The reaction
+        // echo re-emits the SAME message with the SAME userDate — reactions
+        // change reactionPreview, which is not a conversation-level field, so
+        // the recomputed preview is identical and the re-emit is a true no-op
+        // (returns null, no unread bump).
         val originalUserDateMs = 1_777_000_000_000L
-        val items = listOf(convo(latestMs = originalUserDateMs, unread = 1))
-        val msg = message(author = alice, userDateMs = originalUserDateMs)
+        val arrival = applyIncomingMessageBump(
+            items = listOf(convo(unread = 0)),
+            targetConversationId = convoId,
+            m = message(author = alice, userDateMs = originalUserDateMs, content = "hi"),
+            sqlUserDate = Instant.fromEpochMilliseconds(originalUserDateMs),
+            activeDomain = me,
+        )
+        assertNotNull(arrival)
+        assertEquals(1, arrival.first().unreadCount)
 
         val updated = applyIncomingMessageBump(
-            items = items,
+            items = arrival,
             targetConversationId = convoId,
-            m = msg,
+            m = message(author = alice, userDateMs = originalUserDateMs, content = "hi"),
             sqlUserDate = Instant.fromEpochMilliseconds(originalUserDateMs),
             activeDomain = me,
         )
 
         assertNull(
             updated,
-            "reaction-driven re-emit (same userDate as conversation's latestMessageTimestamp) " +
-                "must not bump unread",
+            "reaction-driven re-emit (same userDate, unchanged preview) must be a no-op",
+        )
+        assertEquals(1, arrival.first().unreadCount)
+    }
+
+    /**
+     * THE #1023 regression guard. When the current last message is
+     * soft-deleted, the modified file re-emits over the WS with the SAME
+     * `userDate` (deletion doesn't change authored time) but `isDeleted =
+     * true`. The pre-fix strict `>` guard hit the `<=` branch and
+     * early-returned, so the Chats-list preview stayed frozen on the
+     * pre-deletion text ("You: where is the event?") while the open thread
+     * correctly showed "This message was deleted". The fix refreshes the
+     * denormalised preview on a same-`userDate` re-emit — flipping
+     * `lastMessageIsDeleted` — without bumping unread or advancing the
+     * timestamp.
+     */
+    @Test
+    fun deletionOfLastMessage_sameUserDate_refreshesPreview_withoutBumpingUnread() {
+        val userDateMs = 1_777_000_000_000L
+
+        // A peer message arrives and becomes the last message (unread 0→1).
+        val arrival = applyIncomingMessageBump(
+            items = listOf(convo(unread = 0)),
+            targetConversationId = convoId,
+            m = message(author = alice, userDateMs = userDateMs, content = "where is the event?"),
+            sqlUserDate = Instant.fromEpochMilliseconds(userDateMs),
+            activeDomain = me,
+        )
+        assertNotNull(arrival)
+        assertEquals("where is the event?", arrival.first().lastMessage)
+        assertEquals(false, arrival.first().lastMessageIsDeleted)
+        assertEquals(1, arrival.first().unreadCount)
+
+        // The message is soft-deleted: same userDate, isDeleted = true.
+        val afterDelete = applyIncomingMessageBump(
+            items = arrival,
+            targetConversationId = convoId,
+            m = message(author = alice, userDateMs = userDateMs, content = "", isDeleted = true),
+            sqlUserDate = Instant.fromEpochMilliseconds(userDateMs),
+            activeDomain = me,
+        )
+
+        assertNotNull(
+            afterDelete,
+            "a same-userDate soft-delete re-emit must refresh the list preview",
+        )
+        val convo = afterDelete.first()
+        assertEquals(true, convo.lastMessageIsDeleted, "list preview must reflect the deletion")
+        assertEquals(1, convo.unreadCount, "a re-emit must not bump unread")
+        assertEquals(
+            userDateMs,
+            convo.latestMessageTimestamp.toEpochMilliseconds(),
+            "a re-emit must not advance the conversation timestamp",
         )
     }
 
