@@ -1286,6 +1286,7 @@
 
     <!-- Location add-on -->
     <string name="location_label">Location</string>
+    <string name="location_dashboard_title">Emergency Location History</string>
     <string name="location_home_subtitle">Your private location history</string>
     <string name="location_onboarding_title">Your places, only yours</string>
     <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you've been — stored on your own drive, visible to no one but you.</string>
@@ -1338,6 +1339,7 @@
     <string name="location_locate_ambush_explainer">If you believe the person might be held hostage, check this box to delay the notification to the person for 24 hours.</string>
     <string name="location_locate_confirm">Request location data</string>
     <string name="location_locate_fetch_failed">Couldn't retrieve their location data. The request notice was still sent.</string>
+    <string name="location_emergency_contacts_section">Emergency contacts</string>
     <string name="location_emergency_access_section">Who can locate you</string>
     <string name="location_emergency_access_manage">Add emergency contacts</string>
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>

@@ -93,6 +93,7 @@ import id.homebase.resources.location_emergency_access_manage
 import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
+import id.homebase.resources.location_emergency_contacts_section
 import id.homebase.resources.location_locatable_broken_cd
 import id.homebase.resources.location_locatable_none
 import id.homebase.resources.location_locatable_section
@@ -316,8 +317,16 @@ fun LocationDashboardContent(
             }
         }
 
-        // ── Who you can locate (contacts carrying our iCanLocate flag) ──
-        DashboardSection(title = stringResource(MR.string.location_locatable_section)) {
+        // ── Emergency contacts: the two halves of emergency-location access ──
+        // "Who you can locate" (contacts carrying our iCanLocate flag) and "Who can
+        // locate you" (members of our emergency-location-access circle) sit as
+        // subsections under one grouping header. The "+" (add emergency contacts)
+        // lives on the group header since it applies to this pairing as a whole.
+        DashboardSection(
+            title = stringResource(MR.string.location_emergency_contacts_section),
+            onManage = onManageEmergencyAccess,
+        ) {
+            SubsectionLabel(text = stringResource(MR.string.location_locatable_section))
             Card(modifier = Modifier.fillMaxWidth()) {
                 PeopleListBody(
                     loaded = uiState.whoICanLocateLoaded,
@@ -338,13 +347,8 @@ fun LocationDashboardContent(
                     },
                 )
             }
-        }
 
-        // ── Who can locate you (members of our emergency-location-access circle) ──
-        DashboardSection(
-            title = stringResource(MR.string.location_emergency_access_section),
-            onManage = onManageEmergencyAccess,
-        ) {
+            SubsectionLabel(text = stringResource(MR.string.location_emergency_access_section))
             Card(modifier = Modifier.fillMaxWidth()) {
                 PeopleListBody(
                     loaded = uiState.whoCanLocateMeLoaded,
@@ -462,6 +466,22 @@ private fun DashboardSection(
         HorizontalDivider()
         content()
     }
+}
+
+/**
+ * A lightweight subsection heading rendered inside a [DashboardSection]'s body — used to
+ * label the two "who can locate" halves under the shared "Emergency contacts" header
+ * without giving each the full titleMedium/divider weight of a top-level section. Mirrors
+ * the "Sharing with" / "Sharing with you" labels in the live-sharing section.
+ */
+@Composable
+private fun SubsectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp).semantics { heading() },
+    )
 }
 
 /**
