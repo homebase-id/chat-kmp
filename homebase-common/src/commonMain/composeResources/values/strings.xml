@@ -1286,7 +1286,7 @@
 
     <!-- Location add-on -->
     <string name="location_label">Location</string>
-    <string name="location_dashboard_title">Emergency Location History</string>
+    <string name="location_dashboard_title">Location Dashboard</string>
     <string name="location_home_subtitle">Your private location history</string>
     <string name="location_onboarding_title">Your places, only yours</string>
     <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you've been — stored on your own drive, visible to no one but you.</string>
