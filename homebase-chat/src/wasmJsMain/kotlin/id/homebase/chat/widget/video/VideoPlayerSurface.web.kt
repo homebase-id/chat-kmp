@@ -66,6 +66,10 @@ actual fun VideoPlayerSurface(
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val density = LocalDensity.current.density
+    // ponytail: no explicit Screen Wake Lock on web. An actively-playing DOM
+    // <video> already inhibits sleep on the browsers that matter, and the Wake
+    // Lock API would need extra JS interop + permission handling for negligible
+    // gain. No-op by design.
 
     var state by remember(data) { mutableStateOf<WebVps>(WebVps.Loading) }
     var element by remember(data) { mutableStateOf<JsAny?>(null) }
