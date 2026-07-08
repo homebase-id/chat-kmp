@@ -166,7 +166,7 @@ class BubbleLayoutInvariantTest {
         )
     }
 
-    private fun ComposeUiTest.render(case: Case) = setContent {
+    private fun ComposeUiTest.render(case: Case, authorName: String? = null) = setContent {
         Host {
             MessageBubbleRaw(
                 message = case.message(),
@@ -178,6 +178,7 @@ class BubbleLayoutInvariantTest {
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 downloadingFiles = emptySet(),
+                authorName = authorName,
             )
         }
     }
@@ -335,6 +336,32 @@ class BubbleLayoutInvariantTest {
             failures.isEmpty(),
             "single-image no-gap invariant failed for these aspect ratios:\n" + failures.joinToString("\n"),
         )
+    }
+
+    /**
+     * #1028 issue B — a group message with a WIDE sender name must not widen a
+     * captioned image's bubble past the image, leaving a gap beside it. The name
+     * ellipsizes to the media width (maxLines=1), so the bubble hugs the image.
+     * Pre-fix the name was measured at full width → bubble = name width > media →
+     * gap; post-fix media.right == bubble.right.
+     */
+    @Test
+    fun singleImageWithCaption_wideAuthorName_noGap() = runComposeUiTest {
+        val longName = "Shelly Seifert Silberberg Von Habsburg Longname"
+        val failures = mutableListOf<String>()
+        for (aspect in listOf(Aspect.TALL_STRIP, Aspect.TALL_PORTRAIT, Aspect.PORTRAIT)) {
+            val case = Case(
+                name = "1img/$aspect/name", sent = false, images = 1,
+                caption = Caption.LONG, aspect = aspect,
+            )
+            render(case, authorName = longName)
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            val media = boundsOf(ChatBubbleTestTags.MEDIA)
+            if (!approx(media.right.value, bubble.right.value))
+                failures += "[${case.name}] wide sender name left a gap beside the image: " +
+                    "media.right=${media.right.value} bubble.right=${bubble.right.value}"
+        }
+        assertTrue(failures.isEmpty(), "wide-author-name gap failures:\n" + failures.joinToString("\n"))
     }
 
     /**

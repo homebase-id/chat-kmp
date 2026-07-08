@@ -913,22 +913,31 @@ fun MessageBubbleRaw(
                         val showMoreIndex = textIndex + 1
                         val infoIndex = showMoreIndex + 1
 
+                        // #1028: measure the media FIRST so a wide group-sender name (author,
+                        // index 0) can be clamped to the media width. Otherwise the name is
+                        // measured at full width and widens a captioned image's bubble past the
+                        // image, leaving a gap beside it (issue B). Clamped, the name ellipsizes
+                        // (maxLines=1) like Signal, so the bubble hugs the image. Each measurable
+                        // is still measured exactly once.
+                        val mediaPlaceable =
+                            if (hasMedia) measurables[mediaIndex].measure(constraints) else null
+                        val mediaWidth = mediaPlaceable?.width ?: 0
+
                         val placeables: MutableList<Placeable> = mutableListOf()
-                        var mediaWidth = 0
                         var authorWidth = 0
 
-                        // Measure up to text content
                         for (i in 0 until textIndex) {
                             if (i == replyIndex) continue
-                            val placeable = measurables[i].measure(constraints)
+                            val placeable = when {
+                                hasMedia && i == mediaIndex -> mediaPlaceable!!
+                                authorName != null && i == 0 && mediaWidth > 0 ->
+                                    measurables[i].measure(
+                                        constraints.copy(minWidth = 0, maxWidth = mediaWidth)
+                                    )
+                                else -> measurables[i].measure(constraints)
+                            }
                             placeables += placeable
-                            if (hasMedia && i == mediaIndex) {
-                                mediaWidth = placeable.width
-                            }
-                            val authorIndex = 0
-                            if (authorName != null && i == authorIndex) {
-                                authorWidth = placeable.width
-                            }
+                            if (authorName != null && i == 0) authorWidth = placeable.width
                         }
 
                         // Measure text content
