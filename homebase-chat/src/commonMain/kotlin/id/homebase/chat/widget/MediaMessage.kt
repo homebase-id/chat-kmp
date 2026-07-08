@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -129,36 +131,43 @@ fun MediaMessage(
                 } else {
                     modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 }
-                // #1028: a single image WITH a caption is pinned to Signal's captioned-image
-                // width (media_bubble_max_width == min_width_with_content == 240dp). Without
-                // it a height-capped portrait/square/tall-strip image resolves to a narrow
-                // (down to a few dp) width, which either leaves a blue gap beside it (block
-                // caption) or collapses the caption to one character per line (the custom
-                // Layout clamps the caption to the media width). Height follows the aspect,
-                // clamped to [minHeight, maxHeight]; taller images crop. Stickers and
-                // link-preview cards keep intrinsic sizing.
-                val captioned = hasCaption && !isSticker && !isLinkPreview
-                val sizedModifier = if (captioned) {
-                    val aspect = (payloads[0].thumbnails?.lastOrNull() ?: payloads[0].previewThumbnail)
-                        ?.let { t ->
-                            val w = t.pixelWidth
-                            val h = t.pixelHeight
-                            if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h else null
-                        }
-                    val boxHeight = aspect
-                        ?.let {
-                            (Dimens.MediaBubble.maxWidth.value / it).dp.coerceIn(
-                                Dimens.MediaBubble.minHeight,
-                                Dimens.MediaBubble.maxHeight,
-                            )
-                        }
-                        ?: Dimens.MediaBubble.maxHeight
-                    widthModifier.size(width = Dimens.MediaBubble.maxWidth, height = boxHeight)
-                } else {
-                    widthModifier.heightIn(
-                        min = Dimens.MediaBubble.minHeight,
-                        max = Dimens.MediaBubble.maxHeight
-                    )
+                // #1028: keep a captioned image from resolving to a width that either leaves
+                // a gap beside it or (in the inline path, which clamps the caption to the media
+                // width) collapses the caption to one character per line.
+                //  - fillWidth (block-caption path): fill the bubble width and crop, so a
+                //    height-capped image reaches the caption edge (galleries do the same).
+                //  - other captions: floor the width at Signal's min_width_with_content (240dp)
+                //    ONLY for images narrower than that (portrait / square-ish / tall strips),
+                //    cropping to the height band. Wider images (landscape / panorama) keep
+                //    their natural width — they're already wide enough and must not shrink.
+                // Stickers and link-preview cards keep intrinsic sizing.
+                val fillsBubble = fillWidth && !isSticker && !isLinkPreview
+                val aspect = remember(payloads) {
+                    (payloads[0].thumbnails?.lastOrNull() ?: payloads[0].previewThumbnail)?.let { t ->
+                        val w = t.pixelWidth
+                        val h = t.pixelHeight
+                        if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h else null
+                    }
+                }
+                // Height-capped natural width falls below the floor only for narrow images.
+                val narrowCaptioned = hasCaption && !fillWidth && !isSticker && !isLinkPreview &&
+                    aspect != null &&
+                    Dimens.MediaBubble.maxHeight.value * aspect <
+                    Dimens.MediaBubble.minWidthWithContent.value
+                val sizedModifier = when {
+                    fillsBubble ->
+                        widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
+                    narrowCaptioned ->
+                        widthModifier.size(
+                            width = Dimens.MediaBubble.minWidthWithContent,
+                            height = (Dimens.MediaBubble.minWidthWithContent.value / aspect!!).dp
+                                .coerceIn(Dimens.MediaBubble.minHeight, Dimens.MediaBubble.maxHeight),
+                        )
+                    else ->
+                        widthModifier.heightIn(
+                            min = Dimens.MediaBubble.minHeight,
+                            max = Dimens.MediaBubble.maxHeight,
+                        )
                 }
                 MediaItem(
                     payload = payloads[0],
@@ -170,7 +179,7 @@ fun MediaMessage(
                     keyHeader = keyHeader,
                     modifier = sizedModifier,
                     imageSize = ImageSize.THUMB_MEDIUM,
-                    preserveAspectRatio = if (captioned) false else preserveAspectRatio,
+                    preserveAspectRatio = if (fillsBubble || narrowCaptioned) false else preserveAspectRatio,
                     isSticker = isSticker,
                     onClick = { onMediaClick?.invoke(payloads[0]) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },

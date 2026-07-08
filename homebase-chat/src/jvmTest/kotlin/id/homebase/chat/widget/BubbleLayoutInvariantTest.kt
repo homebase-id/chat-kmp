@@ -286,17 +286,22 @@ class BubbleLayoutInvariantTest {
      * image + caption, for EVERY aspect ratio, must:
      *  1. leave NO bubble-background strip beside the image
      *     (media.left == bubble.left AND media.right == bubble.right), and
-     *  2. never collapse below Signal's captioned-image width
-     *     (media.width >= media_bubble_min_width_with_content = 240dp).
+     *  2. never collapse below Signal's captioned-image floor
+     *     (media.width >= media_bubble_min_width_with_content = 240dp), and
+     *  3. NOT shrink a naturally-wide image (landscape / panorama) down to that
+     *     floor — wide images keep their width.
      *
-     * These are the two failure modes of the media/caption width coupling:
+     * (1)+(2) are the two failure modes of the media/caption width coupling:
      *  - a height-capped image NARROWER than a wider caption → a strip beside it
      *    (the original #1028 report: TALL_PORTRAIT/SQUARE + BLOCK), and
      *  - a height-capped image so narrow the inline path clamps the caption to it →
      *    one character per line (TALL_STRIP + any caption; the follow-up report).
+     * (3) guards the requirement that fixing the narrow cases must not shrink
+     * landscape images (which were already fine) to 240dp.
      *
-     * Signal pins a captioned single image to media_bubble_max_width (== 240dp ==
-     * min_width_with_content), so both are covered by the same rule.
+     * The rule: 240dp is a FLOOR for narrow images (portrait / square-ish / strip);
+     * wider images keep their natural width. (Ported from Signal's
+     * media_bubble_min_width_with_content, but as a floor, not a hard cap.)
      */
     @Test
     fun singleImageWithCaption_noGap_everyAspectRatio() = runComposeUiTest {
@@ -320,6 +325,11 @@ class BubbleLayoutInvariantTest {
                     val mediaWidth = media.right.value - media.left.value
                     if (mediaWidth < captionedMinWidth - tol)
                         failures += "[${case.name}] captioned image collapsed (char-per-line risk): media.width=$mediaWidth < $captionedMinWidth"
+                    // A naturally-wide image must keep its width, not shrink to the floor.
+                    if ((aspect == Aspect.LANDSCAPE || aspect == Aspect.PANORAMA) &&
+                        mediaWidth <= captionedMinWidth + tol
+                    )
+                        failures += "[${case.name}] wide image was shrunk to the 240dp floor: media.width=$mediaWidth"
                 }
         assertTrue(
             failures.isEmpty(),

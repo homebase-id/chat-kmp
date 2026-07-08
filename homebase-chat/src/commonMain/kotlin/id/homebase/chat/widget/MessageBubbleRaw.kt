@@ -607,17 +607,7 @@ fun MessageBubbleRaw(
                 // textLayoutResult, so there is no last-line tuck to lose here:
                 // this is exactly the below-placement the custom Layout already
                 // falls back to when textLayoutResult is null.
-                // #1028: a single captioned image hugs Signal's captioned-image width
-                // (240dp) so the block caption wraps at the image width instead of widening
-                // the bubble past a height-capped image (gap). Galleries and text-only block
-                // messages keep their natural width.
-                Column(
-                    modifier = if (hasMedia && !isGallery) {
-                        Modifier.width(Dimens.MediaBubble.maxWidth)
-                    } else {
-                        Modifier.wrapContentWidth()
-                    }
-                ) {
+                Column(modifier = Modifier.wrapContentWidth()) {
                     authorName?.let {
                         Text(
                             text = it,
@@ -643,10 +633,14 @@ fun MessageBubbleRaw(
                         )
                     }
                     if (hasMedia) {
-                        // #964: a gallery fills the full bubble width edge-to-edge; the caption
-                        // below keeps its 12dp inset. A single captioned image is pinned to
-                        // 240dp by MediaMessage (#1028) and the Column above hugs that width.
-                        Box(modifier = if (isGallery) Modifier.fillMaxWidth() else Modifier) {
+                        // #964/#1028: in the block-caption path the bubble sizes to its widest
+                        // child (the caption), so the media fills that width edge-to-edge —
+                        // otherwise a height-capped narrow image (portrait, square, tall strip)
+                        // leaves a blue strip beside it. Applies to a gallery and a single
+                        // image; the caption below keeps its 12dp inset. (A narrow single image
+                        // in the INLINE path instead gets a 240dp min-width floor in
+                        // MediaMessage; landscape images keep their natural width in both.)
+                        Box(modifier = Modifier.fillMaxWidth()) {
                             MediaMessage(
                                 payloads = filteredPayloads.toPersistentList(),
                                 decryptedFiles = decryptedFiles,
@@ -668,7 +662,7 @@ fun MessageBubbleRaw(
                                 messageId = message.id,
                                 downloadingFiles = downloadingFiles,
                                 uploadStatus = uploadStatus,
-                                fillWidth = isGallery,
+                                fillWidth = true,
                                 hasCaption = true,
                             )
                         }
