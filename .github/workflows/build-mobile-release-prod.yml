@@ -211,21 +211,26 @@ jobs:
           # release link starts with a clean heap instead of inheriting 45+
           # minutes of accumulated daemon heap (build 27400310875 OOM).
           kotlin.native.disableCompilerDaemon=true
-          # 12g, not 8g: run 28881233018's GC log (kn-gc-46490.log) showed the
-          # heap pinned at ~8187-8189M against the old 8g cap for ~20 minutes
-          # across 9 consecutive Full GCs (30-165s each), each reclaiming
-          # near-zero bytes — G1 "GC overhead limit exceeded" thrashing, not a
-          # hard live-set wall. The final Full GC did free the heap down to
-          # 2935M, proving the peak working set (whole-program IR/analysis
-          # before final emission) is transient and reclaimable — it just
-          # needs more headroom than 8g to get through that peak without
-          # stalling out. 12g exceeds the runner's 7 GB RAM; macOS swap
-          # absorbed an 8g cap fine before (run 27414487423), so the extra 4g
-          # is expected to cost more wall-clock via swapping, not fail outright.
+          # 12g, chosen from a measured Xmx ladder with devirtualization disabled
+          # (see IOS_RELEASE_LINK_OOM.md): the link's peak live set is ~6.1-6.5 GB
+          # (was ~8.2 GB with devirt on — run 28881233018 OOM'd at 8g). 6g OOM'd
+          # outright (run 28931927413, pinned at 6.1G through 56 no-op Full GCs);
+          # 8g was green but grazed the ceiling (run 28934048254, one 38s Full GC
+          # at the peak, ~3 min slower than 12g); 12g ran with ZERO Full GCs (run
+          # 28927080827, 65-min job) and leaves headroom for the peak's growth
+          # (~+1 GB June->July as the app grew). 12g exceeds the runner's 7 GB
+          # RAM; macOS swap absorbs the excess.
           kotlin.native.jvmArgs=-Xmx12g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
+          # Skip the K/N LTO phase that owns the bulk of the release link's
+          # peak heap (~2 GB of live set, and growing with the app). Cuts the
+          # job from 86-99 min to ~65 min and ends the recurring OOM ratchet.
+          # Full evidence + safety analysis: IOS_RELEASE_LINK_OOM.md. The flag
+          # itself is applied by a gated freeCompilerArgs block in
+          # homebase-core/build.gradle.kts; only this workflow sets the property.
+          homebase.native.disableDevirtualization=true
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
-          tail -n 15 gradle.properties
+          tail -n 20 gradle.properties
 
       - name: Strip existing FFmpegKit signatures
         run: |
@@ -313,8 +318,10 @@ jobs:
 
       # Companion to "Apply iOS CI memory overrides": if the build OOMs again,
       # the heap dump + GC logs tell us what the live set actually is.
+      # always(), not failure(): the no-devirt experiment needs the GC log from a
+      # GREEN run to prove what the link's peak heap actually was.
       - name: Upload JVM OOM diagnostics
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: ios-jvm-oom-diagnostics
@@ -341,13 +348,17 @@ jobs:
       ## as FEED_IOS_APPSTORE_PROVISION_BASE64, and change export-options above
       ## to iosApp/options-appstore.plist when publishing.
 
+      # main/tags only: a workflow_dispatch on an experiment branch must never
+      # push its IPA to TestFlight.
       - name: Setup App Store Connect API key
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p "${{ runner.temp }}/private_keys"
           echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
             "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
 
       - name: Upload to TestFlight
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         run: |
           xcrun altool --upload-app \
             --type ios \
