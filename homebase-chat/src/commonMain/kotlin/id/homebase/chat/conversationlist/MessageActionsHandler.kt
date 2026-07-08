@@ -1106,7 +1106,9 @@ internal class MessageActionsHandler(
     private fun MessageUiModel.toReplyPreview() = ReplyPreview(
         replyUniqueId = id,
         authorOdinId = originalAuthor?.domainName ?: "null",
-        message = content.truncateToCodePoints(80),
+        // trim before truncate: leading newlines would otherwise render as a bare
+        // "…" in the quote and eat into the 80-codepoint budget.
+        message = content.trim().truncateToCodePoints(80),
         previewThumbnail = previewThumbnail,
         context = (messageContent as? MessageContent.Event)?.descriptor
             ?.let { ReplyContext.event(it.startUtcMs) },
