@@ -297,7 +297,7 @@ fun MessageBubbleRaw(
                 !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
     }
     val hasMedia = !filteredPayloads.isNullOrEmpty()
-    // #964: a 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
+    // A 2+-image album (MediaGallery) sitting above a caption renders full-bleed —
     // the images run edge-to-edge to the bubble, and only the caption below keeps its
     // 12dp inset (the messenger convention, matching this app's media-only bubbles). A
     // single image already renders edge-to-edge, so it is untouched.
@@ -633,13 +633,10 @@ fun MessageBubbleRaw(
                         )
                     }
                     if (hasMedia) {
-                        // #964/#1028: in the block-caption path the bubble sizes to its widest
-                        // child (the caption), so the media fills that width edge-to-edge —
-                        // otherwise a height-capped narrow image (portrait, square, tall strip)
-                        // leaves a blue strip beside it. Applies to a gallery and a single
-                        // image; the caption below keeps its 12dp inset. (A narrow single image
-                        // in the INLINE path instead gets a 240dp min-width floor in
-                        // MediaMessage; landscape images keep their natural width in both.)
+                        // In the block-caption path the bubble sizes to its widest child (the
+                        // caption), so the media fills that width edge-to-edge — otherwise a
+                        // height-capped narrow image leaves a strip beside it. Applies to both a
+                        // gallery and a single image; the caption below keeps its 12dp inset.
                         Box(modifier = Modifier.fillMaxWidth()) {
                             MediaMessage(
                                 payloads = filteredPayloads.toPersistentList(),
@@ -744,7 +741,7 @@ fun MessageBubbleRaw(
                                 )
                             }
                             if (hasMedia) {
-                                // #964: a gallery renders full-bleed (edge-to-edge). The
+                                // A gallery renders full-bleed (edge-to-edge). The
                                 // custom Layout below clamps the caption to the media width,
                                 // and the caption Row's own 12dp padding insets the text —
                                 // so the images reach the bubble edges with no strip beside
@@ -775,9 +772,8 @@ fun MessageBubbleRaw(
                                         // the media width, so there is no gap to fill — the
                                         // gallery renders full-bleed at its album width.
                                         fillWidth = false,
-                                        // #1028: a captioned single image is pinned to 240dp, so
-                                        // the caption-to-media-width clamp can't collapse a
-                                        // tall/tiny image's caption to one char per line.
+                                        // Floors a narrow single image to 240dp so the caption
+                                        // clamp below can't collapse it to one char per line.
                                         hasCaption = true,
                                     )
                                 }
@@ -913,12 +909,11 @@ fun MessageBubbleRaw(
                         val showMoreIndex = textIndex + 1
                         val infoIndex = showMoreIndex + 1
 
-                        // #1028: measure the media FIRST so a wide group-sender name (author,
-                        // index 0) can be clamped to the media width. Otherwise the name is
-                        // measured at full width and widens a captioned image's bubble past the
-                        // image, leaving a gap beside it (issue B). Clamped, the name ellipsizes
-                        // (maxLines=1) like Signal, so the bubble hugs the image. Each measurable
-                        // is still measured exactly once.
+                        // Measure the media FIRST so a wide group-sender name (author, index 0)
+                        // can be clamped to the media width — otherwise the name is measured at
+                        // full width and widens a captioned image's bubble past the image, leaving
+                        // a gap. Clamped, the name ellipsizes (maxLines=1). Each measurable is
+                        // still measured exactly once.
                         val mediaPlaceable =
                             if (hasMedia) measurables[mediaIndex].measure(constraints) else null
                         val mediaWidth = mediaPlaceable?.width ?: 0

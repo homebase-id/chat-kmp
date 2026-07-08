@@ -41,7 +41,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
- * #964 — chat-bubble layout regression suite.
+ * Chat-bubble layout regression suite.
  *
  * Renders [MessageBubbleRaw] on the JVM host renderer (`runComposeUiTest`, same as
  * [ConversationMessagePreviewTest] / [ReactionMenuTest]) across a matrix of
@@ -103,10 +103,9 @@ class BubbleLayoutInvariantTest {
         ),
     }
 
-    // #1028: the aspect-ratio dimension #964's suite was missing. The layout sizes
-    // off these descriptor pixels (no decode needed), so covering ratios is just
-    // parameterising pixelWidth/pixelHeight. TALL_PORTRAIT is the reported screenshot
-    // (a ~1080x2400 phone capture); it's the ratio that regressed.
+    // The aspect-ratio dimension the single-image suite was missing. The layout sizes off
+    // these descriptor pixels (no decode needed), so covering ratios is just parameterising
+    // pixelWidth/pixelHeight. TALL_PORTRAIT is the reported ~1080x2400 phone capture.
     private enum class Aspect(val w: Int, val h: Int) {
         // A near-1D strip. Height-capped it resolves to ~20dp wide; with a caption the
         // inline path used to clamp the text to that width → one character per line
@@ -115,7 +114,7 @@ class BubbleLayoutInvariantTest {
         TALL_PORTRAIT(1080, 2400),
         PORTRAIT(900, 1200),   // 3:4
         SQUARE(1000, 1000),    // 1:1
-        LANDSCAPE(1200, 900),  // 4:3 — the only ratio #964 tested
+        LANDSCAPE(1200, 900),  // 4:3
         PANORAMA(1920, 1080),  // 16:9
     }
 
@@ -194,7 +193,7 @@ class BubbleLayoutInvariantTest {
     // ---- tests ------------------------------------------------------------
 
     /**
-     * THE fix (#964, full-bleed). For every 2/3/4-image gallery that sits above a
+     * Full-bleed galleries. For every 2/3/4-image gallery that sits above a
      * caption the images run EDGE-TO-EDGE to the bubble — no blue strip beside them —
      * while the caption below keeps its own 12dp inset (the messenger convention,
      * matching this app's media-only bubbles):
@@ -283,26 +282,12 @@ class BubbleLayoutInvariantTest {
     }
 
     /**
-     * #1028 — THE aspect-ratio-complete guard the #964 suite was missing. A SINGLE
-     * image + caption, for EVERY aspect ratio, must:
-     *  1. leave NO bubble-background strip beside the image
-     *     (media.left == bubble.left AND media.right == bubble.right), and
-     *  2. never collapse below Signal's captioned-image floor
-     *     (media.width >= media_bubble_min_width_with_content = 240dp), and
-     *  3. NOT shrink a naturally-wide image (landscape / panorama) down to that
-     *     floor — wide images keep their width.
+     * A single image + caption, for every aspect ratio, must:
+     *  1. leave no bubble-background strip beside the image (media edges == bubble edges),
+     *  2. never collapse below Signal's 240dp captioned-image floor (char-per-line risk), and
+     *  3. not shrink a naturally-wide image (landscape / panorama) down to that floor.
      *
-     * (1)+(2) are the two failure modes of the media/caption width coupling:
-     *  - a height-capped image NARROWER than a wider caption → a strip beside it
-     *    (the original #1028 report: TALL_PORTRAIT/SQUARE + BLOCK), and
-     *  - a height-capped image so narrow the inline path clamps the caption to it →
-     *    one character per line (TALL_STRIP + any caption; the follow-up report).
-     * (3) guards the requirement that fixing the narrow cases must not shrink
-     * landscape images (which were already fine) to 240dp.
-     *
-     * The rule: 240dp is a FLOOR for narrow images (portrait / square-ish / strip);
-     * wider images keep their natural width. (Ported from Signal's
-     * media_bubble_min_width_with_content, but as a floor, not a hard cap.)
+     * 240dp is a floor for narrow images, not a hard cap.
      */
     @Test
     fun singleImageWithCaption_noGap_everyAspectRatio() = runComposeUiTest {
@@ -339,11 +324,9 @@ class BubbleLayoutInvariantTest {
     }
 
     /**
-     * #1028 issue B — a group message with a WIDE sender name must not widen a
-     * captioned image's bubble past the image, leaving a gap beside it. The name
-     * ellipsizes to the media width (maxLines=1), so the bubble hugs the image.
-     * Pre-fix the name was measured at full width → bubble = name width > media →
-     * gap; post-fix media.right == bubble.right.
+     * A group message with a wide sender name must not widen a captioned image's bubble past
+     * the image. The name ellipsizes to the media width (maxLines=1) so the bubble hugs the
+     * image; post-fix media.right == bubble.right.
      */
     @Test
     fun singleImageWithCaption_wideAuthorName_noGap() = runComposeUiTest {

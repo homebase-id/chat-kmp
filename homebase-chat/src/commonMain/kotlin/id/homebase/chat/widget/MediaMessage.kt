@@ -92,13 +92,12 @@ fun MediaMessage(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
-    /** #964: forwarded to [MediaGallery] so a 2+-image album stretches to the bubble width
-     *  in the caption path instead of leaving a gap. No effect on single media. */
+    /** Forwarded to [MediaGallery] so a 2+-image album stretches to the bubble width in the
+     *  caption path instead of leaving a gap. No effect on single media. */
     fillWidth: Boolean = false,
-    /** #1028: true when this message also carries a text caption. A captioned single image
-     *  is pinned to Signal's `media_bubble_max_width` (240dp) so the caption never collapses
-     *  to a sliver (char-per-line) and the image never leaves a gap beside it. No effect on
-     *  stickers, link-preview cards, or galleries. */
+    /** True when this message also carries a text caption, so a narrow single image is floored
+     *  to Signal's 240dp width — the caption can't collapse to char-per-line and the image can't
+     *  leave a gap. No effect on stickers, link-preview cards, or galleries. */
     hasCaption: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
@@ -131,16 +130,11 @@ fun MediaMessage(
                 } else {
                     modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 }
-                // #1028: keep a captioned image from resolving to a width that either leaves
-                // a gap beside it or (in the inline path, which clamps the caption to the media
-                // width) collapses the caption to one character per line.
-                //  - fillWidth (block-caption path): fill the bubble width and crop, so a
-                //    height-capped image reaches the caption edge (galleries do the same).
-                //  - other captions: floor the width at Signal's min_width_with_content (240dp)
-                //    ONLY for images narrower than that (portrait / square-ish / tall strips),
-                //    cropping to the height band. Wider images (landscape / panorama) keep
-                //    their natural width — they're already wide enough and must not shrink.
-                // Stickers and link-preview cards keep intrinsic sizing.
+                // A captioned image must not resolve to a width that leaves a gap beside it, or —
+                // in the inline path, which clamps the caption to the media width — collapses the
+                // caption to one char per line. The block-caption path fills and crops to the
+                // bubble width; the inline path floors a narrow image to 240dp. Landscape/panorama
+                // keep their natural width; stickers and link-preview cards keep intrinsic sizing.
                 val fillsBubble = fillWidth && !isSticker && !isLinkPreview
                 val aspect = remember(payloads) {
                     (payloads[0].thumbnails?.lastOrNull() ?: payloads[0].previewThumbnail)?.let { t ->
@@ -149,7 +143,7 @@ fun MediaMessage(
                         if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h else null
                     }
                 }
-                // Height-capped natural width falls below the floor only for narrow images.
+                // Height binds at the cap, so natural width is maxHeight * aspect — floor it only when < 240dp.
                 val narrowCaptioned = hasCaption && !fillWidth && !isSticker && !isLinkPreview &&
                     aspect != null &&
                     Dimens.MediaBubble.maxHeight.value * aspect <
@@ -160,7 +154,7 @@ fun MediaMessage(
                     narrowCaptioned ->
                         widthModifier.size(
                             width = Dimens.MediaBubble.minWidthWithContent,
-                            height = (Dimens.MediaBubble.minWidthWithContent.value / aspect!!).dp
+                            height = (Dimens.MediaBubble.minWidthWithContent.value / aspect).dp
                                 .coerceIn(Dimens.MediaBubble.minHeight, Dimens.MediaBubble.maxHeight),
                         )
                     else ->
