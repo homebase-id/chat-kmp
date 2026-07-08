@@ -122,7 +122,7 @@ fun ReplyPreviewBar(
         hasMultiplePayloads = hasMultiplePayloads,
     )
 
-    val previewText = contentLabel?.text ?: message.content.truncateToCodePoints(80)
+    val previewText = contentLabel?.text ?: message.content.trim().truncateToCodePoints(80)
 
     val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
