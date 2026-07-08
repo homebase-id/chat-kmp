@@ -39,9 +39,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -101,6 +103,10 @@ class LocationTrackUploaderService(
     private var lastFlushAttemptMs = 0L
     private var observerStarted = false
     private var deviceProfileEnsured = false
+    // One in-flight "wait for the drive to mount, then re-flush" waiter at a time. Set under
+    // flushMutex, cleared by the waiter itself. A benign re-arm race (the waiter clears it just as
+    // a fresh skip sets it) at worst launches a second idempotent waiter — not worth a lock.
+    private var awaitingMount = false
 
     private val _lastFlushTime = MutableStateFlow<Long?>(null)
     val lastFlushTime: StateFlow<Long?> = _lastFlushTime.asStateFlow()
@@ -179,6 +185,13 @@ class LocationTrackUploaderService(
             lastFlushAttemptMs = now
             if (!optionalDriveActivation.isActivated(locationLabeledDrive)) {
                 logSkip(reason) { "Flush skipped: Location add-on not activated (drive not mounted) reason=${reason ?: "periodic"}" }
+                // iOS-only race: a cold background wake (SLC relaunch / emergency-locate push) routes
+                // its GPS fix ~300ms BEFORE the drive-mount pipeline finishes, so this flush loses to
+                // the mount and — with the foreground-only ticker stopped — nothing retries and the
+                // point strands until the next foreground session. (Android's process stays warm, so
+                // its drive is already mounted and it never hits this.) Re-flush the instant the drive
+                // mounts. Harmless on Android/foreground: isActivated is already true, so we never arm.
+                armFlushOnMount(reason)
                 return
             }
             if (credentialsManager.getActiveCredentials() == null) {
@@ -222,6 +235,31 @@ class LocationTrackUploaderService(
                     .onFailure { logger.w(it) { "drainNow failed after flush" } }
             }
             refreshPendingCount()
+        }
+    }
+
+    /**
+     * Re-flush once the Location drive mounts, bounded by [MOUNT_WAIT_MS]. Closes the cold-wake
+     * race where a fix's flush ran before the mount pipeline finished (see the call site). The wait
+     * is a suspended coroutine on the app scope — it costs nothing while idle and is cancelled with
+     * the scope if the wake ends first (iOS suspends the process); the flush re-checks activation and
+     * credentials, so a spurious late mount can't upload for a logged-out identity.
+     */
+    private fun armFlushOnMount(reason: GpsRequestReason?) {
+        if (awaitingMount) return
+        awaitingMount = true
+        scope.launch {
+            try {
+                val mounted = withTimeoutOrNull(MOUNT_WAIT_MS) {
+                    optionalDriveActivation.isActivatedFlow(locationLabeledDrive).first { it }
+                }
+                if (mounted == true) {
+                    logger.i { "Location drive mounted — re-flushing buffered points reason=${reason ?: "periodic"}" }
+                    flush(reason)
+                }
+            } finally {
+                awaitingMount = false
+            }
         }
     }
 
@@ -527,6 +565,10 @@ class LocationTrackUploaderService(
         const val LOCATION_UPLOAD_PRIORITY = 0L
 
         const val MIN_FLUSH_INTERVAL_MS = 60_000L
+
+        /** Upper bound on the post-skip wait for the drive to mount (~300ms in practice). */
+        const val MOUNT_WAIT_MS = 15_000L
+
         const val RETENTION_MS = 7L * 24 * HOUR_MS
         const val DAY_MS = 24 * HOUR_MS
 
