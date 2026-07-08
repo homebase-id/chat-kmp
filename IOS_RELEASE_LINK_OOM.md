@@ -129,9 +129,12 @@ open with Eclipse MAT, look at the dominator tree). This is how every number
 in this document was obtained — keep it working.
 
 Related workflow hardening that rode along with this fix: the TestFlight
-upload steps are gated to `main`/tags, because `workflow_dispatch` on an
-experiment branch used to run them unconditionally and would have shipped an
-experimental IPA to testers.
+upload steps used to run unconditionally, so a `workflow_dispatch` on an
+experiment branch would have shipped an experimental IPA to testers. Now:
+**prod** uploads only from `main`/tags; **dev** uploads on nightlies always,
+and on manual dispatch per the `upload_to_testflight` checkbox (default on, so
+dispatching a feature branch to test it on the dev TestFlight app still works —
+untick it for experiment/CI-debug runs).
 
 ## If it OOMs again
 
