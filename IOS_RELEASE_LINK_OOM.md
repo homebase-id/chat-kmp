@@ -54,11 +54,14 @@ Two pieces, both CI-only:
    `homebase.native.disableDevirtualization=true`. Local builds, debug builds,
    and every other workflow are untouched.
 
-2. **`.github/workflows/build-mobile-release-prod.yml`** — the "Apply iOS CI
-   memory overrides" step appends the property (plus the existing memory
-   settings, still `-Xmx12g`) to `gradle.properties` on the runner.
+2. **`.github/workflows/build-mobile-release-prod.yml` and
+   `build-mobile-release-dev.yml`** — both workflows build the same iOS
+   release framework (prod on release dispatch/tags, dev on the nightly cron);
+   each one's "Apply iOS CI memory overrides" step appends the property (plus
+   the existing memory settings, still `-Xmx12g`) to `gradle.properties` on
+   the runner.
 
-To turn it back on: delete the property line from the workflow. Worth
+To turn it back on: delete the property line from the workflows. Worth
 re-testing if JetBrains makes the analysis memory-proportionate (track
 Kotlin/Native release notes for devirtualization/LTO memory work).
 
