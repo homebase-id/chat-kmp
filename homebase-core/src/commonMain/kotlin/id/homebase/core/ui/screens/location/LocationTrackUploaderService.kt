@@ -220,17 +220,18 @@ class LocationTrackUploaderService(
                     .onFailure { logger.e(it) { "ensureDeviceProfile failed" } }
                 logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize reason=${reason ?: "periodic"}" }
             }
-            var anyEnqueued = false
+            val outcomes = ArrayList<HourFlushOutcome>(hours.size + finalizeHours.size)
             for (hourBucket in hours + finalizeHours) {
                 runCatching { flushHour(hourBucket * HOUR_MS) }
-                    .onSuccess { enqueued -> anyEnqueued = anyEnqueued || enqueued }
+                    .onSuccess { outcomes.add(it) }
                     .onFailure { logger.e(it) { "flushHour($hourBucket) failed" } }
             }
-            if (anyEnqueued) {
+            if (shouldKickDrain(outcomes)) {
                 // Drain even without the websocket (#987): background wakes (push,
                 // PendingIntent batch, SLC relaunch) never connect the WS, so the normal
                 // enqueue kick declines offline and the row would strand until the next
                 // foreground connect. Equivalent to the normal kick when online.
+                // Refused hours kick too — see [shouldKickDrain].
                 runCatching { drainNow() }
                     .onFailure { logger.w(it) { "drainNow failed after flush" } }
             }
@@ -263,10 +264,9 @@ class LocationTrackUploaderService(
         }
     }
 
-    /** @return true when the hour was handed to the outbox (created or update-coalesced). */
-    private suspend fun flushHour(hourStartMs: Long): Boolean {
+    private suspend fun flushHour(hourStartMs: Long): HourFlushOutcome {
         val points = buffer.selectByTimeRange(hourStartMs, hourStartMs + HOUR_MS)
-        if (points.isEmpty()) return false
+        if (points.isEmpty()) return HourFlushOutcome.NoRows
 
         val uid = locationHourFileUid(deviceId.value, hourStartMs)
         val (headerJson, stored) = LocationTrackCodec.encodeHeader(deviceId.value, hourStartMs, points)
@@ -295,7 +295,7 @@ class LocationTrackUploaderService(
                     "mode=${if (existing == null) "create" else "update"} — rows stay buffered, will retry"
             }
         }
-        return enqueued
+        return if (enqueued) HourFlushOutcome.Enqueued else HourFlushOutcome.Refused
     }
 
     /**
@@ -587,6 +587,33 @@ internal fun shouldDeferBackgroundFlush(
     appForeground: Boolean,
     hasStaleUnuploaded: Boolean,
 ): Boolean = powerSaveMode && !appForeground && !hasStaleUnuploaded
+
+/** Outcome of flushing one hour bucket — the input to [shouldKickDrain]. */
+internal enum class HourFlushOutcome {
+    /** Handed to the outbox (created or update-coalesced). */
+    Enqueued,
+
+    /** The outbox declined the enqueue (e.g. replaceEnqueue's WouldStrandCreate guard) —
+     *  a pending row already in the outbox blocks this hour; rows stay buffered. */
+    Refused,
+
+    /** No rows for the hour (raced away between the hour scan and the flush). */
+    NoRows,
+}
+
+/**
+ * Whether [LocationTrackUploaderService.flush] should kick the forced outbox drain (#987).
+ * Enqueued is the obvious case. Refused kicks too: a refusal means a pending row is ALREADY
+ * sitting in the outbox blocking this hour (e.g. an un-sent create that an update may not
+ * replace) — and that blocking row is exactly what a forced drain sends. On a background wake
+ * with no push (iOS SLC relaunch, Android PendingIntent cold start) nothing else kicks the
+ * outbox, so gating the drain on Enqueued alone strands the blocking row until the next
+ * foreground connect — the #1018 production pileup ("refusing to replace a pending
+ * UploadNewFile" every few minutes for 16h). Cost of the extra kick is the same bounded
+ * fast-failing attempt as the Enqueued case. Pure for unit testing.
+ */
+internal fun shouldKickDrain(outcomes: List<HourFlushOutcome>): Boolean =
+    outcomes.any { it == HourFlushOutcome.Enqueued || it == HourFlushOutcome.Refused }
 
 /** What an outbox event means for the location point buffer. */
 internal enum class BufferAction {
