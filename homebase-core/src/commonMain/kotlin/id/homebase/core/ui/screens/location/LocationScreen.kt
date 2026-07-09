@@ -35,6 +35,7 @@ import id.homebase.resources.location_consent_text
 import id.homebase.resources.location_consent_title
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.core.util.getUriHandler
+import id.homebase.resources.location_dashboard_title
 import id.homebase.resources.location_history_title
 import id.homebase.resources.location_label
 import id.homebase.resources.location_menu_dashboard
@@ -196,7 +197,14 @@ fun LocationScreen(
             // No back arrow: Location is a top-level destination reached from the
             // bottom nav bar (which stays visible here), matching Vault/Moments.
             TopAppBar(
-                title = { Text(stringResource(MR.string.location_label)) },
+                title = {
+                    Text(
+                        stringResource(
+                            if (showDashboard) MR.string.location_dashboard_title
+                            else MR.string.location_label,
+                        ),
+                    )
+                },
                 actions = {
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(
