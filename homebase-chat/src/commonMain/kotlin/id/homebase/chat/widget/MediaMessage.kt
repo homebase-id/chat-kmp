@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,9 +92,13 @@ fun MediaMessage(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
-    /** #964: forwarded to [MediaGallery] so a 2+-image album stretches to the bubble
-     *  width in the caption path instead of leaving a gap. No effect on single media. */
+    /** Forwarded to [MediaGallery] so a 2+-image album stretches to the bubble width in the
+     *  caption path instead of leaving a gap. No effect on single media. */
     fillWidth: Boolean = false,
+    /** True when this message also carries a text caption, so a narrow single image is floored
+     *  to Signal's 240dp width — the caption can't collapse to char-per-line and the image can't
+     *  leave a gap. No effect on stickers, link-preview cards, or galleries. */
+    hasCaption: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -124,6 +130,39 @@ fun MediaMessage(
                 } else {
                     modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 }
+                // A captioned image must not resolve to a width that leaves a gap beside it, or —
+                // in the inline path, which clamps the caption to the media width — collapses the
+                // caption to one char per line. The block-caption path fills and crops to the
+                // bubble width; the inline path floors a narrow image to 240dp. Landscape/panorama
+                // keep their natural width; stickers and link-preview cards keep intrinsic sizing.
+                val fillsBubble = fillWidth && !isSticker && !isLinkPreview
+                val aspect = remember(payloads) {
+                    (payloads[0].thumbnails?.lastOrNull() ?: payloads[0].previewThumbnail)?.let { t ->
+                        val w = t.pixelWidth
+                        val h = t.pixelHeight
+                        if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h else null
+                    }
+                }
+                // Height binds at the cap, so natural width is maxHeight * aspect — floor it only when < 240dp.
+                val narrowCaptioned = hasCaption && !fillWidth && !isSticker && !isLinkPreview &&
+                    aspect != null &&
+                    Dimens.MediaBubble.maxHeight.value * aspect <
+                    Dimens.MediaBubble.minWidthWithContent.value
+                val sizedModifier = when {
+                    fillsBubble ->
+                        widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
+                    narrowCaptioned ->
+                        widthModifier.size(
+                            width = Dimens.MediaBubble.minWidthWithContent,
+                            height = (Dimens.MediaBubble.minWidthWithContent.value / aspect).dp
+                                .coerceIn(Dimens.MediaBubble.minHeight, Dimens.MediaBubble.maxHeight),
+                        )
+                    else ->
+                        widthModifier.heightIn(
+                            min = Dimens.MediaBubble.minHeight,
+                            max = Dimens.MediaBubble.maxHeight,
+                        )
+                }
                 MediaItem(
                     payload = payloads[0],
                     fileId = fileId,
@@ -132,12 +171,9 @@ fun MediaMessage(
                         ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                     decryptedFiles = decryptedFiles,
                     keyHeader = keyHeader,
-                    modifier = widthModifier.heightIn(
-                        min = Dimens.MediaBubble.minHeight,
-                        max = Dimens.MediaBubble.maxHeight
-                    ),
+                    modifier = sizedModifier,
                     imageSize = ImageSize.THUMB_MEDIUM,
-                    preserveAspectRatio = preserveAspectRatio,
+                    preserveAspectRatio = if (fillsBubble || narrowCaptioned) false else preserveAspectRatio,
                     isSticker = isSticker,
                     onClick = { onMediaClick?.invoke(payloads[0]) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },

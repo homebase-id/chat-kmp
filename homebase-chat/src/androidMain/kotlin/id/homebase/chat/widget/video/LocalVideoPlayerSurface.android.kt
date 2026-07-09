@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -32,6 +33,10 @@ actual fun LocalVideoPlayerSurface(
         }
     }
 
+    // Keep the screen awake only while actually playing (#1025).
+    val playing = remember(filePath) { mutableStateOf(false) }
+    KeepScreenOn(playing.value)
+
     DisposableEffect(filePath) {
         val listener = object : Player.Listener {
             override fun onRenderedFirstFrame() {
@@ -43,10 +48,14 @@ actual fun LocalVideoPlayerSurface(
                     player.pause()
                 }
             }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing.value = isPlaying
+            }
         }
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
+            playing.value = false
             player.release()
         }
     }
@@ -82,6 +91,10 @@ actual fun TrimmableVideoPlayerSurface(
             // controls are drawn by the trim screen; PlayerView below has them off.
         }
     }
+
+    // Keep the screen awake only while this clip is actively playing (#1025),
+    // driven off the external play flag.
+    KeepScreenOn(isPlaying)
 
     // Rebuild MediaItem clip whenever the trim range changes; ExoPlayer applies it
     // on prepare without re-buffering the underlying source.

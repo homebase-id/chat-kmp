@@ -8,6 +8,11 @@ on:
 
     # Allow manual triggering from GitHub UI
     workflow_dispatch:
+      inputs:
+        upload_to_testflight:
+          description: "Upload the IPA to TestFlight (untick for experiment/CI-debug runs)"
+          type: boolean
+          default: true
 
 #  push:
 #    branches: [main]
@@ -217,9 +222,15 @@ jobs:
           # exceeded" thrashing). 12g exceeds the runner's 7 GB RAM; macOS
           # swap absorbs it.
           kotlin.native.jvmArgs=-Xmx12g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/Users/runner/work/jvm-dumps -Xlog:gc*:file=/Users/runner/work/jvm-dumps/kn-gc-%p.log
+          # Skip the K/N LTO phase that owns the bulk of the release link's
+          # peak heap (~2 GB of live set, and growing with the app). Matches
+          # build-mobile-release-prod.yml; evidence + safety analysis in
+          # IOS_RELEASE_LINK_OOM.md. Applied by a gated freeCompilerArgs block
+          # in homebase-core/build.gradle.kts.
+          homebase.native.disableDevirtualization=true
           EOF
           echo "Appended CI memory overrides to gradle.properties:"
-          tail -n 15 gradle.properties
+          tail -n 20 gradle.properties
 
       - name: Strip existing FFmpegKit signatures
         run: |
@@ -282,8 +293,10 @@ jobs:
 
       # Companion to "Apply iOS CI memory overrides": if the build OOMs again,
       # the heap dump + GC logs tell us what the live set actually is.
+      # always(), not failure(): green runs' GC logs (~90 KB) are the baseline
+      # that makes the next OOM diagnosable without a repro.
       - name: Upload JVM OOM diagnostics
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: ios-jvm-oom-diagnostics
@@ -298,13 +311,19 @@ jobs:
           name: ios-app
           path: iosApp.ipa
 
+      # Nightlies always upload; manual dispatches are controlled by the
+      # upload_to_testflight checkbox (default ON — branch dispatches to test a
+      # feature build on the dev TestFlight app keep working; untick it for
+      # experiment/CI-debug runs). The prod workflow is stricter: main/tags only.
       - name: Setup App Store Connect API key
+        if: github.event_name == 'schedule' || inputs.upload_to_testflight == true
         run: |
           mkdir -p "${{ runner.temp }}/private_keys"
           echo "${{ secrets.APPSTORE_API_PRIVATE_KEY }}" > \
             "${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_API_KEY_ID }}.p8"
 
       - name: Upload to TestFlight
+        if: github.event_name == 'schedule' || inputs.upload_to_testflight == true
         run: |
           xcrun altool --upload-app \
             --type ios \

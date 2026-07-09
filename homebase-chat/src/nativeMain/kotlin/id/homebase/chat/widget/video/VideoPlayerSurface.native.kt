@@ -97,6 +97,7 @@ import platform.Foundation.NSUUID
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.create
 import platform.Foundation.writeToURL
+import platform.UIKit.UIApplication
 import platform.darwin.NSObjectProtocol
 import kotlin.time.measureTimedValue
 
@@ -141,6 +142,9 @@ actual fun VideoPlayerSurface(
     // startup sweep is the backstop.
     var tempFilePath by remember(data) { mutableStateOf<String?>(null) }
     val notificationObservers = remember(data) { mutableListOf<NSObjectProtocol>() }
+    // Natural end-of-clip flag: at end AVPlayer stays state=Playing with
+    // paused=false, so the keep-awake below needs this to release on finish.
+    var ended by remember(data) { mutableStateOf(false) }
 
     DisposableEffect(data) {
         onDispose {
@@ -224,11 +228,22 @@ actual fun VideoPlayerSurface(
     // on > 0 so the initial composition doesn't fire a spurious seek.
     LaunchedEffect(replayToken) {
         if (replayToken > 0) {
+            ended = false
             (state as? VpsState.Playing)?.player?.let { player ->
                 player.seekToTime(CMTimeMakeWithSeconds(0.0, 600))
                 player.play()
             }
         }
+    }
+
+    // Keep the screen awake only while this player is actively playing. Because
+    // idleTimerDisabled is app-global, the onDispose ALWAYS clears it — so a
+    // paused/ended/dismissed player can never leave it pinned. The DisposableEffect
+    // body and onDispose both run on the composition (main) thread.
+    val keepAwake = state is VpsState.Playing && !paused && !ended
+    DisposableEffect(keepAwake) {
+        UIApplication.sharedApplication.idleTimerDisabled = keepAwake
+        onDispose { UIApplication.sharedApplication.idleTimerDisabled = false }
     }
 
     LaunchedEffect(data) {
@@ -279,7 +294,7 @@ actual fun VideoPlayerSurface(
                         kickAssetMetadataLoad(asset, fileId = data.fileId.toString())
                         val playerItem = AVPlayerItem(asset = asset)
                         attachHlsDiagnostics(playerItem, notificationObservers)
-                        observeEndOfPlayback(playerItem, notificationObservers, onEnded)
+                        observeEndOfPlayback(playerItem, notificationObservers) { ended = true; onEnded() }
                         val player = if (useInlineOptimizations) {
                             playerPool.acquire().also {
                                 it.replaceCurrentItemWithPlayerItem(playerItem)
@@ -327,7 +342,7 @@ actual fun VideoPlayerSurface(
                             AVPlayer(uRL = mp4Url)
                         }
                         player.currentItem?.let { item ->
-                            observeEndOfPlayback(item, notificationObservers, onEnded)
+                            observeEndOfPlayback(item, notificationObservers) { ended = true; onEnded() }
                         }
                         if (useInlineOptimizations) {
                             // Same `.readyToPlay` gate as the HLS path —
