@@ -626,7 +626,6 @@ fun MessageTextFieldCompact(
         ) {
             Column {
                 if (isDesktopOrWeb()) {
-                    Spacer(modifier = Modifier.height(8.dp))
                     RichTextEditorButtons(
                         modifier = Modifier.fillMaxWidth(),
                         state = state,
