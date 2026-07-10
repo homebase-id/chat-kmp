@@ -57,6 +57,14 @@ class FfmpegVersionBannerTest {
     }
 
     @Test
+    fun strips_martinriedl_distributor_url() {
+        // The martin-riedl macOS builds append their site URL to the token; the
+        // About screen should show the trimmed git-describe part (#1035).
+        val banner = "ffmpeg version N-122386-g1461dfcde7-https://www.martin-riedl.de Copyright (c) 2000-2026"
+        assertEquals("N-122386-g1461dfcde7", parseFfmpegVersionBanner(banner))
+    }
+
+    @Test
     fun returns_null_for_blank_input() {
         assertNull(parseFfmpegVersionBanner(null))
         assertNull(parseFfmpegVersionBanner(""))

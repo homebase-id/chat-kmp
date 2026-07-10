@@ -83,15 +83,15 @@ internal fun parseFfmpegVersionBanner(output: String?): String? {
 
 /**
  * Trims distributor/build noise from a raw ffmpeg version token so the About
- * screen reads consistently across desktop platforms — gyan.dev's Windows
- * git-snapshot blob ("<date>-git-<hash>-essentials_build-www.gyan.dev") and
- * johnvansickle's "-static" suffix both surface a clean token, while release
- * strings ("n6.0", "6.1.1") and other git-describe forms ("N-122320-g…") pass
+ * screen reads consistently across desktop platforms — gyan.dev's
+ * "-essentials_build-www.gyan.dev", martin-riedl's "-https://www.martin-riedl.de"
+ * and johnvansickle's "-static" all surface a clean token, while release
+ * strings ("n6.0", "6.1.1") and bare git-describe forms ("N-122320-g…") pass
  * through untouched (#1035).
  */
 internal fun normalizeFfmpegVersion(raw: String): String {
     var v = raw
-    for (marker in listOf("-essentials_build", "-full_build", "-www.")) {
+    for (marker in listOf("-essentials_build", "-full_build", "-www.", "-https://", "-http://")) {
         val i = v.indexOf(marker)
         if (i > 0) v = v.substring(0, i)
     }
