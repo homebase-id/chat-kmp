@@ -661,12 +661,6 @@ private fun MomentsFeedList(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        // Instagram-style: feed is sorted newest-first by the service and laid
-        // out top-down, so the newest moment sits at the top (index 0) and
-        // older moments are reached by scrolling down. The default
-        // firstVisibleItemIndex=0 lands on the newest on first frame. A new
-        // moment prepends at index 0; keyed items hold the reader's scroll
-        // anchor, so it waits above rather than shoving the viewport down.
     ) {
         items(moments, key = { it.id.toString() }) { moment ->
             val isActive = playingMomentId == moment.id
