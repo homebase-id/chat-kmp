@@ -180,6 +180,9 @@ the flexibility.
 - Rename "Vetted" → "My circles" / "Visible to my circles" everywhere
 - Update blue check meaning and contact list indicators
 - Improve confirm connection modal with "Any of my circles" option
+- Stamp `connectionReviewedAt` in the contact's localAppData when the confirm
+  dialog completes (see section 8) — required as soon as confirming with zero
+  circles is possible, so the Connected state survives across the user's devices
 
 **Phase 2**
 
@@ -191,7 +194,55 @@ the flexibility.
 
 - Add per-circle override capability for fields and photos
 
-## 8. Open Questions for Discussion
+## 8. Implementation Note: Recording the Review
+
+The "reviewed" fact needs explicit, synced storage — it cannot be derived.
+
+**Why it can't be derived.** Today the blue check comes from the server-computed
+`vetted` flag: connected AND member of the "Confirmed Connections" system circle
+(`RedactedIdentityConnectionRegistration.vetted`, issue #919). This proposal abolishes
+that system circle. And a **Connected** contact has, by definition, zero circle
+grants — so there is nothing left to infer "reviewed" from. Without explicit storage,
+Connected and New would be indistinguishable.
+
+**Where it lives.** Record it in the contact file's **localAppData JSON**
+(`fileMetadata.localAppData.content`) on the contacts drive — the same pattern
+conversations already use (`ConversationLocalAppDataJson` with `lastReadTime` etc.).
+A new `ContactLocalAppDataJson`:
+
+```kotlin
+@Serializable
+data class ContactLocalAppDataJson(
+    /**
+     * Stamped when the user completes the confirm-connection dialog,
+     * whether or not any circles were selected. Null = never reviewed.
+     */
+    val connectionReviewedAt: UnixTimeUtc? = null,
+)
+```
+
+localAppData is stored on the owner's server-side file header and syncs to **all of
+the owner's clients/devices**, but is **never transferred to the peer** — which is
+exactly the right privacy boundary: "I have reviewed you" is my private state.
+
+**Deriving the three contact-list states:**
+
+| State       | Condition                                                    |
+|-------------|--------------------------------------------------------------|
+| New         | connected, `connectionReviewedAt == null`, no circle grants  |
+| Connected   | `connectionReviewedAt != null`, no circle grants             |
+| In circles  | ≥ 1 circle grant (implies reviewed)                          |
+
+**Migration / legacy:**
+
+- Existing contacts with `vetted == true` (Confirmed Connections membership): treat as
+  reviewed on read, and backfill `connectionReviewedAt` opportunistically.
+- Contacts with circle grants but no stamp (e.g. circles granted from another surface):
+  treat as reviewed — membership is itself evidence of review.
+- Removing someone from their last circle requires **no localAppData change**:
+  `connectionReviewedAt` persists, so they land in Connected, not New.
+
+## 9. Open Questions for Discussion
 
 1. ~~Should "Any of my circles" be the default selection when someone opens the Select
    circles dialog, or should nothing be pre-selected?~~ **Largely resolved** by the
