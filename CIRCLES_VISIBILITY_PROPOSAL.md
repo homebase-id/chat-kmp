@@ -26,18 +26,19 @@ special photo for one circle) without adding complexity for normal use.
 
 - Anyone can see your **Public** information.
 - When someone is introduced to you, they start as a lightweight connection.
-- **Every connection starts as "New" until confirmed** — introduced,
+- **Every connection starts as "New" until reviewed** — introduced,
   auto-connected, and plain direct connections alike (today's "Unvetted" bucket
-  maps 1:1 onto New). Being connected alone never promotes a contact; the only
-  path out of New is the confirm-connection dialog.
-- You **review** them: confirming the connection is the review. Optionally, you add
-  them to one or more circles at the same time.
-  → Confirming is the moment they become a "real" connection in your network.
+  maps 1:1 onto New). Being connected alone never moves a contact; the only path
+  out of New is completing the review.
+- You **review** them. A review is **triage, not endorsement** — it records that
+  you looked and what you decided. It has four honest outcomes: add them to
+  circles, keep them as a plain connection, disconnect, or block.
 - The circles you choose determine **what they can see** of your profile and what
   special access they get.
-- **Circles are optional.** You can confirm someone without adding them to any
-  circle: they become **Connected** — you can chat, but they see only your public
-  profile. This is a perfectly normal outcome of a review, not a dead end.
+- **Circles are optional.** Keeping someone as a plain connection makes them
+  **Connected** — you can chat, they see only your public profile, and nothing
+  about the relationship changed: the connection was exactly as real before you
+  reviewed it. The review only records your decision.
 - There is **no special "Vetted" system circle**. Being in any of your circles
   implies reviewed and connected — but the converse doesn't hold: a contact can be
   reviewed and connected while being in no circles at all.
@@ -55,7 +56,7 @@ check); the badge is evidence of access granted, not the only evidence of review
 | Vetted     | My circles / Circle members            | Primary replacement                    |
 | Unvetted   | New connections / Introduced           | Clearer that action is needed          |
 | Blue check | Circle badge or "In circles" indicator | Shows membership                       |
-| —          | **Connected**                          | Reviewed & confirmed, in no circles; sees public info only, chat works |
+| —          | **Connected**                          | Reviewed, kept as a plain connection; sees public info only, chat works |
 | —          | **Any of my circles**                  | New easy default in visibility picker  |
 
 ## 4. Proposed Changes by Screen
@@ -70,7 +71,7 @@ check); the badge is evidence of access granted, not the only evidence of review
 - Contact rows communicate one of **three states**:
   - **New** — connected (introduced, auto-connected, or direct) but not yet
     reviewed. Gets a prominent **"Review & Add to circles"** action.
-  - **Connected** — reviewed and confirmed, in no circles. No pills, no badge (or a
+  - **Connected** — reviewed, kept as a plain connection. No pills, no badge (or a
     subtle neutral check). Sees public info only.
   - **In circles** — small **colored circle pills/tags** (e.g. "Friends", "Family")
     instead of (or next to) the blue check.
@@ -126,18 +127,36 @@ Combine the explanatory text and circle selection into **one clean modal**:
 >
 > Cancel
 
-**Circle selection is optional.** Deselecting everything is a legitimate choice —
-the primary button adapts to make the outcome explicit:
+**Two completion paths — both stamp the review:**
 
-- ≥ 1 circle selected → **"Confirm & Add to Circles"**
-- nothing selected → **"Confirm connection"** with helper text: *"They'll see your
-  public profile only. You can add them to circles anytime."*
+- **Confirm** (primary) — applies the selected circles *and* the connection
+  defaults: whatever confirming enables today beyond circle grants (e.g. follow
+  their feed by default, accept introductions they relay, identity verification —
+  see open question 5). These defaults are shown as **visible toggles in the
+  modal**, not hidden side effects — hidden side effects are how "Vetted" got
+  confusing in the first place.
+- **Keep as connection** (secondary, quieter) — no circles, all defaults off. For
+  the contact you'll talk to but don't want to endorse: the landlord, the seller,
+  the introduction you're lukewarm about. Helper text: *"They'll see your public
+  profile only. You can add them to circles anytime."*
+
+Both buttons complete the review (stamp `connectionReviewedAt`, section 8) and move
+the contact out of New — into **In circles** or **Connected** respectively.
+
+**Disconnect / Block** stay available as tertiary actions (overflow menu or footer
+link) — a review that can only end in approval isn't a review.
+
+**Is the second button worth having?** Only if confirmation genuinely carries
+defaults. Two buttons that differ merely in preset checkbox states would be silly —
+the user can uncheck things themselves. If the answer to open question 5 is that
+confirming grants nothing beyond the selected circles, collapse to a single neutral
+**Done** button and let the visible toggles speak for themselves.
 
 Declining circles does **not** block chatting — the connection is what enables chat;
 circles only govern extra profile visibility and permissions.
 
-This makes the consequence of confirming very clear: "You are choosing what this person
-can see."
+This makes the consequence of the review very clear: "You are choosing what this
+person can see and what happens by default."
 
 ### D. Circles Tab
 
@@ -218,8 +237,9 @@ A new `ContactLocalAppDataJson`:
 @Serializable
 data class ContactLocalAppDataJson(
     /**
-     * Stamped when the user completes the confirm-connection dialog,
-     * whether or not any circles were selected. Null = never reviewed.
+     * Stamped when the user completes the connection review — via either
+     * Confirm or Keep as connection — whether or not any circles were
+     * selected. Null = never reviewed.
      */
     val connectionReviewedAt: UnixTimeUtc? = null,
 )
@@ -230,10 +250,10 @@ the owner's clients/devices**, but is **never transferred to the peer** — whic
 exactly the right privacy boundary: "I have reviewed you" is my private state.
 
 **Deriving the three contact-list states.** Put explicitly: **all connections are
-New until confirmed**. Today's "Unvetted" bucket — connected but unconfirmed, whether
+New until reviewed**. Today's "Unvetted" bucket — connected but unconfirmed, whether
 auto-connected, introduced, or a plain direct connection — maps 1:1 onto New. The
-only promotion out of New is completing the confirm dialog (which stamps
-`connectionReviewedAt`); the legacy carve-outs below are the sole exceptions.
+only promotion out of New is completing the review dialog via either button (which
+stamps `connectionReviewedAt`); the legacy carve-outs below are the sole exceptions.
 
 | State       | Condition                                                    |
 |-------------|--------------------------------------------------------------|
@@ -254,16 +274,23 @@ only promotion out of New is completing the confirm dialog (which stamps
 
 1. ~~Should "Any of my circles" be the default selection when someone opens the Select
    circles dialog, or should nothing be pre-selected?~~ **Largely resolved** by the
-   adaptive confirm button: pre-selecting "Any of my circles" is safe because
-   deselecting everything is an explicit, labeled path ("Confirm connection" —
-   public only). Remaining detail: does the *field visibility* dialog also default
-   to "Any of my circles"? (Proposed: yes.)
+   explicit secondary path: pre-selecting "Any of my circles" is safe because
+   declining is its own labeled button ("Keep as connection" — public only).
+   Remaining detail: does the *field visibility* dialog also default to "Any of my
+   circles"? (Proposed: yes.)
 2. Do we want to show a small visibility pill next to each field in the main Edit
    Profile view (e.g. "Public" or "3 circles")?
 3. Should we allow users to create circles directly from the confirm connection flow,
    or only from the Circles tab?
 4. Should Connected (no circles) contacts show a subtle neutral indicator, or no
    indicator at all? (The circle badge is reserved for circle membership either way.)
+5. **What does confirming actually grant server-side today, beyond Confirmed
+   Connections membership?** Candidates: identity verification
+   (`hasVerificationHash`), accepting future introductions relayed by this person,
+   following their feed by default. The two-button design in section 4C stands or
+   falls with this answer — if confirming grants nothing beyond the selected
+   circles, collapse Confirm / Keep as connection into a single neutral **Done**
+   button with visible toggles.
 
 ---
 
