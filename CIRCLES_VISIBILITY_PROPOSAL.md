@@ -26,14 +26,23 @@ special photo for one circle) without adding complexity for normal use.
 
 - Anyone can see your **Public** information.
 - When someone is introduced to you, they start as a lightweight connection.
-- You **review** them and add them to one or more circles.
-  → This is the moment they become a "real" connection in your network.
+- You **review** them: confirming the connection is the review. Optionally, you add
+  them to one or more circles at the same time.
+  → Confirming is the moment they become a "real" connection in your network.
 - The circles you choose determine **what they can see** of your profile and what
   special access they get.
-- There is **no special "Vetted" system circle**. Being in any of your circles =
-  reviewed and connected.
+- **Circles are optional.** You can confirm someone without adding them to any
+  circle: they become **Connected** — you can chat, but they see only your public
+  profile. This is a perfectly normal outcome of a review, not a dead end.
+- There is **no special "Vetted" system circle**. Being in any of your circles
+  implies reviewed and connected — but the converse doesn't hold: a contact can be
+  reviewed and connected while being in no circles at all.
+- Removing someone from their last circle drops them back to **Connected** — not to
+  "New", as if you'd never reviewed them.
 
-**Blue check / indicator** on contacts = This person is in one or more of my circles.
+**Blue check / circle badge** on contacts = This person is in one or more of my
+circles. Connected-but-circleless contacts carry no badge (or a subtle neutral
+check); the badge is evidence of access granted, not the only evidence of review.
 
 ## 3. Recommended Terminology Changes
 
@@ -42,6 +51,7 @@ special photo for one circle) without adding complexity for normal use.
 | Vetted     | My circles / Circle members            | Primary replacement                    |
 | Unvetted   | New connections / Introduced           | Clearer that action is needed          |
 | Blue check | Circle badge or "In circles" indicator | Shows membership                       |
+| —          | **Connected**                          | Reviewed & confirmed, in no circles; sees public info only, chat works |
 | —          | **Any of my circles**                  | New easy default in visibility picker  |
 
 ## 4. Proposed Changes by Screen
@@ -53,15 +63,18 @@ special photo for one circle) without adding complexity for normal use.
   - **All**
   - **New** (with count badge when there are introductions to review)
   - Your actual circles as filter chips (Friends, Family, Beer Drinking Buddies, etc.)
-- In contact rows:
-  - Show small **colored circle pills/tags** (e.g. "Friends", "Family") instead of
-    (or next to) the blue check.
-  - New/introduced contacts get a prominent **"Review & Add to circles"** action.
+- Contact rows communicate one of **three states**:
+  - **New** — introduced, not yet reviewed. Gets a prominent
+    **"Review & Add to circles"** action.
+  - **Connected** — reviewed and confirmed, in no circles. No pills, no badge (or a
+    subtle neutral check). Sees public info only.
+  - **In circles** — small **colored circle pills/tags** (e.g. "Friends", "Family")
+    instead of (or next to) the blue check.
 - Tapping a contact shows their public profile + clear call-to-action to add them to
   circles.
 
-**Result:** The list immediately communicates "who I've actually reviewed and put into
-circles".
+**Result:** The list immediately communicates "who I've reviewed, and what access
+I've granted them".
 
 ### B. Edit Profile + Field Visibility
 
@@ -108,6 +121,16 @@ Combine the explanatory text and circle selection into **one clean modal**:
 > **[ Confirm & Add to Circles ]**  (big primary button)
 >
 > Cancel
+
+**Circle selection is optional.** Deselecting everything is a legitimate choice —
+the primary button adapts to make the outcome explicit:
+
+- ≥ 1 circle selected → **"Confirm & Add to Circles"**
+- nothing selected → **"Confirm connection"** with helper text: *"They'll see your
+  public profile only. You can add them to circles anytime."*
+
+Declining circles does **not** block chatting — the connection is what enables chat;
+circles only govern extra profile visibility and permissions.
 
 This makes the consequence of confirming very clear: "You are choosing what this person
 can see."
@@ -170,12 +193,18 @@ the flexibility.
 
 ## 8. Open Questions for Discussion
 
-1. Should "Any of my circles" be the default selection when someone opens the Select
-   circles dialog, or should nothing be pre-selected?
+1. ~~Should "Any of my circles" be the default selection when someone opens the Select
+   circles dialog, or should nothing be pre-selected?~~ **Largely resolved** by the
+   adaptive confirm button: pre-selecting "Any of my circles" is safe because
+   deselecting everything is an explicit, labeled path ("Confirm connection" —
+   public only). Remaining detail: does the *field visibility* dialog also default
+   to "Any of my circles"? (Proposed: yes.)
 2. Do we want to show a small visibility pill next to each field in the main Edit
    Profile view (e.g. "Public" or "3 circles")?
 3. Should we allow users to create circles directly from the confirm connection flow,
    or only from the Circles tab?
+4. Should Connected (no circles) contacts show a subtle neutral indicator, or no
+   indicator at all? (The circle badge is reserved for circle membership either way.)
 
 ---
 
