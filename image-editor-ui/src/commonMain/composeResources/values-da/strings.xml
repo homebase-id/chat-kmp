@@ -19,4 +19,18 @@
     <string name="crop_loading">Indlæser…</string>
     <string name="crop_error_load">Kunne ikke indlæse billede</string>
     <string name="crop_error_save">Kunne ikke gemme billede</string>
+
+    <string name="draw_title">Tegn</string>
+    <string name="draw_action_save">Gem</string>
+    <string name="draw_action_back">Tilbage</string>
+    <string name="draw_action_undo">Fortryd</string>
+    <string name="draw_action_redo">Annullér fortryd</string>
+    <string name="draw_action_reset">Ryd</string>
+    <string name="draw_brush_pen">Pen</string>
+    <string name="draw_brush_highlighter">Overstregningstusch</string>
+    <string name="draw_brush_blur">Slør</string>
+    <string name="draw_thickness_label">Tykkelse</string>
+    <string name="draw_color_label">Farve</string>
+    <string name="draw_error_load">Kunne ikke indlæse billedet</string>
+    <string name="draw_error_save">Kunne ikke gemme billedet</string>
 </resources>
