@@ -26,6 +26,10 @@ special photo for one circle) without adding complexity for normal use.
 
 - Anyone can see your **Public** information.
 - When someone is introduced to you, they start as a lightweight connection.
+- **Every connection starts as "New" until confirmed** — introduced,
+  auto-connected, and plain direct connections alike (today's "Unvetted" bucket
+  maps 1:1 onto New). Being connected alone never promotes a contact; the only
+  path out of New is the confirm-connection dialog.
 - You **review** them: confirming the connection is the review. Optionally, you add
   them to one or more circles at the same time.
   → Confirming is the moment they become a "real" connection in your network.
@@ -64,8 +68,8 @@ check); the badge is evidence of access granted, not the only evidence of review
   - **New** (with count badge when there are introductions to review)
   - Your actual circles as filter chips (Friends, Family, Beer Drinking Buddies, etc.)
 - Contact rows communicate one of **three states**:
-  - **New** — introduced, not yet reviewed. Gets a prominent
-    **"Review & Add to circles"** action.
+  - **New** — connected (introduced, auto-connected, or direct) but not yet
+    reviewed. Gets a prominent **"Review & Add to circles"** action.
   - **Connected** — reviewed and confirmed, in no circles. No pills, no badge (or a
     subtle neutral check). Sees public info only.
   - **In circles** — small **colored circle pills/tags** (e.g. "Friends", "Family")
@@ -225,7 +229,11 @@ localAppData is stored on the owner's server-side file header and syncs to **all
 the owner's clients/devices**, but is **never transferred to the peer** — which is
 exactly the right privacy boundary: "I have reviewed you" is my private state.
 
-**Deriving the three contact-list states:**
+**Deriving the three contact-list states.** Put explicitly: **all connections are
+New until confirmed**. Today's "Unvetted" bucket — connected but unconfirmed, whether
+auto-connected, introduced, or a plain direct connection — maps 1:1 onto New. The
+only promotion out of New is completing the confirm dialog (which stamps
+`connectionReviewedAt`); the legacy carve-outs below are the sole exceptions.
 
 | State       | Condition                                                    |
 |-------------|--------------------------------------------------------------|
