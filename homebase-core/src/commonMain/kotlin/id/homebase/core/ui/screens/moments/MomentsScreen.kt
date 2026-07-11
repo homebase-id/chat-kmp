@@ -661,11 +661,6 @@ private fun MomentsFeedList(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        // Chat-style: feed is sorted newest-first by the service, and
-        // reverseLayout pins the newest item to the bottom of the
-        // viewport. Initial scroll lands on the newest moment; older
-        // moments are reached by scrolling up.
-        reverseLayout = true,
     ) {
         items(moments, key = { it.id.toString() }) { moment ->
             val isActive = playingMomentId == moment.id
