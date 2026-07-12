@@ -418,12 +418,16 @@ fun MessageTextFieldExpanded(
                             (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
                     ) {
                         when {
-                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                            // Shift+Enter inserts a newline; every other Enter/NumPadEnter
+                            // (incl. Cmd/Ctrl+Enter) sends. Match NumPadEnter too — macOS can
+                            // report Return as NumPadEnter, so Key.Enter alone never fired (#1043).
+                            (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                keyEvent.isShiftPressed -> {
                                 state.addTextAfterSelection("\n")
                                 true
                             }
 
-                            keyEvent.key == Key.Enter -> {
+                            keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
                                 sendMessage()
                                 true
                             }
@@ -692,12 +696,17 @@ fun MessageTextFieldCompact(
                                             (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
                                     ) {
                                         when {
-                                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                                            // Shift+Enter inserts a newline; every other
+                                            // Enter/NumPadEnter (incl. Cmd/Ctrl+Enter) sends.
+                                            // Match NumPadEnter too — macOS can report Return as
+                                            // NumPadEnter, so Key.Enter alone never fired (#1043).
+                                            (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                                keyEvent.isShiftPressed -> {
                                                 state.addTextAfterSelection("\n")
                                                 true
                                             }
 
-                                            keyEvent.key == Key.Enter -> {
+                                            keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
                                                 onSendMessage()
                                                 true
                                             }
