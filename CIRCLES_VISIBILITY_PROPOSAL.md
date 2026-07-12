@@ -159,6 +159,16 @@ tinted pills (e.g. `waving_hand`, `chat_bubble`, `workspaces` / `shield`):
 literal circle. For option B, 🤝 reads "we've met" and 🛡️ carries trust without
 the officialdom of a checkmark.
 
+**Rendering rule (in-app):** the three state indicators are **monochrome vector
+icons tinted in Homebase blue** (Material `waving_hand`, `chat_bubble`, a plain
+circle outline) shown in a **fixed trailing slot** on the right of each contact
+row — emoji glyphs can't be recolored (color fonts ignore text color), so the
+states are icons, not characters. **User-chosen circle emoji** (next subsection
+of section 4) render as normal **full-color emoji** on the row's second line.
+The two are therefore different visual species — a user assigning 💬 to a circle
+causes no ambiguity, so nothing needs reserving in the emoji picker. The emoji
+forms above remain the shorthand for docs and marketing.
+
 > The rest of this document uses **option A's names as working terms** (New, Chat,
 > Circle). Substitute Known/Trusted if option B wins — the underlying states are
 > identical.
@@ -184,12 +194,20 @@ the officialdom of a checkmark.
   - **All**
   - **New** (with count badge when there are introductions to review)
   - Your actual circles as filter chips (Friends, Family, Beer Drinking Buddies, etc.)
-- Contact rows communicate one of **three states**:
+- Contact rows communicate one of **three states** via the **monochrome state
+  icon in a fixed trailing (right) slot**, tinted in Homebase blue (rendering
+  rule, section 3):
   - **New** 👋 — connected (introduced, auto-connected, or direct) but not yet
     reviewed. Gets a prominent **"Review"** action.
-  - **Chat** 💬 — reviewed, kept chat-only. No circle pills. Sees public info only.
-  - **Circle** ⭕ — small **colored circle pills/tags** (e.g. "Friends", "Family")
-    instead of (or next to) the blue check.
+  - **Chat** 💬 — reviewed, kept chat-only. Second line empty. Sees public info
+    only.
+  - **Circle** ⭕ — the row's **second line** shows the circles themselves:
+    - circles with a user-assigned emoji show it as a normal **full-color emoji**
+      (🧑‍🧑‍🧒‍🧒 📍 🍻 🤝) — compact, personal, instantly readable to its owner;
+    - circles without one fall back to a small name pill, optionally shortened
+      **"Hebrew style"** (vowel-dropped): Family → `fmly`, Buddies → `bdds`.
+      The full name always appears in roomy contexts (circle cards, the review
+      modal, tooltips) and is always the accessibility label.
 - Tapping a contact shows their public profile + clear call-to-action to review the contact (so it's no longer new).
 - The contact book lists **personal** contacts only. Audience-circle members
   (e.g. feed subscribers) never appear in this list — they're managed in the app
@@ -299,6 +317,10 @@ person can see and what happens by default."
   - Circle icon/name
   - Member count + small avatar preview
   - One-line description of what the circle shares
+- Circles can optionally carry a **user-chosen emoji** (picker in create/edit —
+  reuse the reaction picker). It shows on the card and everywhere the circle
+  appears compactly: contact rows' second line, filter chips, the review modal's
+  checkbox list (emoji + name there).
 - Keep special circles (Emergency Location Access) visually distinct.
 - "New connections" appears as a top item with a count.
 - Big **+ Create Circle** button at the bottom.
@@ -343,14 +365,17 @@ the flexibility.
   completes (see section 8) — required as soon as a chat-only review outcome
   is possible, so the Chat state survives across the user's devices
 - Coordinate with the in-progress app-owned circles backend so the
-  `PERSONAL | AUDIENCE` circle designation lands in that schema now (section 8) —
-  retrofitting it after circles ship is far costlier
+  `PERSONAL | AUDIENCE` circle designation **and the optional per-circle `emoji`
+  field** land in that schema now (section 8) — retrofitting after circles ship
+  is far costlier
 
 **Phase 2**
 
 - Update field visibility picker in Edit Profile to Public / My circles + Select
   circles dialog
 - Improve Circles tab with cards and explainer
+- Optional per-circle emoji: picker in create/edit, full-color emoji in contact
+  rows / filter chips / review modal, vowel-dropped pill fallback
 
 **Phase 3**
 
@@ -430,6 +455,21 @@ user-created circles defaulting to `PERSONAL`. An enum, not a boolean — histor
 (the Confirmed Connections system circle) says new circle kinds appear, and a
 spare enum case is cheaper than a schema migration. Clients derive contact states
 exclusively from `PERSONAL` circles.
+
+### Per-circle emoji
+
+An optional `emoji: String?` on the same circle registration record — one backend
+ask together with the designation enum. Owning apps may preset it for their
+circles (📡 for Subscribers). Implementation cautions:
+
+- User emoji are often **multi-codepoint ZWJ sequences** (🧑‍🧑‍🧒‍🧒) — store and
+  render the full string, never substring it (the Strings & Unicode rules apply).
+- Desktop JVM emoji fonts can lag the newest sequences — the name-pill fallback
+  doubles as the can't-render fallback.
+- The vowel-dropping abbreviation is **Latin-script-specific**; for other scripts
+  fall back to codepoint truncation (`truncateToCodePoints`). The full circle
+  name is always the `contentDescription` — screen readers pronounce ZWJ
+  sequences unpredictably, so the emoji is never the semantic label.
 
 ### Audience circles at scale
 
