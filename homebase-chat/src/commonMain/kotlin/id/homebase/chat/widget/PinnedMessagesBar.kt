@@ -26,8 +26,10 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.resources.MR
 import id.homebase.resources.chat_pinned_bar_count
+import id.homebase.resources.chat_pinned_bar_cycle
 import id.homebase.resources.chat_pinned_bar_open_list
 import id.homebase.resources.chat_pinned_icon
 import kotlinx.collections.immutable.ImmutableList
@@ -53,7 +55,7 @@ fun PinnedMessagesBar(
     val current = pinnedMessages[index]
 
     val sender = current.displayName.ifBlank { current.originalAuthor?.domainName.orEmpty() }
-    val body = current.content.truncateToCodePoints(80)
+    val body = current.pinnedPreviewBody().truncateToCodePoints(80)
     // Built outside Text() so Konsist's "no hardcoded strings in Composables" passes.
     val previewText = if (sender.isBlank()) body else "$sender: $body"
     val countLabel = stringResource(MR.string.chat_pinned_bar_count, index + 1, total)
@@ -63,7 +65,9 @@ fun PinnedMessagesBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .clickable { onUiAction(ConversationListUiAction.CyclePinnedBar) }
+                .clickable(onClickLabel = stringResource(MR.string.chat_pinned_bar_cycle)) {
+                    onUiAction(ConversationListUiAction.CyclePinnedBar)
+                }
                 .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -108,3 +112,19 @@ fun PinnedMessagesBar(
         HorizontalDivider()
     }
 }
+
+/**
+ * One-line preview body for the pinned bar/panel (#887). The auto-pinned kinds
+ * (Poll/Event/Groodle/Location) carry no plain-text body — their text lives in the
+ * descriptor — so [MessageUiModel.content] is empty for exactly the messages the bar
+ * exists to surface. Pull the descriptor text for those; fall back to the plain body
+ * for normal messages (and for a parse-failed typed descriptor). Shared by both the
+ * collapsed bar and the "all pins" sheet (same package, no import needed).
+ */
+fun MessageUiModel.pinnedPreviewBody(): String = when (val c = messageContent) {
+    is MessageContent.Poll -> c.descriptor?.question
+    is MessageContent.Event -> c.descriptor?.title
+    is MessageContent.Groodle -> c.descriptor?.title
+    is MessageContent.Location -> c.descriptor?.let { it.caption?.takeIf(String::isNotBlank) ?: it.address }
+    else -> null
+}?.takeIf { it.isNotBlank() } ?: content

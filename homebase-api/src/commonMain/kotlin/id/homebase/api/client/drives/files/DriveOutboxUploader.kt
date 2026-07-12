@@ -340,19 +340,24 @@ class DriveOutboxUploader(
         Logger.d(tag = "MarkAsRead") {
             "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} hasRequestVersionTag=${request.versionTag != null}"
         }
-        // Falling back to versionTag=null when both the request and the local header
-        // are missing causes the server to reject with VersionTagMismatch and the
-        // outbox to retry for ~48h. Treat the missing local file as a permanent
-        // failure (NotFoundException is dropped by OutboxSync.isPermanentFailure).
-        val versionTag = request.versionTag
-            ?: fileProvider.getFileHeader(request.file.targetDrive.alias, Uuid.parse(request.file.fileId))
-                ?.fileMetadata?.localAppData?.versionTag?.toString()
-            ?: run {
-                Logger.w(tag = "MarkAsRead") {
-                    "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} — no version tag in request and local file gone"
-                }
-                throw NotFoundException()
+        // Mirror updateLocalMetadataContent: drop ONLY when the file itself is gone
+        // from the server. A null versionTag is legitimate for the FIRST localAppData
+        // write on a file — fresh chat MESSAGE files have never had localAppData
+        // written, so their localAppData.versionTag is null and the server treats the
+        // write as a create. The pinned-messages bar (#887) is the first feature to
+        // tag individual message files (conversations already carry a localAppData
+        // versionTag from read-state), so it was the first to hit — and be silently
+        // dropped by — the old "null versionTag ⇒ NotFound" guard, which conflated a
+        // missing versionTag with a missing file.
+        val header = fileProvider.getFileHeader(
+            request.file.targetDrive.alias, Uuid.parse(request.file.fileId)
+        ) ?: run {
+            Logger.w(tag = "MarkAsRead") {
+                "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} — local file no longer present"
             }
+            throw NotFoundException()
+        }
+        val versionTag = request.versionTag ?: header.fileMetadata.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataTags(
             file = request.file,
             localAppData = LocalAppData(versionTag = versionTag, tags = request.tags)

@@ -1871,7 +1871,7 @@ private fun PinnedMessagesSheet(
                     items(pinnedMessages, key = { it.id }) { message ->
                         val sender = message.displayName
                             .ifBlank { message.originalAuthor?.domainName.orEmpty() }
-                        val body = message.content.truncateToCodePoints(80)
+                        val body = message.pinnedPreviewBody().truncateToCodePoints(80)
                         val previewText = if (sender.isBlank()) body else "$sender: $body"
                         Row(
                             modifier = Modifier

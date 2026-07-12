@@ -20,6 +20,8 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.groodle.GroodleVote
+import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
@@ -54,10 +56,12 @@ class ChatMessageStream(
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
     /**
-     * Auto-pin hook (#887). Wired in DI to [id.homebase.chat.services.ChatMessageActionService.pinMessage];
-     * a settable hook (like [isConversationLeft]) avoids a circular DI dependency
-     * (ActionService → MessageLookup → ChatMessageStream). No-op until wired —
-     * auto-pin simply doesn't run until the session is authenticated.
+     * Auto-pin hook (#887). Wired at construction in DI to
+     * [id.homebase.chat.services.ChatMessageActionService.pinMessage]; a settable
+     * hook (like [isConversationLeft]) avoids a circular DI dependency
+     * (ActionService → MessageLookup → ChatMessageStream). Wired at construction —
+     * NOT in onPostAuthenticated, which is dropped on a warm relaunch / session
+     * restore and left auto-pin permanently no-op. No-op only in tests that skip DI.
      */
     var autoPinTypedMessage: suspend (messageId: Uuid, dependencyUniqueId: Uuid?) -> Unit =
         { _, _ -> }
@@ -500,17 +504,7 @@ class ChatMessageStream(
             }
             if (!autoPinHandled.add(msg.id)) continue
 
-            val shouldPin = when (val content = msg.messageContent) {
-                is MessageContent.Poll,
-                is MessageContent.Event,
-                is MessageContent.Groodle -> true
-                is MessageContent.Location -> {
-                    val until = content.descriptor?.liveShareUntilMs
-                    until != null && now < until
-                }
-                else -> false
-            }
-            if (!shouldPin) continue
+            if (!shouldAutoPin(msg.messageContent, msg.ownReactions, now)) continue
 
             val dependency = if (msg.isPendingSend) msg.id else null
             try {
@@ -843,4 +837,37 @@ class ChatMessageStream(
 sealed interface ChatMessagesData {
     data object Initializing : ChatMessagesData
     data class Messages(val window: MessageWindow) : ChatMessagesData
+}
+
+/**
+ * Auto-pin decision for #887, extracted so the actionability guards are unit-testable.
+ *
+ * True only when a freshly-seen typed message is still actionable, so a re-delivery
+ * via BatchReceived — a peer's reaction/edit, or a fresh device's first sighting — can
+ * NOT resurrect a pin the user already dismissed by voting or by the event/share
+ * ending. [ChatMessageStream.autoPinHandled] is per-device and in-memory, so it can't
+ * carry that decision across devices or restarts; the durable signal is the message's
+ * own state. A null (parse-failed) descriptor is left unpinned — we can neither preview
+ * nor age it. [nowMs] is epoch-ms; [ownReactions] are the current user's decoded vote
+ * codes (`_p0`, `_1Y`).
+ */
+internal fun shouldAutoPin(
+    content: MessageContent?,
+    ownReactions: List<String>,
+    nowMs: Long,
+): Boolean = when (content) {
+    is MessageContent.Poll -> content.descriptor?.let {
+        PollVote.ownVotes(ownReactions, it.options.size).isEmpty()
+    } ?: false
+    is MessageContent.Groodle -> content.descriptor?.let {
+        GroodleVote.myVotes(ownReactions, it.slots.size, it.allowMaybe).isEmpty()
+    } ?: false
+    is MessageContent.Event -> content.descriptor?.let {
+        nowMs <= (it.endUtcMs ?: (it.startUtcMs + 3_600_000L))
+    } ?: false
+    is MessageContent.Location -> {
+        val until = content.descriptor?.liveShareUntilMs
+        until != null && nowMs < until
+    }
+    else -> false
 }

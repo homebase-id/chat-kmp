@@ -558,13 +558,6 @@ val appModule = module {
                         ?.conversationState.let { it == ConversationState.Left || it == ConversationState.Removed }
                 }
 
-                // Auto-pin (#887) freshly arrived/sent typed messages. Settable hook
-                // breaks the ActionService → MessageLookup → ChatMessageStream cycle.
-                val chatMessageActionService = get<ChatMessageActionService>()
-                get<ChatMessageStream>().autoPinTypedMessage = { messageId, dependencyUniqueId ->
-                    chatMessageActionService.pinMessage(messageId, dependencyUniqueId)
-                }
-
                 // region Recovery: missing or deleted conversation file
                 val conversationService = get<ConversationService>()
                 conversationStream.onRecoverConversation = { conversationId, originalAuthor ->
@@ -693,7 +686,22 @@ val appModule = module {
     // emits after successful group creation, ConversationListViewModel collects and
     // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
     singleOf(::PostCreateIntroductionPreflightBus)
-    singleOf(::ChatMessageStream)
+    single {
+        ChatMessageStream(
+            get(), get(), get(), get(), get(), get(), get(), get(),
+        ).also { stream ->
+            // #887: wire auto-pin at construction, NOT in onPostAuthenticated. That
+            // post-auth block is deferred and frequently never runs on a warm
+            // relaunch / session-restore (the AuthCC promoteToForeground race), which
+            // left autoPinTypedMessage a no-op for the whole session — auto-pin
+            // silently did nothing while manual pin still worked. Resolving
+            // ChatMessageActionService lazily *inside* the lambda keeps the
+            // ActionService → MessageLookup → ChatMessageStream construction cycle broken.
+            stream.autoPinTypedMessage = { messageId, dependencyUniqueId ->
+                get<ChatMessageActionService>().pinMessage(messageId, dependencyUniqueId)
+            }
+        }
+    }
     single<MessageLookup> { get<ChatMessageStream>() }
     singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
