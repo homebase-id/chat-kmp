@@ -123,6 +123,7 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
+import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
@@ -136,6 +137,7 @@ import id.homebase.resources.chat_message_emoji
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
+import id.homebase.resources.chat_message_paste_image
 import id.homebase.resources.chat_message_processing
 import id.homebase.resources.chat_message_record_video
 import id.homebase.resources.chat_markdown_blockquote
@@ -399,10 +401,22 @@ fun MessageTextFieldExpanded(
         } else {
             Modifier
         }
+        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
         RichTextEditor(
             state = state,
             modifier = Modifier.fillMaxWidth()
                 .then(pasteModifier)
+                .then(
+                    if (onPasteImage != null)
+                        Modifier.pasteImageContextMenuItem(
+                            label = pasteImageLabel,
+                            enabled = true,
+                        ) {
+                            // spike: sync reader; Task 2 swaps to suspend readClipboardImage()
+                            getImageFromClipboard()?.let { onPasteImage.invoke(it) }
+                        }
+                    else Modifier
+                )
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
                     if (focusState.isFocused) {
@@ -674,11 +688,23 @@ fun MessageTextFieldCompact(
                         } else {
                             Modifier
                         }
+                        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
                         RichTextEditor(
                             state = state,
                             modifier = Modifier
                                 .weight(1f)
                                 .then(pasteModifier)
+                                .then(
+                                    if (onPasteImage != null)
+                                        Modifier.pasteImageContextMenuItem(
+                                            label = pasteImageLabel,
+                                            enabled = true,
+                                        ) {
+                                            // spike: sync reader; Task 2 swaps to suspend readClipboardImage()
+                                            getImageFromClipboard()?.let { onPasteImage.invoke(it) }
+                                        }
+                                    else Modifier
+                                )
                                 .focusRequester(focusRequester)
                                 .onFocusChanged { focusState ->
                                     isKeyboardFocused = focusState.isFocused
