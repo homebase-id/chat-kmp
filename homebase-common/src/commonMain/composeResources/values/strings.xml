@@ -1287,6 +1287,7 @@
     <!-- Location add-on -->
     <string name="location_label">Location</string>
     <string name="location_dashboard_title">Location Dashboard</string>
+    <string name="location_settings_title">Location Settings</string>
     <string name="location_home_subtitle">Your private location history</string>
     <string name="location_onboarding_title">Your places, only yours</string>
     <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you've been — stored on your own drive, visible to no one but you.</string>
@@ -1316,7 +1317,7 @@
     <string name="location_status_never">Never</string>
     <string name="location_menu_more">More options</string>
     <string name="location_menu_find_device">Find device</string>
-    <string name="location_menu_setup">Location setup</string>
+    <string name="location_menu_setup">Settings</string>
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>

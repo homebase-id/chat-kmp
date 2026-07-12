@@ -1287,6 +1287,7 @@
     <!-- Location add-on -->
     <string name="location_label">Lokation</string>
     <string name="location_dashboard_title">Lokations-dashboard</string>
+    <string name="location_settings_title">Lokationsindstillinger</string>
     <string name="location_home_subtitle">Din private lokationshistorik</string>
     <string name="location_onboarding_title">Dine steder, kun dine</string>
     <string name="location_onboarding_body_1">Lokation fører en privat, krypteret historik over, hvor du har været — gemt på dit eget drev og kun synlig for dig.</string>
@@ -1316,7 +1317,7 @@
     <string name="location_status_never">Aldrig</string>
     <string name="location_menu_more">Flere muligheder</string>
     <string name="location_menu_find_device">Find enhed</string>
-    <string name="location_menu_setup">Lokationsopsætning</string>
+    <string name="location_menu_setup">Indstillinger</string>
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Lokationshistorik</string>
     <string name="location_devices_section">Find min enhed</string>
