@@ -5,7 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.diagnostics.LastKnownServerIp
 import id.homebase.api.client.diagnostics.NetworkDiagnostics
+import id.homebase.api.client.diagnostics.ServerIpStore
 import id.homebase.api.client.diagnostics.runNetworkDiagnostics
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
@@ -16,7 +18,6 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.config.locationLabeledDrive
-import id.homebase.core.diagnostics.NetworkDiagnosticsPreferences
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
@@ -36,7 +37,7 @@ class DeveloperMenuViewModel(
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
-    private val networkDiagnosticsPreferences: NetworkDiagnosticsPreferences,
+    private val serverIpStore: ServerIpStore,
 ) : ViewModel() {
 
     companion object {
@@ -52,6 +53,12 @@ class DeveloperMenuViewModel(
         DeveloperMenuUiState(allowTenBitVideo = userPreferences.allowTenBitVideo)
     )
     val uiState: StateFlow<DeveloperMenuUiState> = _uiState.asStateFlow()
+
+    init {
+        // Always surface the production-captured last-known-good IP when the panel opens, so it's
+        // visible without running the probe (confirms ServerIpCapture is working).
+        refreshLastKnownGoodIp()
+    }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
         when (action) {
@@ -201,11 +208,11 @@ class DeveloperMenuViewModel(
                     sendEvent(DeveloperMenuUiEvent.Error("No active identity — log in first"))
                     return@launch
                 }
-                val stored = networkDiagnosticsPreferences.getLastKnownIp(host)
+                // Read-only here: production code captures the last-known-good IP on every
+                // validated connect (ServerIpCapture); the panel just exercises the ladder.
+                val stored = serverIpStore.getLastKnownIp(host)
+                _uiState.update { it.copy(lastKnownGoodIp = stored) }
                 val result = runNetworkDiagnostics(host, stored?.ip)
-                result.capturedIp?.let { ip ->
-                    networkDiagnosticsPreferences.setLastKnownIp(host, ip, Clock.System.now().toEpochMilliseconds())
-                }
                 _uiState.update { it.copy(networkDiagnostics = result) }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = "NetDiag") { "Network diagnostics failed" }
@@ -213,6 +220,14 @@ class DeveloperMenuViewModel(
             } finally {
                 _uiState.update { it.copy(isRunningNetworkDiagnostic = false) }
             }
+        }
+    }
+
+    private fun refreshLastKnownGoodIp() {
+        viewModelScope.launch {
+            val host = credentialsManager.getActiveDomain()?.domainName ?: return@launch
+            val stored = serverIpStore.getLastKnownIp(host)
+            _uiState.update { it.copy(lastKnownGoodIp = stored) }
         }
     }
 
@@ -278,6 +293,7 @@ class DeveloperMenuViewModel(
 data class DeveloperMenuUiState(
     val allowTenBitVideo: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
+    val lastKnownGoodIp: LastKnownServerIp? = null,
     val networkDiagnostics: NetworkDiagnostics? = null,
     val uiEvent: DeveloperMenuUiEvent? = null,
 )

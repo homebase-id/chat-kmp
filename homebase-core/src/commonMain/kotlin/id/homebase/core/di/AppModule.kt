@@ -78,8 +78,8 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.api.client.diagnostics.ServerIpCapture
 import id.homebase.core.contactbook.ContactBookPreferences
-import id.homebase.core.diagnostics.NetworkDiagnosticsPreferences
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
@@ -245,8 +245,6 @@ val appModule = module {
     // drive; writes through the api-layer ContactsProvider. No optional-drive
     // activation — the drive is always mounted.
     single { ContactBookPreferences(get()) }
-    // Last-known owner-server IP for the dev-menu Network Status probe's DNS-override fallback.
-    single { NetworkDiagnosticsPreferences(get()) }
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
     // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
@@ -522,6 +520,9 @@ val appModule = module {
                 // coroutine, wiping a just-received peer at cold reopen (#1072). Logout clears it
                 // in-stream via SessionEnded, so no clear is needed on this path.
                 get<LiveLocationReceiveStore>()
+                // Arm the last-known-good server-IP capture bridge (its init sets the global
+                // registry the Android OkHttp EventListener forwards validated connects to).
+                get<ServerIpCapture>()
                 // Emergency-retrieved peer location history is memory-only and per-identity —
                 // clear any prior identity's retrievals (same in-stream SessionEnded backstop).
                 get<EmergencyLocateStore>().reset()

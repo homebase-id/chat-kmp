@@ -1216,6 +1216,11 @@
     <string name="dev_menu_run_network_diagnostics">Kør netværksdiagnostik</string>
     <string name="dev_menu_network_copy">Kopiér diagnostik</string>
     <string name="dev_menu_network_captive_portal">Sandsynligvis en captive portal — en wifi-loginside opfanger forespørgsler.</string>
+    <string name="dev_menu_network_rung_system_dns">System-DNS</string>
+    <string name="dev_menu_network_rung_doh">DNS-over-HTTPS (1.1.1.1)</string>
+    <string name="dev_menu_network_rung_last_ip">Sidst kendte IP</string>
+    <string name="dev_menu_network_last_good_ip">Sidst kendte gode IP: %1$s</string>
+    <string name="dev_menu_network_last_good_ip_none">ingen registreret endnu</string>
     <string name="dev_menu_force_sync">Gennemtving fuld synkronisering</string>
     <string name="dev_menu_clear_data">Ryd alle data</string>
     <string name="dev_menu_test_notification">Test rig notifikation</string>

@@ -43,9 +43,12 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat_kmp.homebase_common.BuildConfig
+import id.homebase.api.client.diagnostics.LastKnownServerIp
 import id.homebase.api.client.diagnostics.NetworkDiagnostics
 import id.homebase.api.client.diagnostics.ProbeStage
 import id.homebase.api.client.diagnostics.ProbeStatus
+import id.homebase.api.client.diagnostics.ResolutionRung
+import id.homebase.api.client.diagnostics.ResolutionSource
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.ui.screens.help.HelpClickableRow
 import id.homebase.core.ui.screens.help.HelpSectionHeader
@@ -61,6 +64,11 @@ import id.homebase.resources.dev_menu_crash_confirm_title
 import id.homebase.resources.dev_menu_force_sync
 import id.homebase.resources.dev_menu_network_captive_portal
 import id.homebase.resources.dev_menu_network_copy
+import id.homebase.resources.dev_menu_network_last_good_ip
+import id.homebase.resources.dev_menu_network_last_good_ip_none
+import id.homebase.resources.dev_menu_network_rung_doh
+import id.homebase.resources.dev_menu_network_rung_last_ip
+import id.homebase.resources.dev_menu_network_rung_system_dns
 import id.homebase.resources.dev_menu_run_network_diagnostics
 import id.homebase.resources.dev_menu_section_crashlytics
 import id.homebase.resources.dev_menu_section_network
@@ -76,6 +84,7 @@ import id.homebase.resources.dev_menu_trigger_test_crash
 import id.homebase.resources.dev_menu_trigger_test_crash_description
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -205,6 +214,7 @@ fun DeveloperMenuUi(
             // Network Status Section — layered DNS/TCP/TLS/ping probe (issue #1078)
             NetworkStatusSection(
                 isRunning = uiState.isRunningNetworkDiagnostic,
+                lastKnownGoodIp = uiState.lastKnownGoodIp,
                 diagnostics = uiState.networkDiagnostics,
                 onRun = { onAction(DeveloperMenuUiAction.RunNetworkDiagnostics) },
                 onCopy = { snapshot ->
@@ -290,6 +300,7 @@ fun DeveloperMenuUi(
 @Composable
 private fun NetworkStatusSection(
     isRunning: Boolean,
+    lastKnownGoodIp: LastKnownServerIp?,
     diagnostics: NetworkDiagnostics?,
     onRun: () -> Unit,
     onCopy: (String) -> Unit,
@@ -301,6 +312,21 @@ private fun NetworkStatusSection(
                 label = stringResource(MR.string.dev_menu_run_network_diagnostics),
                 showChevron = false,
                 onClick = onRun,
+            )
+
+            // Always visible — the production-captured last-known-good IP, so it's confirmable
+            // without running the probe.
+            val ipValue = if (lastKnownGoodIp != null) {
+                val now = Clock.System.now().toEpochMilliseconds()
+                "${lastKnownGoodIp.ip} (${formatAge(now - lastKnownGoodIp.resolvedAtMs)})"
+            } else {
+                stringResource(MR.string.dev_menu_network_last_good_ip_none)
+            }
+            Text(
+                text = stringResource(MR.string.dev_menu_network_last_good_ip, ipValue),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             if (isRunning) {
@@ -324,7 +350,7 @@ private fun NetworkStatusSection(
                         style = MaterialTheme.typography.titleSmall,
                     )
 
-                    d.stages.forEach { stage -> NetworkStageRow(stage) }
+                    d.rungs.forEach { rung -> NetworkRungBlock(rung) }
 
                     if (d.captivePortalSuspected) {
                         Text(
@@ -355,10 +381,40 @@ private fun NetworkStatusSection(
     }
 }
 
+/** One resolution-ladder rung: a source header (resolve status + IP), then its connect stages. */
+@Composable
+private fun NetworkRungBlock(rung: ResolutionRung) {
+    val rungLabel = when (rung.source) {
+        ResolutionSource.SystemDns -> stringResource(MR.string.dev_menu_network_rung_system_dns)
+        ResolutionSource.DoH -> stringResource(MR.string.dev_menu_network_rung_doh)
+        ResolutionSource.LastKnownIp -> stringResource(MR.string.dev_menu_network_rung_last_ip)
+    }
+    val timing = rung.resolveMs?.let { " · ${it}ms" }.orEmpty()
+    val header = "$rungLabel   ${rung.resolveStatus}$timing"
+    val headerColor = when (rung.resolveStatus) {
+        ProbeStatus.OK -> MaterialTheme.colorScheme.primary
+        ProbeStatus.FAIL -> MaterialTheme.colorScheme.error
+        ProbeStatus.SKIPPED -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = header,
+            style = MaterialTheme.typography.titleSmall,
+            color = headerColor,
+        )
+        Text(
+            text = rung.resolveDetail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        rung.stages.forEach { stage -> NetworkStageRow(stage) }
+    }
+}
+
 @Composable
 private fun NetworkStageRow(stage: ProbeStage) {
     val timing = stage.durationMs?.let { " · ${it}ms" }.orEmpty()
-    val header = "${stage.name}   ${stage.status}$timing"
+    val header = "    ${stage.name}   ${stage.status}$timing"
     val headerColor = when (stage.status) {
         ProbeStatus.OK -> MaterialTheme.colorScheme.primary
         ProbeStatus.FAIL -> MaterialTheme.colorScheme.error
@@ -370,22 +426,35 @@ private fun NetworkStageRow(stage: ProbeStage) {
             style = MaterialTheme.typography.bodyMedium,
             color = headerColor,
         )
+        val indentedDetail = "    ${stage.detail}"
         Text(
-            text = stage.detail,
+            text = indentedDetail,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
+/** Compact human age for the last-known-IP capture time (dev-only, not localized). */
+private fun formatAge(ms: Long): String = when {
+    ms < 0 -> "just now"
+    ms < 60_000 -> "just now"
+    ms < 3_600_000 -> "${ms / 60_000}m ago"
+    ms < 86_400_000 -> "${ms / 3_600_000}h ago"
+    else -> "${ms / 86_400_000}d ago"
+}
+
 /** Plain-text snapshot of a probe run for the clipboard / issue paste. */
 private fun buildNetworkSnapshot(d: NetworkDiagnostics): String = buildString {
     appendLine("Network diagnostics — ${d.hostname}")
-    d.stages.forEach { s ->
-        val timing = s.durationMs?.let { " (${it}ms)" }.orEmpty()
-        appendLine("- ${s.name}: ${s.status}$timing — ${s.detail}")
+    d.rungs.forEach { rung ->
+        val rungTiming = rung.resolveMs?.let { " (${it}ms)" }.orEmpty()
+        appendLine("[${rung.source}] ${rung.resolveStatus}$rungTiming — ${rung.resolveDetail}")
+        rung.stages.forEach { s ->
+            val timing = s.durationMs?.let { " (${it}ms)" }.orEmpty()
+            appendLine("  - ${s.name}: ${s.status}$timing — ${s.detail}")
+        }
     }
-    d.usedFallbackIp?.let { appendLine("Fallback IP used: $it") }
     if (d.captivePortalSuspected) appendLine("Captive portal suspected")
     if (!d.supported) appendLine("(Network diagnostics unsupported on this platform)")
 }
