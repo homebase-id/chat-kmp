@@ -2,13 +2,16 @@ package id.homebase.chat.services
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.Outbox
@@ -49,13 +52,20 @@ class ChatMessageSenderServiceUpdateMessageTest {
     private class SeedableMessageLookup : MessageLookup {
         val records = mutableListOf<MessageUiModel>()
 
+        /**
+         * `updateMessage` reads the original (un-clamped) `appData.userDate` off the
+         * header file, so tests back this with the fixture's real DriveMainIndex
+         * (see [ChatMessageSenderServiceUpdateMessageTest.dbFileLookup]).
+         */
+        var fileLookup: suspend (Uuid) -> HomebaseFile? = { null }
+
         fun seed(model: MessageUiModel) { records += model }
 
         override suspend fun getMessage(messageId: Uuid): MessageUiModel? =
             records.firstOrNull { it.id == messageId }
 
-        override suspend fun getMessageFile(messageId: Uuid) =
-            error("SeedableMessageLookup.getMessageFile not used in updateMessage tests")
+        override suspend fun getMessageFile(messageId: Uuid): HomebaseFile? =
+            fileLookup(messageId)
 
         override suspend fun getMessages(
             messageIds: List<Uuid>,
@@ -81,6 +91,25 @@ class ChatMessageSenderServiceUpdateMessageTest {
             OdinSystemSerializer.deserialize<UpdateFileByUniqueIdRequest>(this.json.decodeToString())
         } catch (_: Throwable) {
             null
+        }
+    }
+
+    /** Deserialize an outbox row as a create ([UploadFileRequest]), or null if it's a different type. */
+    private fun Outbox.asUploadFileRequestOrNull(): UploadFileRequest? {
+        if (this.uploadType != DriveOutboxUploader.UploadNewFile) return null
+        return try {
+            OdinSystemSerializer.deserialize<UploadFileRequest>(this.json.decodeToString())
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** Back [SeedableMessageLookup.fileLookup] with the fixture's real DriveMainIndex. */
+    private fun SeedableMessageLookup.backFilesWith(fixture: ChatMessageSenderServiceTestFixture) {
+        fileLookup = { uid ->
+            fixture.dbm.driveMainIndex.selectHomebaseFileByUnique(
+                fixture.testIdentityId, fixture.chatDriveId, uid,
+            )
         }
     }
 
@@ -110,6 +139,7 @@ class ChatMessageSenderServiceUpdateMessageTest {
             val service = fixture.build(
                 messageLookup = { _: DatabaseManager -> messageLookup },
             )
+            messageLookup.backFilesWith(fixture)
 
             val conversationId = fixture.seedConversation(others = listOf("bob.test"))
             val messageId = Uuid.random()
@@ -214,6 +244,7 @@ class ChatMessageSenderServiceUpdateMessageTest {
             val service = fixture.build(
                 messageLookup = { _: DatabaseManager -> messageLookup },
             )
+            messageLookup.backFilesWith(fixture)
 
             val conversationId = fixture.seedConversation(others = listOf("bob.test"))
             val messageId = Uuid.random()
@@ -312,6 +343,7 @@ class ChatMessageSenderServiceUpdateMessageTest {
             val service = fixture.build(
                 messageLookup = { _: DatabaseManager -> messageLookup },
             )
+            messageLookup.backFilesWith(fixture)
 
             val conversationId = fixture.seedConversation(others = listOf("bob.test"))
             val messageId = Uuid.random()
@@ -378,6 +410,203 @@ class ChatMessageSenderServiceUpdateMessageTest {
             assertTrue(reparsed.isValid(), "re-parsed Poll descriptor must be valid")
             assertTrue(reparsed.closed, "coalesced descriptor must be closed")
             assertEquals(descriptor.options, reparsed.options)
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // #900 — an edit must not move appData.userDate
+    // -----------------------------------------------------------------------
+
+    /**
+     * Regression for #900 (conversation-list preview blanks after editing the
+     * latest message): `MessageUiModel.userDate` is CLAMPED
+     * (`minOf(rawUserDate, authorSpecificDate)` in `MessageMapper.mapToMessageData`),
+     * so re-stamping the edit's `appData.userDate` from the model can LOWER it
+     * below the SQL `DriveMainIndex.userDate`. The preview-refresh guards then
+     * reject the edit re-emit and the overview keeps the blank placeholder.
+     *
+     * `updateMessage` must stamp the original un-clamped `appData.userDate` read
+     * from the header file, on both the enqueued update request and the
+     * optimistic DB write.
+     */
+    @Test
+    fun `updateMessage preserves the original unclamped userDate, not the clamped model value`() = runTest {
+        val messageLookup = SeedableMessageLookup()
+
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(
+                messageLookup = { _: DatabaseManager -> messageLookup },
+            )
+            messageLookup.backFilesWith(fixture)
+
+            val conversationId = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+            val versionTag = Uuid.random()
+            val keyHeader = KeyHeader.newRandom16()
+            val originalUserDate = 2_000L
+            val clampedUserDate = 1_000L
+
+            // The stored header carries the true (un-clamped) userDate.
+            fixture.optimisticWriter.writeNewFile(
+                driveId = fixture.chatDriveId,
+                keyHeader = keyHeader,
+                unecryptedMetadata = UploadFileMetadata(
+                    allowDistribution = true,
+                    isEncrypted = true,
+                    appData = UploadAppFileMetaData(
+                        uniqueId = messageId,
+                        groupId = conversationId,
+                        fileType = ChatProtocol.MessageFileType,
+                        dataType = 0,
+                        userDate = originalUserDate,
+                        content = OdinSystemSerializer.serialize(MessageAppData()),
+                    ),
+                ),
+                originalRecipientCount = 1,
+                fileSystemType = FileSystemType.Standard,
+            )
+
+            // The model the edit reads carries the clamped (lower) display value.
+            messageLookup.seed(
+                MessageUiModel(
+                    id = messageId,
+                    globalTransitId = null,
+                    fileId = Uuid.random(),
+                    conversationId = conversationId,
+                    content = "original",
+                    userDate = Instant.fromEpochMilliseconds(clampedUserDate),
+                    modified = null,
+                    created = Instant.fromEpochMilliseconds(clampedUserDate),
+                    originalAuthor = OdinId(fixture.testDomain),
+                    sender = OdinId(fixture.testDomain),
+                    displayName = fixture.testDomain,
+                    isDeleted = false,
+                    isPendingSend = false,
+                    versionTag = versionTag,
+                    messageAppData = MessageAppData(),
+                    reactionPreview = null,
+                    previewThumbnail = null,
+                    payloads = persistentListOf(),
+                    keyHeader = keyHeader,
+                    hasMore = false,
+                    messageContent = null,
+                )
+            )
+
+            service.updateMessage(
+                messageId = messageId,
+                versionTag = versionTag,
+                content = "edited",
+            )
+
+            val rows = fixture.drainOutboxInDependencyOrder()
+            val updateRow = rows.mapNotNull { it.asUpdateFileRequestOrNull() }.firstOrNull()
+            assertNotNull(updateRow, "an UpdateFileByUniqueIdRequest must be enqueued after updateMessage")
+            assertEquals(
+                originalUserDate,
+                updateRow.metadata.appData.userDate,
+                "the enqueued edit must keep the original un-clamped userDate (#900)",
+            )
+
+            val storedUserDate = fixture.dbm.driveMainIndex
+                .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, messageId)
+                ?.fileMetadata?.appData?.userDate
+            assertEquals(
+                originalUserDate,
+                storedUserDate,
+                "the optimistic write must keep the SQL userDate invariant across an edit (#900)",
+            )
+        }
+    }
+
+    /**
+     * Same #900 invariant on the pending-create coalesce branch: editing a
+     * message whose create is still queued must not re-stamp the create's
+     * `appData.userDate` from the clamped model value.
+     */
+    @Test
+    fun `updateMessage coalescing into a pending create preserves the original userDate`() = runTest {
+        val messageLookup = SeedableMessageLookup()
+
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(
+                messageLookup = { _: DatabaseManager -> messageLookup },
+            )
+            messageLookup.backFilesWith(fixture)
+
+            val conversationId = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+            val versionTag = Uuid.random()
+            val keyHeader = KeyHeader.newRandom16()
+            val originalUserDate = 2_000L
+            val clampedUserDate = 1_000L
+
+            // 1. Send with an explicit userDate but DON'T drain — the create stays
+            //    pending in the outbox, so updateMessage takes the coalesce path.
+            service.sendNewMessage(
+                messageUniqueId = messageId,
+                conversationId = conversationId,
+                messageText = "original",
+                previousMessageUniqueId = null,
+                payloadBundle = null,
+                userDate = UnixTimeUtc(originalUserDate),
+            )
+
+            // 2. The model the edit reads carries the clamped (lower) display value.
+            messageLookup.seed(
+                MessageUiModel(
+                    id = messageId,
+                    globalTransitId = null,
+                    fileId = Uuid.random(),
+                    conversationId = conversationId,
+                    content = "original",
+                    userDate = Instant.fromEpochMilliseconds(clampedUserDate),
+                    modified = null,
+                    created = Instant.fromEpochMilliseconds(clampedUserDate),
+                    originalAuthor = OdinId(fixture.testDomain),
+                    sender = OdinId(fixture.testDomain),
+                    displayName = fixture.testDomain,
+                    isDeleted = false,
+                    isPendingSend = true,
+                    versionTag = versionTag,
+                    messageAppData = MessageAppData(),
+                    reactionPreview = null,
+                    previewThumbnail = null,
+                    payloads = persistentListOf(),
+                    keyHeader = keyHeader,
+                    hasMore = false,
+                    messageContent = null,
+                )
+            )
+
+            // 3. Edit → coalesce into the pending create.
+            service.updateMessage(
+                messageId = messageId,
+                versionTag = versionTag,
+                content = "edited",
+            )
+
+            // 4. Both the amended create in the outbox and the optimistic DB row
+            //    must keep the original userDate.
+            val rows = fixture.drainOutboxInDependencyOrder()
+            val createRow = rows
+                .mapNotNull { it.asUploadFileRequestOrNull() }
+                .firstOrNull { it.metadata.appData.uniqueId == messageId }
+            assertNotNull(createRow, "the amended create must still be in the outbox")
+            assertEquals(
+                originalUserDate,
+                createRow.metadata.appData.userDate,
+                "the coalesced create must keep the original un-clamped userDate (#900)",
+            )
+
+            val storedUserDate = fixture.dbm.driveMainIndex
+                .selectHomebaseFileByUnique(fixture.testIdentityId, fixture.chatDriveId, messageId)
+                ?.fileMetadata?.appData?.userDate
+            assertEquals(
+                originalUserDate,
+                storedUserDate,
+                "the optimistic write must keep the SQL userDate invariant across a coalesced edit (#900)",
+            )
         }
     }
 }
