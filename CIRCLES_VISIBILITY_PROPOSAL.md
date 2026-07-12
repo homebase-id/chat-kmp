@@ -40,6 +40,13 @@ special photo for one circle) without adding complexity for normal use.
   connection — you can chat, they see only your public profile, and nothing
   about the relationship changed: the connection was exactly as real before you
   reviewed it. The review only records your decision.
+- **Chat is a grant too.** Chatting requires write access to your chat drive —
+  and New connections typically receive it the moment the connection forms
+  (without this, bootstrapping a chat network would be impractical). So
+  New → Chat is promoted by the **review stamp**, not by any grant changing:
+  "💬 Chat only" records your decision and may change nothing server-side. It
+  also means an unreviewed stranger can already message you — New 👋 is the UI
+  acknowledging exactly that.
 - There is **no special "Vetted" system circle**. Being a **Circle** ⭕ connection
   implies reviewed and connected — but the converse doesn't hold: a contact can be
   reviewed and connected while being in no circles at all.
@@ -64,7 +71,7 @@ or with no connection at all:
   indicator (e.g. 📡), never a state pill — they have no connection state.
 - **Encrypted feed: connection required.** Secured posts are encrypted to *their*
   circles, so receiving them requires being connected and in whichever of their
-  circles they put me. The follow is still just my subscription switch; how much
+  circles they put me (typically an **audience** circle — see the next subsection). The follow is still just my subscription switch; how much
   it delivers is their call — the mirror image of this proposal: my circles govern
   what they see of me, their circles govern what I see of their feed.
 - Consequence: disconnecting someone downgrades an existing follow to public
@@ -73,6 +80,39 @@ or with no connection at all:
 - The "Follow their feed" toggle in the review modal is therefore a convenience
   for an orthogonal action offered at a natural moment — not a "connection
   default" that belongs to a tier.
+
+### Two kinds of circles — personal and audience
+
+Circles are the single grant primitive, but they serve two very different
+relationship kinds:
+
+- **Personal circles** — intimacy plus visibility/permissions: Friends, Family,
+  Beer Drinking Buddies — and Emergency Location Access, which is app-owned yet
+  among the most intimate circles you have (the people you live with, your
+  parents when you're a child). User-created circles are personal by default.
+- **Audience circles** — pure capability, no intimacy claim: **Subscribers** is
+  just a circle whose grant is read access to the feed drive — that *is* the
+  encrypted-feed subscription. Membership means "customer", not "confidant".
+
+Every circle carries a **`PERSONAL | AUDIENCE` designation** (an enum, not a
+boolean — leave room for kinds we haven't met yet), set by the owning app when it
+registers the circle. This rides the in-progress backend work where circles and
+drives belong to an app; note the designation is **per-circle, not per-app** — the
+location app owns a personal circle while the feed app owns an audience one.
+
+**Contact states derive from personal circles only.** Audience membership never
+awards ⭕ — if an audience member needs a label anywhere, it's the circle's own
+name ("Subscribers"), which claims nothing socially. This is also the strongest
+concrete argument in open question 6 against option B: a paid subscriber you've
+never met must not read as "Trusted 🛡️".
+
+Audience approval is its own lightweight path: it does **not** stamp
+`connectionReviewedAt` (approving subscriber #4032 is not a personal review), and
+audience requests do **not** count toward the New 👋 badge — a popular feed must
+not make the contact book scream "5,000 people to review".
+
+A person can be both — your friend who also subscribes. Personal wins for
+display; their detail view lists the union of grants.
 
 ## 3. Terminology
 
@@ -132,6 +172,8 @@ the officialdom of a checkmark.
 | Blue check       | Circle badge / circle pills          | Reserved for circle membership        |
 | Confirm (button) | Demoted to a verb: "confirming" = completing the review | The buttons name destinations instead |
 | —                | **Any of my circles**                | New easy default in visibility picker |
+| —                | **Personal circle**                  | Counts toward contact states; user-created circles default to it |
+| —                | **Audience circle**                  | Pure capability grant (e.g. Subscribers); never affects contact states |
 
 ## 4. Proposed Changes by Screen
 
@@ -149,6 +191,9 @@ the officialdom of a checkmark.
   - **Circle** ⭕ — small **colored circle pills/tags** (e.g. "Friends", "Family")
     instead of (or next to) the blue check.
 - Tapping a contact shows their public profile + clear call-to-action to review the contact (so it's no longer new).
+- The contact book lists **personal** contacts only. Audience-circle members
+  (e.g. feed subscribers) never appear in this list — they're managed in the app
+  that owns the circle (see section 8 for why this is also a storage necessity).
 
 **Result:** The list immediately communicates "who I've reviewed, and what access
 I've granted them".
@@ -228,6 +273,9 @@ labeled exit from the review names the state it leaves the contact in
 (⭕ / 💬 / 👋); even the escape hatch is honest about its destination. Scrim-tap
 and the back gesture keep plain cancel behavior.
 
+The review flow is **personal triage only** — audience requests (e.g. feed
+subscriptions) are approved in the owning app and never enter this flow.
+
 **Disconnect / Block** stay available as tertiary actions (overflow menu or footer
 link) — a review that can only end in approval isn't a review.
 
@@ -279,6 +327,9 @@ the flexibility.
 - The connection review flow now clearly explains the privacy consequence.
 - The mental model is consistent across Contacts, Profile, and Connection flows.
 - Scales well as users create more custom circles.
+- Scales cleanly in the other direction too: personal contacts and audience
+  relationships (a feed with a million subscribers) live on separate axes and
+  separate storage tiers — neither pollutes the other.
 
 ## 7. Suggested Phasing
 
@@ -291,6 +342,9 @@ the flexibility.
 - Stamp `connectionReviewedAt` in the contact's localAppData when the review
   completes (see section 8) — required as soon as a chat-only review outcome
   is possible, so the Chat state survives across the user's devices
+- Coordinate with the in-progress app-owned circles backend so the
+  `PERSONAL | AUDIENCE` circle designation lands in that schema now (section 8) —
+  retrofitting it after circles ship is far costlier
 
 **Phase 2**
 
@@ -302,7 +356,9 @@ the flexibility.
 
 - Add per-circle override capability for fields and photos
 
-## 8. Implementation Note: Recording the Review
+## 8. Implementation Notes
+
+### Recording the review
 
 The "reviewed" fact needs explicit, synced storage — it cannot be derived.
 
@@ -356,6 +412,46 @@ sole exceptions.
 - Removing someone from their last circle requires **no localAppData change**:
   `connectionReviewedAt` persists, so they land in Chat, not New.
 
+### New connections already hold chat write
+
+Chatting requires write access to the owner's chat drive, and that grant is
+typically issued the moment a connection forms — a deliberate bootstrapping
+feature (without it, building a chat network would be impractical). Consequence:
+the New → Chat transition usually changes **no grants at all** — it is purely the
+`connectionReviewedAt` stamp. This also suggests a candidate answer to open
+question 5: confirming may grant literally nothing beyond the selected circles,
+making the review a pure client-side record.
+
+### The `PERSONAL | AUDIENCE` designation
+
+Rides the in-progress backend work where circles and drives belong to an app: the
+circle registration record carries the designation, set by the owning app, with
+user-created circles defaulting to `PERSONAL`. An enum, not a boolean — history
+(the Confirmed Connections system circle) says new circle kinds appear, and a
+spare enum case is cheaper than a schema migration. Clients derive contact states
+exclusively from `PERSONAL` circles.
+
+### Audience circles at scale
+
+Audience members must **never materialize as local contact records** — a feed
+with a million subscribers cannot sync a million contact files to a phone. They
+exist server-side as connection registrations plus audience-circle membership,
+and the owning app browses them with **paged server queries** (member count, a
+search box, pages of ~50 — which is also where a creator actually thinks about
+subscribers).
+
+The contact book's completeness promise is therefore **logical, not physical**:
+everything personal syncs locally and works offline; everything else is
+answerable on demand via a server-backed "All connections" search ("does
+alice.demo.rocks hold anything of mine?" — paged, shows the union of personal and
+audience grants). Block and disconnect work from that search result or from the
+member list — no local record needed.
+
+Boundary crossing: when an audience member becomes personal (you review them and
+add them to Friends), **that** is the moment a contact file is created and starts
+syncing — the promotion is also a storage-tier transition. The reverse applies on
+removal, or the address book slowly accretes ex-subscribers.
+
 ## 9. Open Questions for Discussion
 
 1. ~~Should "Any of my circles" be the default selection when someone opens the Select
@@ -376,9 +472,16 @@ sole exceptions.
    following their feed by default. This decides what the defaults strip in the
    review modal contains — if confirming grants nothing beyond the selected
    circles, the strip disappears entirely (the adaptive button is unaffected).
+   Note: since New connections already receive chat-drive write when the
+   connection forms (section 8), "nothing" is a plausible answer.
 6. **Which state-name set wins — New / Chat / Circle or New / Known / Trusted?**
    And with it, the emoji/icon triple (👋 💬 ⭕ vs 👋 🤝 🛡️). See section 3 for
-   the trade-offs.
+   the trade-offs. The audience case (section 2) is a concrete strike against
+   option B: a paid subscriber you've never met must not read as "Trusted".
+7. Where does the server-backed **"All connections" audit view** live — inside
+   the contact book (a search mode / separate tab) or under settings/security?
+   It must show every connected identity with the union of its grants (personal
+   and audience), paged from the server (section 8).
 
 ---
 
