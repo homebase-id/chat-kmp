@@ -143,10 +143,10 @@ I've granted them".
 
 Replace the current **Public / Vetted** segmented control with:
 
-**Public** | **My circles**
+**Public** | **Circles**
 
 - **Public** → visible to everyone (current behavior).
-- **My circles** → opens the **Select circles** dialog (see below).
+- **Circles** → opens the **Select circles** dialog (see below).
 
 **Select circles dialog**
 
@@ -154,8 +154,8 @@ Replace the current **Public / Vetted** segmented control with:
 - Top prominent option:
   **☑ Any of my circles**
   *Visible to anyone in at least one of your circles.*
-- Below: Checkbox list of all your circles.
-- User can select "Any of my circles" **or** pick one or more specific circles.
+- Below: Pick a circle.
+- User can select "Any of my circles" (default )**or** pick one or more specific circles.
 
 This single pattern supports both simple use and the advanced "special beer drinking
 buddies photo" case.
