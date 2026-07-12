@@ -37,11 +37,11 @@ import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.location_dashboard_title
 import id.homebase.resources.location_history_title
-import id.homebase.resources.location_label
 import id.homebase.resources.location_menu_dashboard
 import id.homebase.resources.location_menu_find_device
 import id.homebase.resources.location_menu_more
 import id.homebase.resources.location_menu_setup
+import id.homebase.resources.location_settings_title
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.time.Clock
@@ -201,7 +201,7 @@ fun LocationScreen(
                     Text(
                         stringResource(
                             if (showDashboard) MR.string.location_dashboard_title
-                            else MR.string.location_label,
+                            else MR.string.location_settings_title,
                         ),
                     )
                 },
