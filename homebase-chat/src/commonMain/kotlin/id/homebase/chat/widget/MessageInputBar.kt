@@ -76,6 +76,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -124,6 +125,7 @@ import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.pasteImageContextMenuItem
+import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
@@ -158,6 +160,7 @@ import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.slide_to_cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
@@ -376,6 +379,7 @@ fun MessageTextFieldExpanded(
     sendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
+    val pasteScope = rememberCoroutineScope()
     Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
@@ -412,8 +416,9 @@ fun MessageTextFieldExpanded(
                             label = pasteImageLabel,
                             enabled = true,
                         ) {
-                            // spike: sync reader; Task 2 swaps to suspend readClipboardImage()
-                            getImageFromClipboard()?.let { onPasteImage.invoke(it) }
+                            pasteScope.launch {
+                                readClipboardImage()?.let { onPasteImage.invoke(it) }
+                            }
                         }
                     else Modifier
                 )
@@ -560,6 +565,7 @@ fun MessageTextFieldCompact(
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
+    val pasteScope = rememberCoroutineScope()
     // Send button is shown when there's text OR a user-initiated attachment (not link previews,
     // which are auto-detected from typed URLs and don't on their own indicate intent to send).
     val showSendButton = state.annotatedString.isNotBlank() ||
@@ -700,8 +706,9 @@ fun MessageTextFieldCompact(
                                             label = pasteImageLabel,
                                             enabled = true,
                                         ) {
-                                            // spike: sync reader; Task 2 swaps to suspend readClipboardImage()
-                                            getImageFromClipboard()?.let { onPasteImage.invoke(it) }
+                                            pasteScope.launch {
+                                                readClipboardImage()?.let { onPasteImage.invoke(it) }
+                                            }
                                         }
                                     else Modifier
                                 )

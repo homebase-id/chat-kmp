@@ -5,3 +5,5 @@ actual fun getImageFromClipboard(): ByteArray? {
     // is not compatible with this synchronous expect/actual signature.
     return null
 }
+
+actual suspend fun readClipboardImage(): ByteArray? = null

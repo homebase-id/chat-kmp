@@ -5,3 +5,5 @@ actual fun getImageFromClipboard(): ByteArray? {
     // This function is primarily used for desktop Ctrl+V paste interception.
     return null
 }
+
+actual suspend fun readClipboardImage(): ByteArray? = null
