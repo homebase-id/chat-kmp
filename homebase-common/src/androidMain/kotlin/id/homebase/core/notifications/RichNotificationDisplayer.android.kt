@@ -174,31 +174,33 @@ actual class RichNotificationDisplayer actual constructor() {
     ) {
         val conversationId = data.conversationId ?: return
 
-        // Direct Reply action
-        val remoteInput = RemoteInput.Builder(EXTRA_REPLY_TEXT)
-            .setLabel("Reply")
-            .build()
+        // Direct Reply action — dormant until REPLY_FROM_NOTIFICATION_ENABLED (#1048).
+        if (REPLY_FROM_NOTIFICATION_ENABLED) {
+            val remoteInput = RemoteInput.Builder(EXTRA_REPLY_TEXT)
+                .setLabel("Reply")
+                .build()
 
-        val replyIntent = Intent(ACTION_REPLY).apply {
-            setPackage(context.packageName)
-            putExtra(EXTRA_CONVERSATION_ID, conversationId)
-            putExtra(EXTRA_NOTIFICATION_ID, data.notificationId)
+            val replyIntent = Intent(ACTION_REPLY).apply {
+                setPackage(context.packageName)
+                putExtra(EXTRA_CONVERSATION_ID, conversationId)
+                putExtra(EXTRA_NOTIFICATION_ID, data.notificationId)
+            }
+            val replyPendingIntent = PendingIntent.getBroadcast(
+                context,
+                conversationId.hashCode(),
+                replyIntent,
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val replyAction = NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_send, "Reply", replyPendingIntent
+            )
+                .addRemoteInput(remoteInput)
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+                .setShowsUserInterface(false)
+                .build()
+
+            builder.addAction(replyAction)
         }
-        val replyPendingIntent = PendingIntent.getBroadcast(
-            context,
-            conversationId.hashCode(),
-            replyIntent,
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val replyAction = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_send, "Reply", replyPendingIntent
-        )
-            .addRemoteInput(remoteInput)
-            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
-            .setShowsUserInterface(false)
-            .build()
-
-        builder.addAction(replyAction)
 
         // Mark as Read only when the notification carries real content (#983) —
         // you can't sensibly mark-as-read a "You have a new message" placeholder.
@@ -226,6 +228,14 @@ actual class RichNotificationDisplayer actual constructor() {
     }
 
     companion object {
+        /**
+         * Reply-from-notification is disabled until the flow is hardened (#1048): the send can
+         * silently fail from a cold/headless BroadcastReceiver wake, and replying blind to the
+         * content-less "You have a new message" push (#859) is nonsensical. Flip to `true` to
+         * re-enable once those land. The receiver ([NotificationReplyReceiver]) is kept dormant.
+         */
+        const val REPLY_FROM_NOTIFICATION_ENABLED = false
+
         const val ACTION_REPLY = "id.homebase.feed.NOTIFICATION_REPLY"
         const val ACTION_MARK_READ = "id.homebase.feed.NOTIFICATION_MARK_READ"
         const val EXTRA_CONVERSATION_ID = "conversation_id"
