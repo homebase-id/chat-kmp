@@ -167,21 +167,22 @@ Combine the explanatory text and circle selection into **one clean modal**:
 > **Review connection with biggus.dickus.demo.rocks**
 >
 > You were introduced by samwise.gamgee.demo.rocks.
-> Add them to one or more circles so they can see more of your profile.
+> Add Biggus Dickus to one or more circles if you want them to see more of your profile.
 >
-> - **Any of my circles** (prominent, pre-selected by default)
 > - List of your circles with toggles/checkboxes
 > - Special permission circles (Emergency Location Access) stay visually distinct
 > - Connection defaults as visible toggles (e.g. "Follow their feed")
 >
-> **[ Add to Circles ]**  (big primary button)
+> there is one big confirm button and it changes label depending if you selected a circle or not:
+> 
+> **[ Add to Circles ]**
 >
-> **[ Chat only ]**  (secondary button)
+> **[ Chat only ]**  (if you didn't select any circles)
 >
 > Cancel · Disconnect · Block
 
-**Two completion paths — both stamp the review.** The buttons name the destination
-states, not a judgment ("confirm" survives only as the verb for completing a
+**Two completion paths — the button stamps the review.** The button names the destination
+states and preferably shows the emoji, not a judgment ("confirm" survives only as the verb for completing a
 review):
 
 - **Add to circles** (primary) — applies the selected circles *and* the connection
