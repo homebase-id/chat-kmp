@@ -30,12 +30,12 @@ special photo for one circle) without adding complexity for normal use.
   auto-connected, and plain direct connections alike (today's "Unvetted" bucket
   maps 1:1 onto New). Being connected alone never moves a contact; the only path
   out of New is completing the review.
-- You **review** them. A review is **triage, not endorsement** — it records that
+- You **review** them. A review is **triage, not endorsement** — it **records** that
   you looked and what you decided. It has four honest outcomes: add them to
-  circles, keep them as a plain connection, disconnect, or block.
-- The circles you choose determine **what they can see** of your profile and what
-  special access they get.
-- **Circles are optional.** Keeping someone as a plain connection makes them
+  circles, keep them as a lightweight connection, disconnect, or block.
+- The circles you might choose determine **what they can see** of your profile and what
+  special access they may get.
+- **Circles are optional.** Keeping someone as a lightweight connection makes them
   **Connected** — you can chat, they see only your public profile, and nothing
   about the relationship changed: the connection was exactly as real before you
   reviewed it. The review only records your decision.
@@ -43,7 +43,7 @@ special photo for one circle) without adding complexity for normal use.
   implies reviewed and connected — but the converse doesn't hold: a contact can be
   reviewed and connected while being in no circles at all.
 - Removing someone from their last circle drops them back to **Connected** — not to
-  "New", as if you'd never reviewed them.
+  "New", as if you'd never reviewed them. This is possible due to the recording of the prior review, stored on the ycontact record itself. 
 
 **Blue check / circle badge** on contacts = This person is in one or more of my
 circles. Connected-but-circleless contacts carry no badge (or a subtle neutral
