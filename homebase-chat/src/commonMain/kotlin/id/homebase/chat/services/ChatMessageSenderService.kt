@@ -419,6 +419,16 @@ class ChatMessageSenderService(
             error("VersionTag mismatch")
         }
 
+        // An edit must not move userDate: MessageUiModel.userDate is clamped for
+        // display (minOf(rawUserDate, authorSpecificDate) in MessageMapper), so
+        // re-stamping from it can lower appData.userDate below the SQL
+        // DriveMainIndex.userDate — the conversation-list preview refresh guards
+        // then reject the edit and the overview blanks (#900). Read the original
+        // value off the header file; `modified` already reflects the edit time.
+        val originalUserDateMs = chatMessageStream.getMessageFile(messageId)
+            ?.fileMetadata?.appData?.userDate
+            ?: msg.userDate.toEpochMilliseconds()
+
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
             aesKey = msg.keyHeader.aesKey
@@ -459,7 +469,7 @@ class ChatMessageSenderService(
                     groupId = msg.conversationId,
                     fileType = ChatProtocol.MessageFileType,
                     dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
-                    userDate = msg.userDate.toEpochMilliseconds(),
+                    userDate = originalUserDateMs,
                     content = createBuilt?.headerContent ?: content,
                     previewThumbnail = msg.previewThumbnail
                 )
@@ -525,7 +535,7 @@ class ChatMessageSenderService(
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
-                userDate = msg.userDate.toEpochMilliseconds(),
+                userDate = originalUserDateMs,
                 content = headerContent,
                 previewThumbnail = msg.previewThumbnail
             )
@@ -736,7 +746,10 @@ class ChatMessageSenderService(
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 dataType = file.fileMetadata.appData.dataType ?: 0,
-                userDate = msg.userDate.toEpochMilliseconds(),
+                // Keep the original un-clamped userDate on retry (#900) —
+                // msg.userDate is the clamped display value.
+                userDate = file.fileMetadata.appData.userDate
+                    ?: msg.userDate.toEpochMilliseconds(),
                 content = built.headerContent,
                 previewThumbnail = msg.previewThumbnail,
             ),
@@ -795,7 +808,10 @@ class ChatMessageSenderService(
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 dataType = file.fileMetadata.appData.dataType ?: 0,
-                userDate = msg.userDate.toEpochMilliseconds(),
+                // Keep the original un-clamped userDate on retry (#900) —
+                // msg.userDate is the clamped display value.
+                userDate = file.fileMetadata.appData.userDate
+                    ?: msg.userDate.toEpochMilliseconds(),
                 content = built.headerContent,
                 previewThumbnail = msg.previewThumbnail,
             ),
