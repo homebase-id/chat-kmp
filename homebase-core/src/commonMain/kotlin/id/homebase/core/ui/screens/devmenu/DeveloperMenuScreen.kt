@@ -2,19 +2,25 @@ package id.homebase.core.ui.screens.devmenu
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,10 +37,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat_kmp.homebase_common.BuildConfig
+import id.homebase.api.client.diagnostics.NetworkDiagnostics
+import id.homebase.api.client.diagnostics.ProbeStage
+import id.homebase.api.client.diagnostics.ProbeStatus
+import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.ui.screens.help.HelpClickableRow
 import id.homebase.core.ui.screens.help.HelpSectionHeader
 import id.homebase.core.widget.CheckboxRow
@@ -47,7 +59,11 @@ import id.homebase.resources.dev_menu_crash_confirm_action
 import id.homebase.resources.dev_menu_crash_confirm_message
 import id.homebase.resources.dev_menu_crash_confirm_title
 import id.homebase.resources.dev_menu_force_sync
+import id.homebase.resources.dev_menu_network_captive_portal
+import id.homebase.resources.dev_menu_network_copy
+import id.homebase.resources.dev_menu_run_network_diagnostics
 import id.homebase.resources.dev_menu_section_crashlytics
+import id.homebase.resources.dev_menu_section_network
 import id.homebase.resources.dev_menu_section_database
 import id.homebase.resources.dev_menu_section_misc
 import id.homebase.resources.dev_menu_section_sync
@@ -109,6 +125,8 @@ fun DeveloperMenuUi(
 ) {
     val scrollState = rememberScrollState()
     var showCrashConfirm by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
 
     if (showCrashConfirm) {
         AlertDialog(
@@ -184,6 +202,17 @@ fun DeveloperMenuUi(
             }
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Network Status Section — layered DNS/TCP/TLS/ping probe (issue #1078)
+            NetworkStatusSection(
+                isRunning = uiState.isRunningNetworkDiagnostic,
+                diagnostics = uiState.networkDiagnostics,
+                onRun = { onAction(DeveloperMenuUiAction.RunNetworkDiagnostics) },
+                onCopy = { snapshot ->
+                    clipboardScope.launch { clipboard.setClipEntry(clipEntryOf(snapshot)) }
+                },
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
             // Database Section
             HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_database))
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -251,4 +280,112 @@ fun DeveloperMenuUi(
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+}
+
+/**
+ * Layered network probe result panel (issue #1078): a Run button, a spinner while probing, one row
+ * per DNS/TCP/TLS/ping stage colored by outcome, a captive-portal warning, and a copy-to-clipboard
+ * button so the whole snapshot can be pasted into an issue.
+ */
+@Composable
+private fun NetworkStatusSection(
+    isRunning: Boolean,
+    diagnostics: NetworkDiagnostics?,
+    onRun: () -> Unit,
+    onCopy: (String) -> Unit,
+) {
+    HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_network))
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            HelpClickableRow(
+                label = stringResource(MR.string.dev_menu_run_network_diagnostics),
+                showChevron = false,
+                onClick = onRun,
+            )
+
+            if (isRunning) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+            }
+
+            diagnostics?.let { d ->
+                HorizontalDivider()
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    val serverLine = "Server: ${d.hostname}"
+                    Text(
+                        text = serverLine,
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+
+                    d.stages.forEach { stage -> NetworkStageRow(stage) }
+
+                    if (d.captivePortalSuspected) {
+                        Text(
+                            text = stringResource(MR.string.dev_menu_network_captive_portal),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { onCopy(buildNetworkSnapshot(d)) }) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = stringResource(MR.string.dev_menu_network_copy),
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = stringResource(MR.string.dev_menu_network_copy))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NetworkStageRow(stage: ProbeStage) {
+    val timing = stage.durationMs?.let { " · ${it}ms" }.orEmpty()
+    val header = "${stage.name}   ${stage.status}$timing"
+    val headerColor = when (stage.status) {
+        ProbeStatus.OK -> MaterialTheme.colorScheme.primary
+        ProbeStatus.FAIL -> MaterialTheme.colorScheme.error
+        ProbeStatus.SKIPPED -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column {
+        Text(
+            text = header,
+            style = MaterialTheme.typography.bodyMedium,
+            color = headerColor,
+        )
+        Text(
+            text = stage.detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Plain-text snapshot of a probe run for the clipboard / issue paste. */
+private fun buildNetworkSnapshot(d: NetworkDiagnostics): String = buildString {
+    appendLine("Network diagnostics — ${d.hostname}")
+    d.stages.forEach { s ->
+        val timing = s.durationMs?.let { " (${it}ms)" }.orEmpty()
+        appendLine("- ${s.name}: ${s.status}$timing — ${s.detail}")
+    }
+    d.usedFallbackIp?.let { appendLine("Fallback IP used: $it") }
+    if (d.captivePortalSuspected) appendLine("Captive portal suspected")
+    if (!d.supported) appendLine("(Network diagnostics unsupported on this platform)")
 }

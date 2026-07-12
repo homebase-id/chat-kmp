@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.diagnostics.NetworkDiagnostics
+import id.homebase.api.client.diagnostics.runNetworkDiagnostics
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -14,6 +16,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.diagnostics.NetworkDiagnosticsPreferences
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
 import id.homebase.core.settings.UserPreferences
@@ -33,6 +36,7 @@ class DeveloperMenuViewModel(
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
+    private val networkDiagnosticsPreferences: NetworkDiagnosticsPreferences,
 ) : ViewModel() {
 
     companion object {
@@ -65,6 +69,10 @@ class DeveloperMenuViewModel(
 
             is DeveloperMenuUiAction.ForceSyncAll -> {
                 forceSyncAll()
+            }
+
+            is DeveloperMenuUiAction.RunNetworkDiagnostics -> {
+                startNetworkDiagnostics()
             }
 
             is DeveloperMenuUiAction.ClearAllData -> {
@@ -178,6 +186,36 @@ class DeveloperMenuViewModel(
         }
     }
 
+    /**
+     * Run the layered DNS/TCP/TLS/HTTP-ping probe against the current owner server and show the
+     * per-stage result in the panel. Persists the live-resolved IP so a later run can fall back to
+     * it when DNS is broken (the airplane-wifi case this feature targets).
+     */
+    private fun startNetworkDiagnostics() {
+        if (_uiState.value.isRunningNetworkDiagnostic) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRunningNetworkDiagnostic = true, networkDiagnostics = null) }
+            try {
+                val host = credentialsManager.getActiveDomain()?.domainName
+                if (host == null) {
+                    sendEvent(DeveloperMenuUiEvent.Error("No active identity — log in first"))
+                    return@launch
+                }
+                val stored = networkDiagnosticsPreferences.getLastKnownIp(host)
+                val result = runNetworkDiagnostics(host, stored?.ip)
+                result.capturedIp?.let { ip ->
+                    networkDiagnosticsPreferences.setLastKnownIp(host, ip, Clock.System.now().toEpochMilliseconds())
+                }
+                _uiState.update { it.copy(networkDiagnostics = result) }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "NetDiag") { "Network diagnostics failed" }
+                sendEvent(DeveloperMenuUiEvent.Error("Network diagnostics failed: ${e.message}"))
+            } finally {
+                _uiState.update { it.copy(isRunningNetworkDiagnostic = false) }
+            }
+        }
+    }
+
     private fun forceSyncAll() {
         viewModelScope.launch {
             try {
@@ -239,6 +277,8 @@ class DeveloperMenuViewModel(
 @Immutable
 data class DeveloperMenuUiState(
     val allowTenBitVideo: Boolean = false,
+    val isRunningNetworkDiagnostic: Boolean = false,
+    val networkDiagnostics: NetworkDiagnostics? = null,
     val uiEvent: DeveloperMenuUiEvent? = null,
 )
 
@@ -253,6 +293,7 @@ sealed interface DeveloperMenuUiAction {
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction
+    data object RunNetworkDiagnostics : DeveloperMenuUiAction
     data object ClearAllData : DeveloperMenuUiAction
     data object TriggerTestCrash : DeveloperMenuUiAction
     data object ForceReconnectWebSocket : DeveloperMenuUiAction

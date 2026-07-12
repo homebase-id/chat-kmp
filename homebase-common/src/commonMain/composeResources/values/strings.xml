@@ -1212,6 +1212,10 @@
     <string name="dev_menu_section_database">Database &amp; Storage</string>
     <string name="dev_menu_section_testing">Testing Tools</string>
     <string name="dev_menu_section_video">Video</string>
+    <string name="dev_menu_section_network">Network Status</string>
+    <string name="dev_menu_run_network_diagnostics">Run network diagnostics</string>
+    <string name="dev_menu_network_copy">Copy diagnostics</string>
+    <string name="dev_menu_network_captive_portal">Captive portal likely — a wifi sign-in page is intercepting requests.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>

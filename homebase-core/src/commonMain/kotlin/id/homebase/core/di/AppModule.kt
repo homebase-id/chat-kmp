@@ -79,6 +79,7 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.diagnostics.NetworkDiagnosticsPreferences
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
@@ -244,6 +245,8 @@ val appModule = module {
     // drive; writes through the api-layer ContactsProvider. No optional-drive
     // activation — the drive is always mounted.
     single { ContactBookPreferences(get()) }
+    // Last-known owner-server IP for the dev-menu Network Status probe's DNS-override fallback.
+    single { NetworkDiagnosticsPreferences(get()) }
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
     // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
