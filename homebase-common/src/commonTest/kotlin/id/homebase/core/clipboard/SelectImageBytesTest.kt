@@ -34,4 +34,10 @@ class SelectImageBytesTest {
         val result = selectImageBytes(listOf("image/png")) { byteArrayOf() }
         assertNull(result)
     }
+
+    @Test
+    fun imageMimeWithThrowingReaderReturnsNull() {
+        val result = selectImageBytes(listOf("image/png")) { throw RuntimeException("stale uri") }
+        assertNull(result)
+    }
 }

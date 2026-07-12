@@ -12,9 +12,10 @@ actual fun getImageFromClipboard(): ByteArray? {
     return null
 }
 
-// navigator.clipboard.read() requires an active user-activation window, so the JS call happens
-// synchronously as the first thing readClipboardImageJs() does (no suspension ahead of it) —
-// this must be invoked directly from the menu-tap handler, not after another await.
+// navigator.clipboard.read() is gated by the browser's transient user-activation window
+// (~5s after a user gesture like a tap), not by strict same-task/synchronous execution — the
+// pasteScope.launch { } dispatch hop before this runs is fine as long as it lands inside that
+// window. Call this promptly from the menu-tap handler; expect a first-use permission prompt.
 actual suspend fun readClipboardImage(): ByteArray? {
     val b64 = readClipboardImageJs().await<JsString>().toString()
     return if (b64.isBlank()) null else Base64.decode(b64)
