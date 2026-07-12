@@ -6,8 +6,12 @@ import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.DataFlavor
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import javax.imageio.ImageIO
+
+private val imageFileExtensions =
+    setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif")
 
 actual fun getImageFromClipboard(): ByteArray? =
     readImageFromClipboard(Toolkit.getDefaultToolkit().systemClipboard)
@@ -28,7 +32,12 @@ internal fun readImageFromClipboard(clipboard: Clipboard): ByteArray? {
         readRawImageBytes(clipboard, "image/gif")?.let { return it }
         readRawImageBytes(clipboard, "image/png")?.let { return it }
 
-        // 2. Fall back to the decoded image flavor, re-encoded as PNG. This covers
+        // 2. A copied image FILE (e.g. from Finder/Explorer) exposes javaFileListFlavor,
+        //    not an image flavor — the reader used to return null for it. Read the file's
+        //    bytes directly, preserving the original encoding like the raw-byte path above.
+        readImageFileBytes(clipboard)?.let { return it }
+
+        // 3. Fall back to the decoded image flavor, re-encoded as PNG. This covers
         //    in-memory bitmaps (e.g. a screenshot) that expose no raw byte flavor.
         if (!clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)) return null
         val image = clipboard.getData(DataFlavor.imageFlavor) as? Image ?: return null
@@ -65,6 +74,25 @@ private fun readRawImageBytes(clipboard: Clipboard, mimeType: String): ByteArray
         if (!clipboard.isDataFlavorAvailable(flavor)) return null
         val data = clipboard.getData(flavor) as? InputStream ?: return null
         data.use { it.readBytes() }.takeIf { it.isNotEmpty() }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/**
+ * Reads the first image FILE off the clipboard's [DataFlavor.javaFileListFlavor] — how an image
+ * copied from Finder/Explorer arrives (as a file reference, not image pixels). Returns the file's
+ * raw bytes so the original encoding is preserved, gated on a known image extension so a copied
+ * document isn't attached. Null when no image file is present.
+ */
+private fun readImageFileBytes(clipboard: Clipboard): ByteArray? {
+    return try {
+        if (!clipboard.isDataFlavorAvailable(DataFlavor.javaFileListFlavor)) return null
+        val files = clipboard.getData(DataFlavor.javaFileListFlavor) as? List<*> ?: return null
+        val imageFile = files.filterIsInstance<File>().firstOrNull {
+            it.isFile && it.extension.lowercase() in imageFileExtensions
+        } ?: return null
+        imageFile.readBytes().takeIf { it.isNotEmpty() }
     } catch (_: Exception) {
         null
     }
