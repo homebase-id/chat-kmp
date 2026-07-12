@@ -52,6 +52,28 @@ circles. Chat contacts carry no circle badge (a subtle 💬 indicator at most �
 question 4); the badge is evidence of access granted, not the only evidence of
 review.
 
+### Following is orthogonal — not a fourth state
+
+The three states classify **inbound access**: what they get of mine. Following is
+**outbound consumption**: what I take from them. A follow grants the followed
+person nothing, so it is not a rung on the ladder — it combines with any state,
+or with no connection at all:
+
+- **Public feed: no connection needed.** Follow-only identities can exist (like
+  subscribing to a blog). If surfaced in the contact book they get a follow
+  indicator (e.g. 📡), never a state pill — they have no connection state.
+- **Encrypted feed: connection required.** Secured posts are encrypted to *their*
+  circles, so receiving them requires being connected and in whichever of their
+  circles they put me. The follow is still just my subscription switch; how much
+  it delivers is their call — the mirror image of this proposal: my circles govern
+  what they see of me, their circles govern what I see of their feed.
+- Consequence: disconnecting someone downgrades an existing follow to public
+  posts only — their grants vanish with the connection, the subscription itself
+  may remain.
+- The "Follow their feed" toggle in the review modal is therefore a convenience
+  for an orthogonal action offered at a natural moment — not a "connection
+  default" that belongs to a tier.
+
 ## 3. Terminology
 
 **Principle: "connection" is the constant noun, never a state name.** It always
