@@ -126,8 +126,7 @@ the officialdom of a checkmark.
   - **Chat** 💬 — reviewed, kept chat-only. No circle pills. Sees public info only.
   - **Circle** ⭕ — small **colored circle pills/tags** (e.g. "Friends", "Family")
     instead of (or next to) the blue check.
-- Tapping a contact shows their public profile + clear call-to-action to add them to
-  circles.
+- Tapping a contact shows their public profile + clear call-to-action to review the contact (so it's no longer new).
 
 **Result:** The list immediately communicates "who I've reviewed, and what access
 I've granted them".
