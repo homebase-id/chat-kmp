@@ -315,6 +315,52 @@ class ConversationMessageBumpTest {
     }
 
     /**
+     * The #900 preview-refresh contract. Editing the latest message must not
+     * move its `userDate` (the sender fix keeps the original un-clamped value),
+     * so the edit re-emits over the WS with the SAME `userDate` and new
+     * content. The `==` branch must refresh the denormalised preview text —
+     * without bumping unread or advancing the conversation timestamp.
+     */
+    @Test
+    fun editOfLastMessage_sameUserDate_refreshesPreviewText_withoutBumpingUnread() {
+        val userDateMs = 1_777_000_000_000L
+
+        // A peer message arrives and becomes the last message (unread 0→1).
+        val arrival = applyIncomingMessageBump(
+            items = listOf(convo(unread = 0)),
+            targetConversationId = convoId,
+            m = message(author = alice, userDateMs = userDateMs, content = "original"),
+            sqlUserDate = Instant.fromEpochMilliseconds(userDateMs),
+            activeDomain = me,
+        )
+        assertNotNull(arrival)
+        assertEquals("original", arrival.first().lastMessage)
+        assertEquals(1, arrival.first().unreadCount)
+
+        // The message is edited: same userDate, new content, isEdited = true.
+        val afterEdit = applyIncomingMessageBump(
+            items = arrival,
+            targetConversationId = convoId,
+            m = message(author = alice, userDateMs = userDateMs, content = "edited", isEdited = true),
+            sqlUserDate = Instant.fromEpochMilliseconds(userDateMs),
+            activeDomain = me,
+        )
+
+        assertNotNull(
+            afterEdit,
+            "a same-userDate edit re-emit must refresh the list preview",
+        )
+        val convo = afterEdit.first()
+        assertEquals("edited", convo.lastMessage, "list preview must show the edited text")
+        assertEquals(1, convo.unreadCount, "an edit re-emit must not bump unread")
+        assertEquals(
+            userDateMs,
+            convo.latestMessageTimestamp.toEpochMilliseconds(),
+            "an edit re-emit must not advance the conversation timestamp",
+        )
+    }
+
+    /**
      * Full reaction-echo lifecycle: a peer message arrives (bump 0→1),
      * then several reaction echoes arrive carrying the same userDate
      * (because reactions don't advance userDate). Unread count must
