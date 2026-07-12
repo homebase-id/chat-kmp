@@ -11,3 +11,10 @@ expect fun getImageFromClipboard(): ByteArray?
  * async Clipboard API; other platforms run synchronously inside. Returns original bytes or null.
  */
 expect suspend fun readClipboardImage(): ByteArray?
+
+// Pure mime-selection core, stdlib-typed so it's unit-testable without Robolectric/mockito:
+// takes the clip's mime types and a lazy byte reader instead of ClipData/ContentResolver.
+internal fun selectImageBytes(mimeTypes: List<String>, readBytes: () -> ByteArray?): ByteArray? {
+    if (mimeTypes.none { it.startsWith("image/") }) return null
+    return readBytes()?.takeIf { it.isNotEmpty() }
+}

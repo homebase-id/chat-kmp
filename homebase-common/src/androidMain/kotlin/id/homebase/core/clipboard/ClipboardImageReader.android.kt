@@ -10,13 +10,6 @@ actual fun getImageFromClipboard(): ByteArray? {
     return null
 }
 
-// Pure mime-selection core, stdlib-typed so it's unit-testable without Robolectric/mockito:
-// takes the clip's mime types and a lazy byte reader instead of ClipData/ContentResolver.
-internal fun selectImageBytes(mimeTypes: List<String>, readBytes: () -> ByteArray?): ByteArray? {
-    if (mimeTypes.none { it.startsWith("image/") }) return null
-    return readBytes()?.takeIf { it.isNotEmpty() }
-}
-
 actual suspend fun readClipboardImage(): ByteArray? {
     val context = ActivityProvider.requireApplicationContext()
     val clipboardManager =

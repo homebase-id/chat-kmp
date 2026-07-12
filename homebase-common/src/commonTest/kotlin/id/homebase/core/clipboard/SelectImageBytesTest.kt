@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
  * Kept stdlib-typed (no ClipData/ContentResolver) since this module has no Robolectric/mockito
  * to fake the Android SDK stubs the androidHostTest classpath ships instead.
  */
-class ClipboardImageReaderAndroidTest {
+class SelectImageBytesTest {
 
     @Test
     fun imageMimeReturnsBytesUnmodified() {
