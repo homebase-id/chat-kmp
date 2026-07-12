@@ -74,13 +74,13 @@ Both sets name the **same three states**; the team picks one:
 - **Option A — capability ladder (New / Chat / Circle).** Names each state by what
   the contact *gets*: chat only, or circle access. Transparent, no endorsement
   implied, and the tier names double as filter chips (New | Chat | Circles).
-  Review-form buttons: **[Add to circles] / [Chat only]**.
+  Review-form button (adaptive label): **⭕ Add to circles / 💬 Chat only**.
 - **Option B — trust ladder (New / Known / Trusted).** Warmer and more human — it
   names the relationship rather than the mechanics. The risk sits in **Trusted**:
   it is a judgment word whose content is invisible — the same failure mode as
   "Vetted" (trusted to do *what*?) — and it hides circles from the state name
-  right where circles are the payoff. Review-form buttons:
-  **[Trust & add to circles] / [Keep as known]**.
+  right where circles are the payoff. Review-form button (adaptive label):
+  **🛡️ Trust & add to circles / 🤝 Keep as known**.
 
 ### Emoji / icon per state
 
@@ -173,40 +173,40 @@ Combine the explanatory text and circle selection into **one clean modal**:
 > - Special permission circles (Emergency Location Access) stay visually distinct
 > - Connection defaults as visible toggles (e.g. "Follow their feed")
 >
-> there is one big confirm button and it changes label depending if you selected a circle or not:
-> 
-> **[ Add to Circles ]**
->
-> **[ Chat only ]**  (if you didn't select any circles)
+> **[ ⭕ Add to circles ]**  ← one big review button; label + emoji adapt to the
+> selection: with ≥ 1 circle selected it reads **⭕ Add to circles**, with none it
+> reads **💬 Chat only**
 >
 > Cancel · Disconnect · Block
 
-**Two completion paths — the button stamps the review.** The button names the destination
-states and preferably shows the emoji, not a judgment ("confirm" survives only as the verb for completing a
-review):
+**One button, two destinations — the button stamps the review.** The label + emoji
+always name the destination state the tap will produce, not a judgment ("confirm"
+survives only as the verb for completing a review):
 
-- **Add to circles** (primary) — applies the selected circles *and* the connection
-  defaults: whatever confirming enables today beyond circle grants (e.g. follow
-  their feed by default, accept introductions they relay, identity verification —
-  see open question 5). These defaults are shown as **visible toggles in the
-  modal**, not hidden side effects — hidden side effects are how "Vetted" got
-  confusing in the first place.
-- **Chat only** (secondary, quieter) — no circles, all defaults off. For
-  the contact you'll talk to but don't want to endorse: the landlord, the seller,
-  the introduction you're lukewarm about. Helper text: *"They'll see your public
-  profile only. You can add them to circles anytime."*
+- **⭕ Add to circles** (≥ 1 circle selected) — applies the selected circles *and*
+  the connection defaults: whatever confirming enables today beyond circle grants
+  (e.g. follow their feed by default, accept introductions they relay, identity
+  verification — see open question 5). These defaults are shown as **visible
+  toggles in the modal**, not hidden side effects — hidden side effects are how
+  "Vetted" got confusing in the first place.
+- **💬 Chat only** (no circles selected) — no circles granted. For the contact
+  you'll talk to but don't want to endorse: the landlord, the seller, the
+  introduction you're lukewarm about. Deselecting the last circle also flips the
+  default toggles off (they stay visible, so the user can re-enable any of them
+  deliberately). Helper text: *"They'll see your public profile only. You can add
+  them to circles anytime."*
 
-Both buttons complete the review (stamp `connectionReviewedAt`, section 8) and move
-the contact out of New — into **Circle** or **Chat** respectively.
+Either way the tap completes the review (stamps `connectionReviewedAt`, section 8)
+and moves the contact out of New — into **Circle** ⭕ or **Chat** 💬, exactly as
+the label promised.
 
 **Disconnect / Block** stay available as tertiary actions (overflow menu or footer
 link) — a review that can only end in approval isn't a review.
 
-**Is the second button worth having?** Only if confirmation genuinely carries
-defaults. Two buttons that differ merely in preset checkbox states would be silly —
-the user can uncheck things themselves. If the answer to open question 5 is that
-confirming grants nothing beyond the selected circles, collapse the two buttons
-into a single neutral **Done** and let the visible toggles speak for themselves.
+The adaptive single button avoids the earlier two-button design's weakness (two
+buttons that differ only in preset checkbox states) while keeping both destinations
+explicit: the label change *is* the feedback that deselecting circles changed the
+outcome.
 
 Declining circles does **not** block chatting — the connection is what enables chat;
 circles only govern extra profile visibility and permissions.
@@ -294,9 +294,9 @@ A new `ContactLocalAppDataJson`:
 @Serializable
 data class ContactLocalAppDataJson(
     /**
-     * Stamped when the user completes the connection review — via either
-     * button (Add to circles / Chat only) — whether or not any circles
-     * were selected. Null = never reviewed.
+     * Stamped when the user completes the connection review — via the
+     * adaptive review button (Add to circles / Chat only) — whether or
+     * not any circles were selected. Null = never reviewed.
      */
     val connectionReviewedAt: UnixTimeUtc? = null,
 )
@@ -309,8 +309,9 @@ exactly the right privacy boundary: "I have reviewed you" is my private state.
 **Deriving the three contact-list states.** Put explicitly: **all connections are
 New until reviewed**. Today's "Unvetted" bucket — connected but unconfirmed, whether
 auto-connected, introduced, or a plain direct connection — maps 1:1 onto New. The
-only promotion out of New is completing the review dialog via either button (which
-stamps `connectionReviewedAt`); the legacy carve-outs below are the sole exceptions.
+only promotion out of New is completing the review dialog via the adaptive review
+button (which stamps `connectionReviewedAt`); the legacy carve-outs below are the
+sole exceptions.
 
 | State      | Condition                                                    |
 |------------|--------------------------------------------------------------|
@@ -332,7 +333,7 @@ stamps `connectionReviewedAt`); the legacy carve-outs below are the sole excepti
 1. ~~Should "Any of my circles" be the default selection when someone opens the Select
    circles dialog, or should nothing be pre-selected?~~ **Largely resolved** by the
    explicit secondary path: pre-selecting "Any of my circles" is safe because
-   declining is its own labeled button ("Chat only" — public profile only).
+   declining is explicit — the review button relabels to "💬 Chat only".
    Remaining detail: does the *field visibility* dialog also default to "Any of my
    circles"? (Proposed: yes.)
 2. Do we want to show a small visibility pill next to each field in the main Edit
@@ -344,10 +345,9 @@ stamps `connectionReviewedAt`); the legacy carve-outs below are the sole excepti
 5. **What does confirming actually grant server-side today, beyond Confirmed
    Connections membership?** Candidates: identity verification
    (`hasVerificationHash`), accepting future introductions relayed by this person,
-   following their feed by default. The two-button design in section 4C stands or
-   falls with this answer — if confirming grants nothing beyond the selected
-   circles, collapse the two buttons into a single neutral **Done**
-   button with visible toggles.
+   following their feed by default. This decides what the defaults strip in the
+   review modal contains — if confirming grants nothing beyond the selected
+   circles, the strip disappears entirely (the adaptive button is unaffected).
 6. **Which state-name set wins — New / Chat / Circle or New / Known / Trusted?**
    And with it, the emoji/icon triple (👋 💬 ⭕ vs 👋 🤝 🛡️). See section 3 for
    the trade-offs.
