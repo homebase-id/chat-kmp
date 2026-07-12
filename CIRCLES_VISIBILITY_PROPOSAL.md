@@ -177,7 +177,7 @@ Combine the explanatory text and circle selection into **one clean modal**:
 > selection: with ≥ 1 circle selected it reads **⭕ Add to circles**, with none it
 > reads **💬 Chat only**
 >
-> Cancel · Disconnect · Block
+> 👋 Keep as new · Disconnect · Block
 
 **One button, two destinations — the button stamps the review.** The label + emoji
 always name the destination state the tap will produce, not a judgment ("confirm"
@@ -199,6 +199,12 @@ survives only as the verb for completing a review):
 Either way the tap completes the review (stamps `connectionReviewedAt`, section 8)
 and moves the contact out of New — into **Circle** ⭕ or **Chat** 💬, exactly as
 the label promised.
+
+**👋 Keep as new** replaces "Cancel": it dismisses the review without stamping
+anything — the contact stays New, exactly as the label says. With that, every
+labeled exit from the review names the state it leaves the contact in
+(⭕ / 💬 / 👋); even the escape hatch is honest about its destination. Scrim-tap
+and the back gesture keep plain cancel behavior.
 
 **Disconnect / Block** stay available as tertiary actions (overflow menu or footer
 link) — a review that can only end in approval isn't a review.
