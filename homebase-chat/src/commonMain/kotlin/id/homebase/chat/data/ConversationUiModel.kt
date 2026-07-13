@@ -34,6 +34,13 @@ data class ConversationUiModel(
     val dirty: Boolean = false,
     val avatarModel: ConversationAvatarModel,
     val lastMessageDeliveryStatus: Int? = null,
+    /**
+     * True when the last message is still sitting in the outbox (pending send) —
+     * the same [MessageUiModel.isPendingSend] signal the bubble uses. Without it
+     * the list would map [lastMessageDeliveryStatus] (which defaults to Sent) to a
+     * single check for a message that never actually sent. See issue #1076.
+     */
+    val lastMessageIsPendingSend: Boolean = false,
     val lastMessageIsDeleted: Boolean = false,
     val lastMessageFirstPayload: PayloadDescriptor? = null,
     val lastMessageHasMultiplePayloads: Boolean = false,
@@ -175,6 +182,7 @@ data class ConversationUiModel(
                     lastMessage = msg.content.truncateToCodePoints(40),
                     latestMessageTimestamp = candidate,
                     lastMessageDeliveryStatus = msg.messageAppData.deliveryStatus,
+                    lastMessageIsPendingSend = msg.isPendingSend,
                     lastMessageIsDeleted = msg.isDeleted,
                     lastMessageFirstPayload = msg.payloads?.firstOrNull(),
                     lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1,
