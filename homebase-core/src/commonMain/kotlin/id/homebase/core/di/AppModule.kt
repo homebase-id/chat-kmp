@@ -78,6 +78,7 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.api.client.diagnostics.ServerIpCapture
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
@@ -519,6 +520,9 @@ val appModule = module {
                 // coroutine, wiping a just-received peer at cold reopen (#1072). Logout clears it
                 // in-stream via SessionEnded, so no clear is needed on this path.
                 get<LiveLocationReceiveStore>()
+                // Arm the last-known-good server-IP capture bridge (its init sets the global
+                // registry the Android OkHttp EventListener forwards validated connects to).
+                get<ServerIpCapture>()
                 // Emergency-retrieved peer location history is memory-only and per-identity —
                 // clear any prior identity's retrievals (same in-stream SessionEnded backstop).
                 get<EmergencyLocateStore>().reset()
