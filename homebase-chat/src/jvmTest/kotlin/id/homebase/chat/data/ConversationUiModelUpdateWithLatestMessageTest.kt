@@ -52,7 +52,7 @@ class ConversationUiModelUpdateWithLatestMessageTest {
     )
 
     /** Mimics what `mapToMessageData` returns for a peer message: userDate clamped to transitCreated. */
-    private fun peerMessage(clampedUserDateMs: Long) = MessageUiModel(
+    private fun peerMessage(clampedUserDateMs: Long, isPendingSend: Boolean = false) = MessageUiModel(
         id = Uuid.random(),
         globalTransitId = null,
         fileId = Uuid.random(),
@@ -66,7 +66,7 @@ class ConversationUiModelUpdateWithLatestMessageTest {
         displayName = "alice",
         localReadTimestamp = null as UnixTimeUtc?,
         isDeleted = false,
-        isPendingSend = false,
+        isPendingSend = isPendingSend,
         versionTag = Uuid.NIL,
         messageAppData = MessageAppData(),
         reactionPreview = null,
@@ -119,5 +119,15 @@ class ConversationUiModelUpdateWithLatestMessageTest {
 
         // Equality not required; the contract is "no regression".
         assertEquals(ahead, result.latestMessageTimestamp.toEpochMilliseconds())
+    }
+
+    @Test
+    fun propagates_isPendingSend_forStuckOutgoingLastMessage() {
+        val convo = convo(latestMs = 0L)
+        val pending = peerMessage(clampedUserDateMs = 1_776_843_935_755L, isPendingSend = true)
+
+        val result = convo.updateWithLatestMessage(msg = pending, activeUserDomain = me)
+
+        assertEquals(true, result.lastMessageIsPendingSend)
     }
 }

@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -52,7 +53,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.util.cleanDomain
+import id.homebase.api.isIos
 import id.homebase.core.auth.BrowserLauncher
+import id.homebase.core.util.InAppBrowser
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
@@ -135,8 +138,16 @@ fun LoginScreen(
             }
 
             is LoginUiEvent.OpenUrl -> {
+                // On iOS launchAuthBrowser is a no-op, so the sign-up URL is silently dropped
+                // (#1054). Open it in an in-app SFSafariViewController — no ASWebAuthenticationSession
+                // "…Sign In" consent prompt, which is wrong for sign-up. Other platforms open it
+                // directly. Consume only after the open is issued, never before.
+                if (isIos()) {
+                    InAppBrowser.open(uiEvent.url)
+                } else {
+                    launchAuthBrowser(uiEvent.url)
+                }
                 viewModel.eventConsumed()
-                launchAuthBrowser(uiEvent.url)
             }
 
             is LoginUiEvent.OpenAuthUrl -> {
@@ -452,7 +463,15 @@ private fun LoginForm(
         mutableStateOf(TextFieldValue(homebaseId, selection = TextRange(homebaseId.length)))
     }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // Focus the ID field once on first entry — not on every re-entry/recomposition, which kept
+    // re-popping the keyboard (#1054).
+    var didFocus by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!didFocus) {
+            focusRequester.requestFocus()
+            didFocus = true
+        }
+    }
 
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(

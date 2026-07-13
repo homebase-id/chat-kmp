@@ -48,18 +48,18 @@
     <string name="msg_status_sending">Sending…</string>
     <string name="msg_status_sent">Sent: %1$s</string>
     <string name="msg_status_failed_to_send">Failed to send</string>
-    <string name="msg_status_delivery_details_unavailable">Couldn’t load delivery details</string>
+    <string name="msg_status_delivery_details_unavailable">Couldn't load delivery details</string>
     <string name="action_retry">Retry</string>
-    <string name="msg_retry_media_unavailable">The attachment is no longer available — it can’t be resent</string>
-    <string name="msg_retry_failed">Couldn’t retry — check your connection</string>
+    <string name="msg_retry_media_unavailable">The attachment is no longer available — it can't be resent</string>
+    <string name="msg_retry_failed">Couldn't retry — check your connection</string>
     <string name="msg_still_in_outbox">Still sending — next attempt %1$s</string>
     <string name="msg_next_attempt_minutes">in about %1$d min</string>
     <string name="msg_next_attempt_countdown">in %1$s</string>
     <string name="msg_next_attempt_shortly">shortly</string>
     <string name="msg_send_attempt">Attempt %1$d of %2$d</string>
     <string name="msg_waiting_on_earlier_message">Waiting for an earlier message to send first</string>
-    <string name="msg_stuck_reason">Couldn’t send: %1$s</string>
-    <string name="msg_outbox_checked_out_stuck">Stuck — the upload didn’t finish and is still checked out</string>
+    <string name="msg_stuck_reason">Couldn't send: %1$s</string>
+    <string name="msg_outbox_checked_out_stuck">Stuck — the upload didn't finish and is still checked out</string>
     <string name="msg_outbox_entry_lingering">A pending outbox entry is still present for this message</string>
     <string name="msg_waiting_for_connection">Waiting for connection</string>
     <string name="action_try_now">Try now</string>
@@ -89,7 +89,7 @@
     <string name="database_upgrade_snackbar">Database upgraded — restoring your data…</string>
     <string name="show_more">Show more</string>
     <string name="chat_message_read_more">Read more</string>
-    <string name="action_cannot_be_undone">This action can’t be undone.</string>
+    <string name="action_cannot_be_undone">This action can't be undone.</string>
     <string name="slide_to_cancel">&lt; Slide to cancel</string>
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
@@ -111,7 +111,7 @@
     <string name="update">Updates</string>
     <string name="update_not_supported">Update check not supported on this version</string>
     <string name="update_available">New version available</string>
-    <string name="update_using_latest_version">You’re up to date</string>
+    <string name="update_using_latest_version">You're up to date</string>
     <string name="update_check_now">Check for updates</string>
     <string name="update_get_update">Get new update</string>
     <string name="update_checking">Searching for update...</string>
@@ -209,7 +209,7 @@
     <string name="connections_recipient_placeholder">example.dotyou.cloud</string>
     <string name="connections_message_label">Message (optional)</string>
     <string name="connections_checking_identity">Checking identity\u2026</string>
-    <string name="connections_invalid_identity">This isn&apos;t a valid Homebase identity</string>
+    <string name="connections_invalid_identity">This isn't a valid Homebase identity</string>
     <string name="connections_request_sent">Connection request sent</string>
     <string name="connections_tab_incoming">Incoming (%1$s)</string>
     <string name="connections_tab_outgoing">Outgoing (%1$s)</string>
@@ -439,7 +439,7 @@
     <string name="moments_chip_add_location">Add location</string>
     <string name="moments_chip_location_included">Location</string>
     <string name="cd_moment_photo_info_chip">Photo info</string>
-    <string name="cd_moment_toggle_include_location">Toggle including this photo&#8217;s location</string>
+    <string name="cd_moment_toggle_include_location">Toggle including this photo's location</string>
     <string name="moments_chip_pick_date">Pick a date</string>
     <string name="moments_chip_use_photo_date">Use photo date</string>
     <string name="cd_moment_date_chip">Moment date</string>
@@ -642,6 +642,7 @@
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>
+    <string name="chat_message_paste_image">Paste image</string>
     <string name="chat_send_message_button">Send message</string>
     <string name="chat_settings">Conversation settings</string>
     <string name="chat_group_settings">Group settings</string>
@@ -988,7 +989,7 @@
     <string name="vault_label">Vault</string>
     <string name="vault_home_subtitle">Your secure document store</string>
     <string name="vault_onboarding_title">Your personal document vault</string>
-    <string name="vault_onboarding_body_1">Here you can safely store images of your passports, driver\u2019s license, certificates, credit cards, or any other important documents.</string>
+    <string name="vault_onboarding_body_1">Here you can safely store images of your passports, driver's license, certificates, credit cards, or any other important documents.</string>
     <string name="vault_onboarding_body_2">Your documents are zero-knowledge encrypted on your personal private Homebase cloud server. They are additionally protected by your device biometrics.</string>
     <string name="vault_onboarding_setup">Set it up</string>
     <string name="vault_onboarding_dismiss">Hide it away</string>
@@ -1212,6 +1213,15 @@
     <string name="dev_menu_section_database">Database &amp; Storage</string>
     <string name="dev_menu_section_testing">Testing Tools</string>
     <string name="dev_menu_section_video">Video</string>
+    <string name="dev_menu_section_network">Network Status</string>
+    <string name="dev_menu_run_network_diagnostics">Run network diagnostics</string>
+    <string name="dev_menu_network_copy">Copy diagnostics</string>
+    <string name="dev_menu_network_captive_portal">Captive portal likely — a wifi sign-in page is intercepting requests.</string>
+    <string name="dev_menu_network_rung_system_dns">System DNS</string>
+    <string name="dev_menu_network_rung_doh">DNS-over-HTTPS (1.1.1.1)</string>
+    <string name="dev_menu_network_rung_last_ip">Last-known IP</string>
+    <string name="dev_menu_network_last_good_ip">Last-known good IP: %1$s</string>
+    <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
@@ -1287,6 +1297,7 @@
     <!-- Location add-on -->
     <string name="location_label">Location</string>
     <string name="location_dashboard_title">Location Dashboard</string>
+    <string name="location_settings_title">Location Settings</string>
     <string name="location_home_subtitle">Your private location history</string>
     <string name="location_onboarding_title">Your places, only yours</string>
     <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you've been — stored on your own drive, visible to no one but you.</string>
@@ -1316,7 +1327,7 @@
     <string name="location_status_never">Never</string>
     <string name="location_menu_more">More options</string>
     <string name="location_menu_find_device">Find device</string>
-    <string name="location_menu_setup">Location setup</string>
+    <string name="location_menu_setup">Settings</string>
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>
@@ -1377,8 +1388,10 @@
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
     <string name="location_maps_off_title">Maps are turned off</string>
     <string name="location_maps_off_cta">Turn on maps</string>
-    <string name="location_dashboard_sharing_with">Sharing with</string>
+    <string name="location_dashboard_sharing_with">You're sharing with</string>
     <string name="location_dashboard_sharing_with_you">Sharing with you</string>
+    <string name="location_dashboard_sharing_show">Show the list</string>
+    <string name="location_dashboard_sharing_hide">Hide the list</string>
     <string name="location_dashboard_share_until">until %1$s</string>
     <string name="location_dashboard_share_until_stopped">until stopped</string>
     <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>

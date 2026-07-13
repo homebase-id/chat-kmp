@@ -3,7 +3,9 @@ package id.homebase.core.clipboard
 import java.awt.datatransfer.Clipboard
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
+import java.awt.datatransfer.UnsupportedFlavorException
 import java.io.ByteArrayInputStream
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -48,5 +50,45 @@ class ClipboardImageReaderJvmTest {
     fun emptyClipboardReturnsNull() {
         val empty = Clipboard("empty")
         assertNull(readImageFromClipboard(empty))
+    }
+
+    private fun clipboardWithFiles(files: List<File>): Clipboard {
+        val transferable = object : Transferable {
+            override fun getTransferDataFlavors(): Array<DataFlavor> =
+                arrayOf(DataFlavor.javaFileListFlavor)
+            override fun isDataFlavorSupported(f: DataFlavor): Boolean =
+                f == DataFlavor.javaFileListFlavor
+            override fun getTransferData(f: DataFlavor): Any {
+                if (f != DataFlavor.javaFileListFlavor) throw UnsupportedFlavorException(f)
+                return files
+            }
+        }
+        return Clipboard("files").apply { setContents(transferable, null) }
+    }
+
+    @Test
+    fun copiedImageFileBytesAreReturnedUnmodified() {
+        // An image copied from Finder/Explorer arrives as a file reference, not pixels.
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
+        val tmp = File.createTempFile("clip", ".PNG").apply { writeBytes(png) }
+        try {
+            val result = readImageFromClipboard(clipboardWithFiles(listOf(tmp)))
+            assertTrue(
+                result != null && result.contentEquals(png),
+                "Expected the original file bytes back, got ${result?.size} bytes",
+            )
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    @Test
+    fun copiedNonImageFileReturnsNull() {
+        val tmp = File.createTempFile("clip", ".txt").apply { writeText("not an image") }
+        try {
+            assertNull(readImageFromClipboard(clipboardWithFiles(listOf(tmp))))
+        } finally {
+            tmp.delete()
+        }
     }
 }
