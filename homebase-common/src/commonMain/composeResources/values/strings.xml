@@ -1387,8 +1387,10 @@
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
     <string name="location_maps_off_title">Maps are turned off</string>
     <string name="location_maps_off_cta">Turn on maps</string>
-    <string name="location_dashboard_sharing_with">Sharing with</string>
+    <string name="location_dashboard_sharing_with">You're sharing with</string>
     <string name="location_dashboard_sharing_with_you">Sharing with you</string>
+    <string name="location_dashboard_sharing_show">Show the list</string>
+    <string name="location_dashboard_sharing_hide">Hide the list</string>
     <string name="location_dashboard_share_until">until %1$s</string>
     <string name="location_dashboard_share_until_stopped">until stopped</string>
     <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>

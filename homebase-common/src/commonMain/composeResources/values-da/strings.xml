@@ -1387,8 +1387,10 @@
     <string name="location_dashboard_live_empty">Der er ingen live-placeringsdata i øjeblikket.</string>
     <string name="location_maps_off_title">Kort er slået fra</string>
     <string name="location_maps_off_cta">Slå kort til</string>
-    <string name="location_dashboard_sharing_with">Deler med</string>
+    <string name="location_dashboard_sharing_with">Du deler med</string>
     <string name="location_dashboard_sharing_with_you">Deler med dig</string>
+    <string name="location_dashboard_sharing_show">Vis listen</string>
+    <string name="location_dashboard_sharing_hide">Skjul listen</string>
     <string name="location_dashboard_share_until">indtil %1$s</string>
     <string name="location_dashboard_share_until_stopped">indtil den stoppes</string>
     <string name="location_dashboard_stop_one_cd">Stop deling med %1$s</string>
