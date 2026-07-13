@@ -121,8 +121,6 @@ class ConversationUiModelUpdateWithLatestMessageTest {
         assertEquals(ahead, result.latestMessageTimestamp.toEpochMilliseconds())
     }
 
-    /** #1076: a last message still stuck in the outbox must carry its pending-send
-     *  flag into the list model, so the row shows the clock — not a single check. */
     @Test
     fun propagates_isPendingSend_forStuckOutgoingLastMessage() {
         val convo = convo(latestMs = 0L)
