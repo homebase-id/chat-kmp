@@ -174,8 +174,27 @@ internal fun filterAndGroup(
         )
     }
 
+    val filtered = if (query.isEmpty()) {
+        contacts
+    } else {
+        contacts.filter {
+            it.name.contains(query, ignoreCase = true) ||
+                it.odinId.toString().contains(query, ignoreCase = true)
+        }
+    }
+        .distinctBy { it.odinId }
+        // Never list the signed-in user as a normal contact — self routes to Note to Self above.
+        .filter { it.odinId != self?.odinId }
+    val groups = filtered.groupBy {
+        it.name.firstOrNull()?.uppercase() ?: "#"
+    }.map { (initial, groupContacts) ->
+        ContactGroup(initial = initial, contacts = groupContacts)
+    }.sortedBy { it.initial }
+    result.add(CreateConversationListItem.Contacts(groups))
+
     // Existing group conversations, matchable by group name or by a member's
     // contact name (a group's title often doesn't contain any member's name).
+    // Listed after contacts so the picker leads with individuals.
     val contactNameByOdinId = contacts.associate { it.odinId to it.name }
     val matchedGroups = if (query.isEmpty()) {
         groupConversations
@@ -200,24 +219,6 @@ internal fun filterAndGroup(
     if (groupRows.isNotEmpty()) {
         result.add(CreateConversationListItem.Groups(groupRows))
     }
-
-    val filtered = if (query.isEmpty()) {
-        contacts
-    } else {
-        contacts.filter {
-            it.name.contains(query, ignoreCase = true) ||
-                it.odinId.toString().contains(query, ignoreCase = true)
-        }
-    }
-        .distinctBy { it.odinId }
-        // Never list the signed-in user as a normal contact — self routes to Note to Self above.
-        .filter { it.odinId != self?.odinId }
-    val groups = filtered.groupBy {
-        it.name.firstOrNull()?.uppercase() ?: "#"
-    }.map { (initial, groupContacts) ->
-        ContactGroup(initial = initial, contacts = groupContacts)
-    }.sortedBy { it.initial }
-    result.add(CreateConversationListItem.Contacts(groups))
     return result
 }
 
