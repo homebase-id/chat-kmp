@@ -424,18 +424,20 @@ class NotificationService(
                     "no_name_or_content" -> Pair("Homebase", "New notification")
                     else -> Pair(appName, bodyText)
                 }
+                // Full content is shown at name_content_actions (and the default/unknown case,
+                // which fromCode() treats as that level) — never at the redacted levels.
+                val showsRealContent =
+                    contentLevel != "name_only" && contentLevel != "no_name_or_content"
 
                 // Track per-conversation message count for summary display
                 val messageCount = if (conversationId != null) {
                     counts.increment(conversationId)
                 } else 1
 
-                // Override body with count summary when multiple messages accumulated
-                val finalBody = if (messageCount > 1) {
-                    "$messageCount new messages"
-                } else {
-                    displayBody
-                }
+                // When real content is shown, keep the per-message body and let the Android
+                // displayer stack the recent messages (MessagingStyle). Only collapse to a
+                // count at the redacted levels, where there's no content to show anyway.
+                val finalBody = notificationBody(displayBody, messageCount, showsRealContent)
 
                 // Chime cooldown: suppress alert sound if one played recently
                 val shouldAlert = lastAlertMark.elapsedNow() >= ALERT_COOLDOWN
@@ -459,6 +461,7 @@ class NotificationService(
                     payloadData = payloadMap,
                     silent = !shouldAlert,
                     hasContent = hasContent,
+                    showsRealContent = showsRealContent,
                 )
 
                 if (isAppInForeground) {
@@ -925,6 +928,20 @@ internal fun resolveMomentsTap(typeId: String, tagId: String): MomentsTapTarget?
 /** Convenience predicate over [resolveMomentsTap]. */
 internal fun isMomentsTap(typeId: String, tagId: String): Boolean =
     resolveMomentsTap(typeId, tagId) != null
+
+/**
+ * The body to display for a chat notification. When real content is shown
+ * ([showsRealContent] — the name_content_actions level), always the message itself: the Android
+ * displayer stacks multiple per-conversation messages via MessagingStyle, so no count summary is
+ * needed. At the redacted levels, collapse to a "$count new messages" summary once more than one
+ * message has accumulated (there's no content to stack there anyway).
+ */
+internal fun notificationBody(
+    displayBody: String,
+    messageCount: Int,
+    showsRealContent: Boolean,
+): String =
+    if (!showsRealContent && messageCount > 1) "$messageCount new messages" else displayBody
 
 /**
  * Reserved offset so a conversation's group-summary id never collides with a
