@@ -72,47 +72,18 @@ fun RichTextState.applyMarkDownContent(
     return this.apply {
         try {
             setMarkdown(content)
-        } catch (_: Exception) {
-            try {
-                setMarkdown(fixProblematicMarkdownText(content))
-            } catch (e: Exception) {
-                Logger.e(tag = "RichTextExtensions") { "Error setting markdown: $e" }
-                setText(content)
-            }
+            // richeditor's setMarkdown silently drops some structure (e.g. leading
+            // spaces on an indented block after a blank line) without throwing, and
+            // toMarkdown() would then persist that lossy form on the next save and
+            // trip the editor's dirty check. setText round-trips the exact bytes, so
+            // prefer it whenever the rich parse isn't byte-faithful — the note reads
+            // as raw markdown but nothing is silently mangled (issue #927 Section B).
+            if (toMarkdown() != content) setText(content)
+        } catch (e: Exception) {
+            Logger.e(tag = "RichTextExtensions") { "setMarkdown failed, preserving raw text: $e" }
+            setText(content)
         }
     }
-}
-
-/*
-This fixed Markdown that is invalid for RichTextState by removing empty lines if follow by non-empty lines with initial spaces
- */
-private fun fixProblematicMarkdownText(input: String) : String {
-    val lines = input.lines()
-    val result = mutableListOf<String>()
-
-    var i = 0
-    while (i < lines.size) {
-        val currentLine = lines[i]
-        val isCurrentEmpty = currentLine.isBlank()
-
-        // Check if current line is empty and there's a next line
-        if (isCurrentEmpty && i < lines.size - 1) {
-            val nextLine = lines[i + 1]
-            val nextHasContent = nextLine.isNotBlank()
-            val nextStartsWithSpaces = nextLine.isNotEmpty() && nextLine[0].isWhitespace() && nextLine[0] != '\n'
-
-            // Skip this empty line if next line has content and starts with spaces
-            if (nextHasContent && nextStartsWithSpaces) {
-                i++
-                continue
-            }
-        }
-
-        result.add(currentLine)
-        i++
-    }
-
-    return result.joinToString("\n")
 }
 
 private fun findPrecedingCharacterStart(text: String, offset: Int): Int {
