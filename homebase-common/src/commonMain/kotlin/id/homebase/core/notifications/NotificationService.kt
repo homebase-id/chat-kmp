@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -107,6 +108,10 @@ private val COMPANION_AUTH_RESTORE_TIMEOUT = 2.seconds
  */
 private const val CONTENTLESS_PLACEHOLDER = "You have a new message"
 
+/** Budget for the in-app message resolve on push receipt (#859) before falling back to the
+ *  generic body — a single-message local read or server header fetch must fit comfortably. */
+private const val NOTIFICATION_RESOLVE_TIMEOUT_MS = 4_000L
+
 /**
  * Resolves the companion-app redirect event, AWAITING auth restoration so a tap
  * from a killed app isn't dropped while `YouAuthFlowManager.restoreSession()` is
@@ -151,6 +156,12 @@ class NotificationService(
      * resolver unit-testable — same pattern as [id.homebase.core.sync.BackgroundSyncOrchestrator].
      */
     private val authState: StateFlow<YouAuthState>,
+    /**
+     * Resolves real chat message content in-app for the notification body (#859). Optional —
+     * null on platforms/builds that don't provide it (iOS NSE, tests), where the generic body
+     * is kept. Injected from homebase-chat via [NotificationMessageResolver].
+     */
+    private val messageResolver: NotificationMessageResolver? = null,
 ) {
 
     private var isListening = false
@@ -503,18 +514,30 @@ class NotificationService(
      *
      * For now, falls back to unEncryptedMessage.
      */
-    private fun decryptNotificationBody(notification: PushNotification): String? {
-        val options = notification.options
-        if (options.keyHeader != null && options.encryptedBody != null) {
-            // TODO: Implement decryption when backend support is ready:
-            // val keyHeader = EncryptedKeyHeader.fromBase64(options.keyHeader)
-            //     .decryptAesToKeyHeader(sharedSecret)
-            // return keyHeader.decrypt(Base64.decode(options.encryptedBody)).decodeToString()
-            Logger.w(tag = "NotificationService") {
-                "Encrypted notification body received but decryption not yet implemented"
+    private suspend fun decryptNotificationBody(notification: PushNotification): String? {
+        // In-app resolve+decrypt of the referenced chat message (#859): reuses the same
+        // decrypt + typed-preview pipeline as the chat UI via the injected resolver (which lives
+        // in homebase-chat). Bounded by a timeout to stay within the push-handler budget; any
+        // miss/timeout/failure falls through to the sender-provided generic body.
+        val resolver = messageResolver
+        if (resolver != null && resolveConversationId(notification) != null) {
+            val ids = extractChatTapIds(notification.options.typeId, notification.options.tagId)
+            if (ids != null) {
+                val (conversationId, messageId) = ids
+                val preview = try {
+                    withTimeoutOrNull(NOTIFICATION_RESOLVE_TIMEOUT_MS) {
+                        resolver.resolvePreview(conversationId, messageId)?.preview
+                    }
+                } catch (e: Exception) {
+                    Logger.w(tag = "NotificationService") {
+                        "in-app notification content resolve failed: ${e.message}"
+                    }
+                    null
+                }
+                if (!preview.isNullOrBlank()) return preview
             }
         }
-        return options.unEncryptedMessage
+        return notification.options.unEncryptedMessage
     }
 
     /** Resolves the notification channel based on the app type. */

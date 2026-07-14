@@ -77,11 +77,14 @@ actual class RichNotificationDisplayer actual constructor() {
         // Set badge count on the notification (used by launcher badge integrations)
         builder.setNumber(BadgeManager.badgeCount)
 
-        // Lock screen privacy: show generic content
+        // Lock screen: mirror the already content-level-filtered title/body so the lock screen
+        // reflects the user's notification content setting (#859). NotificationService sets these
+        // per the level — "Homebase"/"New notification" for no_name_or_content, sender + real
+        // message for name_content_actions — so no separate redaction is needed here.
         val publicBuilder = NotificationCompat.Builder(context, data.channelId)
             .setSmallIcon(icon)
-            .setContentTitle("Homebase")
-            .setContentText("New notification")
+            .setContentTitle(data.title)
+            .setContentText(data.body)
             .setAutoCancel(true)
         builder.setPublicVersion(publicBuilder.build())
 

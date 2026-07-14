@@ -39,6 +39,14 @@ interface MessageLookup {
      *  in-header size budget), read the full text back. */
     suspend fun loadFullMessage(conversationId: Uuid, messageId: Uuid): String?
 
+    /**
+     * Resolve a message for an in-app push notification preview (#859). Defaults to the local
+     * read; [ChatMessageStream] overrides it to also fetch the single header from the server
+     * when the message hasn't synced yet at push time. Returns null when unresolved.
+     */
+    suspend fun resolveForNotification(conversationId: Uuid, messageId: Uuid): MessageUiModel? =
+        getMessage(messageId)
+
     /** Cache-only lookup. Returns the drive `fileId` for [messageId] if the
      *  message is currently in the in-memory state (i.e. its conversation is
      *  open and loaded), otherwise `null`. Cheap, synchronous-equivalent —
