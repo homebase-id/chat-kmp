@@ -24,6 +24,7 @@ import id.homebase.core.avatars.AppConnectionStatus
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,7 +36,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
@@ -140,6 +140,9 @@ class AuthConnectionCoordinator(
      * hiding drives.
      */
     @Volatile private var grantedDriveIds: Set<String>? = null
+
+    // Background grant-refresh + prune (#1079); cancel-and-relaunched on foreground promotion.
+    private var grantReconcileJob: Job? = null
     // endregion
 
     /**
@@ -213,7 +216,15 @@ class AuthConnectionCoordinator(
                 // drive makes the server 403 the REST query-batch AND close the whole notify
                 // WebSocket — one unauthorized drive in EstablishConnectionRequest tears down the
                 // socket, which surfaced as a dropped initial handshake + premature "connected".
-                refreshGrantedDriveIds()
+                //
+                // The grant fetch does NOT run here anymore (#1079): it's a network call that on a
+                // bad network burned ~2.5 min and, upstream of connect()/loadProfile() in this same
+                // coroutine, stalled the socket + avatar. Optional drives ~never lose a grant, so we
+                // connect immediately with the local registry (retainGrantedDrives is a no-op while
+                // grantedDriveIds is null) and reconcile in the background — see
+                // [scheduleGrantReconcile], kicked after connect(). The rare "in registry but grant
+                // revoked" drive is pruned then (and is also self-healed reactively by the DriveSync
+                // 403 unmount + the WS unauthorizedDriveIds drop).
 
                 // Pre-mount the granted optional drives so they're in driveSyncs when
                 // onConnected fires start() + syncAll(). mountDrive() defers the network kick
@@ -260,6 +271,9 @@ class AuthConnectionCoordinator(
                     initialBaseline = initialDrives.mapTo(HashSet()) { it.drive.alias },
                 )
                 loadProfile()
+                // Resolve read grants off the critical path and prune any live drive we've lost
+                // the grant for (rare). Kicked after connect() so the WS refresh has a client.
+                scheduleGrantReconcile()
             }
             is YouAuthState.Initializing -> {
                 // ignore
@@ -330,6 +344,9 @@ class AuthConnectionCoordinator(
                 initialBaseline = drives.mapTo(HashSet()) { it.drive.alias },
             )
             loadProfile()
+            // Retry point: a cold background wake may have missed the grant fetch on a dead
+            // network; the first real foreground open re-runs it (cancel-and-relaunch) and prunes.
+            scheduleGrantReconcile()
         }
     }
 
@@ -628,27 +645,17 @@ class AuthConnectionCoordinator(
     }
 
     /**
-     * Refresh [grantedDriveIds] from the security context. Called once per Authenticated
-     * transition, before any optional drive is mounted/subscribed. On failure OR timeout it leaves
-     * the filter disabled (null) so we degrade to mounting everything rather than hiding a granted
-     * drive on a transient fetch error.
-     *
-     * The security-context GET (`/auth/context`) has no app-level retry; on a failing network its
-     * whole HttpTimeout budget (~2.5 min under OkHttp DNS-retry) would otherwise block this
-     * suspend call — and, because it runs upstream of `connect()`/`loadProfile()` in the same
-     * coroutine, the notify socket and the profile/avatar with it (#1079). Bounding the fetch with
-     * [SECURITY_CONTEXT_TIMEOUT_MS] maps a slow/dead network onto the existing null-degrade: the
-     * filter is applied before the first connect on a good network (<1s), and a bad network
-     * connects unfiltered after ~10s instead of ~2.5 min (self-healing — the WS reactively drops
-     * any drive it gets a 401/403 for and reconnects).
+     * Refresh [grantedDriveIds] from the security context. Runs in the **background** (via
+     * [scheduleGrantReconcile]), off the connect/loadProfile critical path — the security-context
+     * GET (`/auth/context`) has no app-level retry and on a failing network burns its whole
+     * HttpTimeout budget (~2.5 min under OkHttp DNS-retry), which used to stall the socket + avatar
+     * (#1079). On failure it leaves the set null (prune nothing — degrade to the local registry).
      */
     private suspend fun refreshGrantedDriveIds() {
-        val ctx = withTimeoutOrNull(SECURITY_CONTEXT_TIMEOUT_MS) {
-            securityContextProvider.getSecurityContext()
-        }
+        val ctx = securityContextProvider.getSecurityContext()
         if (ctx == null) {
             Logger.w(tag = "AuthLifecycle") {
-                "AuthCC: security context unavailable or timed out — drive-grant filter disabled this cycle"
+                "AuthCC: security context unavailable — drive-grant filter disabled this cycle"
             }
             grantedDriveIds = null
             return
@@ -659,6 +666,29 @@ class AuthConnectionCoordinator(
             .mapTo(mutableSetOf()) { normalizeDriveId(it.permissionedDrive.drive.alias) }
         grantedDriveIds = readable
         Logger.i(tag = "AuthLifecycle") { "AuthCC: readable drive grants resolved (count=${readable.size})" }
+    }
+
+    /**
+     * Resolve read grants in the background and prune any *live* optional drive we've lost the
+     * grant for. Never gates startup. Cancel-and-relaunch so a foreground reopen after a
+     * dead-network cold start retries with a fresh fetch. Pruning uses [unmountDrive] with
+     * `persist = false` — it stops DriveSync + rebuilds the WS subscription filtered, but leaves the
+     * persisted DriveRegistry intact (the drive re-mounts on a later startup if the grant returns).
+     */
+    private fun scheduleGrantReconcile() {
+        grantReconcileJob?.cancel()
+        grantReconcileJob = scope.launch {
+            refreshGrantedDriveIds()
+            val granted = grantedDriveIds ?: return@launch // grants unknown → prune nothing
+            val mandatory = mandatorySyncDrives.mapTo(HashSet()) { it.drive.alias }
+            val toPrune = drivesToPrune(driveSyncManager.driveStatuses.value.keys, mandatory, granted)
+            for (driveId in toPrune) {
+                Logger.w(tag = "AuthLifecycle") {
+                    "AuthCC: read grant revoked — pruning drive $driveId from the live session"
+                }
+                unmountDrive(driveId, persist = false)
+            }
+        }
     }
 
     /**
@@ -680,19 +710,22 @@ class AuthConnectionCoordinator(
         }
     }
 
-    // Match compareStringUuId's normalization so drive ids compare regardless of hyphen/case format.
-    private fun normalizeDriveId(driveId: String): String = driveId.lowercase().replace("-", "")
 
     companion object {
         private const val REFRESH_DEBOUNCE_MS = 500L
-
-        // Cap the security-context fetch so it can't hold the Authenticated coroutine (and with it
-        // the notify socket + profile load) for the full ~2.5 min HttpTimeout budget on a
-        // failing network (#1079). A timeout degrades to the same "filter disabled this cycle"
-        // path as a fetch failure. Generous enough to succeed on a slow-but-working network.
-        private const val SECURITY_CONTEXT_TIMEOUT_MS = 10_000L
     }
 }
+
+// Match compareStringUuId's normalization so drive ids compare regardless of hyphen/case format.
+internal fun normalizeDriveId(driveId: String): String = driveId.lowercase().replace("-", "")
+
+/**
+ * The live optional drives to prune because their read grant was revoked (#1079): [active] drives
+ * (from DriveSyncManager.driveStatuses) that are not mandatory and not in the [granted] set.
+ * Mandatory drives (chat/contacts/profile) are never pruned.
+ */
+internal fun drivesToPrune(active: Set<Uuid>, mandatory: Set<Uuid>, granted: Set<String>): List<Uuid> =
+    active.filter { it !in mandatory && normalizeDriveId(it.toString()) !in granted }
 
 @Immutable
 data class AuthConnectionState(
