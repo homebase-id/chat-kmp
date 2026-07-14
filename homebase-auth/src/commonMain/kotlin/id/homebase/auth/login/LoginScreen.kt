@@ -53,7 +53,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.util.cleanDomain
-import id.homebase.api.isIos
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.util.InAppBrowser
 import id.homebase.core.ui.assets.Homebase
@@ -138,15 +137,11 @@ fun LoginScreen(
             }
 
             is LoginUiEvent.OpenUrl -> {
-                // On iOS launchAuthBrowser is a no-op, so the sign-up URL is silently dropped
-                // (#1054). Open it in an in-app SFSafariViewController — no ASWebAuthenticationSession
-                // "…Sign In" consent prompt, which is wrong for sign-up. Other platforms open it
-                // directly. Consume only after the open is issued, never before.
-                if (isIos()) {
-                    InAppBrowser.open(uiEvent.url)
-                } else {
-                    launchAuthBrowser(uiEvent.url)
-                }
+                // Sign-up is a plain web page, not an OAuth callback: no shared session or token
+                // hand-back, just a page the user must be able to get back out of. That's
+                // InAppBrowser, not the auth-callback launcher. Consume only after the open is
+                // issued, never before.
+                InAppBrowser.open(uiEvent.url)
                 viewModel.eventConsumed()
             }
 

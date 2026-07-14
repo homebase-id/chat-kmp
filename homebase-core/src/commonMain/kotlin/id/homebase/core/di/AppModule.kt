@@ -45,6 +45,7 @@ import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
@@ -121,6 +122,7 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationEntry
+import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
@@ -717,8 +719,10 @@ val appModule = module {
             notificationBackend = get(),
             eventBus = get(),
             authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
+            messageResolver = get(),
         )
     }
+    single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
     singleOf(::NotificationEntry)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
