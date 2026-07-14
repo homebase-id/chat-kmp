@@ -484,7 +484,7 @@ private fun DetailHeader(
     val status = uiState.connectionStatus
     val connected = status == ConnectionStatus.Connected
     val blocked = status == ConnectionStatus.Blocked
-    val pending = status == ConnectionStatus.Pending
+    val pending = status == ConnectionStatus.None
     val requestIncoming = uiState.requestDirection == RequestDirection.INCOMING
     val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
     // Has a Homebase identity but no active connection, pending request, or block.

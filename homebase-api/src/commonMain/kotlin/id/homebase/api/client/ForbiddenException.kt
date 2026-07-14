@@ -1,4 +1,5 @@
 package id.homebase.api.client
 
-class ForbiddenException :
-    OdinApiException(403, "Forbidden")
+class ForbiddenException(
+    problem: ProblemDetails? = null
+) : OdinApiException(403, problem?.title ?: "Forbidden", problem = problem)
