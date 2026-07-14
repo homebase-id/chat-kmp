@@ -134,6 +134,14 @@ class DriveWebSocketUpsertWorker(
             // BatchReceived), so skipping the guard-rejected WS delete too leaves
             // the live stream showing the message until a cold reload. A delete is
             // never a stale statisticsChanged duplicate, so surfacing it is safe.
+            //
+            // Edge (assumption, not guarded): the guard ALSO rejects a delete whose
+            // `updated` is older than a newer ACTIVE row already held for the same
+            // fileId — emitting that would paint a live message as deleted. Safe here
+            // because chat deletes are terminal: a fileId is never resurrected active
+            // after a delete, so a rejected delete is always the same delete DriveSync
+            // already applied. Revisit (gate on "no newer active row") if any drive
+            // this worker serves ever reuses a fileId after deleting it.
             val writtenIds = written.mapTo(HashSet()) { it.fileId }
             val guardRejectedDeletes = batch
                 .filter { it.isSoftDeleted() && it.fileId !in writtenIds }
