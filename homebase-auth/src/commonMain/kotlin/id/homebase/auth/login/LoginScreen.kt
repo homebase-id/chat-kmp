@@ -509,13 +509,13 @@ private fun LoginForm(
             placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
             focusRequester = focusRequester,
             imeAction = ImeAction.Done,
-            onImeAction = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
+            onImeAction = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)) },
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
+            onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)) },
             modifier = Modifier.fillMaxWidth().testTag(if (errorMessage != null) "try_again_button" else "login_button"),
         ) {
             if (errorMessage != null) Text(stringResource(MR.string.login_try_again_button)) else Text(stringResource(MR.string.login_sign_in_button))

@@ -300,7 +300,7 @@ private fun ByIdentitySection(
         onValueChange = { incoming ->
             val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
             fieldValue = incoming.copy(text = normalizedSpaces)
-            val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false)
+            val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)
             if (dotted != uiState.draft.odinId) onAction(AddContactAction.OdinIdChanged(dotted))
         },
         label = { Text(stringResource(MR.string.add_contact_odinid_label)) },
