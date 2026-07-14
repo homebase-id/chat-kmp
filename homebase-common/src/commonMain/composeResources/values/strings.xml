@@ -642,6 +642,7 @@
 
     <!-- Conversation -->
     <string name="chat_new_message_placeholder">Message</string>
+    <string name="chat_message_paste_image">Paste image</string>
     <string name="chat_send_message_button">Send message</string>
     <string name="chat_settings">Conversation settings</string>
     <string name="chat_group_settings">Group settings</string>
@@ -1212,6 +1213,15 @@
     <string name="dev_menu_section_database">Database &amp; Storage</string>
     <string name="dev_menu_section_testing">Testing Tools</string>
     <string name="dev_menu_section_video">Video</string>
+    <string name="dev_menu_section_network">Network Status</string>
+    <string name="dev_menu_run_network_diagnostics">Run network diagnostics</string>
+    <string name="dev_menu_network_copy">Copy diagnostics</string>
+    <string name="dev_menu_network_captive_portal">Captive portal likely — a wifi sign-in page is intercepting requests.</string>
+    <string name="dev_menu_network_rung_system_dns">System DNS</string>
+    <string name="dev_menu_network_rung_doh">DNS-over-HTTPS (1.1.1.1)</string>
+    <string name="dev_menu_network_rung_last_ip">Last-known IP</string>
+    <string name="dev_menu_network_last_good_ip">Last-known good IP: %1$s</string>
+    <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
@@ -1287,6 +1297,7 @@
     <!-- Location add-on -->
     <string name="location_label">Location</string>
     <string name="location_dashboard_title">Location Dashboard</string>
+    <string name="location_settings_title">Location Settings</string>
     <string name="location_home_subtitle">Your private location history</string>
     <string name="location_onboarding_title">Your places, only yours</string>
     <string name="location_onboarding_body_1">Location keeps a private, encrypted history of where you've been — stored on your own drive, visible to no one but you.</string>
@@ -1316,7 +1327,7 @@
     <string name="location_status_never">Never</string>
     <string name="location_menu_more">More options</string>
     <string name="location_menu_find_device">Find device</string>
-    <string name="location_menu_setup">Location setup</string>
+    <string name="location_menu_setup">Settings</string>
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>
@@ -1377,8 +1388,10 @@
     <string name="location_dashboard_live_empty">There's no live location data at the moment.</string>
     <string name="location_maps_off_title">Maps are turned off</string>
     <string name="location_maps_off_cta">Turn on maps</string>
-    <string name="location_dashboard_sharing_with">Sharing with</string>
+    <string name="location_dashboard_sharing_with">You're sharing with</string>
     <string name="location_dashboard_sharing_with_you">Sharing with you</string>
+    <string name="location_dashboard_sharing_show">Show the list</string>
+    <string name="location_dashboard_sharing_hide">Hide the list</string>
     <string name="location_dashboard_share_until">until %1$s</string>
     <string name="location_dashboard_share_until_stopped">until stopped</string>
     <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>

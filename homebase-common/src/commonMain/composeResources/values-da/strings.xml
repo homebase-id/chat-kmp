@@ -1212,6 +1212,15 @@
     <string name="dev_menu_section_database">Database &amp; lagerplads</string>
     <string name="dev_menu_section_testing">Testværktøjer</string>
     <string name="dev_menu_section_video">Video</string>
+    <string name="dev_menu_section_network">Netværksstatus</string>
+    <string name="dev_menu_run_network_diagnostics">Kør netværksdiagnostik</string>
+    <string name="dev_menu_network_copy">Kopiér diagnostik</string>
+    <string name="dev_menu_network_captive_portal">Sandsynligvis en captive portal — en wifi-loginside opfanger forespørgsler.</string>
+    <string name="dev_menu_network_rung_system_dns">System-DNS</string>
+    <string name="dev_menu_network_rung_doh">DNS-over-HTTPS (1.1.1.1)</string>
+    <string name="dev_menu_network_rung_last_ip">Sidst kendte IP</string>
+    <string name="dev_menu_network_last_good_ip">Sidst kendte gode IP: %1$s</string>
+    <string name="dev_menu_network_last_good_ip_none">ingen registreret endnu</string>
     <string name="dev_menu_force_sync">Gennemtving fuld synkronisering</string>
     <string name="dev_menu_clear_data">Ryd alle data</string>
     <string name="dev_menu_test_notification">Test rig notifikation</string>
@@ -1287,6 +1296,7 @@
     <!-- Location add-on -->
     <string name="location_label">Lokation</string>
     <string name="location_dashboard_title">Lokations-dashboard</string>
+    <string name="location_settings_title">Lokationsindstillinger</string>
     <string name="location_home_subtitle">Din private lokationshistorik</string>
     <string name="location_onboarding_title">Dine steder, kun dine</string>
     <string name="location_onboarding_body_1">Lokation fører en privat, krypteret historik over, hvor du har været — gemt på dit eget drev og kun synlig for dig.</string>
@@ -1316,7 +1326,7 @@
     <string name="location_status_never">Aldrig</string>
     <string name="location_menu_more">Flere muligheder</string>
     <string name="location_menu_find_device">Find enhed</string>
-    <string name="location_menu_setup">Lokationsopsætning</string>
+    <string name="location_menu_setup">Indstillinger</string>
     <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Lokationshistorik</string>
     <string name="location_devices_section">Find min enhed</string>
@@ -1377,8 +1387,10 @@
     <string name="location_dashboard_live_empty">Der er ingen live-placeringsdata i øjeblikket.</string>
     <string name="location_maps_off_title">Kort er slået fra</string>
     <string name="location_maps_off_cta">Slå kort til</string>
-    <string name="location_dashboard_sharing_with">Deler med</string>
+    <string name="location_dashboard_sharing_with">Du deler med</string>
     <string name="location_dashboard_sharing_with_you">Deler med dig</string>
+    <string name="location_dashboard_sharing_show">Vis listen</string>
+    <string name="location_dashboard_sharing_hide">Skjul listen</string>
     <string name="location_dashboard_share_until">indtil %1$s</string>
     <string name="location_dashboard_share_until_stopped">indtil den stoppes</string>
     <string name="location_dashboard_stop_one_cd">Stop deling med %1$s</string>
