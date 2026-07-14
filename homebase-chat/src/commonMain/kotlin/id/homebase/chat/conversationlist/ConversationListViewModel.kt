@@ -43,6 +43,7 @@ import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.matchesConversationQuery
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
@@ -1397,7 +1398,7 @@ class ConversationListViewModel(
                     val result = mutableListOf<ConversationListContentModel>()
 
                     val conversations = conversationsPool.filter { conversation ->
-                        conversation.getDisplayName().contains(searchQuery, ignoreCase = true)
+                        conversation.matchesConversationQuery(searchQuery)
                     }.toPersistentList()
                     if (conversations.isNotEmpty()) {
                         result.add(

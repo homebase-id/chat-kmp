@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.diagnostics.ServerIpCapture
+import id.homebase.api.client.diagnostics.ServerIpStore
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
@@ -78,6 +80,10 @@ val apiModule = module {
     singleOf(::VideoPreloadService)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
+    // Last-known-good owner-server IP: the store + the production-capture bridge (its init arms
+    // the global registry the Android OkHttp EventListener forwards to).
+    singleOf(::ServerIpStore)
+    single { ServerIpCapture(get(), get(), get()) }
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)

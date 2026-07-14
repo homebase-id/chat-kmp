@@ -16,6 +16,8 @@ private val imageFileExtensions =
 actual fun getImageFromClipboard(): ByteArray? =
     readImageFromClipboard(Toolkit.getDefaultToolkit().systemClipboard)
 
+actual suspend fun readClipboardImage(): ByteArray? = getImageFromClipboard()
+
 /**
  * Testable core of [getImageFromClipboard] that takes the [Clipboard] explicitly so a
  * unit test can inject a fake holding a raw image/gif flavor and assert the original

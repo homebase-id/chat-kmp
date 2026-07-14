@@ -30,6 +30,7 @@ import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.app.crash.CrashRecoveryDialog
 import id.homebase.core.crash.CrashMetadata
@@ -283,11 +284,17 @@ fun main() {
 
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-        // Preserve PR #737: don't crash on a transient network blip.
-        if (throwable.isTransientNetworkFailure()) {
+        // Preserve PR #737: don't crash on a transient network blip. Also contain a
+        // recoverable optimistic-concurrency conflict (400 VersionTagMismatch, #1008).
+        if (throwable.isTransientNetworkFailure() || throwable.isRecoverableServerConflict()) {
             crashlyticsRecordException(throwable)
             Logger.w(tag = "CrashHandler") {
-                "Transient network failure leaked to '${thread.name}' (no local handler); " +
+                val kind = if (throwable.isRecoverableServerConflict()) {
+                    "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
+                } else {
+                    "Transient network failure"
+                }
+                "$kind leaked to '${thread.name}' (no local handler); " +
                     "app not crashing: ${throwable.message}"
             }
             return@setDefaultUncaughtExceptionHandler
