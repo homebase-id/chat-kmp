@@ -1,6 +1,7 @@
 package id.homebase.core.logging
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.core.crash.CrashReporting
 import kotlin.experimental.ExperimentalNativeApi
@@ -102,15 +103,20 @@ fun setupIOSCrashHandler() {
         // NOT abort the app. Record it as a non-fatal (full stack + breadcrumb) so
         // it stays debuggable, then return WITHOUT terminating. Any non-network
         // throwable falls through and still crashes normally below.
-        if (throwable.isTransientNetworkFailure()) {
+        if (throwable.isTransientNetworkFailure() || throwable.isRecoverableServerConflict()) {
             try {
                 crashlyticsRecordException(throwable)
                 crashlyticsLogFatalBreadcrumb(throwable)
                 Logger.w(tag = TAG) {
-                    "Transient network failure (no local handler); app not crashing: ${throwable.message}"
+                    val kind = if (throwable.isRecoverableServerConflict()) {
+                        "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
+                    } else {
+                        "Transient network failure"
+                    }
+                    "$kind (no local handler); app not crashing: ${throwable.message}"
                 }
             } catch (e: Throwable) {
-                println("IOSCrashHandler (network non-fatal) failed: ${e.message}")
+                println("IOSCrashHandler (contained non-fatal) failed: ${e.message}")
             }
             return@setUnhandledExceptionHook
         }
