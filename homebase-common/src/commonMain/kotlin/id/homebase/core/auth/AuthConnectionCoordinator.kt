@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.concurrent.Volatile
 import kotlin.uuid.Uuid
 
@@ -132,12 +133,13 @@ class AuthConnectionCoordinator(
     private val postAuthGate = kotlinx.coroutines.sync.Mutex()
 
     /**
-     * Normalized (lowercased, hyphen-stripped) aliases of the drives this app token can READ,
+     * Normalized (lowercased, hyphen-stripped) ids of the drives this app token can READ,
      * resolved from the security context on each Authenticated transition. Null when unknown
-     * (security-context fetch failed) — in that case [retainGrantedDrives] does not filter, so a
-     * transient fetch failure degrades to the pre-existing behaviour rather than hiding drives.
+     * (security-context fetch failed or timed out) — in that case [retainGrantedDrives] does not
+     * filter, so a transient fetch failure degrades to the pre-existing behaviour rather than
+     * hiding drives.
      */
-    @Volatile private var grantedDriveAliases: Set<String>? = null
+    @Volatile private var grantedDriveIds: Set<String>? = null
     // endregion
 
     /**
@@ -211,7 +213,7 @@ class AuthConnectionCoordinator(
                 // drive makes the server 403 the REST query-batch AND close the whole notify
                 // WebSocket — one unauthorized drive in EstablishConnectionRequest tears down the
                 // socket, which surfaced as a dropped initial handshake + premature "connected".
-                refreshGrantedDriveAliases()
+                refreshGrantedDriveIds()
 
                 // Pre-mount the granted optional drives so they're in driveSyncs when
                 // onConnected fires start() + syncAll(). mountDrive() defers the network kick
@@ -626,37 +628,48 @@ class AuthConnectionCoordinator(
     }
 
     /**
-     * Refresh [grantedDriveAliases] from the security context. Called once per Authenticated
-     * transition, before any optional drive is mounted/subscribed. On failure it leaves the
-     * filter disabled (null) so we degrade to mounting everything rather than hiding a granted
+     * Refresh [grantedDriveIds] from the security context. Called once per Authenticated
+     * transition, before any optional drive is mounted/subscribed. On failure OR timeout it leaves
+     * the filter disabled (null) so we degrade to mounting everything rather than hiding a granted
      * drive on a transient fetch error.
+     *
+     * The security-context GET (`/auth/context`) has no app-level retry; on a failing network its
+     * whole HttpTimeout budget (~2.5 min under OkHttp DNS-retry) would otherwise block this
+     * suspend call — and, because it runs upstream of `connect()`/`loadProfile()` in the same
+     * coroutine, the notify socket and the profile/avatar with it (#1079). Bounding the fetch with
+     * [SECURITY_CONTEXT_TIMEOUT_MS] maps a slow/dead network onto the existing null-degrade: the
+     * filter is applied before the first connect on a good network (<1s), and a bad network
+     * connects unfiltered after ~10s instead of ~2.5 min (self-healing — the WS reactively drops
+     * any drive it gets a 401/403 for and reconnects).
      */
-    private suspend fun refreshGrantedDriveAliases() {
-        val ctx = securityContextProvider.getSecurityContext()
+    private suspend fun refreshGrantedDriveIds() {
+        val ctx = withTimeoutOrNull(SECURITY_CONTEXT_TIMEOUT_MS) {
+            securityContextProvider.getSecurityContext()
+        }
         if (ctx == null) {
             Logger.w(tag = "AuthLifecycle") {
-                "AuthCC: security context unavailable — drive-grant filter disabled this cycle"
+                "AuthCC: security context unavailable or timed out — drive-grant filter disabled this cycle"
             }
-            grantedDriveAliases = null
+            grantedDriveIds = null
             return
         }
         val readable = ctx.permissionContext.permissionGroups
             .flatMap { it.driveGrants ?: emptyList() }
             .filter { (it.permissionedDrive.permission.sumOf { p -> p.value } and DrivePermission.Read.value) != 0 }
-            .mapTo(mutableSetOf()) { normalizeAlias(it.permissionedDrive.drive.alias) }
-        grantedDriveAliases = readable
+            .mapTo(mutableSetOf()) { normalizeDriveId(it.permissionedDrive.drive.alias) }
+        grantedDriveIds = readable
         Logger.i(tag = "AuthLifecycle") { "AuthCC: readable drive grants resolved (count=${readable.size})" }
     }
 
     /**
-     * Drop drives this app token has no read grant for (see [grantedDriveAliases]). No-op when the
+     * Drop drives this app token has no read grant for (see [grantedDriveIds]). No-op when the
      * grant set is unknown. Applied to optional/registry drives only — mandatory drives are always
      * required and are never filtered here.
      */
     private fun List<LabeledDrive>.retainGrantedDrives(): List<LabeledDrive> {
-        val granted = grantedDriveAliases ?: return this
+        val granted = grantedDriveIds ?: return this
         return filter { ld ->
-            val ok = normalizeAlias(ld.drive.alias.toString()) in granted
+            val ok = normalizeDriveId(ld.drive.alias.toString()) in granted
             if (!ok) {
                 Logger.w(tag = "AuthLifecycle") {
                     "AuthCC: skipping drive '${ld.label}' (${ld.drive.alias}) — app token has no read " +
@@ -667,11 +680,17 @@ class AuthConnectionCoordinator(
         }
     }
 
-    // Match compareStringUuId's normalization so aliases compare regardless of hyphen/case format.
-    private fun normalizeAlias(alias: String): String = alias.lowercase().replace("-", "")
+    // Match compareStringUuId's normalization so drive ids compare regardless of hyphen/case format.
+    private fun normalizeDriveId(driveId: String): String = driveId.lowercase().replace("-", "")
 
     companion object {
         private const val REFRESH_DEBOUNCE_MS = 500L
+
+        // Cap the security-context fetch so it can't hold the Authenticated coroutine (and with it
+        // the notify socket + profile load) for the full ~2.5 min HttpTimeout budget on a
+        // failing network (#1079). A timeout degrades to the same "filter disabled this cycle"
+        // path as a fetch failure. Generous enough to succeed on a slow-but-working network.
+        private const val SECURITY_CONTEXT_TIMEOUT_MS = 10_000L
     }
 }
 
