@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +80,8 @@ import id.homebase.resources.location_dashboard_live_section
 import id.homebase.resources.location_dashboard_perm_banner
 import id.homebase.resources.location_dashboard_share_until
 import id.homebase.resources.location_dashboard_share_until_stopped
+import id.homebase.resources.location_dashboard_sharing_hide
+import id.homebase.resources.location_dashboard_sharing_show
 import id.homebase.resources.location_dashboard_sharing_with
 import id.homebase.resources.location_dashboard_sharing_with_you
 import id.homebase.resources.location_dashboard_stop_confirm_body
@@ -197,25 +200,27 @@ fun LocationDashboardContent(
                     }
                 }
 
-                // People I'm sharing with — one row per person (longest "until"), per-row + all stop.
+                // People I'm sharing with — collapsed to a facepile; expands to per-person rows
+                // (longest "until"), each with a stop ✕, plus "stop sharing with everyone".
                 if (uiState.outgoingShares.isNotEmpty()) {
                     var confirmStopAll by remember { mutableStateOf(false) }
-                    Text(
-                        text = stringResource(MR.string.location_dashboard_sharing_with),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            uiState.outgoingShares.forEachIndexed { index, row ->
-                                if (index > 0) HorizontalDivider()
-                                OutgoingShareRowItem(row = row, onStop = { onStopSharingWith(row.odinId) })
+                    CollapsibleShareSection(
+                        header = stringResource(MR.string.location_dashboard_sharing_with),
+                        avatarItems = uiState.outgoingShares.map {
+                            AvatarStackItem(OdinId(it.odinId), it.avatarInitials)
+                        },
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                uiState.outgoingShares.forEachIndexed { index, row ->
+                                    if (index > 0) HorizontalDivider()
+                                    OutgoingShareRowItem(row = row, onStop = { onStopSharingWith(row.odinId) })
+                                }
                             }
                         }
-                    }
-                    TextButton(onClick = { confirmStopAll = true }) {
-                        Text(text = stringResource(MR.string.location_dashboard_stop_everyone))
+                        TextButton(onClick = { confirmStopAll = true }) {
+                            Text(text = stringResource(MR.string.location_dashboard_stop_everyone))
+                        }
                     }
                     if (confirmStopAll) {
                         AlertDialog(
@@ -237,19 +242,21 @@ fun LocationDashboardContent(
                     }
                 }
 
-                // People sharing with me — name + live-updating age (shown only past 2 minutes stale).
+                // People sharing with me — collapsed to a facepile; expands to per-person rows
+                // (name + live-updating age, shown only past 2 minutes stale).
                 if (uiState.incomingShares.isNotEmpty()) {
-                    Text(
-                        text = stringResource(MR.string.location_dashboard_sharing_with_you),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            uiState.incomingShares.forEachIndexed { index, row ->
-                                if (index > 0) HorizontalDivider()
-                                IncomingShareRowItem(row = row)
+                    CollapsibleShareSection(
+                        header = stringResource(MR.string.location_dashboard_sharing_with_you),
+                        avatarItems = uiState.incomingShares.map {
+                            AvatarStackItem(OdinId(it.odinId), it.avatarInitials)
+                        },
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                uiState.incomingShares.forEachIndexed { index, row ->
+                                    if (index > 0) HorizontalDivider()
+                                    IncomingShareRowItem(row = row)
+                                }
                             }
                         }
                     }
@@ -529,7 +536,10 @@ private fun PeopleListBody(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    EmergencyAvatarStack(members = members, modifier = Modifier.weight(1f))
+                    AvatarStackRow(
+                        items = members.map { AvatarStackItem(it.odinId, it.avatarInitials) },
+                        modifier = Modifier.weight(1f),
+                    )
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
@@ -571,15 +581,63 @@ private fun PeopleListBody(
         }
     }
 
-/** Overlapping avatar stack with a "+N" overflow chip. */
+/**
+ * A live-sharing section that collapses to a [AvatarStackRow] facepile and expands (on tapping the
+ * header) to [expandedContent]. Default collapsed; expand state is local and survives rotation.
+ * Used by both "You're sharing with" (outgoing) and "Sharing with you" (incoming).
+ */
 @Composable
-private fun EmergencyAvatarStack(
-    members: List<ContactUiModel>,
+private fun CollapsibleShareSection(
+    header: String,
+    avatarItems: List<AvatarStackItem>,
+    modifier: Modifier = Modifier,
+    expandedContent: @Composable () -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = header,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = stringResource(
+                    if (expanded) MR.string.location_dashboard_sharing_hide
+                    else MR.string.location_dashboard_sharing_show,
+                ),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (!expanded) {
+            AvatarStackRow(items = avatarItems, modifier = Modifier.padding(bottom = 4.dp))
+        } else {
+            expandedContent()
+        }
+    }
+}
+
+/** Minimal avatar identity for [AvatarStackRow] — decouples the facepile from any one row model. */
+private data class AvatarStackItem(val odinId: OdinId, val initials: String)
+
+/** Overlapping avatar stack (facepile) with a "+N" overflow chip. */
+@Composable
+private fun AvatarStackRow(
+    items: List<AvatarStackItem>,
     modifier: Modifier = Modifier,
     maxVisible: Int = 6,
 ) {
-    val visible = members.take(maxVisible)
-    val overflow = members.size - visible.size
+    val visible = items.take(maxVisible)
+    val overflow = items.size - visible.size
     val avatarSize = 36.dp
     val ringSize = avatarSize + 4.dp
     Row(
@@ -587,7 +645,7 @@ private fun EmergencyAvatarStack(
         horizontalArrangement = Arrangement.spacedBy(-(avatarSize / 3)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        visible.forEach { member ->
+        visible.forEach { item ->
             Box(
                 modifier = Modifier
                     .size(ringSize)
@@ -596,8 +654,8 @@ private fun EmergencyAvatarStack(
                 contentAlignment = Alignment.Center,
             ) {
                 PublicAvatar(
-                    odinId = member.odinId,
-                    initials = member.avatarInitials,
+                    odinId = item.odinId,
+                    initials = item.initials,
                     options = AvatarOptions(size = avatarSize),
                 )
             }

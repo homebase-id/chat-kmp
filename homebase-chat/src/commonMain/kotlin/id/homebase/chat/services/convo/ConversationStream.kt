@@ -590,6 +590,7 @@ class ConversationStream(
                         lastRead = UnixTimeUtc(0).toInstant(),
                         avatarModel = placeholderAvatar,
                         lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
+                        lastMessageIsPendingSend = m.isPendingSend,
                         lastMessageIsDeleted = m.isDeleted,
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
