@@ -134,6 +134,12 @@ sealed class Route {
     @SerialName("contactbook-detail")
     data class ContactBookDetail(val uniqueId: String, val odinId: String? = null) : Route()
 
+    /** Generic "add contact to circle" picker — reachable from any circle in the Contact
+     *  Book's Circles tab, not just emergency location access. */
+    @Serializable
+    @SerialName("contactbook-circle-member-add")
+    data class CircleMemberAdd(val circleId: String, val circleName: String) : Route()
+
     @Serializable
     @SerialName("contactbook-add")
     // identityOnly: launched from a chat flow, where a contact is only useful if it has a

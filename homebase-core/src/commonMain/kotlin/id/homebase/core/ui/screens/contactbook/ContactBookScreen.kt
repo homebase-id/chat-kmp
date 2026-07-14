@@ -56,6 +56,7 @@ import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
+import id.homebase.resources.contactbook_error_circle_action
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.contactbook_error_clear_unsupported
@@ -90,6 +91,7 @@ fun ContactBookScreen(
     val errMessage = stringResource(MR.string.contactbook_error_message)
     val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
+    val errCircleAction = stringResource(MR.string.contactbook_error_circle_action)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -97,6 +99,7 @@ fun ContactBookScreen(
                 is ContactBookUiEvent.OpenConversation -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.OpenDetail -> { /* navigation handled in AppNavHost */ }
                 ContactBookUiEvent.OpenAddContact -> { /* navigation handled in AppNavHost */ }
+                is ContactBookUiEvent.OpenCircleMemberAdd -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
@@ -105,6 +108,7 @@ fun ContactBookScreen(
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
                         ContactBookError.ClearUnsupported -> errClearUnsupported
+                        ContactBookError.CircleActionFailed -> errCircleAction
                     }
                     snackbarHostState.showSnackbar(msg)
                 }

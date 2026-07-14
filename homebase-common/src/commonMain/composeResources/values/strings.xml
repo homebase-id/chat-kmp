@@ -1465,6 +1465,17 @@
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
+    <string name="contactbook_circle_members_count_with_pending">%1$d members, %2$d pending</string>
+    <string name="contactbook_circle_add_member">Add member</string>
+    <string name="circle_member_add_title">Add to %1$s</string>
+    <string name="circle_member_add_none_eligible">No eligible contacts to add. Contacts must be connected and confirmed first.</string>
+    <string name="circle_member_add_succeeded">Added</string>
+    <string name="circle_member_add_already_member">Already added</string>
+    <string name="circle_member_add_failed">Failed</string>
+    <string name="circle_member_pending">Pending</string>
+    <string name="circle_member_remove_cd">Remove member</string>
+    <string name="circle_member_remove_confirm_title">Remove circle member?</string>
+    <string name="circle_member_remove_confirm_body">%1$s will lose the access granted by %2$s.</string>
 
     <string name="contactbook_search_hint">Search</string>
     <string name="contactbook_filter_all">All</string>
@@ -1568,6 +1579,7 @@
     <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
     <string name="contactbook_error_message">Couldn't open the chat.</string>
     <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
+    <string name="contactbook_error_circle_action">Something went wrong. Please try again.</string>
 
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>

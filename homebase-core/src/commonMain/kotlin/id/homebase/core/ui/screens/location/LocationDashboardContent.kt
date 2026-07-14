@@ -335,11 +335,10 @@ fun LocationDashboardContent(
         // "Who you can locate" (contacts carrying our iCanLocate flag) and "Who can
         // locate you" (members of our emergency-location-access circle) sit as
         // subsections under one grouping header. The "+" (add emergency contacts)
-        // lives on the group header since it applies to this pairing as a whole.
-        DashboardSection(
-            title = stringResource(MR.string.location_emergency_contacts_section),
-            onManage = onManageEmergencyAccess,
-        ) {
+        // lives on the "Who can locate you" subsection specifically — that's the
+        // list it actually adds to — rather than the shared group header, which
+        // sat too far above it to read as belonging to that list (#1096).
+        DashboardSection(title = stringResource(MR.string.location_emergency_contacts_section)) {
             SubsectionLabel(text = stringResource(MR.string.location_locatable_section))
             Card(modifier = Modifier.fillMaxWidth()) {
                 PeopleListBody(
@@ -362,7 +361,10 @@ fun LocationDashboardContent(
                 )
             }
 
-            SubsectionLabel(text = stringResource(MR.string.location_emergency_access_section))
+            SubsectionLabel(
+                text = stringResource(MR.string.location_emergency_access_section),
+                onManage = onManageEmergencyAccess,
+            )
             Card(modifier = Modifier.fillMaxWidth()) {
                 var confirmRemove by remember { mutableStateOf<ContactUiModel?>(null) }
                 val pendingIds = remember(uiState.whoCanLocateMePending) {
@@ -370,7 +372,11 @@ fun LocationDashboardContent(
                 }
                 PeopleListBody(
                     loaded = uiState.whoCanLocateMeLoaded,
-                    members = uiState.whoCanLocateMe + uiState.whoCanLocateMePending,
+                    // distinctBy is a final guard, not the fix — LocationViewModel already keeps
+                    // these two lists mutually exclusive; this just makes the render site immune
+                    // to any future regression of that invariant (#1096).
+                    members = (uiState.whoCanLocateMe + uiState.whoCanLocateMePending)
+                        .distinctBy { it.odinId },
                     emptyText = stringResource(MR.string.location_emergency_access_none),
                     onExpandedChange = onWhoCanLocateMeExpandedChange,
                     rowTrailing = { member ->
@@ -520,16 +526,35 @@ private fun DashboardSection(
  * A lightweight subsection heading rendered inside a [DashboardSection]'s body — used to
  * label the two "who can locate" halves under the shared "Emergency contacts" header
  * without giving each the full titleMedium/divider weight of a top-level section. Mirrors
- * the "Sharing with" / "Sharing with you" labels in the live-sharing section.
+ * the "Sharing with" / "Sharing with you" labels in the live-sharing section. An optional
+ * [onManage] renders the same compact "+" affordance [DashboardSection] uses, for a subsection
+ * whose add action belongs next to its own heading rather than the group header above it.
  */
 @Composable
-private fun SubsectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp).semantics { heading() },
-    )
+private fun SubsectionLabel(text: String, onManage: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        if (onManage != null) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = stringResource(MR.string.location_emergency_access_manage),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onManage)
+                    .padding(4.dp)
+                    .size(22.dp),
+            )
+        }
+    }
 }
 
 /**

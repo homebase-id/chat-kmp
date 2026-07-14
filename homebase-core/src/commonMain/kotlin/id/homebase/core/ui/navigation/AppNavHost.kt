@@ -136,6 +136,7 @@ import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.ui.screens.contactbook.CircleMemberPickerScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookScreen
 import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
@@ -372,6 +373,8 @@ fun AppNavHost(
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
                 ContactBookUiEvent.OpenAddContact ->
                     navController.navigate(Route.AddContact())
+                is ContactBookUiEvent.OpenCircleMemberAdd ->
+                    navController.navigate(Route.CircleMemberAdd(event.circleId, event.circleName))
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* Error handled by ContactBookScreen */ }
@@ -831,6 +834,24 @@ fun AppNavHost(
                                         },
                                     )
                                 }
+                            }
+                        }
+
+                        composable<Route.CircleMemberAdd> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.CircleMemberAdd>()
+                                CircleMemberPickerScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.circleId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parseHex(route.circleId),
+                                                route.circleName,
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
                             }
                         }
 

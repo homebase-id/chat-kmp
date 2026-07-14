@@ -29,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -52,7 +53,6 @@ import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.chat_search_result_empty
 import id.homebase.resources.contacts
 import id.homebase.resources.location_emergency_add_already_member
-import id.homebase.resources.location_emergency_add_failed
 import id.homebase.resources.location_emergency_add_none_eligible
 import id.homebase.resources.location_emergency_add_succeeded
 import id.homebase.resources.location_emergency_add_title
@@ -72,20 +72,27 @@ fun EmergencyContactPickerScreen(
 
     val addedLabel = stringResource(MR.string.location_emergency_add_succeeded)
     val alreadyMemberLabel = stringResource(MR.string.location_emergency_add_already_member)
-    val failedLabel = stringResource(MR.string.location_emergency_add_failed)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 EmergencyContactPickerUiEvent.Back -> onNavigateBack()
                 is EmergencyContactPickerUiEvent.AddCompleted -> {
+                    // Failures lead with the actual reason (server title / exception message) —
+                    // a bare "Failed: 1" told the user nothing happened worth acting on.
                     val parts = buildList {
                         if (event.added > 0) add("$addedLabel: ${event.added}")
                         if (event.alreadyMember > 0) add("$alreadyMemberLabel: ${event.alreadyMember}")
-                        if (event.failed > 0) add("$failedLabel: ${event.failed}")
+                        event.failures.forEach { add("${it.name}: ${it.reason}") }
                     }
                     if (parts.isNotEmpty()) {
-                        scope.launch { snackbarHostState.showSnackbar(message = parts.joinToString(" · ")) }
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                message = parts.joinToString(" · "),
+                                duration = if (event.failures.isNotEmpty()) SnackbarDuration.Long
+                                else SnackbarDuration.Short,
+                            )
+                        }
                     }
                 }
             }

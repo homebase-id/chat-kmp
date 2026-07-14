@@ -85,6 +85,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
@@ -944,6 +945,16 @@ val appModule = module {
         )
     }
     viewModelOf(::ContactBookViewModel)
+    // Manual block: circleId/circleName arrive as Koin runtime parameters from the
+    // CircleMemberAdd route — viewModelOf would try to autowire them from the DI graph.
+    viewModel { params ->
+        CircleMemberPickerViewModel(
+            circleId = params.get(),
+            circleName = params.get(),
+            repo = get(),
+            connectionService = get(),
+        )
+    }
     viewModelOf(::ContactDetailViewModel)
     viewModelOf(::AddContactViewModel)
     viewModelOf(::ContactBookSettingsViewModel)

@@ -8,6 +8,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.selectmembers.filterAndGroup
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
@@ -89,26 +90,35 @@ class EmergencyContactPickerViewModel(
             val circleId = Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID)
             var added = 0
             var alreadyMember = 0
-            var failed = 0
-            for (contact in targets) {
-                try {
-                    connectionService.addToCircle(circleId, contact.odinId)
-                    added++
-                } catch (e: ClientException) {
-                    if (e.errorCode == OdinClientErrorCode.IdentityAlreadyMemberOfCircle) {
-                        alreadyMember++
-                    } else {
-                        Logger.w(e, TAG) { "addToCircle failed for ${contact.odinId}: ${e.errorCode}" }
-                        failed++
+            val failures = mutableListOf<EmergencyContactAddFailure>()
+            val stillFailed = mutableListOf<ContactUiModel>()
+            try {
+                for (contact in targets) {
+                    try {
+                        connectionService.addToCircle(circleId, contact.odinId)
+                        added++
+                    } catch (e: ClientException) {
+                        if (e.errorCode == OdinClientErrorCode.IdentityAlreadyMemberOfCircle) {
+                            alreadyMember++
+                        } else {
+                            Logger.w(e, TAG) { "addToCircle failed for ${contact.odinId}: ${e.errorCode}" }
+                            failures += EmergencyContactAddFailure(contact.name, e.message ?: "Failed")
+                            stillFailed += contact
+                        }
+                    } catch (e: Exception) {
+                        Logger.w(e, TAG) { "addToCircle failed for ${contact.odinId}" }
+                        failures += EmergencyContactAddFailure(contact.name, e.message ?: "Failed")
+                        stillFailed += contact
                     }
-                } catch (e: Exception) {
-                    Logger.w(e, TAG) { "addToCircle failed for ${contact.odinId}" }
-                    failed++
                 }
+            } finally {
+                // Only drop entries that actually resolved (succeeded or already-member) — a
+                // failed one stays selected and visible so the user can see who still needs
+                // attention, instead of the selection silently vanishing on failure (#1096).
+                _uiState.update { it.copy(submitting = false, selectedContacts = stillFailed.toPersistentList()) }
+                _events.tryEmit(EmergencyContactPickerUiEvent.AddCompleted(added, alreadyMember, failures))
+                if (failures.isEmpty()) _events.tryEmit(EmergencyContactPickerUiEvent.Back)
             }
-            _uiState.update { it.copy(submitting = false, selectedContacts = persistentListOf()) }
-            _events.tryEmit(EmergencyContactPickerUiEvent.AddCompleted(added, alreadyMember, failed))
-            if (failed == 0) _events.tryEmit(EmergencyContactPickerUiEvent.Back)
         }
     }
 }

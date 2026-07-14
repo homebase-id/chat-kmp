@@ -34,6 +34,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -335,6 +336,11 @@ class ContactBookViewModel(
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
+            is ContactBookUiAction.CircleAddMemberClicked -> _events.tryEmit(
+                ContactBookUiEvent.OpenCircleMemberAdd(action.circleId, action.circleName)
+            )
+            is ContactBookUiAction.CircleRemoveMemberClicked ->
+                handleCircleRemoveMember(action.circleId, action.member)
             is ContactBookUiAction.SearchChanged -> _searchQuery.value = action.query
             is ContactBookUiAction.FilterChanged -> _filter.value = action.filter
             is ContactBookUiAction.ContactClicked -> {
@@ -442,16 +448,73 @@ class ContactBookViewModel(
         }
     }
 
+    private var circlePendingJob: Job? = null
+
     private fun handleCircleClicked(circle: CircleWithMembers) {
         // Members are bundled with the circle list — resolve them to contact entries
         // synchronously, no second network call.
         val domains = circle.members.map { it.domainName }.toSet()
         val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
+        // System circles (Confirmed/Auto-connected) are computed by the vetting flow, not
+        // manually curated — hide the add/remove affordances for those, editable for the rest.
+        val manageable = circle.circle.id !in setOf(AUTO_CONNECTIONS_CIRCLE_ID, CONFIRMED_CONNECTIONS_CIRCLE_ID)
         _circleMembers.value = CircleMembersUi(
+            circleId = circle.circle.id,
             circleName = circle.circle.name,
+            manageable = manageable,
             members = members,
             isLoading = false,
+            pendingChecking = manageable,
         )
+        if (!manageable) return
+
+        circlePendingJob?.cancel()
+        circlePendingJob = viewModelScope.launch {
+            val circleId = try {
+                Uuid.parseHex(circle.circle.id)
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "bad circle id ${circle.circle.id}" }
+                _circleMembers.update { it?.copy(pendingChecking = false) }
+                return@launch
+            }
+            val pending = try {
+                connectionService.findPendingMembers(circleId)
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "findPendingMembers failed for ${circle.circle.id}" }
+                emptyList()
+            }
+            val pendingEntries = entriesForDomains(
+                pending.map { it.domainName }.toSet(),
+                entries.value,
+            ).sortedBy { it.sortKey }
+            // Only apply if the sheet is still open on the same circle (the user may have
+            // dismissed or switched to another circle while this was in flight).
+            _circleMembers.update {
+                if (it?.circleId == circle.circle.id) it.copy(pendingMembers = pendingEntries, pendingChecking = false)
+                else it
+            }
+        }
+    }
+
+    private fun handleCircleRemoveMember(circleIdRaw: String, member: ContactBookEntry) {
+        val odinId = member.odinId?.let(::OdinId) ?: return
+        viewModelScope.launch {
+            try {
+                connectionService.removeFromCircle(Uuid.parseHex(circleIdRaw), odinId)
+                _circleMembers.update {
+                    if (it?.circleId != circleIdRaw) it
+                    else it.copy(
+                        members = it.members.filterNot { m -> m.uniqueId == member.uniqueId },
+                        pendingMembers = it.pendingMembers.filterNot { m -> m.uniqueId == member.uniqueId },
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.w(e, "ContactBookViewModel") { "removeFromCircle failed for $odinId" }
+                _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.CircleActionFailed))
+            }
+        }
     }
 
     // endregion
