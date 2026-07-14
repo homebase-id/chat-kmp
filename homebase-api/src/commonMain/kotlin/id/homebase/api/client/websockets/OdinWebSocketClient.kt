@@ -114,7 +114,7 @@ class OdinWebSocketClient(
     @Volatile
     private var handshakeDone = false
 
-    private val unauthorizedDriveAliases = mutableSetOf<Uuid>()
+    private val unauthorizedDriveIds = mutableSetOf<Uuid>()
 
     private val notificationBuffer =
         mutableListOf<ClientNotificationPayload>()
@@ -787,7 +787,7 @@ class OdinWebSocketClient(
         if (match != null) {
             val alias = runCatching { Uuid.parse(match.groupValues[1]) }.getOrNull()
             if (alias != null) {
-                unauthorizedDriveAliases.add(alias)
+                unauthorizedDriveIds.add(alias)
                 Logger.w("Drive $alias excluded from future WebSocket subscriptions")
             }
         }
@@ -873,7 +873,7 @@ class OdinWebSocketClient(
      * Send EstablishConnectionRequest to server
      */
     suspend fun establishConnectionRequest() {
-        val activeDrives = drives.filter { it.alias !in unauthorizedDriveAliases }
+        val activeDrives = drives.filter { it.alias !in unauthorizedDriveIds }
         if (activeDrives.isEmpty()) {
             Logger.e("No authorized drives for WebSocket subscription")
             return

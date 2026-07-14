@@ -36,6 +36,15 @@ data class EnrichedConversationUiModel(
     }
 }
 
+/**
+ * True when [query] matches the conversation's display name, or — so a group is
+ * findable by a member when its title isn't memorable — any participant's contact
+ * name. Case-insensitive. Callers gate on a non-empty query.
+ */
+internal fun EnrichedConversationUiModel.matchesConversationQuery(query: String): Boolean =
+    getDisplayName().contains(query, ignoreCase = true) ||
+        participants.any { it.name.contains(query, ignoreCase = true) }
+
 /** Connection state for the other party in a 1:1 conversation. `null` for groups,
  *  note-to-self, or while the status is still being resolved. */
 sealed interface OneOnOneConnectionStatus {
