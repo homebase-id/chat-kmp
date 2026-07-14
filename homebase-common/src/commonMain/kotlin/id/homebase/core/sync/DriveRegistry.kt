@@ -92,10 +92,10 @@ class DriveRegistry(
     private var bootstrapInFlight: CompletableDeferred<List<LabeledDrive>>? = null
 
     /**
-     * Alias-set of drives last surfaced to callers. The diff baseline for the observer.
+     * Id-set of drives last surfaced to callers. The diff baseline for the observer.
      * Guarded by [stateMutex].
      */
-    private var currentDriveAliases: Set<Uuid> = emptySet()
+    private var currentDriveIds: Set<Uuid> = emptySet()
 
     /**
      * Optional drives currently registered by this identity. Pure local-DB read — safe
@@ -274,7 +274,7 @@ class DriveRegistry(
         val baseline = initialBaseline
             ?: loadDrives().mapTo(HashSet()) { it.drive.alias }
         stateMutex.withLock {
-            currentDriveAliases = baseline
+            currentDriveIds = baseline
         }
         observerJob = scope.launch {
             eventBus.events.collect { event ->
@@ -322,7 +322,7 @@ class DriveRegistry(
         observerJob?.cancel()
         observerJob = null
         stateMutex.withLock {
-            currentDriveAliases = emptySet()
+            currentDriveIds = emptySet()
         }
     }
 
@@ -331,13 +331,13 @@ class DriveRegistry(
         onUnmount: suspend (Uuid) -> Unit,
     ) {
         val fresh = loadDrives()
-        val freshAliases = fresh.mapTo(HashSet()) { it.drive.alias }
+        val freshDriveIds = fresh.mapTo(HashSet()) { it.drive.alias }
         val added: List<LabeledDrive>
         val removed: List<Uuid>
         stateMutex.withLock {
-            added = fresh.filter { it.drive.alias !in currentDriveAliases }
-            removed = (currentDriveAliases - freshAliases).toList()
-            currentDriveAliases = freshAliases
+            added = fresh.filter { it.drive.alias !in currentDriveIds }
+            removed = (currentDriveIds - freshDriveIds).toList()
+            currentDriveIds = freshDriveIds
         }
         for (drive in added) onMount(drive)
         for (alias in removed) onUnmount(alias)

@@ -31,11 +31,5 @@ data class LiveLocationUiState(
     val showMapTiles: Boolean = true,
 )
 
-/**
- * A live position is shown for up to 30 minutes after receipt; past that it's dropped from the map
- * and the dashboard "Live location sharing" section. Same window for both, by design.
- */
-const val LIVE_STALE_MS: Long = 30 * 60 * 1000L
-
 /** A dot older than 2 minutes gets a small "Nm" age label beside it. Fresher dots show none. */
 const val AGE_LABEL_AFTER_MS: Long = 2 * 60 * 1000L

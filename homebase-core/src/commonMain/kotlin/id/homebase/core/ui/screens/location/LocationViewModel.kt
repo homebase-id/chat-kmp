@@ -28,7 +28,6 @@ import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.localDayStart
 import id.homebase.core.ui.screens.location.history.shiftDay
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
-import id.homebase.core.ui.screens.location.livelocation.LIVE_STALE_MS
 import id.homebase.core.util.initials
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -257,9 +256,10 @@ class LocationViewModel(
                     }
                     .sortedBy { it.name.lowercase() }
 
-                // Incoming: people whose last fix is still fresh, with its age.
+                // Incoming: everyone whose last fix we've received, with its age. No staleness
+                // cutoff — the server won't flush an evicted point, so we show whatever it gave us
+                // and let the age label convey freshness (#1072).
                 val incoming = positions.values
-                    .filter { now - it.receivedAtMs <= LIVE_STALE_MS }
                     .map { lp ->
                         val id = lp.senderOdinId.domainName
                         val contact = resolveContact(lp.senderOdinId)
