@@ -220,6 +220,12 @@ sealed class Route {
     @SerialName("location-share")
     data class LocationShare(val conversationId: String) : Route()
 
+    /** In-app picker to grant emergency-location-access circle membership to one or more
+     *  contacts — replaces the old owner-console browser deep link. */
+    @Serializable
+    @SerialName("location-emergency-contact-add")
+    data object LocationEmergencyContactAdd : Route()
+
     @Serializable
     @SerialName("crop")
     data class Crop(val requestId: String, val lockedAspect: String? = null) : Route()

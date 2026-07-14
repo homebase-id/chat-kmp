@@ -110,6 +110,7 @@ import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.ui.screens.location.EmergencyContactPickerScreen
 import id.homebase.core.ui.screens.location.LocationScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
@@ -147,6 +148,7 @@ import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
 import id.homebase.resources.location_label
+import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
@@ -512,6 +514,7 @@ fun AppNavHost(
 
     // Translate Location onboarding one-shot events into nav-stack changes.
     val locateFetchFailedMsg = stringResource(MR.string.location_locate_fetch_failed)
+    val emergencyContactActionFailedMsg = stringResource(MR.string.location_emergency_action_failed)
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
             when (event) {
@@ -533,6 +536,11 @@ fun AppNavHost(
 
                 LocationUiEvent.LocateFetchFailed -> snackbarHostState.showSnackbar(
                     message = locateFetchFailedMsg,
+                    duration = SnackbarDuration.Long,
+                )
+
+                LocationUiEvent.EmergencyContactActionFailed -> snackbarHostState.showSnackbar(
+                    message = emergencyContactActionFailedMsg,
                     duration = SnackbarDuration.Long,
                 )
             }
@@ -1382,6 +1390,18 @@ fun AppNavHost(
                                     onNavigateToLiveMap = {
                                         navController.navigate(Route.LocationLive)
                                     },
+                                    onNavigateToEmergencyContactAdd = {
+                                        navController.navigate(Route.LocationEmergencyContactAdd)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationEmergencyContactAdd> {
+                            if (isAuthenticated) {
+                                EmergencyContactPickerScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }

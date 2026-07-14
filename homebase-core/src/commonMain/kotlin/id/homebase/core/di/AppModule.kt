@@ -177,6 +177,7 @@ import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
 import id.homebase.core.ui.screens.location.LocationTrackUploaderService
+import id.homebase.core.ui.screens.location.EmergencyContactPickerViewModel
 import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.PushCaptureUploader
 import id.homebase.core.ui.screens.location.model.locationHourFileUid
@@ -906,6 +907,7 @@ val appModule = module {
             authConnectionCoordinator = get(),
         )
     }
+    viewModelOf(::EmergencyContactPickerViewModel)
     // Manual block: the optional peerDomain (emergency-locate peer mode) arrives as a Koin
     // runtime parameter from the LocationPeerHistory route; the own-history call site passes none.
     viewModel { params ->

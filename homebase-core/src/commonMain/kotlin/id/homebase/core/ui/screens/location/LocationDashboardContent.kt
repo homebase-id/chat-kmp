@@ -97,6 +97,10 @@ import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
 import id.homebase.resources.location_emergency_contacts_section
+import id.homebase.resources.location_emergency_remove_cd
+import id.homebase.resources.location_emergency_remove_confirm_body
+import id.homebase.resources.location_emergency_remove_confirm_title
+import id.homebase.resources.location_emergency_status_pending
 import id.homebase.resources.location_locatable_broken_cd
 import id.homebase.resources.location_locatable_none
 import id.homebase.resources.location_locatable_section
@@ -106,6 +110,7 @@ import id.homebase.resources.location_locate_age_hours
 import id.homebase.resources.location_locate_no_data
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
+import id.homebase.resources.remove
 import id.homebase.resources.stop_sharing
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -131,6 +136,8 @@ fun LocationDashboardContent(
     onManageEmergencyAccess: () -> Unit,
     onLocatableExpandedChange: (Boolean) -> Unit,
     onLocateContact: (ContactUiModel) -> Unit,
+    onWhoCanLocateMeExpandedChange: (Boolean) -> Unit,
+    onRemoveEmergencyContact: (ContactUiModel) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -357,11 +364,45 @@ fun LocationDashboardContent(
 
             SubsectionLabel(text = stringResource(MR.string.location_emergency_access_section))
             Card(modifier = Modifier.fillMaxWidth()) {
+                var confirmRemove by remember { mutableStateOf<ContactUiModel?>(null) }
+                val pendingIds = remember(uiState.whoCanLocateMePending) {
+                    uiState.whoCanLocateMePending.map { it.odinId }.toSet()
+                }
                 PeopleListBody(
                     loaded = uiState.whoCanLocateMeLoaded,
-                    members = uiState.whoCanLocateMe,
+                    members = uiState.whoCanLocateMe + uiState.whoCanLocateMePending,
                     emptyText = stringResource(MR.string.location_emergency_access_none),
+                    onExpandedChange = onWhoCanLocateMeExpandedChange,
+                    rowTrailing = { member ->
+                        EmergencyContactTrailing(
+                            name = member.name,
+                            pending = pendingIds.contains(member.odinId),
+                            onRemoveClick = { confirmRemove = member },
+                        )
+                    },
                 )
+                confirmRemove?.let { contact ->
+                    AlertDialog(
+                        onDismissRequest = { confirmRemove = null },
+                        title = { Text(stringResource(MR.string.location_emergency_remove_confirm_title)) },
+                        text = {
+                            Text(
+                                stringResource(MR.string.location_emergency_remove_confirm_body, contact.name)
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmRemove = null
+                                onRemoveEmergencyContact(contact)
+                            }) { Text(stringResource(MR.string.remove)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmRemove = null }) {
+                                Text(stringResource(MR.string.cancel))
+                            }
+                        },
+                    )
+                }
             }
         }
 
@@ -802,6 +843,32 @@ private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Trailing content for a "who can locate me" row: an optional "Pending" label (a sealed circle
+ * deposit that hasn't converted into a real grant yet — live-read on section expand, see
+ * [LocationUiState.whoCanLocateMePending]) plus a remove button (works for both a real grant
+ * and a still-pending one; revoke drops either).
+ */
+@Composable
+private fun EmergencyContactTrailing(name: String, pending: Boolean, onRemoveClick: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (pending) {
+            Text(
+                text = stringResource(MR.string.location_emergency_status_pending),
+                style = MaterialTheme.typography.labelMedium,
+                color = HomebaseTheme.extendedColors.warning,
+            )
+        }
+        IconButton(onClick = onRemoveClick) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = stringResource(MR.string.location_emergency_remove_cd, name),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

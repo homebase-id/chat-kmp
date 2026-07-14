@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import co.touchlab.kermit.Logger
+import kotlin.uuid.Uuid
 
 /** Debounce window for push-driven refreshes — long enough to swallow a fan-out burst, short
  *  enough that the contact-detail / circles UI updates promptly after an external change. */
@@ -263,5 +264,30 @@ class ConnectionService(
 
     fun get(odinId: OdinId): RedactedIdentityConnectionRegistration? {
         return _connections.value.map[odinId]
+    }
+
+    /**
+     * Live (uncached) status read for [odinId] straight from the server — the only way to learn
+     * whether a circle grant is still a sealed deposit (`accessGrant.pendingCircleIds`) rather
+     * than a real [CircleWithMembers] entry, since there is no bulk "list pending" endpoint.
+     */
+    suspend fun getConnectionStatus(odinId: OdinId): RedactedIdentityConnectionRegistration? =
+        provider.getConnectionStatus(odinId)
+
+    /**
+     * Grant [odinId] membership in [circleId]. May land as a real [CircleWithMembers] entry
+     * immediately or as a sealed deposit (`pendingCircleIds` on their `/connections/status`) —
+     * the caller decides how to represent that. Refreshes immediately after success so
+     * [circles] reflects a landed grant without waiting on the debounced websocket refresh.
+     */
+    suspend fun addToCircle(circleId: Uuid, odinId: OdinId) {
+        provider.addToCircle(circleId, odinId)
+        refresh()
+    }
+
+    /** Revoke [odinId]'s membership in [circleId] — also drops any still-pending deposit. */
+    suspend fun removeFromCircle(circleId: Uuid, odinId: OdinId) {
+        provider.removeFromCircle(circleId, odinId)
+        refresh()
     }
 }

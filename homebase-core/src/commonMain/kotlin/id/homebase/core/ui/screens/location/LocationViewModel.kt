@@ -2,7 +2,9 @@ package id.homebase.core.ui.screens.location
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.contacts.ContactRepository
@@ -31,6 +33,8 @@ import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.core.util.initials
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -51,6 +55,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
+import kotlin.uuid.Uuid
+
+private const val TAG = "LocationViewModel"
 
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
@@ -474,6 +481,11 @@ class LocationViewModel(
 
             is LocationUiAction.SetLocatableExpanded -> setLocatableExpanded(action.expanded)
 
+            is LocationUiAction.SetWhoCanLocateMeExpanded ->
+                if (action.expanded) checkWhoCanLocateMePending()
+
+            is LocationUiAction.RemoveEmergencyContact -> removeEmergencyContact(action.odinId)
+
             is LocationUiAction.ConfirmEmergencyLocate -> confirmEmergencyLocate(action)
 
             // Permission requests are dispatched at the screen level (the
@@ -516,6 +528,81 @@ class LocationViewModel(
                 }
             } finally {
                 _uiState.update { it.copy(locateSubmitInFlight = false) }
+            }
+        }
+    }
+
+    private var whoCanLocateMePendingJob: Job? = null
+
+    /**
+     * One-shot, expand-triggered live read (never a periodic loop — a sealed deposit doesn't
+     * change moment to moment, and a conversion to real membership already flips whoCanLocateMe
+     * via ConnectionService's normal refresh). There is no bulk "list pending members of a
+     * circle" endpoint, so this is the only way to learn who's still pending: fan out a real
+     * `/connections/status` read across current connections (excluding already-real members)
+     * and keep only those with our circle in their `accessGrant.pendingCircleIds`. Nothing here
+     * is remembered locally — a re-expand re-derives the answer from the server every time.
+     */
+    private fun checkWhoCanLocateMePending() {
+        if (whoCanLocateMePendingJob?.isActive == true) return
+        whoCanLocateMePendingJob = viewModelScope.launch {
+            _uiState.update { it.copy(whoCanLocateMePendingChecking = true) }
+            try {
+                val self = runCatching { credentialsManager.getActiveDomain() }
+                    .getOrNull()?.domainName?.lowercase()
+                val realMembers = connectionService.circles.value.membersOf(EMERGENCY_LOCATION_CIRCLE_ID)
+                val circleId = Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID)
+                val candidates = connectionService.connections.value.map.values
+                    .filter { it.status == ConnectionStatus.Connected }
+                    .map { it.odinId }
+                    .filterNot { it.domainName.lowercase() == self }
+                    .filterNot { realMembers.contains(it.domainName.lowercase()) }
+
+                val pending = coroutineScope {
+                    candidates
+                        .map { odinId ->
+                            async {
+                                val status = runCatching { connectionService.getConnectionStatus(odinId) }
+                                    .getOrNull()
+                                odinId.takeIf { status?.accessGrant?.pendingCircleIds?.contains(circleId) == true }
+                            }
+                        }
+                        .awaitAll()
+                        .filterNotNull()
+                }
+
+                _uiState.update {
+                    it.copy(
+                        whoCanLocateMePending = pending
+                            .map { odinId -> contactService.resolveByOdinId(odinId) }
+                            .sortedBy { contact -> contact.name.lowercase() },
+                        whoCanLocateMePendingChecking = false,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "checkWhoCanLocateMePending failed" }
+                _uiState.update { it.copy(whoCanLocateMePendingChecking = false) }
+            }
+        }
+    }
+
+    /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
+     *  both (revoke also silently drops a still-sealed deposit). */
+    private fun removeEmergencyContact(odinId: String) {
+        viewModelScope.launch {
+            try {
+                connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
+                _uiState.update {
+                    it.copy(
+                        whoCanLocateMePending = it.whoCanLocateMePending
+                            .filterNot { contact -> contact.odinId.domainName == odinId },
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
+                _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
             }
         }
     }
@@ -593,18 +680,10 @@ class LocationViewModel(
             val devices = runCatching { deviceDirectory.loadDevices() }
                 .getOrDefault(emptyList())
 
-            // The "who can locate you" list itself comes from the emergency-contact flag (collected
-            // reactively in init). Here we only resolve the owner-console deep link for managing the
-            // Emergency Location Access circle (the actual location-drive grant).
-            val domain = runCatching { credentialsManager.getActiveCredentials()?.domain?.domainName }
-                .getOrNull()
-            val manageUrl = domain?.let { "https://$it/owner/circles/$EMERGENCY_LOCATION_CIRCLE_ID" }
-
             _uiState.update {
                 it.copy(
                     todayTraces = traces,
                     devices = devices,
-                    emergencyManageUrl = manageUrl,
                 )
             }
         }
