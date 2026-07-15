@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -121,6 +122,7 @@ fun CircleMembersSheet(
                                     {
                                         CircleMemberTrailing(
                                             pending = pendingIds.contains(entry.uniqueId),
+                                            removing = state.removingMemberIds.contains(entry.uniqueId),
                                             onRemoveClick = { confirmRemove = entry },
                                         )
                                     }
@@ -158,21 +160,28 @@ fun CircleMembersSheet(
 /** Trailing content for a circle-member row: an optional "Pending" label (a sealed deposit
  *  that hasn't converted into a real grant yet) plus a remove button. */
 @Composable
-private fun CircleMemberTrailing(pending: Boolean, onRemoveClick: () -> Unit) {
+private fun CircleMemberTrailing(pending: Boolean, removing: Boolean, onRemoveClick: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (pending) {
+        if (pending && !removing) {
             Text(
                 text = stringResource(MR.string.circle_member_pending),
                 style = MaterialTheme.typography.labelMedium,
                 color = HomebaseTheme.extendedColors.warning,
             )
         }
-        IconButton(onClick = onRemoveClick) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = stringResource(MR.string.circle_member_remove_cd),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (removing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp).padding(4.dp),
+                strokeWidth = 2.dp,
             )
+        } else {
+            IconButton(onClick = onRemoveClick) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.circle_member_remove_cd),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

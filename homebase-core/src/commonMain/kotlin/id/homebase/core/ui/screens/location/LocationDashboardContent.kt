@@ -383,6 +383,7 @@ fun LocationDashboardContent(
                         EmergencyContactTrailing(
                             name = member.name,
                             pending = pendingIds.contains(member.odinId),
+                            removing = uiState.removingEmergencyContacts.contains(member.odinId.domainName),
                             onRemoveClick = { confirmRemove = member },
                         )
                     },
@@ -879,21 +880,33 @@ private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
  * and a still-pending one; revoke drops either).
  */
 @Composable
-private fun EmergencyContactTrailing(name: String, pending: Boolean, onRemoveClick: () -> Unit) {
+private fun EmergencyContactTrailing(
+    name: String,
+    pending: Boolean,
+    removing: Boolean,
+    onRemoveClick: () -> Unit,
+) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (pending) {
+        if (pending && !removing) {
             Text(
                 text = stringResource(MR.string.location_emergency_status_pending),
                 style = MaterialTheme.typography.labelMedium,
                 color = HomebaseTheme.extendedColors.warning,
             )
         }
-        IconButton(onClick = onRemoveClick) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = stringResource(MR.string.location_emergency_remove_cd, name),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        if (removing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp).padding(4.dp),
+                strokeWidth = 2.dp,
             )
+        } else {
+            IconButton(onClick = onRemoveClick) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.location_emergency_remove_cd, name),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

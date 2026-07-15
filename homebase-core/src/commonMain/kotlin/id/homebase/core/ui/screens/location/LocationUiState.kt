@@ -51,6 +51,9 @@ data class LocationUiState(
     val whoCanLocateMePending: List<ContactUiModel> = emptyList(),
     /** True while the expand-triggered pending-status fan-out is in flight. */
     val whoCanLocateMePendingChecking: Boolean = false,
+    /** odinId domains currently being removed from the emergency circle — drives a per-row
+     *  spinner in place of the remove "X" so a tap has visible feedback while in flight. */
+    val removingEmergencyContacts: Set<String> = emptySet(),
     /** Contacts we can locate (the `iCanLocate` app-data flag) — the "who you can locate" list. */
     val whoICanLocate: List<ContactUiModel> = emptyList(),
     /** False until the locatable-contacts list has loaded at least once (drives the spinner). */

@@ -593,6 +593,8 @@ class LocationViewModel(
     /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
      *  both (revoke also silently drops a still-sealed deposit). */
     private fun removeEmergencyContact(odinId: String) {
+        if (odinId in _uiState.value.removingEmergencyContacts) return
+        _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts + odinId) }
         viewModelScope.launch {
             try {
                 connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
@@ -605,6 +607,8 @@ class LocationViewModel(
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
                 _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
+            } finally {
+                _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts - odinId) }
             }
         }
     }

@@ -60,6 +60,9 @@ data class CircleMembersUi(
     val pendingMembers: List<ContactBookEntry> = emptyList(),
     /** True while the open-triggered pending-status fan-out is in flight. */
     val pendingChecking: Boolean = false,
+    /** uniqueIds currently being removed — drives a per-row spinner in place of the remove "X"
+     *  so a tap has visible feedback while the call is in flight. */
+    val removingMemberIds: Set<Uuid> = emptySet(),
 )
 
 /** A sheet/dialog shown over the contact list. (Detail is a full-screen route now.) */

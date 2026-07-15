@@ -8,7 +8,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
-import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.eventbus.BackendEvent
@@ -71,7 +70,6 @@ class ContactBookViewModel(
     private val conversationService: ConversationService,
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
-    private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val overrideStore: ContactOverrideStore,
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
@@ -137,6 +135,31 @@ class ContactBookViewModel(
                         else -> Unit
                     }
                 }
+        }
+        // Circles tab + any open CircleMembersSheet now derive from ConnectionService.circles
+        // directly instead of a one-shot fetch taken at the moment the circle was tapped —
+        // previously an add/remove from the picker (a different ViewModel instance) updated
+        // ConnectionService.refresh()'s data but never reached this screen's own snapshot,
+        // so the sheet just sat there stale until closed and reopened (#1096).
+        viewModelScope.launch {
+            connectionService.circles.collect { circleState ->
+                val circles = circleState.circles
+                    .filterNot { it.circle.disabled }
+                    .sortedWith(compareBy({ it.circle.id.circleSortRank() }, { it.circle.name.lowercase() }))
+                _circles.value = circles
+                _circlesLoading.value = !circleState.isLoaded
+
+                val open = _circleMembers.value ?: return@collect
+                val match = circles.firstOrNull { it.circle.id == open.circleId } ?: return@collect
+                val domains = match.members.map { it.domainName }.toSet()
+                _circleMembers.update {
+                    it?.copy(members = entriesForDomains(domains, entries.value).sortedBy { m -> m.sortKey })
+                }
+                // A fresh circles emission is exactly when someone might have just converted
+                // from pending to real (or a brand-new pending deposit landed) — re-derive the
+                // pending badge for the open sheet too, not just its real-member list.
+                if (open.manageable) checkCirclePending(match)
+            }
         }
     }
 
@@ -423,36 +446,19 @@ class ContactBookViewModel(
 
     // region Circles
 
+    /** Nudges a fresh network pull when the user looks at the Circles tab. [circles]/
+     *  [circleMembers] are otherwise kept live by the collector in [init], not by this call. */
     private fun loadCircles() {
-        _circlesLoading.value = true
-        viewModelScope.launch {
-            val circles = try {
-                connectionNetworkProvider.getCirclesWithMembers().filterNot { it.circle.disabled }
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, "ContactBookViewModel") { "getCirclesWithMembers failed" }
-                emptyList()
-            }
-            // Pin the auto-connected ("Unvetted") system circle to the top, sink the confirmed-
-            // connected system circle to the bottom, and keep the user's own circles (including
-            // Emergency Location Access, which is a user circle, not a system one) alphabetical
-            // in between.
-            _circles.value = circles.sortedWith(
-                compareBy(
-                    { it.circle.id.circleSortRank() },
-                    { it.circle.name.lowercase() },
-                ),
-            )
-            _circlesLoading.value = false
-        }
+        viewModelScope.launch { connectionService.refresh() }
     }
 
     private var circlePendingJob: Job? = null
 
     private fun handleCircleClicked(circle: CircleWithMembers) {
         // Members are bundled with the circle list — resolve them to contact entries
-        // synchronously, no second network call.
+        // synchronously, no second network call. The init collector on connectionService.circles
+        // keeps this in sync going forward (an add/remove from elsewhere no longer leaves this
+        // sheet stale, #1096).
         val domains = circle.members.map { it.domainName }.toSet()
         val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
         // System circles (Confirmed/Auto-connected) are computed by the vetting flow, not
@@ -466,8 +472,14 @@ class ContactBookViewModel(
             isLoading = false,
             pendingChecking = manageable,
         )
-        if (!manageable) return
+        if (manageable) checkCirclePending(circle)
+    }
 
+    /** Live pending-status re-check for whichever circle's sheet is currently open — called on
+     *  first open and again whenever connectionService.circles refreshes (e.g. right after an
+     *  add/remove lands), so a just-added pending contact doesn't wait on the user closing and
+     *  reopening the sheet to appear (#1096). */
+    private fun checkCirclePending(circle: CircleWithMembers) {
         circlePendingJob?.cancel()
         circlePendingJob = viewModelScope.launch {
             val circleId = try {
@@ -500,6 +512,10 @@ class ContactBookViewModel(
 
     private fun handleCircleRemoveMember(circleIdRaw: String, member: ContactBookEntry) {
         val odinId = member.odinId?.let(::OdinId) ?: return
+        if (member.uniqueId in (_circleMembers.value?.removingMemberIds ?: emptySet())) return
+        _circleMembers.update {
+            it?.copy(removingMemberIds = it.removingMemberIds + member.uniqueId)
+        }
         viewModelScope.launch {
             try {
                 connectionService.removeFromCircle(Uuid.parseHex(circleIdRaw), odinId)
@@ -508,10 +524,15 @@ class ContactBookViewModel(
                     else it.copy(
                         members = it.members.filterNot { m -> m.uniqueId == member.uniqueId },
                         pendingMembers = it.pendingMembers.filterNot { m -> m.uniqueId == member.uniqueId },
+                        removingMemberIds = it.removingMemberIds - member.uniqueId,
                     )
                 }
             } catch (e: Exception) {
                 Logger.w(e, "ContactBookViewModel") { "removeFromCircle failed for $odinId" }
+                _circleMembers.update {
+                    if (it?.circleId != circleIdRaw) it
+                    else it.copy(removingMemberIds = it.removingMemberIds - member.uniqueId)
+                }
                 _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.CircleActionFailed))
             }
         }
