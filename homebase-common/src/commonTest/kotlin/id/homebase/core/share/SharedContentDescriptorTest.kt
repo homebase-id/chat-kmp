@@ -2,13 +2,21 @@ package id.homebase.core.share
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SharedContentDescriptorTest {
 
-    private fun descriptor(text: String?, url: String?) = SharedContentDescriptor(
+    private fun descriptor(
+        text: String?,
+        url: String?,
+        fileNames: List<String> = emptyList(),
+    ) = SharedContentDescriptor(
         contentType = if (url != null) SharedContentType.URL else SharedContentType.TEXT,
         text = text,
         url = url,
+        fileNames = fileNames,
+        mimeTypes = fileNames.map { "image/jpeg" },
         targetConversationId = "c0ffee",
     )
 
@@ -62,5 +70,37 @@ class SharedContentDescriptorTest {
     fun nothing_usable_resolves_blank() {
         assertEquals("", descriptor(text = null, url = null).resolveMessageBody())
         assertEquals("", descriptor(text = "  ", url = "  ").resolveMessageBody())
+    }
+
+    // --- never-send-empty guard -------------------------------------------------
+    // The policy behind processPendingSharedContent's refusal branch. Sending a share
+    // that resolved to nothing produces a blank bubble, which is silent data loss: the
+    // sender believes they shared something. Refusing turns any future extraction miss
+    // into a visible failure instead.
+
+    /** The #1097 shape that reached users: nothing survived extraction. Must not send. */
+    @Test
+    fun share_with_nothing_usable_is_not_sendable() {
+        assertFalse(descriptor(text = null, url = null).hasSendableContent())
+        assertFalse(descriptor(text = "", url = null).hasSendableContent())
+        assertFalse(descriptor(text = "   ", url = "  ").hasSendableContent())
+    }
+
+    /** A blank text next to a real link is sendable — the link is the content (#1097). */
+    @Test
+    fun blank_text_with_a_url_is_still_sendable() {
+        assertTrue(descriptor(text = "", url = "https://maps.app.goo.gl/abc123").hasSendableContent())
+    }
+
+    /** Files carry no body text by design, so an image share must not be refused. */
+    @Test
+    fun file_only_share_is_sendable_without_any_text() {
+        assertTrue(descriptor(text = null, url = null, fileNames = listOf("share_1.jpg")).hasSendableContent())
+        assertTrue(descriptor(text = "  ", url = null, fileNames = listOf("share_1.jpg")).hasSendableContent())
+    }
+
+    @Test
+    fun ordinary_text_share_is_sendable() {
+        assertTrue(descriptor(text = "hello", url = null).hasSendableContent())
     }
 }

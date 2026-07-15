@@ -41,6 +41,18 @@ fun SharedContentDescriptor.resolveMessageBody(): String {
     }
 }
 
+/**
+ * Whether this share carries anything worth sending.
+ *
+ * A share that resolves to nothing is a failed extraction, and sending it anyway
+ * produces a blank bubble — silent data loss, since the sender believes they shared
+ * something (#1097). The caller surfaces an error instead of sending.
+ *
+ * Files alone are sendable: an image share carries no body text by design.
+ */
+fun SharedContentDescriptor.hasSendableContent(): Boolean =
+    fileNames.isNotEmpty() || resolveMessageBody().isNotBlank()
+
 @Serializable
 enum class SharedContentType {
     TEXT,
