@@ -158,9 +158,9 @@ fun CircleMembersSheet(
                     }
                 }
             }
-            if (state.drives.isNotEmpty()) {
-                CircleDrivesSection(state.drives)
-            }
+//            if (state.drives.isNotEmpty()) {
+//                CircleDrivesSection(state.drives)
+//            }
         }
     }
 
