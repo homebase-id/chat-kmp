@@ -100,7 +100,10 @@ struct SharedContentSaver {
                 if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                     group.enter()
                     provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, _ in
-                        if let string = item as? String {
+                        // A blank vend must not overwrite a real `text`, nor stand in as one:
+                        // a blank-but-non-nil text shadows `url` on the Kotlin side and sends an
+                        // empty message. Mirrors the attributedContentText guard above (#1097).
+                        if let string = item as? String, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             text = string
                         }
                         group.leave()
