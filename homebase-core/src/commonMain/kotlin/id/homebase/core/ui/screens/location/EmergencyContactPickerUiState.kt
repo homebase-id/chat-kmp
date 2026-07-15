@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.location
 
 import id.homebase.chat.createconversation.ContactGroup
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.ui.screens.contactbook.CircleAddFailureReason
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 
@@ -19,7 +20,7 @@ sealed interface EmergencyContactPickerUiAction {
 
 /** One failed add attempt, carrying the actual server/client reason so the user sees why —
  *  not just that something failed. */
-data class EmergencyContactAddFailure(val name: String, val reason: String)
+data class EmergencyContactAddFailure(val name: String, val reason: CircleAddFailureReason)
 
 sealed interface EmergencyContactPickerUiEvent {
     data object Back : EmergencyContactPickerUiEvent

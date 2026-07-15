@@ -63,7 +63,19 @@ data class CircleMembersUi(
     /** uniqueIds currently being removed — drives a per-row spinner in place of the remove "X"
      *  so a tap has visible feedback while the call is in flight. */
     val removingMemberIds: Set<Uuid> = emptySet(),
+    /** Drives this circle grants access to — sourced synchronously from the circle definition
+     *  already loaded with [members], no extra network call. */
+    val drives: List<CircleDriveUi> = emptyList(),
+    /** Set when this sheet is opened "from one contact's perspective" (contact detail) — that
+     *  contact's own status in this circle, shown as a header line. Null when opened from the
+     *  Circles tab, where there's no single "viewer" contact. */
+    val viewerStatus: CircleMemberStatus? = null,
+    /** uniqueId of the [viewerStatus] contact — excluded from the rendered "who else is in this
+     *  circle" roster so the viewer's own row (already summarized in the header) isn't repeated. */
+    val viewerContactId: Uuid? = null,
 )
+
+enum class CircleMemberStatus { Member, Pending }
 
 /** A sheet/dialog shown over the contact list. (Detail is a full-screen route now.) */
 sealed interface ContactBookOverlay {

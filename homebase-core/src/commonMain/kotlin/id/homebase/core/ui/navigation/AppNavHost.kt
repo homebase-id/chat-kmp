@@ -897,6 +897,9 @@ fun AppNavHost(
                                     onSeeAllMedia = { conversationId ->
                                         navController.navigate(Route.ConversationMedia(conversationId))
                                     },
+                                    onOpenContact = { uniqueId, odinId ->
+                                        navController.navigate(Route.ContactBookDetail(uniqueId, odinId))
+                                    },
                                 )
                             }
                         }

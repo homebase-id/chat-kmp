@@ -42,6 +42,8 @@ import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.chat_new_conversation_search_placeholder
 import id.homebase.resources.circle_member_add_already_member
+import id.homebase.resources.circle_member_add_drive_access_denied
+import id.homebase.resources.circle_member_add_generic_failed
 import id.homebase.resources.circle_member_add_none_eligible
 import id.homebase.resources.circle_member_add_succeeded
 import id.homebase.resources.circle_member_add_title
@@ -60,18 +62,29 @@ fun CircleMemberPickerScreen(
 
     val addedLabel = stringResource(MR.string.circle_member_add_succeeded)
     val alreadyMemberLabel = stringResource(MR.string.circle_member_add_already_member)
+    val driveAccessDeniedLabel = stringResource(MR.string.circle_member_add_drive_access_denied)
+    val genericFailedLabel = stringResource(MR.string.circle_member_add_generic_failed)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 CircleMemberPickerUiEvent.Back -> onNavigateBack()
                 is CircleMemberPickerUiEvent.AddCompleted -> {
-                    // Failures lead with the actual reason (server title / exception message) —
-                    // a bare "Failed: 1" told the user nothing happened worth acting on.
+                    // Failures lead with the actual reason — a bare "Failed: 1" told the user
+                    // nothing happened worth acting on. Only DriveAccessDenied and a real 400's
+                    // message are genuinely explanatory; an opaque 403 gets a generic message
+                    // rather than surfacing internal detail as if it were actionable.
                     val parts = buildList {
                         if (event.added > 0) add("$addedLabel: ${event.added}")
                         if (event.alreadyMember > 0) add("$alreadyMemberLabel: ${event.alreadyMember}")
-                        event.failures.forEach { add("${it.name}: ${it.reason}") }
+                        event.failures.forEach { f ->
+                            val reason = when (val r = f.reason) {
+                                is CircleAddFailureReason.Raw -> r.message
+                                CircleAddFailureReason.DriveAccessDenied -> driveAccessDeniedLabel
+                                CircleAddFailureReason.OpaqueForbidden -> genericFailedLabel
+                            }
+                            add("${f.name}: $reason")
+                        }
                     }
                     if (parts.isNotEmpty()) {
                         scope.launch {

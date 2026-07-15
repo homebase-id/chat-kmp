@@ -9,6 +9,7 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
+import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -18,14 +19,23 @@ import kotlin.uuid.Uuid
 /** A pending destructive action awaiting confirmation. */
 enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
 
+/** One circle chip on the contact-detail screen. [pending] means this contact's grant on that
+ *  circle is still a sealed deposit — live-read via [id.homebase.chat.services.convo.contact.ConnectionService.findPendingCircles],
+ *  never cached across app restarts, since there's no bulk "list this contact's pending circles"
+ *  endpoint either. */
+data class ContactCircleUi(val id: String, val name: String, val pending: Boolean)
+
 @Immutable
 data class ContactDetailUiState(
     val entry: ContactBookEntry? = null,
     val isLoading: Boolean = true,
     /** Connection status for this contact's odinId; null when not a connection / unknown. */
     val connectionStatus: ConnectionStatus? = null,
-    /** User-defined circles this contact belongs to (system circles excluded), A–Z. */
-    val circles: List<String> = emptyList(),
+    /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
+    val circles: List<ContactCircleUi> = emptyList(),
+    /** Open circle-detail dialog (tapped a chip in [circles]), or null when dismissed. View-only
+     *  from this screen — [CircleMembersUi.manageable] is always false here. */
+    val circleDetail: CircleMembersUi? = null,
     /** The existing 1:1 conversation, if one exists (never created just to view details). */
     val conversationId: Uuid? = null,
     val overview: ConversationOverview? = null,
@@ -110,6 +120,11 @@ sealed interface ContactDetailAction {
     data object SeeAllMediaClicked : ContactDetailAction
     data class OpenGroup(val conversationId: Uuid) : ContactDetailAction
     data object BackClicked : ContactDetailAction
+    /** Tapped a circle chip — opens the circle-detail dialog for [circleId]. */
+    data class CircleClicked(val circleId: String) : ContactDetailAction
+    data object CircleDetailDismiss : ContactDetailAction
+    /** Tapped another contact's row inside the circle-detail dialog. */
+    data class CircleMemberClicked(val entry: ContactBookEntry) : ContactDetailAction
 }
 
 sealed interface ContactDetailEvent {
@@ -140,4 +155,6 @@ sealed interface ContactDetailEvent {
     data object RequestCancelled : ContactDetailEvent
     /** Accept failed because the sender already withdrew the request (server-confirmed gone). */
     data object RequestWithdrawn : ContactDetailEvent
+    /** Tapped another contact's row inside the circle-detail dialog — navigate to their detail. */
+    data class OpenOtherContact(val uniqueId: String, val odinId: String?) : ContactDetailEvent
 }

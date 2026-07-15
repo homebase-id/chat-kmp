@@ -31,6 +31,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
@@ -115,6 +119,20 @@ fun ContactBookScreen(
                 ContactBookUiEvent.CloseOnboarding -> { /* handled in AppNavHost */ }
             }
         }
+    }
+
+    // Returning here from the circle-member-add picker (or any other screen) needs to re-check
+    // an open circle sheet's pending badge explicitly — a pending-only add doesn't change any
+    // circle's real member list, so ConnectionService.circles' StateFlow conflates the
+    // assignment and never notifies the reactive collector in the ViewModel's init (#1096).
+    // Mirrors LocationScreen's resume-triggered refresh.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshOpenCircle()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val onContacts = uiState.selectedTab == ContactTab.CONTACTS
@@ -288,7 +306,17 @@ fun ContactBookScreen(
     }
 
     uiState.circleMembers?.let { members ->
-        CircleMembersSheet(state = members, onAction = viewModel::onAction)
+        CircleMembersSheet(
+            state = members,
+            onDismiss = { viewModel.onAction(ContactBookUiAction.CircleMembersDismiss) },
+            onMemberClick = { viewModel.onAction(ContactBookUiAction.ContactClicked(it)) },
+            onAddMemberClick = {
+                viewModel.onAction(ContactBookUiAction.CircleAddMemberClicked(members.circleId, members.circleName))
+            },
+            onRemoveMemberClick = {
+                viewModel.onAction(ContactBookUiAction.CircleRemoveMemberClicked(members.circleId, it))
+            },
+        )
     }
 
     // Compose-a-new-request sheet, opened by the FAB while the Requests pill is active.

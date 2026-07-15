@@ -344,4 +344,27 @@ class ConnectionService(
             }
         }.awaitAll().filterNotNull()
     }
+
+    /**
+     * Live read of which circles [odinId] currently has sealed as a pending deposit — the
+     * inverse of [findPendingMembers]: one identity, many circles, so this is a single
+     * `/connections/status` read rather than a fan-out. Filtered to circle ids that actually
+     * exist in the already-loaded bulk circle list, defending against a stale/removed id.
+     */
+    suspend fun findPendingCircles(odinId: OdinId): List<Uuid> {
+        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) { circles.first { it.isLoaded } }
+
+        val status = try {
+            getConnectionStatus(odinId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending circles" }
+            return emptyList()
+        }
+        val known = circles.value.circles
+            .mapNotNull { runCatching { Uuid.parseHex(it.circle.id) }.getOrNull() }
+            .toSet()
+        return status?.accessGrant?.pendingCircleIds.orEmpty().filter { it in known }
+    }
 }

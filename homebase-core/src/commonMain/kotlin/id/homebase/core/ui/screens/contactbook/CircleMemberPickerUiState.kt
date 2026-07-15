@@ -19,7 +19,7 @@ sealed interface CircleMemberPickerUiAction {
 
 /** One failed add attempt, carrying the actual server/client reason so the user sees why —
  *  not just that something failed. */
-data class CircleMemberAddFailure(val name: String, val reason: String)
+data class CircleMemberAddFailure(val name: String, val reason: CircleAddFailureReason)
 
 sealed interface CircleMemberPickerUiEvent {
     data object Back : CircleMemberPickerUiEvent

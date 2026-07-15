@@ -28,31 +28,46 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import id.homebase.core.ui.screens.contactbook.CircleDriveUi
+import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
-import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.circle_drive_unknown
+import id.homebase.resources.circle_drives_section_title
 import id.homebase.resources.circle_member_pending
-import id.homebase.resources.contactbook_circle_add_member
 import id.homebase.resources.circle_member_remove_cd
 import id.homebase.resources.circle_member_remove_confirm_body
 import id.homebase.resources.circle_member_remove_confirm_title
+import id.homebase.resources.circle_member_status_member
+import id.homebase.resources.circle_member_status_pending
+import id.homebase.resources.contactbook_circle_add_member
 import id.homebase.resources.contactbook_circle_members_count
 import id.homebase.resources.contactbook_circle_members_count_with_pending
 import id.homebase.resources.contactbook_circle_members_empty
 import id.homebase.resources.remove
 import org.jetbrains.compose.resources.stringResource
 
+/**
+ * Circle detail — one circle's roster (real + live-pending), the drives it grants, and (when
+ * opened "from one contact's perspective," e.g. contact detail) that contact's own status as a
+ * header line. Reused by both the Circles tab (manageable, no single viewer) and contact detail
+ * (view-only — [onAddMemberClick]/[onRemoveMemberClick] are simply never invoked when
+ * [CircleMembersUi.manageable] is false, since the affordances that would call them are hidden).
+ */
 @Composable
 fun CircleMembersSheet(
     state: CircleMembersUi,
-    onAction: (ContactBookUiAction) -> Unit,
+    onDismiss: () -> Unit,
+    onMemberClick: (ContactBookEntry) -> Unit,
+    onAddMemberClick: () -> Unit,
+    onRemoveMemberClick: (ContactBookEntry) -> Unit,
 ) {
     var confirmRemove by remember { mutableStateOf<ContactBookEntry?>(null) }
 
-    AdaptiveSheet(onDismiss = { onAction(ContactBookUiAction.CircleMembersDismiss) }) {
+    AdaptiveSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -69,14 +84,25 @@ fun CircleMembersSheet(
                     modifier = Modifier.weight(1f),
                 )
                 if (state.manageable) {
-                    IconButton(onClick = {
-                        onAction(ContactBookUiAction.CircleAddMemberClicked(state.circleId, state.circleName))
-                    }) {
+                    IconButton(onClick = onAddMemberClick) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = stringResource(MR.string.contactbook_circle_add_member))
                     }
                 }
             }
-            val allMembers = state.members + state.pendingMembers
+            state.viewerStatus?.let { status ->
+                Text(
+                    text = stringResource(
+                        if (status == CircleMemberStatus.Member) MR.string.circle_member_status_member
+                        else MR.string.circle_member_status_pending
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (status == CircleMemberStatus.Pending) HomebaseTheme.extendedColors.warning
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            val allMembers = (state.members + state.pendingMembers)
+                .filterNot { it.uniqueId == state.viewerContactId }
             val pendingIds = remember(state.pendingMembers) { state.pendingMembers.map { it.uniqueId }.toSet() }
             when {
                 state.isLoading -> Box(
@@ -117,7 +143,7 @@ fun CircleMembersSheet(
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->
                             ContactBookRow(
                                 entry = entry,
-                                onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
+                                onClick = { onMemberClick(entry) },
                                 trailing = if (state.manageable) {
                                     {
                                         CircleMemberTrailing(
@@ -132,6 +158,9 @@ fun CircleMembersSheet(
                     }
                 }
             }
+            if (state.drives.isNotEmpty()) {
+                CircleDrivesSection(state.drives)
+            }
         }
     }
 
@@ -145,7 +174,7 @@ fun CircleMembersSheet(
             confirmButton = {
                 TextButton(onClick = {
                     confirmRemove = null
-                    onAction(ContactBookUiAction.CircleRemoveMemberClicked(state.circleId, member))
+                    onRemoveMemberClick(member)
                 }) { Text(stringResource(MR.string.remove)) }
             },
             dismissButton = {
@@ -180,6 +209,35 @@ private fun CircleMemberTrailing(pending: Boolean, removing: Boolean, onRemoveCl
                     imageVector = Icons.Default.Close,
                     contentDescription = stringResource(MR.string.circle_member_remove_cd),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** Which drives this circle grants access to — sourced synchronously from the circle definition,
+ *  no extra network call. Unrecognized drives (not one of this app's own known drives) fall back
+ *  to a generic label rather than a raw GUID. */
+@Composable
+private fun CircleDrivesSection(drives: List<CircleDriveUi>) {
+    Text(
+        text = stringResource(MR.string.circle_drives_section_title),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+    )
+    val unknownLabel = stringResource(MR.string.circle_drive_unknown)
+    Column {
+        drives.forEach { drive ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(text = drive.label ?: unknownLabel, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = drive.permission.split(",").joinToString(", ") { it.trim().replaceFirstChar(Char::uppercase) },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

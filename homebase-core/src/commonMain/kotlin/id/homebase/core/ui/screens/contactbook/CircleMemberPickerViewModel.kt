@@ -122,7 +122,10 @@ class CircleMemberPickerViewModel(
                 for (entry in targets) {
                     val odinId = entry.odinId?.let(::OdinId)
                     if (odinId == null) {
-                        failures += CircleMemberAddFailure(entry.displayName, "No Homebase ID on file")
+                        failures += CircleMemberAddFailure(
+                            entry.displayName,
+                            CircleAddFailureReason.Raw("No Homebase ID on file"),
+                        )
                         stillFailed += entry
                         continue
                     }
@@ -134,12 +137,12 @@ class CircleMemberPickerViewModel(
                             alreadyMember++
                         } else {
                             Logger.w(e, TAG) { "addToCircle failed for $odinId: ${e.errorCode}" }
-                            failures += CircleMemberAddFailure(entry.displayName, e.message ?: "Failed")
+                            failures += CircleMemberAddFailure(entry.displayName, e.toCircleAddFailureReason())
                             stillFailed += entry
                         }
                     } catch (e: Exception) {
                         Logger.w(e, TAG) { "addToCircle failed for $odinId" }
-                        failures += CircleMemberAddFailure(entry.displayName, e.message ?: "Failed")
+                        failures += CircleMemberAddFailure(entry.displayName, e.toCircleAddFailureReason())
                         stillFailed += entry
                     }
                 }

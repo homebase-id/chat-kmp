@@ -153,11 +153,16 @@ class ContactBookViewModel(
                 val match = circles.firstOrNull { it.circle.id == open.circleId } ?: return@collect
                 val domains = match.members.map { it.domainName }.toSet()
                 _circleMembers.update {
-                    it?.copy(members = entriesForDomains(domains, entries.value).sortedBy { m -> m.sortKey })
+                    it?.copy(
+                        members = entriesForDomains(domains, entries.value).sortedBy { m -> m.sortKey },
+                        drives = resolveCircleDrives(match.circle),
+                    )
                 }
-                // A fresh circles emission is exactly when someone might have just converted
-                // from pending to real (or a brand-new pending deposit landed) — re-derive the
-                // pending badge for the open sheet too, not just its real-member list.
+                // Best-effort: a fresh emission here means someone's real membership actually
+                // changed, so re-derive the pending badge too. This does NOT catch a pending-only
+                // add — the real member list is unchanged, so StateFlow conflates the assignment
+                // and this block never runs for that case. refreshOpenCircle() is the reliable
+                // path (#1096); this just keeps things fresher between resumes when it does fire.
                 if (open.manageable) checkCirclePending(match)
             }
         }
@@ -471,14 +476,30 @@ class ContactBookViewModel(
             members = members,
             isLoading = false,
             pendingChecking = manageable,
+            drives = resolveCircleDrives(circle.circle),
         )
         if (manageable) checkCirclePending(circle)
     }
 
+    /**
+     * Re-derive the open circle sheet's pending badge and real-member list on screen resume
+     * (e.g. returning from the add picker). The `init` collector on connectionService.circles
+     * re-checks pending automatically whenever that flow actually emits, but a pending-only add
+     * doesn't change any circle's real member list — so the resulting CircleMembershipState is
+     * `equals()` to the prior one, and MutableStateFlow silently conflates the assignment,
+     * never notifying collectors at all (#1096). This resume-triggered call doesn't depend on
+     * the flow re-emitting; it always re-checks.
+     */
+    fun refreshOpenCircle() {
+        val open = _circleMembers.value ?: return
+        viewModelScope.launch { connectionService.refresh() }
+        val match = _circles.value.firstOrNull { it.circle.id == open.circleId } ?: return
+        if (open.manageable) checkCirclePending(match)
+    }
+
     /** Live pending-status re-check for whichever circle's sheet is currently open — called on
-     *  first open and again whenever connectionService.circles refreshes (e.g. right after an
-     *  add/remove lands), so a just-added pending contact doesn't wait on the user closing and
-     *  reopening the sheet to appear (#1096). */
+     *  first open, again whenever connectionService.circles happens to emit a structurally
+     *  different value, and explicitly on screen resume via [refreshOpenCircle] (#1096). */
     private fun checkCirclePending(circle: CircleWithMembers) {
         circlePendingJob?.cancel()
         circlePendingJob = viewModelScope.launch {

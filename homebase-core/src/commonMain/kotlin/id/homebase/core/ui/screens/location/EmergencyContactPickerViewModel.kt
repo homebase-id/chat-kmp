@@ -10,6 +10,7 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.selectmembers.filterAndGroup
+import id.homebase.core.ui.screens.contactbook.toCircleAddFailureReason
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
@@ -102,12 +103,12 @@ class EmergencyContactPickerViewModel(
                             alreadyMember++
                         } else {
                             Logger.w(e, TAG) { "addToCircle failed for ${contact.odinId}: ${e.errorCode}" }
-                            failures += EmergencyContactAddFailure(contact.name, e.message ?: "Failed")
+                            failures += EmergencyContactAddFailure(contact.name, e.toCircleAddFailureReason())
                             stillFailed += contact
                         }
                     } catch (e: Exception) {
                         Logger.w(e, TAG) { "addToCircle failed for ${contact.odinId}" }
-                        failures += EmergencyContactAddFailure(contact.name, e.message ?: "Failed")
+                        failures += EmergencyContactAddFailure(contact.name, e.toCircleAddFailureReason())
                         stillFailed += contact
                     }
                 }
