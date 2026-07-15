@@ -523,10 +523,20 @@ class ContactBookViewModel(
                 entries.value,
             ).sortedBy { it.sortKey }
             // Only apply if the sheet is still open on the same circle (the user may have
-            // dismissed or switched to another circle while this was in flight).
+            // dismissed or switched to another circle while this was in flight). Re-excludes
+            // against the CURRENT members at update time, not the snapshot this fan-out started
+            // from — cancel() on the superseded job is cooperative, so a stale fan-out that's
+            // already past its last suspension point can still land its update after a fresher
+            // one already promoted someone from pending to real, putting them in both lists at
+            // once and crashing CircleMembersSheet's keyed LazyColumn (real crash, not cosmetic:
+            // #1096 in the Location dashboard's plain Column was the same race, just invisible).
             _circleMembers.update {
-                if (it?.circleId == circle.circle.id) it.copy(pendingMembers = pendingEntries, pendingChecking = false)
-                else it
+                if (it?.circleId == circle.circle.id) {
+                    it.copy(
+                        pendingMembers = pendingEntries.filterNot { p -> it.members.any { m -> m.uniqueId == p.uniqueId } },
+                        pendingChecking = false,
+                    )
+                } else it
             }
         }
     }

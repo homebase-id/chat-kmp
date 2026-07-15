@@ -352,9 +352,16 @@ class ContactDetailViewModel(
                 pending.map { it.domainName }.toSet(),
                 latestContacts,
             ).sortedBy { it.sortKey }
+            // Re-excludes against the CURRENT members at update time, not the snapshot this
+            // fan-out started from — cancel() on the superseded job is cooperative, so a stale
+            // fan-out already past its last suspension point can still land its update after a
+            // fresher one already promoted someone from pending to real, putting them in both
+            // lists at once and crashing CircleMembersSheet's keyed LazyColumn.
             _uiState.update {
-                if (it.circleDetail?.circleId == circle.circle.id) {
-                    it.copy(circleDetail = it.circleDetail.copy(pendingMembers = pendingEntries, pendingChecking = false))
+                val current = it.circleDetail
+                if (current?.circleId == circle.circle.id) {
+                    val deduped = pendingEntries.filterNot { p -> current.members.any { m -> m.uniqueId == p.uniqueId } }
+                    it.copy(circleDetail = current.copy(pendingMembers = deduped, pendingChecking = false))
                 } else it
             }
         }

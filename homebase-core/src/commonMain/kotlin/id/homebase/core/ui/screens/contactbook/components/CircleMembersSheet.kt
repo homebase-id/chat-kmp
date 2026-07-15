@@ -101,7 +101,12 @@ fun CircleMembersSheet(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
+            // distinctBy is a final guard, not the fix — the ViewModels already keep members/
+            // pendingMembers mutually exclusive at update time. This just makes the keyed
+            // LazyColumn below immune to any future regression of that invariant: a duplicate
+            // key here is a hard crash (unlike a plain Column, which would just double-render).
             val allMembers = (state.members + state.pendingMembers)
+                .distinctBy { it.uniqueId }
                 .filterNot { it.uniqueId == state.viewerContactId }
             val pendingIds = remember(state.pendingMembers) { state.pendingMembers.map { it.uniqueId }.toSet() }
             when {
