@@ -625,7 +625,10 @@ val appModule = module {
                 // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
                 get<LiveLocationShareService>().reset()
                 get<LocationTrackingCoordinator>().reset()
-            }
+            },
+            // #1109: attribute a background window to the active location profile in the
+            // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
+            locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
         )
     }
     single {

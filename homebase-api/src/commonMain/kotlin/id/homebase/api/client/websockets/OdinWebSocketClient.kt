@@ -12,6 +12,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.diagnostics.BgTrace
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.DriveWebSocketUpsertWorker
@@ -108,7 +109,10 @@ class OdinWebSocketClient(
             val previous = field
             field = value
             pingSupervisor.isInForeground = value
-            if (!previous && value) wakeForReconnect()
+            if (!previous && value) {
+                BgTrace.log("ws-wake bg->fg (reconnect kicked)")
+                wakeForReconnect()
+            }
         }
 
     @Volatile
@@ -265,6 +269,9 @@ class OdinWebSocketClient(
         val wsRoute = if (isWasm) "ws-token-wasm" else "ws-token"
         val wsUrl = "wss://${identity}/api/v2/notify/$wsRoute"
         Logger.i(tag = "WebSocket") { "WS[$instanceId] Connecting to WebSocket at $wsUrl" }
+        // #1109 baseline: greppable connect-attempt line tagged with fg/bg. A `state=bg` attempt is
+        // the background-reconnect red flag #1108 targets — it should drop to ~0 once that lands.
+        BgTrace.log(BgTrace.wsConnect(isInForeground, wsUrl))
 
         // Auth for the v2 ws-token route is carried on the WebSocket upgrade itself
         // via Sec-WebSocket-Protocol — no cookie, no Authorization header. We send
@@ -596,6 +603,12 @@ class OdinWebSocketClient(
                 Logger.i(tag = "LiveRelay") {
                     "RECV from=${d.senderOdinId.domainName} ch=${d.channelKey} " +
                         "bytes=${d.blob.length} receivedAt=${d.receivedAt}"
+                }
+                // #1109 background wake-cause attribution — only interesting while backgrounded (a
+                // foreground RECV isn't a background wake). Distinguishes WS-driven background
+                // activity from FCM / location / live-share-send.
+                if (!isInForeground) {
+                    BgTrace.log(BgTrace.wake("ws-recv", "from=${d.senderOdinId.domainName} ch=${d.channelKey}"))
                 }
                 eventBus.emit(
                     BackendEvent.LiveRelayReceived(
