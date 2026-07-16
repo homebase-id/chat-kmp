@@ -97,6 +97,12 @@ class ContactDetailViewModel(
     private var pendingCirclesJob: Job? = null
     private var circleDetailPendingJob: Job? = null
 
+    /** Bumped on every [refreshPendingCircles] call; a stale fan-out's tail checks its captured
+     *  generation before writing [_pendingCircleIds] so a slow call for a previous contact can't
+     *  land after a fresher one and overwrite it with the wrong domain's data — cancel() on the
+     *  superseded job is only cooperative, not immediate. */
+    private var pendingCirclesGeneration = 0
+
     /** Latest circle-membership snapshot + contact list, cached from the init collector so
      *  [onCircleClicked]/[refreshPendingCircles] can build the circle-detail dialog without
      *  re-subscribing to the flows themselves. */
@@ -281,6 +287,7 @@ class ContactDetailViewModel(
         val domain = odinId
         if (domain != null) {
             pendingCirclesJob?.cancel()
+            val generation = ++pendingCirclesGeneration
             pendingCirclesJob = viewModelScope.launch {
                 val pending = try {
                     connectionService.findPendingCircles(OdinId(domain))
@@ -290,7 +297,9 @@ class ContactDetailViewModel(
                     Logger.w(e, TAG) { "findPendingCircles failed for $domain" }
                     emptyList()
                 }
-                _pendingCircleIds.value = pending.map { it.toHexString() }.toSet()
+                if (generation == pendingCirclesGeneration) {
+                    _pendingCircleIds.value = pending.map { it.toHexString() }.toSet()
+                }
             }
         }
         val open = _uiState.value.circleDetail ?: return
@@ -332,6 +341,7 @@ class ContactDetailViewModel(
 
     private fun checkCircleDetailPending(circle: id.homebase.api.client.connections.CircleWithMembers) {
         circleDetailPendingJob?.cancel()
+        val domain = odinId
         circleDetailPendingJob = viewModelScope.launch {
             val circleId = try {
                 Uuid.parseHex(circle.circle.id)
@@ -352,6 +362,11 @@ class ContactDetailViewModel(
                 pending.map { it.domainName }.toSet(),
                 latestContacts,
             ).sortedBy { it.sortKey }
+            // The viewer's own status was frozen at dialog-open time (onCircleClicked) — recompute
+            // it from this fresh read so a pending grant that converts to real membership (or vice
+            // versa) between opens is reflected instead of showing a stale "Pending"/"Member" label.
+            val isRealMember = domain != null && circle.members.any { it.domainName.equals(domain, ignoreCase = true) }
+            val isPendingMember = domain != null && pending.any { it.domainName.equals(domain, ignoreCase = true) }
             // Re-excludes against the CURRENT members at update time, not the snapshot this
             // fan-out started from — cancel() on the superseded job is cooperative, so a stale
             // fan-out already past its last suspension point can still land its update after a
@@ -361,7 +376,17 @@ class ContactDetailViewModel(
                 val current = it.circleDetail
                 if (current?.circleId == circle.circle.id) {
                     val deduped = pendingEntries.filterNot { p -> current.members.any { m -> m.uniqueId == p.uniqueId } }
-                    it.copy(circleDetail = current.copy(pendingMembers = deduped, pendingChecking = false))
+                    it.copy(
+                        circleDetail = current.copy(
+                            pendingMembers = deduped,
+                            pendingChecking = false,
+                            viewerStatus = when {
+                                isRealMember -> CircleMemberStatus.Member
+                                isPendingMember -> CircleMemberStatus.Pending
+                                else -> current.viewerStatus
+                            },
+                        ),
+                    )
                 } else it
             }
         }

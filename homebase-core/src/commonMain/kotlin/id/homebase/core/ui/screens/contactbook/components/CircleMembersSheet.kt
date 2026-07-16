@@ -109,6 +109,11 @@ fun CircleMembersSheet(
                 .distinctBy { it.uniqueId }
                 .filterNot { it.uniqueId == state.viewerContactId }
             val pendingIds = remember(state.pendingMembers) { state.pendingMembers.map { it.uniqueId }.toSet() }
+            // Counts must match what's actually rendered below (allMembers excludes the viewer's
+            // own row when this sheet is opened from a contact's page) — otherwise the header
+            // says "3 members" while only 2 rows are visible.
+            val realCount = state.members.count { it.uniqueId != state.viewerContactId }
+            val pendingCount = state.pendingMembers.count { it.uniqueId != state.viewerContactId }
             when {
                 state.isLoading -> Box(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
@@ -125,13 +130,13 @@ fun CircleMembersSheet(
                 else -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = if (state.pendingMembers.isEmpty()) {
-                                stringResource(MR.string.contactbook_circle_members_count, state.members.size)
+                            text = if (pendingCount == 0) {
+                                stringResource(MR.string.contactbook_circle_members_count, realCount)
                             } else {
                                 stringResource(
                                     MR.string.contactbook_circle_members_count_with_pending,
-                                    state.members.size,
-                                    state.pendingMembers.size,
+                                    realCount,
+                                    pendingCount,
                                 )
                             },
                             style = MaterialTheme.typography.labelMedium,
@@ -148,6 +153,7 @@ fun CircleMembersSheet(
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->
                             ContactBookRow(
                                 entry = entry,
+                                connected = true,
                                 onClick = { onMemberClick(entry) },
                                 trailing = if (state.manageable) {
                                     {

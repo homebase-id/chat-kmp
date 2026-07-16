@@ -604,6 +604,8 @@ class LocationViewModel(
                             .filterNot { contact -> contact.odinId.domainName == odinId },
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
                 _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
