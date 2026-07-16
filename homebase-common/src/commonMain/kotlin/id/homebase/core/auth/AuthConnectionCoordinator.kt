@@ -10,6 +10,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.websockets.OdinWebSocketClient
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.diagnostics.BgTrace
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
@@ -52,6 +54,12 @@ class AuthConnectionCoordinator(
     private val peerWebSocketManager: PeerWebSocketManager,
     private val onPostAuthenticated: () -> Unit = {},
     /**
+     * Active location-tracking profile label for the #1109 background-transition line, or null when
+     * unknown/none. Injected as a lambda (wired in AppModule to LocationTrackingCoordinator) so this
+     * auth layer stays decoupled from the location module. Default `{ null }` keeps it optional.
+     */
+    private val locationProfileLabel: () -> String? = { null },
+    /**
      * Initial value of [headless]. True only on platforms that can cold-wake the
      * process in the background (see [PlatformInfo.supportsBackgroundWake]); those
      * defer foreground-only work until [promoteToForeground]. Defaults to false so
@@ -74,6 +82,12 @@ class AuthConnectionCoordinator(
         }
     )
     private var wsClient: OdinWebSocketClient? = null
+
+    // #1109 background-transition tracking: the last foreground/background state we logged and when,
+    // so setForeground() can emit the duration of the window that just ended. Seeded foreground=true
+    // at process start (the app opens in the foreground); lastTransitionAtMs anchors the first window.
+    private var currentForeground: Boolean = true
+    private var lastTransitionAtMs: Long = UnixTimeUtc().milliseconds
 
     // Peer (owner-hosted) drives mounted this session, alias -> (owner, drive). Lets [unmountDrive]
     // tear down the right per-owner peer websocket given only a driveId. Guarded by [peerOwnersMutex]
@@ -521,6 +535,15 @@ class AuthConnectionCoordinator(
     }
 
     fun setForeground(foreground: Boolean) {
+        // #1109: one consolidated, greppable transition line carrying the duration of the window that
+        // just ended plus the active location profile — so a day's log gives a clean fg/bg breakdown
+        // (and background-window attribution) from a single `grep BgTrace` instead of hand-stitching.
+        if (foreground != currentForeground) {
+            val now = UnixTimeUtc().milliseconds
+            BgTrace.log(BgTrace.transition(foreground, now - lastTransitionAtMs, locationProfileLabel()))
+            currentForeground = foreground
+            lastTransitionAtMs = now
+        }
         wsClient?.isInForeground = foreground
     }
 
