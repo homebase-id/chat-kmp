@@ -80,6 +80,7 @@ import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
@@ -401,7 +402,12 @@ fun MessageBubbleRaw(
     val deletedText = stringResource(MR.string.chat_message_deleted)
     // Body markdown rendered (and search-highlighted) by the single ChatMarkdown
     // renderer below — no RichTextState round-trip, no separate highlight fork.
-    val bodyText = if (message.isDeleted) deletedText else message.content
+    // Strip richeditor's `<br>` empty-paragraph artifacts before rendering. A body like
+    // "<br>\nhttps://…" — from an older/other-platform sender or the web client — is otherwise
+    // swallowed whole by CommonMark's HTML-block rule (a line starting with `<br>` opens an HTML
+    // block that runs until a blank line) and renders as a BLANK bubble on mobile, taking the URL
+    // with it (#1104). Stripping leaves clean markdown mikepenz can render.
+    val bodyText = if (message.isDeleted) deletedText else message.content.stripComposerLineBreakArtifacts()
     // A search query never applies to the system "deleted" placeholder.
     val effectiveSearchQuery = if (message.isDeleted) "" else searchQuery
 
