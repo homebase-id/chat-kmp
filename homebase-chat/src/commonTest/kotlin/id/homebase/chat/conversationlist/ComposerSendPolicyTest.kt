@@ -4,18 +4,21 @@ import id.homebase.api.client.link.LinkPreview
 import id.homebase.api.client.location.LocationPreview
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.chat.services.renderer.LocationPreviewRenderer
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
  * Locks the composer never-send-empty policy (#1104).
  *
- * The bug: the composer gated on the editor's `annotatedString` (non-blank) but sent
- * `toMarkdown()`. When a typed/pasted URL momentarily serialized to a blank markdown body,
- * the non-blank gate passed and an empty message was sent on both sides. The fix gates on the
- * serialized body via [shouldSendComposerMessage] — so a blank body with only an auto-detected
- * link preview staged must NOT send.
+ * The bug had two shapes, both from the composer gating on the editor's `annotatedString` while
+ * sending `toMarkdown()`: a typed/pasted URL could momentarily serialize to a blank body, and — the
+ * common real-world case — a stray blank line serializes to a non-blank `"<br>"` artifact that a
+ * plain `isNotBlank()` gate happily sent as a blank bubble (mobile) / literal `<br>` (web). The fix
+ * feeds the NORMALIZED body (`toMessageMarkdown`, which strips the `<br>` artifact) to
+ * [shouldSendComposerMessage], so both shapes resolve to an empty body and are withheld.
  */
 class ComposerSendPolicyTest {
 
@@ -69,5 +72,22 @@ class ComposerSendPolicyTest {
     @Test
     fun whitespaceOnlyBody_isTreatedAsBlank() {
         assertFalse(shouldSendComposerMessage("   \n ", listOf(linkPreview)))
+    }
+
+    @Test
+    fun brArtifactBody_afterNormalization_doesNotSend() {
+        // A stray blank line in the editor serializes to "\n<br>" — non-blank, so a plain gate
+        // would send it. The composer normalizes first (toMessageMarkdown → strip), collapsing it
+        // to "", which the gate correctly withholds. This is the dominant real-world #1104 case.
+        val normalized = "\n<br>".stripComposerLineBreakArtifacts()
+        assertFalse(shouldSendComposerMessage(normalized, listOf(linkPreview)))
+    }
+
+    @Test
+    fun brArtifactAboveLink_afterNormalization_sendsCleanBody() {
+        // "<br>\nurl" (leading blank line then a link) must send the link — with NO stray <br>.
+        val normalized = "\n<br>\nhttps://homebase.id".stripComposerLineBreakArtifacts()
+        assertEquals("https://homebase.id", normalized)
+        assertTrue(shouldSendComposerMessage(normalized, emptyList()))
     }
 }

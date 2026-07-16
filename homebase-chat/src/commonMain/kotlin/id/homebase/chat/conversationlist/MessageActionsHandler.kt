@@ -44,6 +44,7 @@ import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.resolveContentType
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_forwarded
@@ -121,18 +122,11 @@ internal class MessageActionsHandler(
     internal var pendingMessageId: Uuid? = null
 
     fun handleSendMessage(action: ConversationListUiAction.SendMessage) {
-        // Gate on the SERIALIZED body we actually send — not annotatedString. A typed/pasted URL
-        // can momentarily serialize to a blank markdown body while annotatedString is still
-        // non-blank; gating on annotatedString there sent an empty message on both sides (#1104).
-        val content = messageInputTextState.toMarkdown().trimEnd()
-        // Content-only diagnostic (no message text — lengths + booleans only) to confirm the
-        // divergence in the wild: annotatedLen>0 with textLen=0 is the #1104 smoking gun.
-        val annotatedLen = messageInputTextState.annotatedString.text.length
-        Logger.i(tag = TAG) {
-            "composer send: textLen=${content.length} annotatedLen=$annotatedLen " +
-                "hasUrl=${messageInputTextState.annotatedString.text.contains("http", ignoreCase = true)} " +
-                "renderers=${action.payloadRenderers.size}"
-        }
+        // Send the NORMALIZED serialized body. toMessageMarkdown() strips richeditor's `<br>`
+        // empty-paragraph artifacts (a stray blank line round-trips to `"\n<br>"`, a link with an
+        // empty line above it to `"\n<br>\n<url>"`). Gating on annotatedString, or sending raw
+        // toMarkdown() which keeps the `<br>`, sent a blank/`<br>` message on both sides (#1104).
+        val content = messageInputTextState.toMessageMarkdown()
         if (shouldSendComposerMessage(content, action.payloadRenderers)) {
             messagesUiState.update { it.copy(isSendingMessage = true) }
             val replyTo = messagesUiState.value.replyToMessage
@@ -196,7 +190,8 @@ internal class MessageActionsHandler(
             editMessage(
                 messageId = messageId,
                 versionTag = messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
-                content = messageInputTextState.toMarkdown().trimEnd(),
+                // Normalize like the send path so an edit can't reintroduce a `<br>` artifact (#1104).
+                content = messageInputTextState.toMessageMarkdown(),
             )
         }
     }

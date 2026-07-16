@@ -131,6 +131,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
@@ -268,13 +269,13 @@ fun MessageInputBar(
     }
 
     fun sendMessage() {
-        // Gate on the SERIALIZED body (toMarkdown), the exact value that gets sent — not
-        // annotatedString. A typed/pasted URL can momentarily serialize to blank while
-        // annotatedString is non-blank; the old annotatedString gate let that empty through
-        // (#1104). shouldSendComposerMessage encodes the "link previews alone don't send"
-        // policy (user-initiated kinds like location DO).
-        val markdown = textFieldState.toMarkdown()
-        if (!isSendingMessage && shouldSendComposerMessage(markdown.trimEnd(), payloadRenderers)) {
+        // Gate on the NORMALIZED serialized body — the exact value that gets sent.
+        // toMessageMarkdown() strips richeditor's `<br>` empty-paragraph artifacts, so a stray
+        // blank line (which serializes to a non-blank `"\n<br>"`) no longer slips past the gate as
+        // a blank/`<br>` message (#1104). shouldSendComposerMessage encodes the "link previews
+        // alone don't send" policy (user-initiated kinds like location DO).
+        val markdown = textFieldState.toMessageMarkdown()
+        if (!isSendingMessage && shouldSendComposerMessage(markdown, payloadRenderers)) {
             haptics.perform(HapticEvent.Confirm)
             onSendMessage(markdown, payloadRenderers)
             // Don't clear here — the ViewModel clears after the send is queued,
