@@ -39,6 +39,8 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.hasSendableContent
+import id.homebase.core.share.resolveMessageBody
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.resolveContentType
 import id.homebase.core.widget.ReactionDisplayItem
@@ -921,11 +923,24 @@ internal class MessageActionsHandler(
         if (descriptor.targetConversationId != conversationId.toString()) return
 
         Logger.i(tag = "ConversationListViewModel") {
-            "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}"
+            "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}, " +
+                "textLen=${descriptor.text?.length}, hasUrl=${!descriptor.url.isNullOrBlank()}"
         }
 
         try {
-            val text = descriptor.text ?: descriptor.url ?: ""
+            val text = descriptor.resolveMessageBody()
+
+            // Never send an empty message: a share that resolves to nothing is a failed
+            // extraction, and silently sending a blank bubble loses the user's content
+            // without telling them (#1097). Policy lives in hasSendableContent() so it
+            // is locked by SharedContentDescriptorTest rather than only by this branch.
+            if (!descriptor.hasSendableContent()) {
+                Logger.w(tag = "ConversationListViewModel") {
+                    "Shared content resolved to nothing (type=${descriptor.contentType}) — not sending"
+                }
+                sendEvent(ShowErrorMessage("Couldn't read the shared content — please try sharing again."))
+                return
+            }
 
             if (descriptor.fileNames.isEmpty()) {
                 // Text/URL only
