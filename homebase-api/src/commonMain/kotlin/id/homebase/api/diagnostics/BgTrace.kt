@@ -38,6 +38,13 @@ object BgTrace {
     fun wsConnect(foreground: Boolean, url: String): String =
         "ws-connect state=${if (foreground) "fg" else "bg"} url=$url"
 
+    /**
+     * The notify WS was closed and left closed for the background window (#1108) — the positive
+     * greppable confirmation that background reconnects are being suppressed. [reason] is a stable
+     * slug (e.g. "backgrounded-push-covered").
+     */
+    fun wsPark(reason: String): String = "ws-park reason=$reason"
+
     /** Why the process was active in the background. [cause] is a stable slug; [detail] is free-form. */
     fun wake(cause: String, detail: String): String = "wake cause=$cause $detail"
 
