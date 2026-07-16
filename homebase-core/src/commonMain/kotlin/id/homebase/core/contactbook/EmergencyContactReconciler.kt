@@ -3,6 +3,7 @@
 package id.homebase.core.contactbook
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
@@ -38,6 +39,7 @@ import kotlin.uuid.ExperimentalUuidApi
 class EmergencyContactReconciler(
     private val contactRepository: ContactRepository,
     private val temporalRead: TemporalDriveReadProvider,
+    private val credentialsManager: CredentialsManager,
     private val scope: CoroutineScope,
 ) {
     private val locationDrive = locationLabeledDrive.drive.alias
@@ -63,6 +65,9 @@ class EmergencyContactReconciler(
         val versionTag = contact.versionTag ?: return
         // Set-only: an already-flagged contact has nothing to recover — skip the preflight entirely.
         if (contact.iCanLocate()) return
+        // Never flag a self-contact row (issue #982): skip the preflight for our own identity rather
+        // than trusting the VM's self filter to keep it out of the rendered list.
+        if (credentialsManager.isSelf(odinId)) return
 
         val status = runCatching { temporalRead.verifyTemporalAccess(odinId, locationDrive) }
             .getOrNull()

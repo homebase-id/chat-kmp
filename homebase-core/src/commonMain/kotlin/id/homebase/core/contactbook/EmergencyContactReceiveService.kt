@@ -4,6 +4,7 @@ package id.homebase.core.contactbook
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
@@ -30,11 +31,19 @@ class EmergencyContactReceiveService(
     private val contactRepository: ContactRepository,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
+    private val credentialsManager: CredentialsManager,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
     /** The [sender] designated us — record that we can locate them, then consume the message. */
     suspend fun onDesignated(sender: OdinId, messageFile: HomebaseFile) {
+        // A self-authored designation shouldn't be possible via the normal transit/inbox path, but
+        // never let a self row get flagged `iCanLocate` (issue #982) — guard at the source rather
+        // than relying solely on the VM's self filter to keep it out of the rendered list.
+        if (credentialsManager.isSelf(sender)) {
+            Logger.w { "emergency designation: sender resolves to our own identity, ignoring" }
+            return
+        }
         try {
             contactRepository.ensureLoaded()
             val uniqueId = Md5.toGuidId(sender.domainName)
