@@ -6,6 +6,7 @@ import android.content.Intent
 import co.touchlab.kermit.Logger
 import com.google.android.gms.location.LocationResult
 import id.homebase.api.coroutines.supervisedScope
+import id.homebase.api.diagnostics.BgTrace
 import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -36,6 +37,8 @@ class LocationUpdatesReceiver : BroadcastReceiver(), KoinComponent {
 
         // Info so the cold-process background path is auditable in homebase.log.
         logger.i { "Background batch: ${points.size} points" }
+        // #1109 background wake-cause attribution (a fused-location delivery woke the process).
+        BgTrace.log(BgTrace.wake("location-delivery", "points=${points.size}"))
         val pendingResult = goAsync()
         scope.launch {
             try {
