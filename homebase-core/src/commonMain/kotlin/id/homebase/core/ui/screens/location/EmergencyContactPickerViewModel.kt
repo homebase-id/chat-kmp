@@ -30,13 +30,17 @@ import kotlin.uuid.Uuid
 private const val TAG = "EmergencyContactPickerViewModel"
 
 /**
- * Grant-eligibility candidate list for the emergency-location-access circle: connected AND
- * vetted contacts (auto-connected/unconfirmed identities 400 on add — CannotGrantAutoConnected
- * MoreCircles — so they're filtered out here rather than offered and rejected), excluding
- * anyone already a real member. Real members come from the already-loaded bulk circle-members
- * read ([ConnectionService.circles]) — cheap and authoritative; a duplicate add attempt on a
- * still-pending contact simply hits the server's real IdentityAlreadyMemberOfCircle response
- * (handled in [addSelected]) rather than being pre-filtered from a guess.
+ * Grant-eligibility candidate list for the emergency-location-access circle: every connected
+ * contact, excluding anyone already a real member. Real members come from the already-loaded
+ * bulk circle-members read ([ConnectionService.circles]) — cheap and authoritative; a duplicate
+ * add attempt on a still-pending contact simply hits the server's real
+ * IdentityAlreadyMemberOfCircle response (handled in [addSelected]) rather than being
+ * pre-filtered from a guess.
+ *
+ * A connected-but-unvetted (unconfirmed) contact is still shown — hiding it entirely made it
+ * look like the contact didn't exist, which was confusing — but it renders disabled with a
+ * reason ([EmergencyContactPickerScreen]) and can't be selected ([onUiAction]), since the server
+ * 400s circles/add for those identities (CannotGrantAutoConnectedMoreCircles).
  */
 class EmergencyContactPickerViewModel(
     private val contactService: ContactService,
@@ -60,7 +64,7 @@ class EmergencyContactPickerViewModel(
             ) { contacts, circleState, query ->
                 val members = circleState.membersOf(EMERGENCY_LOCATION_CIRCLE_ID)
                 contacts
-                    .filter { it.connection?.status == ConnectionStatus.Connected && it.connection?.vetted == true }
+                    .filter { it.connection?.status == ConnectionStatus.Connected }
                     .filterNot { members.contains(it.odinId.domainName.lowercase()) }
                     .filterAndGroup(query)
             }.collect { groups ->
@@ -72,9 +76,11 @@ class EmergencyContactPickerViewModel(
     fun onUiAction(action: EmergencyContactPickerUiAction) {
         when (action) {
             is EmergencyContactPickerUiAction.ContactClicked -> {
-                val selected = uiState.value.selectedContacts.toMutableList()
-                if (!selected.remove(action.contact)) selected.add(action.contact)
-                _uiState.update { it.copy(selectedContacts = selected.toPersistentList()) }
+                if (action.contact.connection?.vetted == true) {
+                    val selected = uiState.value.selectedContacts.toMutableList()
+                    if (!selected.remove(action.contact)) selected.add(action.contact)
+                    _uiState.update { it.copy(selectedContacts = selected.toPersistentList()) }
+                }
             }
 
             EmergencyContactPickerUiAction.AddClicked -> addSelected()
@@ -98,6 +104,8 @@ class EmergencyContactPickerViewModel(
                     try {
                         connectionService.addToCircle(circleId, contact.odinId)
                         added++
+                    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                        throw e
                     } catch (e: ClientException) {
                         if (e.errorCode == OdinClientErrorCode.IdentityAlreadyMemberOfCircle) {
                             alreadyMember++

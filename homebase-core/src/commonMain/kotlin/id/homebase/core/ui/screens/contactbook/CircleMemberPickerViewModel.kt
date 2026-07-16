@@ -32,12 +32,14 @@ private const val TAG = "CircleMemberPickerViewModel"
 
 /**
  * Generic "add contact to circle" picker — works for any circle by [circleId], not just
- * emergency-location access. Candidate list: connected AND vetted identities (auto-connected/
- * unconfirmed identities 400 on add — CannotGrantAutoConnectedMoreCircles), excluding anyone
- * already a real member of [circleId] (cheap, from the already-loaded bulk circle-members
- * read). A duplicate add on a still-pending contact simply hits the server's real
- * IdentityAlreadyMemberOfCircle response (handled in [addSelected]) rather than being
- * pre-filtered from a guess.
+ * emergency-location access. Candidate list: every connected identity, excluding anyone already
+ * a real member of [circleId] (cheap, from the already-loaded bulk circle-members read). A
+ * connected-but-unvetted (unconfirmed) identity is still shown — hiding it entirely made it look
+ * like the contact didn't exist, which was confusing — but marked ineligible ([CircleMemberCandidate.eligible]
+ * = false) and can't be selected, since the server 400s circles/add for those identities
+ * (CannotGrantAutoConnectedMoreCircles). A duplicate add on a still-pending contact simply hits
+ * the server's real IdentityAlreadyMemberOfCircle response (handled in [addSelected]) rather than
+ * being pre-filtered from a guess.
  */
 class CircleMemberPickerViewModel(
     private val circleId: Uuid,
@@ -67,16 +69,18 @@ class CircleMemberPickerViewModel(
                     .filter { !it.odinId.isNullOrBlank() }
                     .associateBy { it.odinId!!.lowercase() }
 
-                val eligibleDomains = connectionState.map.values
-                    .filter { it.status == ConnectionStatus.Connected && it.vetted }
-                    .map { it.odinId.domainName.lowercase() }
-                    .filterNot { members.contains(it) }
+                val connectedRegistrations = connectionState.map.values
+                    .filter { it.status == ConnectionStatus.Connected }
+                    .filterNot { members.contains(it.odinId.domainName.lowercase()) }
 
                 val q = query.trim().lowercase()
-                eligibleDomains
-                    .map { domain -> byOdin[domain] ?: syntheticEntry(domain) }
-                    .filter { q.isEmpty() || it.displayName.lowercase().contains(q) || it.odinId?.lowercase()?.contains(q) == true }
-                    .sortedBy { it.displayName.lowercase() }
+                connectedRegistrations
+                    .map { reg ->
+                        val domain = reg.odinId.domainName.lowercase()
+                        CircleMemberCandidate(entry = byOdin[domain] ?: syntheticEntry(domain), eligible = reg.vetted)
+                    }
+                    .filter { q.isEmpty() || it.entry.displayName.lowercase().contains(q) || it.entry.odinId?.lowercase()?.contains(q) == true }
+                    .sortedBy { it.entry.displayName.lowercase() }
             }.collect { candidates ->
                 _uiState.update { it.copy(candidates = candidates.toPersistentList()) }
             }
@@ -98,9 +102,13 @@ class CircleMemberPickerViewModel(
     fun onUiAction(action: CircleMemberPickerUiAction) {
         when (action) {
             is CircleMemberPickerUiAction.ContactClicked -> {
-                val selected = uiState.value.selected.toMutableList()
-                if (!selected.remove(action.entry)) selected.add(action.entry)
-                _uiState.update { it.copy(selected = selected.toPersistentList()) }
+                val eligible = uiState.value.candidates
+                    .firstOrNull { it.entry.uniqueId == action.entry.uniqueId }?.eligible == true
+                if (eligible) {
+                    val selected = uiState.value.selected.toMutableList()
+                    if (!selected.remove(action.entry)) selected.add(action.entry)
+                    _uiState.update { it.copy(selected = selected.toPersistentList()) }
+                }
             }
 
             CircleMemberPickerUiAction.AddClicked -> addSelected()
@@ -132,6 +140,8 @@ class CircleMemberPickerViewModel(
                     try {
                         connectionService.addToCircle(circleId, odinId)
                         added++
+                    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                        throw e
                     } catch (e: ClientException) {
                         if (e.errorCode == OdinClientErrorCode.IdentityAlreadyMemberOfCircle) {
                             alreadyMember++

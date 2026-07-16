@@ -6,9 +6,18 @@ import kotlinx.collections.immutable.persistentListOf
 
 data class CircleMemberPickerUiState(
     val circleName: String = "",
-    val candidates: PersistentList<ContactBookEntry> = persistentListOf(),
+    val candidates: PersistentList<CircleMemberCandidate> = persistentListOf(),
     val selected: PersistentList<ContactBookEntry> = persistentListOf(),
     val submitting: Boolean = false,
+)
+
+/** A connected identity shown in the add-to-circle picker. [eligible] is false for a connected
+ *  but unvetted (unconfirmed) identity — the server rejects circles/add for those with
+ *  CannotGrantAutoConnectedMoreCircles, so the row is shown (not hidden) but disabled, with a
+ *  reason, rather than silently vanishing from the list. */
+data class CircleMemberCandidate(
+    val entry: ContactBookEntry,
+    val eligible: Boolean,
 )
 
 sealed interface CircleMemberPickerUiAction {

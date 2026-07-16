@@ -47,6 +47,7 @@ import id.homebase.resources.circle_member_add_generic_failed
 import id.homebase.resources.circle_member_add_none_eligible
 import id.homebase.resources.circle_member_add_succeeded
 import id.homebase.resources.circle_member_add_title
+import id.homebase.resources.circle_member_add_unvetted_reason
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -164,15 +165,18 @@ private fun CircleMemberPickerUi(
                     Text(text = stringResource(MR.string.circle_member_add_none_eligible))
                 }
             } else {
+                val unvettedReason = stringResource(MR.string.circle_member_add_unvetted_reason)
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(vertical = 8.dp),
                 ) {
-                    items(uiState.candidates, key = { it.uniqueId.toString() }) { entry ->
+                    items(uiState.candidates, key = { it.entry.uniqueId.toString() }) { candidate ->
+                        val entry = candidate.entry
                         val isSelected = uiState.selected.contains(entry)
                         ContactBookRow(
                             entry = entry,
                             onClick = { onUiAction(CircleMemberPickerUiAction.ContactClicked(entry)) },
+                            disabledReason = if (!candidate.eligible) unvettedReason else null,
                             trailing = if (isSelected) {
                                 {
                                     Icon(

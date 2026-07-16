@@ -1358,9 +1358,10 @@
     <string name="location_emergency_access_none">No one can locate you yet. Tap + to add people.</string>
     <string name="location_emergency_access_more">+%1$d</string>
     <string name="location_emergency_add_title">Add emergency contacts</string>
-    <string name="location_emergency_add_none_eligible">No eligible contacts to add. Contacts must be connected and confirmed first.</string>
+    <string name="location_emergency_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
     <string name="location_emergency_add_succeeded">Added</string>
     <string name="location_emergency_add_already_member">Already added</string>
+    <string name="location_emergency_add_unvetted_reason">Not yet confirmed — can't be added yet</string>
     <string name="location_emergency_add_failed">Failed</string>
     <string name="location_emergency_status_pending">Pending</string>
     <string name="location_emergency_remove_cd">Remove %1$s</string>
@@ -1468,7 +1469,8 @@
     <string name="contactbook_circle_members_count_with_pending">%1$d members, %2$d pending</string>
     <string name="contactbook_circle_add_member">Add member</string>
     <string name="circle_member_add_title">Add to %1$s</string>
-    <string name="circle_member_add_none_eligible">No eligible contacts to add. Contacts must be connected and confirmed first.</string>
+    <string name="circle_member_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
+    <string name="circle_member_add_unvetted_reason">Not yet confirmed — can't be added to a circle</string>
     <string name="circle_member_add_succeeded">Added</string>
     <string name="circle_member_add_already_member">Already added</string>
     <string name="circle_member_add_drive_access_denied">This circle includes a drive Chat doesn't have access to, so it can't be added here.</string>
