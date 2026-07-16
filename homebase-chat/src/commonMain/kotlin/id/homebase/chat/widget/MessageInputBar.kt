@@ -117,6 +117,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.chat.conversationlist.shouldSendComposerMessage
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
@@ -267,14 +268,15 @@ fun MessageInputBar(
     }
 
     fun sendMessage() {
-        val hasText = textFieldState.annotatedString.isNotBlank()
-        // Link previews alone shouldn't enable send (a bare URL with no text was never sendable
-        // in the original shape). User-initiated kinds (location, contact, etc.) WILL enable
-        // send because they're not LinkPreviewRenderer.
-        val hasUserInitiatedAttachment = payloadRenderers.any { it !is LinkPreviewRenderer }
-        if (!isSendingMessage && (hasText || hasUserInitiatedAttachment)) {
+        // Gate on the SERIALIZED body (toMarkdown), the exact value that gets sent — not
+        // annotatedString. A typed/pasted URL can momentarily serialize to blank while
+        // annotatedString is non-blank; the old annotatedString gate let that empty through
+        // (#1104). shouldSendComposerMessage encodes the "link previews alone don't send"
+        // policy (user-initiated kinds like location DO).
+        val markdown = textFieldState.toMarkdown()
+        if (!isSendingMessage && shouldSendComposerMessage(markdown.trimEnd(), payloadRenderers)) {
             haptics.perform(HapticEvent.Confirm)
-            onSendMessage(textFieldState.toMarkdown(), payloadRenderers)
+            onSendMessage(markdown, payloadRenderers)
             // Don't clear here — the ViewModel clears after the send is queued,
             // so the text stays in the edit box if the send fails.
         }
