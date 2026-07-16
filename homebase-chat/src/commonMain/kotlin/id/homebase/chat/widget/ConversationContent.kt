@@ -151,6 +151,7 @@ import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.util.programmaticBackspace
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
@@ -1503,7 +1504,7 @@ fun ConversationContent(
                             isRecordingActive = isRecordingActive,
                             isSendingMessage = uiState.isSendingMessage,
                             onSendMessage = {
-                                performSend(textFieldState.toMarkdown(), payloadRenderers)
+                                performSend(textFieldState.toMessageMarkdown(), payloadRenderers)
                             },
                             onCancelEdit = {
                                 onUiAction(ConversationListUiAction.CancelEditMessage)

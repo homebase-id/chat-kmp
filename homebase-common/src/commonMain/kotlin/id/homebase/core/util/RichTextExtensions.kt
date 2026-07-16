@@ -44,6 +44,32 @@ fun RichTextState.programmaticBackspace() {
     removeTextRange(TextRange(start = start, end = end))
 }
 
+/**
+ * richeditor serialises an empty paragraph as a standalone `<br>` line — its WYSIWYG empty-line
+ * marker. So a composer holding a stray blank line round-trips through [RichTextState.toMarkdown]
+ * as `"\n<br>"`, and a link with an empty line above it as `"\n<br>\nhttps://…"` (both byte-verified
+ * against rc14). That `<br>` is editor noise, not content: it renders as a literal `<br>` on the web
+ * client and a blank line on mobile, and a pure-`<br>` body reads as an empty message (#1104).
+ *
+ * This drops standalone `<br>` lines and the leading/trailing blank lines they leave behind, while
+ * preserving real text and intentional paragraph breaks (an intended blank line between paragraphs
+ * serialises as plain `\n\n`, never `<br>`, so it survives untouched).
+ */
+fun String.stripComposerLineBreakArtifacts(): String =
+    lines()
+        .filterNot { it.trim() == "<br>" }
+        .dropWhile { it.isBlank() }
+        .dropLastWhile { it.isBlank() }
+        .joinToString("\n")
+
+/**
+ * The composer's markdown body as it should be sent: [RichTextState.toMarkdown] with richeditor's
+ * `<br>` empty-paragraph artifacts stripped (see [stripComposerLineBreakArtifacts]). Use this — not
+ * raw `toMarkdown()` — for every composer send and send-gate decision so a stray blank line can
+ * never go out as a `<br>`/blank message (#1104).
+ */
+fun RichTextState.toMessageMarkdown(): String = toMarkdown().stripComposerLineBreakArtifacts()
+
 fun RichTextState.applyDefaultStyling(
     linkColor: Color = LightColors.Primary,
 ): RichTextState {

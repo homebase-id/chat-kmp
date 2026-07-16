@@ -57,6 +57,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.rememberCameraManager
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
 import io.github.vinceglb.filekit.dialogs.FileKitMode
@@ -426,7 +427,7 @@ fun ConversationMessagesPane(
                                     state = textFieldState,
                                     onSmileyClick = {},
                                     onSendMessage = {
-                                        onUiAction(SendFile(data.conversationId, textFieldState.toMarkdown().trimEnd(), data.attachments))
+                                        onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
                                     },
                                 )
                             },
