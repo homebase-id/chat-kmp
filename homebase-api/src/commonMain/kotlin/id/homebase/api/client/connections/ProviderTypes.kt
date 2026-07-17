@@ -3,7 +3,13 @@ package id.homebase.api.client.connections
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.common.OdinId
 import id.homebase.api.youauth.DrivePermissionSet
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 
@@ -111,12 +117,18 @@ data class RedactedIdentityConnectionRegistration(
 data class RedactedAccessExchangeGrant(
     val isRevoked: Boolean,
     val circleGrants: List<RedactedCircleGrant> = emptyList(),
-    val appGrants: Map<Uuid, List<RedactedAppCircleGrant>> = emptyMap()
+    val appGrants: Map<Uuid, List<RedactedAppCircleGrant>> = emptyMap(),
+    /**
+     * Circle-add deposits that haven't converted into a real [circleGrants] entry yet — sealed
+     * but not yet actioned by the owner or the contact's server. Standard hyphenated GUIDs (this
+     * field is backed by a plain Guid server-side, unlike [RedactedCircleGrant.circleId]).
+     */
+    val pendingCircleIds: List<Uuid> = emptyList()
 )
 
 @Serializable
 data class RedactedCircleGrant(
-    val circleId: Uuid,
+    @Serializable(with = GuidIdUuidSerializer::class) val circleId: Uuid,
     val permissionSet: PermissionSet? = null,
     val driveGrants: List<RedactedDriveGrant> = emptyList()
 )
@@ -124,10 +136,34 @@ data class RedactedCircleGrant(
 @Serializable
 data class RedactedAppCircleGrant(
     val appId: Uuid,
-    val circleId: Uuid,
+    @Serializable(with = GuidIdUuidSerializer::class) val circleId: Uuid,
     val permissionSet: PermissionSet? = null,
     val driveGrants: List<RedactedDriveGrant> = emptyList()
 )
+
+/**
+ * [RedactedCircleGrant.circleId] and [RedactedAppCircleGrant.circleId] are backed by the server's
+ * `GuidId` type, which always serializes as a 32-char hex string with no hyphens (e.g.
+ * "550e8400e29b41d4a716446655440000") — unlike a plain Guid, which is always hyphenated. The
+ * standard [kotlin.uuid.Uuid] parser only accepts the hyphenated form and throws on this shape.
+ */
+object GuidIdUuidSerializer : KSerializer<Uuid> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("GuidIdUuid", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: Uuid) {
+        encoder.encodeString(value.toString())
+    }
+
+    override fun deserialize(decoder: Decoder): Uuid {
+        val raw = decoder.decodeString()
+        return if (raw.length == 32 && raw.none { it == '-' }) {
+            Uuid.parseHex(raw)
+        } else {
+            Uuid.parse(raw)
+        }
+    }
+}
 
 @Serializable
 data class RedactedDriveGrant(
@@ -164,7 +200,7 @@ enum class ConnectionStatus {
     Unknown,
 
     @SerialName("none")
-    Pending,
+    None,
 
     @SerialName("connected")
     Connected,

@@ -110,6 +110,7 @@ import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.ui.screens.location.EmergencyContactPickerScreen
 import id.homebase.core.ui.screens.location.LocationScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
@@ -135,6 +136,7 @@ import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.ui.screens.contactbook.CircleMemberPickerScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookScreen
 import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
@@ -147,6 +149,7 @@ import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
 import id.homebase.resources.location_label
+import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
@@ -370,6 +373,8 @@ fun AppNavHost(
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
                 ContactBookUiEvent.OpenAddContact ->
                     navController.navigate(Route.AddContact())
+                is ContactBookUiEvent.OpenCircleMemberAdd ->
+                    navController.navigate(Route.CircleMemberAdd(event.circleId, event.circleName))
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* Error handled by ContactBookScreen */ }
@@ -512,6 +517,7 @@ fun AppNavHost(
 
     // Translate Location onboarding one-shot events into nav-stack changes.
     val locateFetchFailedMsg = stringResource(MR.string.location_locate_fetch_failed)
+    val emergencyContactActionFailedMsg = stringResource(MR.string.location_emergency_action_failed)
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
             when (event) {
@@ -533,6 +539,11 @@ fun AppNavHost(
 
                 LocationUiEvent.LocateFetchFailed -> snackbarHostState.showSnackbar(
                     message = locateFetchFailedMsg,
+                    duration = SnackbarDuration.Long,
+                )
+
+                LocationUiEvent.EmergencyContactActionFailed -> snackbarHostState.showSnackbar(
+                    message = emergencyContactActionFailedMsg,
                     duration = SnackbarDuration.Long,
                 )
             }
@@ -826,6 +837,24 @@ fun AppNavHost(
                             }
                         }
 
+                        composable<Route.CircleMemberAdd> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.CircleMemberAdd>()
+                                CircleMemberPickerScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.circleId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parseHex(route.circleId),
+                                                route.circleName,
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
                         composable<Route.ContactBookSettings> {
                             if (isAuthenticated) {
                                 val fromContacts = navController.previousBackStackEntry
@@ -867,6 +896,9 @@ fun AppNavHost(
                                     },
                                     onSeeAllMedia = { conversationId ->
                                         navController.navigate(Route.ConversationMedia(conversationId))
+                                    },
+                                    onOpenContact = { uniqueId, odinId ->
+                                        navController.navigate(Route.ContactBookDetail(uniqueId, odinId))
                                     },
                                 )
                             }
@@ -1382,6 +1414,18 @@ fun AppNavHost(
                                     onNavigateToLiveMap = {
                                         navController.navigate(Route.LocationLive)
                                     },
+                                    onNavigateToEmergencyContactAdd = {
+                                        navController.navigate(Route.LocationEmergencyContactAdd)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationEmergencyContactAdd> {
+                            if (isAuthenticated) {
+                                EmergencyContactPickerScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }

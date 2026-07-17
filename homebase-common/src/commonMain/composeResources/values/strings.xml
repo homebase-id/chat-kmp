@@ -1357,6 +1357,17 @@
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
     <string name="location_emergency_access_none">No one can locate you yet. Tap + to add people.</string>
     <string name="location_emergency_access_more">+%1$d</string>
+    <string name="location_emergency_add_title">Add emergency contacts</string>
+    <string name="location_emergency_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
+    <string name="location_emergency_add_succeeded">Added</string>
+    <string name="location_emergency_add_already_member">Already added</string>
+    <string name="location_emergency_add_unvetted_reason">Not yet confirmed — can't be added yet</string>
+    <string name="location_emergency_add_failed">Failed</string>
+    <string name="location_emergency_status_pending">Pending</string>
+    <string name="location_emergency_remove_cd">Remove %1$s</string>
+    <string name="location_emergency_remove_confirm_title">Remove emergency contact?</string>
+    <string name="location_emergency_remove_confirm_body">%1$s will no longer be able to locate you in an emergency.</string>
+    <string name="location_emergency_action_failed">Something went wrong. Please try again.</string>
     <string name="location_device_this_device">This device</string>
     <string name="location_device_no_fix">No recent location</string>
     <string name="location_device_unnamed">Device %1$s</string>
@@ -1455,6 +1466,24 @@
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
+    <string name="contactbook_circle_members_count_with_pending">%1$d members, %2$d pending</string>
+    <string name="contactbook_circle_add_member">Add member</string>
+    <string name="circle_member_add_title">Add to %1$s</string>
+    <string name="circle_member_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
+    <string name="circle_member_add_unvetted_reason">Not yet confirmed — can't be added to a circle</string>
+    <string name="circle_member_add_succeeded">Added</string>
+    <string name="circle_member_add_already_member">Already added</string>
+    <string name="circle_member_add_drive_access_denied">This circle includes a drive Chat doesn't have access to, so it can't be added here.</string>
+    <string name="circle_member_add_generic_failed">Something went wrong. Please try again.</string>
+    <string name="circle_member_add_failed">Failed</string>
+    <string name="circle_member_pending">Pending</string>
+    <string name="circle_member_status_member">Status in this circle: Member</string>
+    <string name="circle_member_status_pending">Status in this circle: Pending</string>
+    <string name="circle_member_remove_cd">Remove member</string>
+    <string name="circle_member_remove_confirm_title">Remove circle member?</string>
+    <string name="circle_member_remove_confirm_body">%1$s will lose the access granted by %2$s.</string>
+    <string name="circle_drives_section_title">Drives this circle can access</string>
+    <string name="circle_drive_unknown">Unknown drive</string>
 
     <string name="contactbook_search_hint">Search</string>
     <string name="contactbook_filter_all">All</string>
@@ -1558,6 +1587,7 @@
     <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
     <string name="contactbook_error_message">Couldn't open the chat.</string>
     <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
+    <string name="contactbook_error_circle_action">Something went wrong. Please try again.</string>
 
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>
