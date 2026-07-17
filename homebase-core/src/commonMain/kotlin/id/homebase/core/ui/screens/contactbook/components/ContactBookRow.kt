@@ -30,13 +30,17 @@ fun ContactBookRow(
     entry: ContactBookEntry,
     onClick: () -> Unit,
     connected: Boolean = false,
+    /** When non-null, the row renders dimmed, is unclickable, and this text replaces the normal
+     *  subtitle line — e.g. explaining why an otherwise-visible contact can't be picked here. */
+    disabledReason: String? = null,
     /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val disabled = disabledReason != null
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = !disabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -51,10 +55,11 @@ fun ContactBookRow(
             Text(
                 text = name,
                 style = MaterialTheme.typography.bodyLarge,
+                color = if (disabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val subtitle = entry.subtitle
+            val subtitle = disabledReason ?: entry.subtitle
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
