@@ -513,6 +513,10 @@ val appModule = module {
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
             startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
+            // #1108: close the notify WS while backgrounded on platforms that have an FCM/APNs +
+            // background-worker HTTP fallback (Android/iOS). Desktop/Web (false) keep the WS, as they
+            // have no push path. Same capability that governs headless cold-wake.
+            backgroundSyncViaPush = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
                 // Live Relay receive store: resolve it FIRST and independent of the other services
                 // so its app-lifetime init{} collector is guaranteed up — a throw in a later
