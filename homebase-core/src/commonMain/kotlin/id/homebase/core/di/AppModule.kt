@@ -515,6 +515,10 @@ val appModule = module {
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
             startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
+            // #1108: close the notify WS while backgrounded on platforms that have an FCM/APNs +
+            // background-worker HTTP fallback (Android/iOS). Desktop/Web (false) keep the WS, as they
+            // have no push path. Same capability that governs headless cold-wake.
+            backgroundSyncViaPush = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
                 // Live Relay receive store: resolve it FIRST and independent of the other services
                 // so its app-lifetime init{} collector is guaranteed up — a throw in a later
@@ -627,7 +631,10 @@ val appModule = module {
                 // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
                 get<LiveLocationShareService>().reset()
                 get<LocationTrackingCoordinator>().reset()
-            }
+            },
+            // #1109: attribute a background window to the active location profile in the
+            // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
+            locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
         )
     }
     single {

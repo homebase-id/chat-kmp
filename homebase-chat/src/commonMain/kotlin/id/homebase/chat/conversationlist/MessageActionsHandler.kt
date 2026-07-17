@@ -30,6 +30,7 @@ import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
+import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
@@ -43,6 +44,7 @@ import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.resolveContentType
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_forwarded
@@ -61,6 +63,23 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val TAG = "ConversationListViewModel"
+
+/**
+ * Whether the composer should send, given the SERIALIZED markdown body it would actually send
+ * ([RichTextState.toMarkdown]) and the staged renderers. Gating on the serialized body — not the
+ * editor's `annotatedString` — is the fix for #1104: a typed/pasted URL can momentarily serialize
+ * to blank while the annotated text is still non-blank, and the old split (gate on `annotatedString`,
+ * send `toMarkdown()`) let that blank slip through as an empty message on both sides. A link preview
+ * is auto-detected from a typed URL and doesn't by itself justify a send; any other renderer
+ * (location, contact, …) is user-initiated and does.
+ */
+internal fun shouldSendComposerMessage(
+    markdownBody: String,
+    payloadRenderers: List<PayloadRenderer>,
+): Boolean {
+    val hasUserInitiatedAttachment = payloadRenderers.any { it !is LinkPreviewRenderer }
+    return markdownBody.isNotBlank() || hasUserInitiatedAttachment
+}
 
 /**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
@@ -103,16 +122,13 @@ internal class MessageActionsHandler(
     internal var pendingMessageId: Uuid? = null
 
     fun handleSendMessage(action: ConversationListUiAction.SendMessage) {
-        val hasMessage = !messageInputTextState.annotatedString.isBlank()
-        // User-initiated attachments (location, contact, etc.) enable send even with no
-        // text. Link previews don't — they're auto-detected from typed URLs and only
-        // ride along when there's a text message to send.
-        val hasUserInitiatedAttachment = action.payloadRenderers.any {
-            it !is id.homebase.chat.services.renderer.LinkPreviewRenderer
-        }
-        if (hasMessage || hasUserInitiatedAttachment) {
+        // Send the NORMALIZED serialized body. toMessageMarkdown() strips richeditor's `<br>`
+        // empty-paragraph artifacts (a stray blank line round-trips to `"\n<br>"`, a link with an
+        // empty line above it to `"\n<br>\n<url>"`). Gating on annotatedString, or sending raw
+        // toMarkdown() which keeps the `<br>`, sent a blank/`<br>` message on both sides (#1104).
+        val content = messageInputTextState.toMessageMarkdown()
+        if (shouldSendComposerMessage(content, action.payloadRenderers)) {
             messagesUiState.update { it.copy(isSendingMessage = true) }
-            val content = messageInputTextState.toMarkdown().trimEnd()
             val replyTo = messagesUiState.value.replyToMessage
             if (replyTo != null) {
                 replyToMessage(
@@ -174,7 +190,8 @@ internal class MessageActionsHandler(
             editMessage(
                 messageId = messageId,
                 versionTag = messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
-                content = messageInputTextState.toMarkdown().trimEnd(),
+                // Normalize like the send path so an edit can't reintroduce a `<br>` artifact (#1104).
+                content = messageInputTextState.toMessageMarkdown(),
             )
         }
     }
