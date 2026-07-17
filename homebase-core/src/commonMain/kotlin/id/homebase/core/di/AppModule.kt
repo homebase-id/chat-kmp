@@ -133,6 +133,7 @@ import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
+import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
@@ -1000,6 +1001,7 @@ val appModule = module {
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
+    viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
