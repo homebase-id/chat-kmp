@@ -78,6 +78,7 @@ import id.homebase.resources.dev_menu_section_sync
 import id.homebase.resources.dev_menu_section_testing
 import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
+import id.homebase.resources.dev_menu_test_scheduled_push
 import id.homebase.resources.dev_menu_test_temporal_read
 import id.homebase.resources.dev_menu_title
 import id.homebase.resources.dev_menu_trigger_test_crash
@@ -91,6 +92,7 @@ import org.jetbrains.compose.resources.stringResource
 fun DeveloperMenuScreen(
     viewModel: DeveloperMenuViewModel,
     onBackClick: () -> Unit,
+    onNavigateToScheduledPushTest: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -121,6 +123,7 @@ fun DeveloperMenuScreen(
         uiState = uiState,
         onAction = viewModel::onUiAction,
         onBackClick = onBackClick,
+        onNavigateToScheduledPushTest = onNavigateToScheduledPushTest,
     )
 }
 
@@ -131,6 +134,7 @@ fun DeveloperMenuUi(
     uiState: DeveloperMenuUiState,
     onAction: (DeveloperMenuUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onNavigateToScheduledPushTest: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
     var showCrashConfirm by remember { mutableStateOf(false) }
@@ -249,6 +253,11 @@ fun DeveloperMenuUi(
                         label = stringResource(MR.string.dev_menu_test_temporal_read),
                         showChevron = false,
                         onClick = { onAction(DeveloperMenuUiAction.TestTemporalLocationRead) }
+                    )
+                    HelpClickableRow(
+                        label = stringResource(MR.string.dev_menu_test_scheduled_push),
+                        showChevron = true,
+                        onClick = onNavigateToScheduledPushTest
                     )
                 }
             }

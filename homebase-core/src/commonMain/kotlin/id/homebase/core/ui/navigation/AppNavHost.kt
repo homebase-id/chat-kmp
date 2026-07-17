@@ -95,6 +95,7 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
+import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
@@ -1655,6 +1656,18 @@ fun AppNavHost(
                         composable<Route.DeveloperMenu> {
                             if (isAuthenticated) {
                                 DeveloperMenuScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onNavigateToScheduledPushTest = {
+                                        navController.navigate(Route.DevScheduledPushTest)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.DevScheduledPushTest> {
+                            if (isAuthenticated) {
+                                DeveloperScheduledPushTestScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
                             }

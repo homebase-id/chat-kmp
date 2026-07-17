@@ -96,6 +96,10 @@ sealed class Route {
     data object DeveloperMenu : Route()
 
     @Serializable
+    @SerialName("dev-scheduled-push-test")
+    data object DevScheduledPushTest : Route()
+
+    @Serializable
     @SerialName("storage-settings")
     data object StorageSettings : Route()
 
