@@ -29,6 +29,7 @@ import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
+import id.homebase.api.client.notifications.ScheduledPushNotificationProvider
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
@@ -155,6 +156,7 @@ val apiModule = module {
 
     factoryOf(::SecurityContextProvider)
     factoryOf(::PushNotificationApi)
+    factoryOf(::ScheduledPushNotificationProvider)
     singleOf(::LinkPreviewProvider)
     singleOf(::LocationPreviewProvider)
 
