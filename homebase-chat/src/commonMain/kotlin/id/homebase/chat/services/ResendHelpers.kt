@@ -75,6 +75,20 @@ fun tagsForRetry(existing: List<Uuid>): List<Uuid> {
 }
 
 /**
+ * Local-tag list for a message whose send just SUCCEEDED (outbox `ItemCompleted`):
+ * drop [ChatProtocol.isPendingSendTag] so the bubble stops showing the pending
+ * clock. Returns null when the tag isn't present — the server echo already
+ * cleared it, or it was never pending — so the caller can skip a redundant
+ * upsert + BatchReceived. The success counterpart to [tagsForRetry].
+ */
+fun tagsForSendSuccess(existing: List<Uuid>): List<Uuid>? =
+    if (ChatProtocol.isPendingSendTag in existing) {
+        existing.filterNot { it == ChatProtocol.isPendingSendTag }
+    } else {
+        null
+    }
+
+/**
  * Builds the update request for retrying a message the server already has
  * (a later edit's update failed). Mirrors `ChatMessageSenderService.updateMessage`'s
  * update branch and `DriveOutboxUploader.retryAsUpdate`:

@@ -86,6 +86,22 @@ class ChatMessageStream(
                         }
                     }
 
+                    // The outbox uploaded this item successfully. Clear the
+                    // message's isPendingSendTag NOW rather than waiting for the
+                    // server-canonical copy to sync back and replace the optimistic
+                    // row — that echo can be missed by the open conversation window
+                    // when DriveSync (silent) applies it before the duplicate WS
+                    // push is guard-rejected on equal `modified`, leaving the bubble
+                    // stuck on the pending clock until a cold reload (#1120; same
+                    // live-refresh gap class as #1042). Non-message completions
+                    // (conversation/admin files, reactions, receipts) are ignored in
+                    // markSendSucceeded.
+                    is BackendEvent.OutboxEvent.ItemCompleted -> {
+                        if (event.driveId == chatDrive) {
+                            scope.launch { markSendSucceeded(event.uniqueId) }
+                        }
+                    }
+
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount}, result=${event.result})")
@@ -459,6 +475,30 @@ class ChatMessageStream(
 
         val newTags = existingTags
             .filterNot { it == ChatProtocol.isPendingSendTag } + ChatProtocol.isFailedSendTag
+        optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
+    }
+
+    /**
+     * An outbox item for [uniqueId] uploaded successfully. If it's a chat *message*
+     * still carrying [ChatProtocol.isPendingSendTag], drop that tag now so the bubble
+     * flips from the pending clock to the Sent tick immediately — instead of relying
+     * solely on the server echo replacing the optimistic row, which the open window
+     * can miss (see the `ItemCompleted` handler / #1120).
+     *
+     * Non-message completions (a conversation/admin file, a reaction, a read receipt)
+     * carry no message bubble and are ignored via the [ChatProtocol.MessageFileType]
+     * gate. Safe and idempotent: if the echo already cleared the tag,
+     * [tagsForSendSuccess] returns null and we no-op (no redundant upsert/BatchReceived).
+     * The local `updated` bump is +1 ms (`updateLocalTags`), far below the server
+     * `modified`, so a later echo still passes the DriveMainIndex guard and replaces
+     * the row.
+     */
+    private suspend fun markSendSucceeded(uniqueId: Uuid) {
+        val file = getMessageFile(uniqueId) ?: return
+        if (file.fileMetadata.appData.fileType != ChatProtocol.MessageFileType) return
+
+        val existingTags = file.fileMetadata.localAppData?.tags.orEmpty()
+        val newTags = tagsForSendSuccess(existingTags) ?: return
         optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
     }
 
