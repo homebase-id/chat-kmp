@@ -45,6 +45,7 @@ import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
 import id.homebase.resources.chat_connection_invitation_received
@@ -143,8 +144,13 @@ fun ConversationItem(
                 horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Strip richeditor's `<br>` empty-paragraph artifacts so a legacy `<br>` message
+                // shows its real text in the list preview, not a stray break / blank line (#1104).
+                val lastMessagePreview = remember(enrichedData.conversation.lastMessage) {
+                    enrichedData.conversation.lastMessage.stripComposerLineBreakArtifacts()
+                }
                 val contentLabel = messageContentLabel(
-                    textContent = enrichedData.conversation.lastMessage,
+                    textContent = lastMessagePreview,
                     isDeleted = enrichedData.conversation.lastMessageIsDeleted,
                     firstPayload = enrichedData.conversation.lastMessageFirstPayload,
                     hasMultiplePayloads = enrichedData.conversation.lastMessageHasMultiplePayloads,
@@ -156,7 +162,7 @@ fun ConversationItem(
                 // actually tells the user what's happening.
                 val pendingSubtitle: String? = if (
                     contentLabel == null &&
-                    enrichedData.conversation.lastMessage.isBlank()
+                    lastMessagePreview.isBlank()
                 ) {
                     when (enrichedData.oneOnOneConnectionStatus) {
                         is OneOnOneConnectionStatus.OutgoingRequestPending ->
@@ -171,7 +177,7 @@ fun ConversationItem(
 
                 val rawPreview = pendingSubtitle
                     ?: contentLabel?.text
-                    ?: enrichedData.conversation.lastMessage
+                    ?: lastMessagePreview
                 val groupSenderName: String? = remember(
                     enrichedData.conversation.isGroupConversation,
                     enrichedData.conversation.lastMessageSender,

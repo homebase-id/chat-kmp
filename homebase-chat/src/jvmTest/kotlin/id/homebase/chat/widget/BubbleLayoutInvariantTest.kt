@@ -125,6 +125,10 @@ class BubbleLayoutInvariantTest {
         val caption: Caption,
         val reply: Boolean = false,
         val aspect: Aspect = Aspect.LANDSCAPE,
+        // A single non-media document payload (a .log) instead of images. Has no
+        // previewThumbnail/aspect and a non-image contentType, so it renders as the
+        // compact DocumentMediaItem file card — the #1103 regression dimension.
+        val document: Boolean = false,
     )
 
     private fun imagePayload(i: Int, aspect: Aspect = Aspect.LANDSCAPE) = PayloadDescriptor(
@@ -134,6 +138,16 @@ class BubbleLayoutInvariantTest {
         previewThumbnail = ThumbnailDescriptor(
             pixelWidth = aspect.w, pixelHeight = aspect.h, contentType = "image/jpeg", content = "",
         ),
+    )
+
+    // A document attachment: no thumbnail, non-media contentType. Renders via
+    // DocumentMediaItem (icon + name + size), which hugs its content.
+    private fun documentPayload() = PayloadDescriptor(
+        key = "chat_file0",
+        contentType = "text/plain",
+        iv = Base64.encode(ByteArray(16)),
+        descriptorContent = "server.log",
+        bytesWritten = 3_300_000,
     )
 
     private fun Case.message(): MessageUiModel {
@@ -157,7 +171,11 @@ class BubbleLayoutInvariantTest {
             messageAppData = MessageAppData(replyPreview = reply),
             reactionPreview = null,
             previewThumbnail = null,
-            payloads = (0 until images).map { imagePayload(it, aspect) }.toPersistentList(),
+            payloads = if (document) {
+                listOf(documentPayload()).toPersistentList()
+            } else {
+                (0 until images).map { imagePayload(it, aspect) }.toPersistentList()
+            },
             keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
             versionTag = Uuid.random(),
             isPendingSend = false,
@@ -365,6 +383,32 @@ class BubbleLayoutInvariantTest {
                 failures += "[${case.name}] media should fill bubble: media=[${media.left.value},${media.right.value}] bubble=[${bubble.left.value},${bubble.right.value}]"
         }
         assertTrue(failures.isEmpty(), "media-only invariant failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * #1103: a single document (a .log — no thumbnail, non-media contentType) must render as a
+     * compact file card that hugs its content, NOT stretched to a media-height box. The
+     * regression (#1028/#1032, commit f3bee10eb) forced a fill-width document to
+     * Dimens.MediaBubble.maxHeight (a tall grey void below the file row); the no-caption path
+     * also floored it to minHeight. After the fix a document gets NO media height at all, so
+     * the tagged media node is the ~72dp card (48dp icon + 12dp padding ×2) — well under the
+     * 100dp media floor. Covers no-caption, inline-caption, and block-caption paths.
+     */
+    @Test
+    fun singleDocument_compactCard_noMediaVoid() = runComposeUiTest {
+        val floor = Dimens.MediaBubble.minHeight.value
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false))
+            for (cap in listOf(Caption.NONE, Caption.SHORT, Caption.BLOCK)) {
+                render(Case("file/$cap/${if (sent) "sent" else "recv"}", sent, images = 0, caption = cap, document = true))
+                val media = boundsOf(ChatBubbleTestTags.MEDIA)
+                val h = media.bottom.value - media.top.value
+                // Strictly below the media floor proves the doc dropped BOTH the maxHeight fill
+                // (caption path) and the heightIn(min) floor (no-caption path) — i.e. no void.
+                if (h >= floor - tol)
+                    failures += "[file/$cap/${if (sent) "sent" else "recv"}] document got media height=$h (>= minHeight=$floor); expected a compact file card"
+            }
+        assertTrue(failures.isEmpty(), "document compact-card failures:\n" + failures.joinToString("\n"))
     }
 
     /**

@@ -4,6 +4,8 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.client.drives.QueryBatchCollectionRequest
+import id.homebase.api.client.drives.QueryBatchCollectionResponse
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.ServerFile
@@ -89,6 +91,34 @@ class DriveQueryProvider(
     }
 
     /**
+     * Run multiple named query-batch sections against one or more drives in a single round
+     * trip: POST /drives/query-batch-collection. Each section is matched back to its request
+     * by [QueryBatchResponse.name]; a section targeting a drive the caller can't read comes
+     * back with `invalidDrive = true` rather than failing the whole collection.
+     */
+    suspend fun queryBatchCollection(request: QueryBatchCollectionRequest): QueryBatchCollectionResponse {
+        request.queries.forEach { ValidationUtil.requireValidUuid(it.driveId, "driveId") }
+
+        val creds = requireCreds()
+        val url = apiUrl(creds.domain, "/drives/query-batch-collection")
+
+        val jsonRequest = OdinSystemSerializer.serialize(request)
+
+        val apiResponse = encryptedPostJson(
+            url = url,
+            token = creds.accessToken,
+            jsonBody = jsonRequest,
+            secret = creds.secret
+        )
+
+        throwForFailure(apiResponse)
+
+        val internal = deserialize<QueryBatchCollectionResponseInternalRaw>(apiResponse.body)
+        val results = internal.results.map { section -> mapQueryBatchResponseInternal(section, creds.secret) }
+        return QueryBatchCollectionResponse(results = results)
+    }
+
+    /**
      * Decode a query-batch response body into a [QueryBatchResponse], salvaging individually
      * corrupt file metadata rather than failing the whole batch. Shared by the own-host and
      * over-peer query paths — both receive headers encrypted under the caller's [secret].
@@ -103,7 +133,13 @@ class DriveQueryProvider(
         secret: SecureByteArray,
     ): QueryBatchResponse {
         val internal = deserialize<QueryBatchResponseInternalRaw>(body)
+        return mapQueryBatchResponseInternal(internal, secret)
+    }
 
+    private suspend fun mapQueryBatchResponseInternal(
+        internal: QueryBatchResponseInternalRaw,
+        secret: SecureByteArray,
+    ): QueryBatchResponse {
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
@@ -222,6 +258,11 @@ data class QueryBatchResponseInternalRaw(
     val cursorState: String? = null,
     val searchResults: List<JsonObject> = emptyList(),
     val hasMoreRows: Boolean = false
+)
+
+@Serializable
+data class QueryBatchCollectionResponseInternalRaw(
+    val results: List<QueryBatchResponseInternalRaw> = emptyList()
 )
 
 @Serializable

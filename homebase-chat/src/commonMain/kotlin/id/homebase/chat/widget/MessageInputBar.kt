@@ -117,6 +117,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.chat.conversationlist.shouldSendComposerMessage
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
@@ -130,6 +131,7 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
@@ -267,14 +269,15 @@ fun MessageInputBar(
     }
 
     fun sendMessage() {
-        val hasText = textFieldState.annotatedString.isNotBlank()
-        // Link previews alone shouldn't enable send (a bare URL with no text was never sendable
-        // in the original shape). User-initiated kinds (location, contact, etc.) WILL enable
-        // send because they're not LinkPreviewRenderer.
-        val hasUserInitiatedAttachment = payloadRenderers.any { it !is LinkPreviewRenderer }
-        if (!isSendingMessage && (hasText || hasUserInitiatedAttachment)) {
+        // Gate on the NORMALIZED serialized body — the exact value that gets sent.
+        // toMessageMarkdown() strips richeditor's `<br>` empty-paragraph artifacts, so a stray
+        // blank line (which serializes to a non-blank `"\n<br>"`) no longer slips past the gate as
+        // a blank/`<br>` message (#1104). shouldSendComposerMessage encodes the "link previews
+        // alone don't send" policy (user-initiated kinds like location DO).
+        val markdown = textFieldState.toMessageMarkdown()
+        if (!isSendingMessage && shouldSendComposerMessage(markdown, payloadRenderers)) {
             haptics.perform(HapticEvent.Confirm)
-            onSendMessage(textFieldState.toMarkdown(), payloadRenderers)
+            onSendMessage(markdown, payloadRenderers)
             // Don't clear here — the ViewModel clears after the send is queued,
             // so the text stays in the edit box if the send fails.
         }

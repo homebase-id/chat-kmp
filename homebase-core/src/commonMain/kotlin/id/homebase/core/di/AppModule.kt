@@ -85,6 +85,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
@@ -133,6 +134,7 @@ import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
+import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
@@ -177,6 +179,7 @@ import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
 import id.homebase.core.ui.screens.location.LocationTrackUploaderService
+import id.homebase.core.ui.screens.location.EmergencyContactPickerViewModel
 import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.PushCaptureUploader
 import id.homebase.core.ui.screens.location.model.locationHourFileUid
@@ -513,6 +516,10 @@ val appModule = module {
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
             startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
+            // #1108: close the notify WS while backgrounded on platforms that have an FCM/APNs +
+            // background-worker HTTP fallback (Android/iOS). Desktop/Web (false) keep the WS, as they
+            // have no push path. Same capability that governs headless cold-wake.
+            backgroundSyncViaPush = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
                 // Live Relay receive store: resolve it FIRST and independent of the other services
                 // so its app-lifetime init{} collector is guaranteed up — a throw in a later
@@ -625,7 +632,10 @@ val appModule = module {
                 // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
                 get<LiveLocationShareService>().reset()
                 get<LocationTrackingCoordinator>().reset()
-            }
+            },
+            // #1109: attribute a background window to the active location profile in the
+            // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
+            locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
         )
     }
     single {
@@ -906,6 +916,7 @@ val appModule = module {
             authConnectionCoordinator = get(),
         )
     }
+    viewModelOf(::EmergencyContactPickerViewModel)
     // Manual block: the optional peerDomain (emergency-locate peer mode) arrives as a Koin
     // runtime parameter from the LocationPeerHistory route; the own-history call site passes none.
     viewModel { params ->
@@ -942,6 +953,16 @@ val appModule = module {
         )
     }
     viewModelOf(::ContactBookViewModel)
+    // Manual block: circleId/circleName arrive as Koin runtime parameters from the
+    // CircleMemberAdd route — viewModelOf would try to autowire them from the DI graph.
+    viewModel { params ->
+        CircleMemberPickerViewModel(
+            circleId = params.get(),
+            circleName = params.get(),
+            repo = get(),
+            connectionService = get(),
+        )
+    }
     viewModelOf(::ContactDetailViewModel)
     viewModelOf(::AddContactViewModel)
     viewModelOf(::ContactBookSettingsViewModel)
@@ -997,6 +1018,7 @@ val appModule = module {
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
+    viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
