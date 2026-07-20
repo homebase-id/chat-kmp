@@ -60,6 +60,12 @@ class MessagePinTagTest {
                 request.tags,
                 "outbox row must carry the FULL new tag list, not a delta",
             )
+            assertEquals(
+                messageId,
+                request.uniqueId,
+                "outbox row must carry the message uniqueId so the uploader can " +
+                    "re-resolve the current fileId after a temp→server rekey (#887 own-send pin)",
+            )
         }
     }
 

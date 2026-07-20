@@ -337,29 +337,36 @@ class DriveOutboxUploader(
 
     private suspend fun updateLocalMetadataTags(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataTagsOutboxRequest>(outboxRecord.json.decodeToString())
+        val driveId = request.file.targetDrive.alias
         Logger.d(tag = "MarkAsRead") {
-            "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} hasRequestVersionTag=${request.versionTag != null}"
+            "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} hasRequestVersionTag=${request.versionTag != null}"
         }
-        // Mirror updateLocalMetadataContent: drop ONLY when the file itself is gone
-        // from the server. A null versionTag is legitimate for the FIRST localAppData
-        // write on a file — fresh chat MESSAGE files have never had localAppData
-        // written, so their localAppData.versionTag is null and the server treats the
-        // write as a create. The pinned-messages bar (#887) is the first feature to
-        // tag individual message files (conversations already carry a localAppData
-        // versionTag from read-state), so it was the first to hit — and be silently
-        // dropped by — the old "null versionTag ⇒ NotFound" guard, which conflated a
+        // Resolve the CURRENT file at send time, not the fileId captured at enqueue.
+        // For an own-send, that enqueue-time fileId is a temp id that the create
+        // rekeys to the server id (rekeyCacheAfterCreate); the dependency chain
+        // guarantees the create ran first, so the local row now holds the server
+        // fileId + a fresh localAppData.versionTag. Resolving by the stable uniqueId
+        // survives that rekey (mirrors rekeyCacheAfterCreate); older rows without a
+        // uniqueId fall back to the fileId. Either way a genuinely missing file drops
+        // the row (mirrors updateLocalMetadataContent). A null versionTag is fine — it
+        // is the FIRST localAppData write on the file and the server treats it as a
+        // create; the old "null versionTag ⇒ NotFound" guard wrongly conflated a
         // missing versionTag with a missing file.
-        val header = fileProvider.getFileHeader(
-            request.file.targetDrive.alias, Uuid.parse(request.file.fileId)
-        ) ?: run {
+        val header = if (request.uniqueId != null) {
+            val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+            databaseManager.driveMainIndex.selectHomebaseFileByUnique(identityId, driveId, request.uniqueId)
+        } else {
+            fileProvider.getFileHeader(driveId, Uuid.parse(request.file.fileId))
+        }
+        if (header == null) {
             Logger.w(tag = "MarkAsRead") {
-                "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} — local file no longer present"
+                "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} — local file no longer present"
             }
             throw NotFoundException()
         }
         val versionTag = request.versionTag ?: header.fileMetadata.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataTags(
-            file = request.file,
+            file = request.file.copy(fileId = header.fileId.toString()),
             localAppData = LocalAppData(versionTag = versionTag, tags = request.tags)
         )
     }

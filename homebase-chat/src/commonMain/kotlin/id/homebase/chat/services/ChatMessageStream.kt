@@ -486,12 +486,15 @@ class ChatMessageStream(
      * file are gated by the set, and silent cross-restart re-syncs don't reach here
      * (they arrive via DriveEvent.Stopped, not BatchReceived).
      *
-     * For an own optimistic send (`isPendingSend`), the tags update MUST run AFTER
-     * the create (UploadNewFile, uniqueId == messageId) — dependencyUniqueId =
-     * messageId chains it. The sender enqueues that create before emitting the
-     * BatchReceived that triggers this pass, so the dependency row already exists.
-     * Without the chain the tags update would hit the server before the file and
-     * DriveOutboxUploader would drop it as NotFound (versionTag is null pre-create).
+     * An own optimistic send (`isPendingSend`) is DEFERRED, not pinned inline: while
+     * pending, the message file exists only under a temp id that the create rekeys to
+     * the server id, and the create's echo replaces the optimistic row — a pin
+     * enqueued during that window targets the dead temp fileId (server 400) and is
+     * clobbered by the echo. Leaving it un-handled lets the confirmed sighting (real
+     * server fileId, no pending tag, re-delivered via BatchReceived) pin it cleanly.
+     * As a backstop for any other stale-fileId path (e.g. a manual pin of a still-
+     * pending message), the tags request also carries the message uniqueId so
+     * DriveOutboxUploader.updateLocalMetadataTags re-resolves the fileId at send time.
      */
     private suspend fun autoPinNewTypedMessages(messages: List<MessageUiModel>) {
         if (messages.isEmpty()) return
@@ -502,13 +505,20 @@ class ChatMessageStream(
                 autoPinHandled.add(msg.id)
                 continue
             }
+            // Defer a still-sending message instead of pinning it now. Its file exists
+            // only under a temp id that the create rekeys to the server id, and the
+            // create's echo replaces the optimistic row — a pin enqueued now targets
+            // the dead temp fileId (server 400 "non-existent file") and is clobbered by
+            // the echo anyway. Leave it un-handled so the CONFIRMED sighting (real
+            // server fileId, no pending tag, re-delivered via BatchReceived) is a fresh
+            // candidate and pins cleanly on the first attempt.
+            if (msg.isPendingSend) continue
             if (!autoPinHandled.add(msg.id)) continue
 
             if (!shouldAutoPin(msg.messageContent, msg.ownReactions, now)) continue
 
-            val dependency = if (msg.isPendingSend) msg.id else null
             try {
-                autoPinTypedMessage(msg.id, dependency)
+                autoPinTypedMessage(msg.id, null)
             } catch (t: Throwable) {
                 Logger.e(t) { "ChatMessageStream: auto-pin failed for ${msg.id}: ${t.message}" }
             }
