@@ -33,14 +33,17 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
 import id.homebase.chat.services.livelocation.ShareBackResult
-import id.homebase.chat.services.livelocation.liveShareAnyUntilMs
+import id.homebase.chat.services.livelocation.conversationLiveSharePinUntilMs
+import id.homebase.chat.services.livelocation.globalLiveSharePinUntilMs
 import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
 import id.homebase.chat.services.livelocation.shareLiveLocationBack
 import id.homebase.core.location.GpsRequestReason
+import id.homebase.core.location.liveShareEndTimeMs
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.matchesConversationQuery
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
@@ -93,6 +96,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.time.Clock
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -155,6 +159,7 @@ class ConversationListViewModel(
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
     private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
+    private val liveLocationReceiveStore: id.homebase.chat.services.livelocation.LiveLocationReceiveStore,
     private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
     private val locationService: id.homebase.core.location.LocationService,
 ) : ViewModel() {
@@ -355,35 +360,50 @@ class ConversationListViewModel(
             }
         }
 
-        // Track MY live-share state against the open conversation and globally. FULL coverage
+        // Track live-share state against the open conversation and globally. FULL coverage
         // hides the bubbles' "share live location" offers (starting a share that's already
         // running is confusing, and a second tap would create a duplicate live message — #966
         // follow-up). ANY coverage + the global value drive the purple sharing pins in the
-        // conversation and chat-list top bars (#816). No ticker here: the pin/bubble composables
-        // derive visibility from `now < untilMs` with their own exact-deadline tickers.
+        // conversation and chat-list top bars (#816). The same pins also light for INCOMING shares
+        // (someone sharing with ME), derived from live-relay freshness over the receive store's
+        // positions (#1012). No ticker here: the pin/bubble composables derive visibility from
+        // `now < untilMs` with their own exact-deadline tickers.
         viewModelScope.launch {
             combine(
                 ActiveConversation.conversation,
                 liveLocationShareService.recipients,
-            ) { conversationId, roster -> conversationId to roster }
-                .collectLatest { (conversationId, roster) ->
+                liveLocationReceiveStore.positions,
+            ) { conversationId, roster, positions -> Triple(conversationId, roster, positions) }
+                .collectLatest { (conversationId, roster, positions) ->
                     val nowMs = Clock.System.now().toEpochMilliseconds()
                     _uiState.update {
-                        it.copy(ownLiveShareAnyUntilMs = liveShareAnyUntilMs(roster, null, nowMs))
+                        it.copy(liveSharePinAnyUntilMs = globalLiveSharePinUntilMs(roster, positions, nowMs))
                     }
                     var fullUntilMs: Long? = null
-                    var anyUntilMs: Long? = null
+                    var pinUntilMs: Long? = null
                     conversationId?.let { id ->
-                        val recipientIds = runCatching {
-                            conversationStream.getRecipients(id, emptyList(), null)
-                        }.getOrDefault(emptyList()).map { it.domainName }
-                        fullUntilMs = liveShareCoverageUntilMs(roster, recipientIds, nowMs)
-                        anyUntilMs = liveShareAnyUntilMs(roster, recipientIds, nowMs)
+                        // positions re-emits per relay packet during an incoming stream, so this
+                        // re-resolves per packet. Normally an in-memory lookup; the placeholder-row
+                        // fallback (#934) hits the DB — the slow-path log below is the evidence
+                        // gate for whether per-conversation caching is ever worth it (#1012 review).
+                        val (recipients, took) = measureTimedValue {
+                            runCatching {
+                                conversationStream.getRecipients(id, emptyList(), null)
+                            }.getOrDefault(emptyList())
+                        }
+                        if (took.inWholeMilliseconds >= 5) {
+                            Logger.i(tag = "LiveRelay") {
+                                "pin getRecipients slow conv=$id took=${took.inWholeMilliseconds}ms " +
+                                    "(re-runs per relay packet — cache if this recurs)"
+                            }
+                        }
+                        fullUntilMs = liveShareCoverageUntilMs(roster, recipients.map { it.domainName }, nowMs)
+                        pinUntilMs = conversationLiveSharePinUntilMs(roster, positions, recipients, nowMs)
                     }
                     _messagesUiState.update {
                         it.copy(
                             ownLiveShareUntilMs = fullUntilMs,
-                            ownLiveShareInConversationUntilMs = anyUntilMs,
+                            liveSharePinInConversationUntilMs = pinUntilMs,
                         )
                     }
                 }
@@ -917,12 +937,6 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
             }
 
-            is ConversationListUiAction.OpenLocationDashboard -> {
-                // Same navigation as setup: openLocation routes to the dashboard when the add-on
-                // is activated — always true while a share is running (the pin's only tap path).
-                sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
-            }
-
             // Live share has two linked halves: the synced *declaration* (the message's
             // liveShareUntilMs header descriptor — Location is a raw-header typed kind, so
             // updateMessage(content = descriptorJson) sets it and syncs to both sides) AND the local
@@ -936,7 +950,7 @@ class ConversationListViewModel(
                     _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
                     return@launch
                 }
-                val untilMs = Clock.System.now().toEpochMilliseconds() + action.durationMs
+                val untilMs = liveShareEndTimeMs(Clock.System.now().toEpochMilliseconds(), action.durationMs)
                 val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
                 val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
                 updateLocationLiveShare(action.messageId, untilMs) // synced declaration → bubbles flip LIVE
@@ -1411,7 +1425,7 @@ class ConversationListViewModel(
                     val result = mutableListOf<ConversationListContentModel>()
 
                     val conversations = conversationsPool.filter { conversation ->
-                        conversation.getDisplayName().contains(searchQuery, ignoreCase = true)
+                        conversation.matchesConversationQuery(searchQuery)
                     }.toPersistentList()
                     if (conversations.isNotEmpty()) {
                         result.add(

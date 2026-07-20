@@ -222,10 +222,12 @@ fun ConversationListPane(
                         }
                     }, actions = {
                         if (!uiState.isSearchActive) {
+                            // One pin, either direction (#1012): I'm sharing with anyone OR anyone
+                            // is sharing with me. Tapping opens the live map.
                             LiveShareIndicator(
-                                untilMs = uiState.ownLiveShareAnyUntilMs,
+                                untilMs = uiState.liveSharePinAnyUntilMs,
                                 onClick = {
-                                    onUiAction(ConversationListUiAction.OpenLocationDashboard)
+                                    onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                                 },
                             )
                             IconButton(

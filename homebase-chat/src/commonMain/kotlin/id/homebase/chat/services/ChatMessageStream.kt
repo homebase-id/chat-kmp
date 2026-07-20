@@ -536,6 +536,26 @@ class ChatMessageStream(
         return mapped
     }
 
+    override suspend fun resolveForNotification(
+        conversationId: Uuid,
+        messageId: Uuid,
+    ): MessageUiModel? {
+        // Local first. On a fresh push the message often isn't synced yet (the push handler
+        // builds the notification before DriveSync runs), so fall back to fetching just this
+        // header from the server — asHomebaseFile() decrypts it with the shared secret, so it
+        // maps through the exact same pipeline as a local header. Null on any miss/failure.
+        getMessage(messageId)?.let { return it }
+        val fetched = try {
+            driveFileProvider.getFileHeaderByUid(chatDrive, messageId)
+        } catch (e: Exception) {
+            Logger.w(tag = "MsgLookup") {
+                "resolveForNotification fetch failed msg=$messageId: ${e.message}"
+            }
+            return null
+        } ?: return null
+        return mapToMessageData(fetched, credentialsManager, ::resolveDisplayName)
+    }
+
     override suspend fun getMessageFile(messageId: Uuid): HomebaseFile? {
         val c = credentialsManager.requireActiveCredentials()
         return dbm.driveMainIndex.selectHomebaseFileByUnique(

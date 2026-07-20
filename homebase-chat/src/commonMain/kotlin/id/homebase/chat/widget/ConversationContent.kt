@@ -157,6 +157,7 @@ import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.util.programmaticBackspace
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
@@ -542,6 +543,26 @@ fun ConversationContent(
             )
         }
     }
+
+    // iOS: the camera sits in a DropdownMenu (a Popup window) in MessageInputBar, and FileKit's
+    // camera picker can't be presented while that popup is tearing down — iOS dismisses the picker
+    // along with the popup ("Take Photo opens then closes instantly"). So hoist the launch out of
+    // the menu item: the item only closes the menu and flips this flag, and we present here after
+    // the popup's exit transition has finished. A single recomposition isn't enough (the popup is
+    // still animating out); the native video path is immune, which is why only photo broke.
+    var pendingCameraLaunch by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingCameraLaunch) {
+        if (pendingCameraLaunch) {
+            // Closing the dropdown hands focus back to the input, which pops the keyboard up during
+            // the wait below; clear focus + hide it so the keyboard doesn't flash before the camera.
+            focusManager.clearFocus()
+            keyboardController?.hide()
+            delay(250) // let the DropdownMenu popup finish dismissing before FileKit presents
+            cameraLauncher.launch()
+            pendingCameraLaunch = false // reset AFTER launch — resetting first cancels this effect
+        }
+    }
+
     val videoRecorderLauncher = rememberVideoRecorderManager { file ->
         file?.let {
             onUiAction(
@@ -768,10 +789,12 @@ fun ConversationContent(
                 },
                 actions = {
                     if (!uiState.isSearchActive) {
+                        // One pin, either direction (#1012): my outgoing share OR someone sharing
+                        // with me here. Tapping opens the live map (shows my dot + every sharer).
                         LiveShareIndicator(
-                            untilMs = uiState.ownLiveShareInConversationUntilMs,
+                            untilMs = uiState.liveSharePinInConversationUntilMs,
                             onClick = {
-                                onUiAction(ConversationListUiAction.OpenLocationDashboard)
+                                onUiAction(ConversationListUiAction.OpenLiveLocationMap)
                             },
                         )
                         IconButton(onClick = { showConversationMenu = true }) {
@@ -1498,7 +1521,7 @@ fun ConversationContent(
                             isRecordingActive = isRecordingActive,
                             isSendingMessage = uiState.isSendingMessage,
                             onSendMessage = {
-                                performSend(textFieldState.toMarkdown(), payloadRenderers)
+                                performSend(textFieldState.toMessageMarkdown(), payloadRenderers)
                             },
                             onCancelEdit = {
                                 onUiAction(ConversationListUiAction.CancelEditMessage)
@@ -1549,7 +1572,7 @@ fun ConversationContent(
                                     showAttachmentSheet = false
                                 },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { cameraLauncher.launch() },
+                                onCameraClick = { pendingCameraLaunch = true },
                                 onVideoRecordClick = { videoRecorderLauncher.launch() },
                                 onRecordingStarted = {
                                     onUiAction(

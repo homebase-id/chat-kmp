@@ -186,7 +186,7 @@ fun ContactEditSheet(
                     val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
                     odinIdField = incoming.copy(text = normalizedSpaces)
                     draft = draft.copy(
-                        odinId = normalizedSpaces.cleanDomain(preserveTrailingDot = false),
+                        odinId = normalizedSpaces.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false),
                     )
                 },
                 label = { Text(stringResource(MR.string.contactbook_edit_odinid)) },

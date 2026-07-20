@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.chat.widget.ErrorInfoItem
+import id.homebase.chat.widget.LiveShareIndicator
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.chat.widget.MediaItem
 import id.homebase.core.avatars.AvatarOptions
@@ -66,6 +67,7 @@ fun ConversationSettingsScreen(
     onNavigateBack: () -> Unit,
     onSeeAllMedia: (conversationId: String) -> Unit,
     onOpenConversation: (conversationId: Uuid) -> Unit,
+    onNavigateToLiveLocationMap: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -86,6 +88,7 @@ fun ConversationSettingsScreen(
         onUiAction = viewModel::onUiAction,
         onSeeAllMedia = onSeeAllMedia,
         onOpenConversation = onOpenConversation,
+        onNavigateToLiveLocationMap = onNavigateToLiveLocationMap,
     )
 }
 
@@ -97,6 +100,7 @@ fun ConversationSettingsUi(
     onUiAction: (ConversationSettingsUiAction) -> Unit,
     onSeeAllMedia: (conversationId: String) -> Unit,
     onOpenConversation: (conversationId: Uuid) -> Unit,
+    onNavigateToLiveLocationMap: () -> Unit = {},
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     var fullScreenItem by remember { mutableStateOf<SharedMediaItem?>(null) }
@@ -116,6 +120,13 @@ fun ConversationSettingsUi(
                                 contentDescription = stringResource(MR.string.menu_back)
                             )
                         }
+                    },
+                    actions = {
+                        // Same unified live-location pin as the list / in-chat top bars (#1012).
+                        LiveShareIndicator(
+                            untilMs = uiState.liveShareUntilMs,
+                            onClick = onNavigateToLiveLocationMap,
+                        )
                     },
                 )
             }

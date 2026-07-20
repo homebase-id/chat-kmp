@@ -538,7 +538,14 @@ abstract class OdinApiProviderBase(
 
             401 -> throw UnauthorizedException()
 
-            403 -> throw ForbiddenException()
+            403 -> {
+                // OdinSecurityException carries no errorCode (always NoErrorCode/0), but its
+                // title is a real, specific reason ("Forbidden: sam.example.com must have valid
+                // connection to be added to a circle") — parse it best-effort for logging/support
+                // triage. Never branch app logic on this text; there's no structured code to match.
+                val problem = runCatching { deserialize<ProblemDetails>(response.body) }.getOrNull()
+                throw ForbiddenException(problem)
+            }
 
             404 -> throw NotFoundException()
 

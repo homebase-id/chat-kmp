@@ -28,65 +28,19 @@ class ProfileEditUiStateTest {
     }
 
     @Test
-    fun emailValid_malformedInAnonymous_false() {
-        val state = ProfileEditUiState(anonymousValues = mapOf(ProfileField.EMAIL to "not-an-email"))
-        assertTrue(!state.emailValid)
-    }
-
-    @Test
-    fun emailValid_malformedInConnected_false() {
-        val state = ProfileEditUiState(connectedValues = mapOf(ProfileField.EMAIL to "not-an-email"))
-        assertTrue(!state.emailValid)
-    }
-
-    @Test
-    fun emailValid_bothBlank_true() {
-        assertTrue(ProfileEditUiState().emailValid)
-    }
-
-    @Test
-    fun emailValid_bothWellFormed_true() {
+    fun isSaving_pairInSavingAttributes_true() {
         val state = ProfileEditUiState(
-            anonymousValues = mapOf(ProfileField.EMAIL to "public@example.com"),
-            connectedValues = mapOf(ProfileField.EMAIL to "private@example.com"),
+            savingAttributes = setOf("nickname" to ProfileVisibility.CONNECTED),
         )
-        assertTrue(state.emailValid)
+        assertTrue(state.isSaving("nickname", ProfileVisibility.CONNECTED))
     }
 
     @Test
-    fun phoneValid_malformedInAnonymous_false() {
-        val state = ProfileEditUiState(anonymousValues = mapOf(ProfileField.PHONE to "555-1234"))
-        assertTrue(!state.phoneValid)
-    }
-
-    @Test
-    fun phoneValid_malformedInConnected_false() {
-        val state = ProfileEditUiState(connectedValues = mapOf(ProfileField.PHONE to "555-1234"))
-        assertTrue(!state.phoneValid)
-    }
-
-    @Test
-    fun phoneValid_bothBlank_true() {
-        assertTrue(ProfileEditUiState().phoneValid)
-    }
-
-    @Test
-    fun canSave_falseWhileLoading() {
-        assertTrue(!ProfileEditUiState(isLoading = true).canSave)
-    }
-
-    @Test
-    fun canSave_trueWhenLoadedAndValid() {
-        val state = ProfileEditUiState(isLoading = false)
-        assertTrue(state.canSave)
-    }
-
-    @Test
-    fun canSave_falseWithMalformedEmail() {
+    fun isSaving_pairNotInSavingAttributes_false() {
         val state = ProfileEditUiState(
-            isLoading = false,
-            anonymousValues = mapOf(ProfileField.EMAIL to "not-an-email"),
+            savingAttributes = setOf("nickname" to ProfileVisibility.CONNECTED),
         )
-        assertTrue(!state.canSave)
+        assertTrue(!state.isSaving("nickname", ProfileVisibility.ANONYMOUS))
+        assertTrue(!state.isSaving("email", ProfileVisibility.CONNECTED))
     }
 }

@@ -157,6 +157,7 @@ kotlin {
     // header parser, video preloader, etc). Drop this filter once the sql.js test driver
     // lands — at that point every excluded class should start passing on wasm.
     val wasmJsDbBackedTestClasses = listOf(
+        "id.homebase.api.client.diagnostics.ServerIpStoreTest",
         "id.homebase.api.sync.database.ChatReadCountWrapperTest",
         "id.homebase.api.sync.database.CursorSyncTest",
         "id.homebase.api.sync.database.DriveMainIndexCreateOrderTest",

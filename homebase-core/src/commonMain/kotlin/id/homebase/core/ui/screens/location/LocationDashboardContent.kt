@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,15 +50,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
 import id.homebase.core.ui.screens.location.livelocation.AGE_LABEL_AFTER_MS
@@ -74,6 +79,9 @@ import id.homebase.resources.location_dashboard_live_open
 import id.homebase.resources.location_dashboard_live_section
 import id.homebase.resources.location_dashboard_perm_banner
 import id.homebase.resources.location_dashboard_share_until
+import id.homebase.resources.location_dashboard_share_until_stopped
+import id.homebase.resources.location_dashboard_sharing_hide
+import id.homebase.resources.location_dashboard_sharing_show
 import id.homebase.resources.location_dashboard_sharing_with
 import id.homebase.resources.location_dashboard_sharing_with_you
 import id.homebase.resources.location_dashboard_stop_confirm_body
@@ -88,6 +96,11 @@ import id.homebase.resources.location_emergency_access_manage
 import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
+import id.homebase.resources.location_emergency_contacts_section
+import id.homebase.resources.location_emergency_remove_cd
+import id.homebase.resources.location_emergency_remove_confirm_body
+import id.homebase.resources.location_emergency_remove_confirm_title
+import id.homebase.resources.location_emergency_status_pending
 import id.homebase.resources.location_locatable_broken_cd
 import id.homebase.resources.location_locatable_none
 import id.homebase.resources.location_locatable_section
@@ -97,6 +110,7 @@ import id.homebase.resources.location_locate_age_hours
 import id.homebase.resources.location_locate_no_data
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
+import id.homebase.resources.remove
 import id.homebase.resources.stop_sharing
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -122,6 +136,8 @@ fun LocationDashboardContent(
     onManageEmergencyAccess: () -> Unit,
     onLocatableExpandedChange: (Boolean) -> Unit,
     onLocateContact: (ContactUiModel) -> Unit,
+    onWhoCanLocateMeExpandedChange: (Boolean) -> Unit,
+    onRemoveEmergencyContact: (ContactUiModel) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -162,191 +178,239 @@ fun LocationDashboardContent(
         }
 
         // ── Live location sharing (title always shown; below it the map link + who's sharing) ──
-        Text(
-            text = stringResource(MR.string.location_dashboard_live_section),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        if (uiState.liveSharingVisible) {
-            // Map link — opens the live map (Route.LocationLive).
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenLiveMap),
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+        DashboardSection(title = stringResource(MR.string.location_dashboard_live_section)) {
+            if (uiState.liveSharingVisible) {
+                // Map link — opens the live map (Route.LocationLive).
+                Card(
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenLiveMap),
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.LocationOn,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = stringResource(MR.string.location_dashboard_live_open),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = stringResource(MR.string.location_dashboard_live_open),
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            }
 
-            // People I'm sharing with — one row per person (longest "until"), per-row + all stop.
-            if (uiState.outgoingShares.isNotEmpty()) {
-                var confirmStopAll by remember { mutableStateOf(false) }
-                Text(
-                    text = stringResource(MR.string.location_dashboard_sharing_with),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        uiState.outgoingShares.forEachIndexed { index, row ->
-                            if (index > 0) HorizontalDivider()
-                            OutgoingShareRowItem(row = row, onStop = { onStopSharingWith(row.odinId) })
+                // People I'm sharing with — collapsed to a facepile; expands to per-person rows
+                // (longest "until"), each with a stop ✕, plus "stop sharing with everyone".
+                if (uiState.outgoingShares.isNotEmpty()) {
+                    var confirmStopAll by remember { mutableStateOf(false) }
+                    CollapsibleShareSection(
+                        header = stringResource(MR.string.location_dashboard_sharing_with),
+                        avatarItems = uiState.outgoingShares.map {
+                            AvatarStackItem(OdinId(it.odinId), it.avatarInitials)
+                        },
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                uiState.outgoingShares.forEachIndexed { index, row ->
+                                    if (index > 0) HorizontalDivider()
+                                    OutgoingShareRowItem(row = row, onStop = { onStopSharingWith(row.odinId) })
+                                }
+                            }
+                        }
+                        TextButton(onClick = { confirmStopAll = true }) {
+                            Text(text = stringResource(MR.string.location_dashboard_stop_everyone))
+                        }
+                    }
+                    if (confirmStopAll) {
+                        AlertDialog(
+                            onDismissRequest = { confirmStopAll = false },
+                            title = { Text(stringResource(MR.string.location_dashboard_stop_confirm_title)) },
+                            text = { Text(stringResource(MR.string.location_dashboard_stop_confirm_body)) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    confirmStopAll = false
+                                    onStopSharingWithEveryone()
+                                }) { Text(stringResource(MR.string.stop_sharing)) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { confirmStopAll = false }) {
+                                    Text(stringResource(MR.string.cancel))
+                                }
+                            },
+                        )
+                    }
+                }
+
+                // People sharing with me — collapsed to a facepile; expands to per-person rows
+                // (name + live-updating age, shown only past 2 minutes stale).
+                if (uiState.incomingShares.isNotEmpty()) {
+                    CollapsibleShareSection(
+                        header = stringResource(MR.string.location_dashboard_sharing_with_you),
+                        avatarItems = uiState.incomingShares.map {
+                            AvatarStackItem(OdinId(it.odinId), it.avatarInitials)
+                        },
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                uiState.incomingShares.forEachIndexed { index, row ->
+                                    if (index > 0) HorizontalDivider()
+                                    IncomingShareRowItem(row = row)
+                                }
+                            }
                         }
                     }
                 }
-                TextButton(onClick = { confirmStopAll = true }) {
-                    Text(text = stringResource(MR.string.location_dashboard_stop_everyone))
+            } else {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.LocationSearching,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = stringResource(MR.string.location_dashboard_live_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                if (confirmStopAll) {
+            }
+        }
+
+        // ── Location History (map preview, today, all devices) → History ──
+        DashboardSection(title = stringResource(MR.string.location_dashboard_history_section)) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .clickable(onClick = onOpenHistory),
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (uiState.todayTraces.isEmpty()) {
+                        Text(
+                            text = stringResource(MR.string.location_dashboard_empty_today),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                        )
+                    } else {
+                        LocationTraceCanvas(
+                            traces = uiState.todayTraces,
+                            showMapTiles = uiState.showMapTiles,
+                            fetchTile = fetchTile,
+                            traceColors = dashboardTraceColors(),
+                            interactive = false,
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── My devices (= Find device picker) ──
+        DashboardSection(title = stringResource(MR.string.location_devices_section)) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    uiState.devices.forEachIndexed { index, device ->
+                        if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        DeviceRow(device = device, onClick = { onOpenDevice(device.deviceId) })
+                    }
+                }
+            }
+        }
+
+        // ── Emergency contacts: the two halves of emergency-location access ──
+        // "Who you can locate" (contacts carrying our iCanLocate flag) and "Who can
+        // locate you" (members of our emergency-location-access circle) sit as
+        // subsections under one grouping header. The "+" (add emergency contacts)
+        // lives on the "Who can locate you" subsection specifically — that's the
+        // list it actually adds to — rather than the shared group header, which
+        // sat too far above it to read as belonging to that list (#1096).
+        DashboardSection(title = stringResource(MR.string.location_emergency_contacts_section)) {
+            SubsectionLabel(text = stringResource(MR.string.location_locatable_section))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                PeopleListBody(
+                    loaded = uiState.whoICanLocateLoaded,
+                    members = uiState.whoICanLocate,
+                    emptyText = stringResource(MR.string.location_locatable_none),
+                    onExpandedChange = onLocatableExpandedChange,
+                    rowTrailing = { member ->
+                        LocateStatusTrailing(uiState.whoICanLocateStatus[member.odinId.domainName])
+                    },
+                    // Tap opens the emergency retrieval panel — only rows whose temporal access
+                    // verified Active; Broken/Unreachable/Loading rows stay inert (the trailing
+                    // icon is the explanation).
+                    memberClick = { member ->
+                        val status = uiState.whoICanLocateStatus[member.odinId.domainName]
+                        if (status is LocateVerifyStatus.Active) {
+                            { onLocateContact(member) }
+                        } else null
+                    },
+                )
+            }
+
+            SubsectionLabel(
+                text = stringResource(MR.string.location_emergency_access_section),
+                onManage = onManageEmergencyAccess,
+            )
+            Card(modifier = Modifier.fillMaxWidth()) {
+                var confirmRemove by remember { mutableStateOf<ContactUiModel?>(null) }
+                val pendingIds = remember(uiState.whoCanLocateMePending) {
+                    uiState.whoCanLocateMePending.map { it.odinId }.toSet()
+                }
+                PeopleListBody(
+                    loaded = uiState.whoCanLocateMeLoaded,
+                    // distinctBy is a final guard, not the fix — LocationViewModel already keeps
+                    // these two lists mutually exclusive; this just makes the render site immune
+                    // to any future regression of that invariant (#1096).
+                    members = (uiState.whoCanLocateMe + uiState.whoCanLocateMePending)
+                        .distinctBy { it.odinId },
+                    emptyText = stringResource(MR.string.location_emergency_access_none),
+                    onExpandedChange = onWhoCanLocateMeExpandedChange,
+                    rowTrailing = { member ->
+                        EmergencyContactTrailing(
+                            name = member.name,
+                            pending = pendingIds.contains(member.odinId),
+                            removing = uiState.removingEmergencyContacts.contains(member.odinId.domainName),
+                            onRemoveClick = { confirmRemove = member },
+                        )
+                    },
+                )
+                confirmRemove?.let { contact ->
                     AlertDialog(
-                        onDismissRequest = { confirmStopAll = false },
-                        title = { Text(stringResource(MR.string.location_dashboard_stop_confirm_title)) },
-                        text = { Text(stringResource(MR.string.location_dashboard_stop_confirm_body)) },
+                        onDismissRequest = { confirmRemove = null },
+                        title = { Text(stringResource(MR.string.location_emergency_remove_confirm_title)) },
+                        text = {
+                            Text(
+                                stringResource(MR.string.location_emergency_remove_confirm_body, contact.name)
+                            )
+                        },
                         confirmButton = {
                             TextButton(onClick = {
-                                confirmStopAll = false
-                                onStopSharingWithEveryone()
-                            }) { Text(stringResource(MR.string.stop_sharing)) }
+                                confirmRemove = null
+                                onRemoveEmergencyContact(contact)
+                            }) { Text(stringResource(MR.string.remove)) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { confirmStopAll = false }) {
+                            TextButton(onClick = { confirmRemove = null }) {
                                 Text(stringResource(MR.string.cancel))
                             }
                         },
                     )
                 }
             }
-
-            // People sharing with me — name + live-updating age (shown only past 2 minutes stale).
-            if (uiState.incomingShares.isNotEmpty()) {
-                Text(
-                    text = stringResource(MR.string.location_dashboard_sharing_with_you),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        uiState.incomingShares.forEachIndexed { index, row ->
-                            if (index > 0) HorizontalDivider()
-                            IncomingShareRowItem(row = row)
-                        }
-                    }
-                }
-            }
-        } else {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.LocationSearching,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = stringResource(MR.string.location_dashboard_live_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        // ── Location History (map preview, today, all devices) → History ──
-        Text(
-            text = stringResource(MR.string.location_dashboard_history_section),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .clickable(onClick = onOpenHistory),
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                if (uiState.todayTraces.isEmpty()) {
-                    Text(
-                        text = stringResource(MR.string.location_dashboard_empty_today),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                    )
-                } else {
-                    LocationTraceCanvas(
-                        traces = uiState.todayTraces,
-                        showMapTiles = uiState.showMapTiles,
-                        fetchTile = fetchTile,
-                        traceColors = dashboardTraceColors(),
-                        interactive = false,
-                    )
-                }
-            }
-        }
-
-        // ── My devices (= Find device picker) ──
-        Text(
-            text = stringResource(MR.string.location_devices_section),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column {
-                uiState.devices.forEachIndexed { index, device ->
-                    if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    DeviceRow(device = device, onClick = { onOpenDevice(device.deviceId) })
-                }
-            }
-        }
-
-        // ── Who you can locate (contacts carrying our iCanLocate flag) ──
-        DashboardSection(title = stringResource(MR.string.location_locatable_section)) {
-            PeopleListBody(
-                loaded = uiState.whoICanLocateLoaded,
-                members = uiState.whoICanLocate,
-                emptyText = stringResource(MR.string.location_locatable_none),
-                onExpandedChange = onLocatableExpandedChange,
-                rowTrailing = { member ->
-                    LocateStatusTrailing(uiState.whoICanLocateStatus[member.odinId.domainName])
-                },
-                // Tap opens the emergency retrieval panel — only rows whose temporal access
-                // verified Active; Broken/Unreachable/Loading rows stay inert (the trailing
-                // icon is the explanation).
-                memberClick = { member ->
-                    val status = uiState.whoICanLocateStatus[member.odinId.domainName]
-                    if (status is LocateVerifyStatus.Active) {
-                        { onLocateContact(member) }
-                    } else null
-                },
-            )
-        }
-
-        // ── Who can locate you (members of our emergency-location-access circle) ──
-        DashboardSection(
-            title = stringResource(MR.string.location_emergency_access_section),
-            onManage = onManageEmergencyAccess,
-        ) {
-            PeopleListBody(
-                loaded = uiState.whoCanLocateMeLoaded,
-                members = uiState.whoCanLocateMe,
-                emptyText = stringResource(MR.string.location_emergency_access_none),
-            )
         }
 
         // ── Footer ──
@@ -415,15 +479,16 @@ fun DeviceRow(device: LocationDeviceInfo, onClick: () -> Unit) {
 
 /**
  * A titled dashboard section: a tight title row (with an optional compact manage
- * "+" affordance) hugging its content [Card]. Used for the two emergency lists so
- * their layout matches.
+ * "+" affordance) over a [HorizontalDivider], hugging the section's [content].
+ * Every dashboard section renders through this so the heading/divider separation
+ * is uniform (#1011); callers supply their own [Card]s inside [content].
  */
 @Composable
 private fun DashboardSection(
     title: String,
     modifier: Modifier = Modifier,
     onManage: (() -> Unit)? = null,
-    content: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -436,7 +501,7 @@ private fun DashboardSection(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics { heading() },
             )
             if (onManage != null) {
                 // Compact tappable "+" (not a 48dp IconButton, which would balloon
@@ -453,7 +518,43 @@ private fun DashboardSection(
                 )
             }
         }
-        Card(modifier = Modifier.fillMaxWidth()) { content() }
+        HorizontalDivider()
+        content()
+    }
+}
+
+/**
+ * A lightweight subsection heading rendered inside a [DashboardSection]'s body — used to
+ * label the two "who can locate" halves under the shared "Emergency contacts" header
+ * without giving each the full titleMedium/divider weight of a top-level section. Mirrors
+ * the "Sharing with" / "Sharing with you" labels in the live-sharing section. An optional
+ * [onManage] renders the same compact "+" affordance [DashboardSection] uses, for a subsection
+ * whose add action belongs next to its own heading rather than the group header above it.
+ */
+@Composable
+private fun SubsectionLabel(text: String, onManage: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        if (onManage != null) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = stringResource(MR.string.location_emergency_access_manage),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onManage)
+                    .padding(4.dp)
+                    .size(22.dp),
+            )
+        }
     }
 }
 
@@ -502,7 +603,10 @@ private fun PeopleListBody(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    EmergencyAvatarStack(members = members, modifier = Modifier.weight(1f))
+                    AvatarStackRow(
+                        items = members.map { AvatarStackItem(it.odinId, it.avatarInitials) },
+                        modifier = Modifier.weight(1f),
+                    )
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
@@ -544,15 +648,63 @@ private fun PeopleListBody(
         }
     }
 
-/** Overlapping avatar stack with a "+N" overflow chip. */
+/**
+ * A live-sharing section that collapses to a [AvatarStackRow] facepile and expands (on tapping the
+ * header) to [expandedContent]. Default collapsed; expand state is local and survives rotation.
+ * Used by both "You're sharing with" (outgoing) and "Sharing with you" (incoming).
+ */
 @Composable
-private fun EmergencyAvatarStack(
-    members: List<ContactUiModel>,
+private fun CollapsibleShareSection(
+    header: String,
+    avatarItems: List<AvatarStackItem>,
+    modifier: Modifier = Modifier,
+    expandedContent: @Composable () -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = header,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = stringResource(
+                    if (expanded) MR.string.location_dashboard_sharing_hide
+                    else MR.string.location_dashboard_sharing_show,
+                ),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (!expanded) {
+            AvatarStackRow(items = avatarItems, modifier = Modifier.padding(bottom = 4.dp))
+        } else {
+            expandedContent()
+        }
+    }
+}
+
+/** Minimal avatar identity for [AvatarStackRow] — decouples the facepile from any one row model. */
+private data class AvatarStackItem(val odinId: OdinId, val initials: String)
+
+/** Overlapping avatar stack (facepile) with a "+N" overflow chip. */
+@Composable
+private fun AvatarStackRow(
+    items: List<AvatarStackItem>,
     modifier: Modifier = Modifier,
     maxVisible: Int = 6,
 ) {
-    val visible = members.take(maxVisible)
-    val overflow = members.size - visible.size
+    val visible = items.take(maxVisible)
+    val overflow = items.size - visible.size
     val avatarSize = 36.dp
     val ringSize = avatarSize + 4.dp
     Row(
@@ -560,7 +712,7 @@ private fun EmergencyAvatarStack(
         horizontalArrangement = Arrangement.spacedBy(-(avatarSize / 3)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        visible.forEach { member ->
+        visible.forEach { item ->
             Box(
                 modifier = Modifier
                     .size(ringSize)
@@ -569,8 +721,8 @@ private fun EmergencyAvatarStack(
                 contentAlignment = Alignment.Center,
             ) {
                 PublicAvatar(
-                    odinId = member.odinId,
-                    initials = member.avatarInitials,
+                    odinId = item.odinId,
+                    initials = item.initials,
                     options = AvatarOptions(size = avatarSize),
                 )
             }
@@ -617,10 +769,14 @@ private fun OutgoingShareRowItem(
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
-                text = stringResource(
-                    MR.string.location_dashboard_share_until,
-                    formatUntilTime(Instant.fromEpochMilliseconds(row.untilMs)),
-                ),
+                text = if (row.untilMs == LIVE_SHARE_INDEFINITE) {
+                    stringResource(MR.string.location_dashboard_share_until_stopped)
+                } else {
+                    stringResource(
+                        MR.string.location_dashboard_share_until,
+                        formatUntilTime(Instant.fromEpochMilliseconds(row.untilMs)),
+                    )
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -711,6 +867,44 @@ private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
                     style = MaterialTheme.typography.labelMedium,
                     color = if (locateAgeWarn(ageMs)) HomebaseTheme.extendedColors.warning
                             else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Trailing content for a "who can locate me" row: an optional "Pending" label (a sealed circle
+ * deposit that hasn't converted into a real grant yet — live-read on section expand, see
+ * [LocationUiState.whoCanLocateMePending]) plus a remove button (works for both a real grant
+ * and a still-pending one; revoke drops either).
+ */
+@Composable
+private fun EmergencyContactTrailing(
+    name: String,
+    pending: Boolean,
+    removing: Boolean,
+    onRemoveClick: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (pending && !removing) {
+            Text(
+                text = stringResource(MR.string.location_emergency_status_pending),
+                style = MaterialTheme.typography.labelMedium,
+                color = HomebaseTheme.extendedColors.warning,
+            )
+        }
+        if (removing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp).padding(4.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            IconButton(onClick = onRemoveClick) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.location_emergency_remove_cd, name),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

@@ -98,6 +98,7 @@ import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.core.widget.EmojiSelectorDialog
 import id.homebase.core.widget.ReactionList
 import id.homebase.resources.MR
@@ -949,12 +950,13 @@ private fun rememberPendingStale(since: Instant, threshold: Duration = 1.minutes
     return stale
 }
 
-fun String.hasContent(): Boolean {
-    if (this.isBlank()) return false
-    if (this.lines().all { it.isBlank() }) return false
-    if (this == "<br>") return false
-    return true
-}
+/**
+ * Whether this message body has anything to render as text. Empty, all-blank-lines, and
+ * richeditor's `<br>` empty-paragraph artifacts (e.g. a bare `"<br>"` or `"\n<br>"` from an older
+ * or other-platform sender that predates the composer normalization) all count as no content, so a
+ * media-only or reply-only bubble doesn't paint a stray break (#1104).
+ */
+fun String.hasContent(): Boolean = stripComposerLineBreakArtifacts().isNotEmpty()
 
 /**
  * Displays a compact preview of the message being replied to, shown inline within the message
@@ -1033,8 +1035,11 @@ fun InlineReplyPreview(
                 !payload.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
         } ?: emptyList()
     }
+    // Strip richeditor's `<br>` empty-paragraph artifacts from the quoted body so a reply to a
+    // legacy `<br>` message shows its real text, not a stray break / blank quote (#1104).
+    val replyText = remember(replyPreview.message) { replyPreview.message.stripComposerLineBreakArtifacts() }
     val contentLabel = messageContentLabel(
-        textContent = replyPreview.message,
+        textContent = replyText,
         isDeleted = replyMessage?.isDeleted ?: false,
         firstPayload = mediaPayloads.firstOrNull(),
         hasMultiplePayloads = mediaPayloads.size > 1,
@@ -1054,7 +1059,7 @@ fun InlineReplyPreview(
         }
     }
     val displayMessage = resolveReplyContentText(
-        replyText = replyPreview.message,
+        replyText = replyText,
         contentLabelText = contentLabel?.text,
         hasThumbnail = hasThumb,
         hasMedia = hasImage,

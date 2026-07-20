@@ -52,6 +52,7 @@ import id.homebase.api.client.location.LocationPreview
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.location.LIVE_SHARE_DURATION_OPTIONS
+import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import id.homebase.core.location.formatLiveShareRemaining
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
@@ -62,6 +63,7 @@ import id.homebase.resources.cd_location_pin
 import id.homebase.resources.chat_location_attachment
 import id.homebase.resources.live_location_title
 import id.homebase.resources.live_share_active
+import id.homebase.resources.live_share_active_indefinite
 import id.homebase.resources.live_share_back
 import id.homebase.resources.live_share_duration_prompt
 import id.homebase.resources.live_share_ended
@@ -286,12 +288,16 @@ fun LocationPreviewCard(
     // Derive STATIC / LIVE / ENDED from the descriptor's window vs now. While live, a coarse ticker
     // (<=30s) refreshes the "time left" caption; the loop lands exactly on `until` to flip to ENDED.
     // When static, the same ticker lands on the share-offer deadline so the link self-hides at 15 min.
+    // An indefinite share (reserved LIVE_SHARE_INDEFINITE end-time) is constant-LIVE with no
+    // countdown, so there is nothing to tick toward — the effect bails out.
     val until = descriptor.liveShareUntilMs
+    val isIndefinite = until == LIVE_SHARE_INDEFINITE
     val shareOfferDeadline = if (until == null) createdAtMs?.let { it + SHARE_OFFER_WINDOW_MS } else null
     val tickerDeadline = until ?: shareOfferDeadline
     var nowMs by remember(tickerDeadline) { mutableStateOf(Clock.System.now().toEpochMilliseconds()) }
     LaunchedEffect(tickerDeadline) {
         val u = tickerDeadline ?: return@LaunchedEffect
+        if (u == LIVE_SHARE_INDEFINITE) return@LaunchedEffect
         while (true) {
             val now = Clock.System.now().toEpochMilliseconds()
             nowMs = now
@@ -404,6 +410,7 @@ fun LocationPreviewCard(
                             controls = liveControls,
                             isLive = isLive,
                             isEnded = isEnded,
+                            isIndefinite = isIndefinite,
                             remainingMs = remainingMs,
                             contentColor = contentColor,
                             canStart = canStartShare && !ownShareActive,
@@ -470,6 +477,8 @@ private fun LiveShareActionArea(
     controls: LiveLocationBubbleControls,
     isLive: Boolean,
     isEnded: Boolean,
+    /** Reserved-sentinel share (LIVE_SHARE_INDEFINITE): live until stopped, no countdown. */
+    isIndefinite: Boolean,
     remainingMs: Long,
     contentColor: Color,
     /** Whether the static "Share live location" offer is still available (pin fresh enough). */
@@ -514,7 +523,11 @@ private fun LiveShareActionArea(
                         )
                     }
                     Text(
-                        text = stringResource(MR.string.live_share_active, formatLiveShareRemaining(remainingMs)),
+                        text = if (isIndefinite) {
+                            stringResource(MR.string.live_share_active_indefinite)
+                        } else {
+                            stringResource(MR.string.live_share_active, formatLiveShareRemaining(remainingMs))
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = mutedColor,
                     )

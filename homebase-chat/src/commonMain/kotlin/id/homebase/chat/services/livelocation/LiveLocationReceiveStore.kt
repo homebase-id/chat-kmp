@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.location.livelocation
+package id.homebase.chat.services.livelocation
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
@@ -97,10 +97,12 @@ class LiveLocationReceiveStore(
     /**
      * Drop all positions (logout / new identity). The collector is NOT cancelled — it stays
      * subscribed for the app's lifetime; positions rehydrate from the server's flush-on-connect
-     * after the next login. Called in-stream on [BackendEvent.SessionEnded] and from the post-auth
-     * bootstrap for a clean slate.
+     * after the next login. Called in-stream on [BackendEvent.SessionEnded] (same coroutine as the
+     * flush, so it can't race it). [reason] is logged so a clear landing right after a
+     * `RECV-DECODED` — the fingerprint of a flush being clobbered (#1072) — is diagnosable.
      */
-    fun reset() {
+    fun reset(reason: String = "sessionEnded") {
+        logger.i { "reset(reason=$reason) clearing ${_positions.value.size} sender(s)" }
         _positions.value = emptyMap()
     }
 
