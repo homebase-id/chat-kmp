@@ -393,6 +393,11 @@ class ChatMessageStream(
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
                 "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
         }
+        // Evaluate auto-pin and populate the pinned bar on open — mirrors
+        // loadConversation. Without the refresh, opening to a saved scroll anchor
+        // (the common case) leaves the bar empty until a live BatchReceived arrives.
+        autoPinNewTypedMessages(combined)
+        refreshPinnedFor(conversationId)
         return true
     }
 
