@@ -116,6 +116,17 @@ object ChatProtocol {
      */
     val MessagePinnedTag = Uuid.parse("2595aec2-0852-4d3d-a20e-d955cb4553b1")
 
+    /**
+     * Local metadata tag: the user has manually unpinned an auto-pin-eligible message
+     * (Poll/Event/Groodle/live-location). Durable + synced (same `localAppData.tags`
+     * lane as [MessagePinnedTag]) so auto-pin never resurrects a message the user
+     * dismissed — on this device after a restart, or on another device. Distinguishes
+     * "user dismissed" from "never evaluated", which the per-session in-memory set
+     * cannot. Set on a user unpin, cleared on a manual re-pin; NOT set by an auto-expiry
+     * unpin (an ended event is already blocked by [ChatMessageStream.shouldAutoPin]).
+     */
+    val AutoPinDismissedTag = Uuid.parse("9d4f1a2b-8c3e-4a5f-b6d7-1e2c3a4b5d6e")
+
     /** Server-side appData tag: conversation was originally created as a group (never removed) */
     val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
 

@@ -81,6 +81,10 @@ data class MessageUiModel(
      *  in its localAppData — i.e. it's in the user's pinned-messages bar for this conversation. */
     val isPinned: Boolean = false,
 
+    /** True when this message carries [id.homebase.chat.services.ChatProtocol.AutoPinDismissedTag]
+     *  — the user manually unpinned it, so auto-pin must not resurrect it. */
+    val isAutoPinDismissed: Boolean = false,
+
     /**
      * Typed rich-content parsed from `appData.dataType` + `appData.content` (event
      * today; poll and doodle later). Null for plain text + media messages — those

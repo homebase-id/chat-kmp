@@ -341,26 +341,26 @@ class DriveOutboxUploader(
         Logger.d(tag = "MarkAsRead") {
             "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} hasRequestVersionTag=${request.versionTag != null}"
         }
-        // Resolve the CURRENT file at send time, not the fileId captured at enqueue.
-        // For an own-send, that enqueue-time fileId is a temp id that the create
-        // rekeys to the server id (rekeyCacheAfterCreate); the dependency chain
-        // guarantees the create ran first, so the local row now holds the server
-        // fileId + a fresh localAppData.versionTag. Resolving by the stable uniqueId
-        // survives that rekey (mirrors rekeyCacheAfterCreate); older rows without a
-        // uniqueId fall back to the fileId. Either way a genuinely missing file drops
-        // the row (mirrors updateLocalMetadataContent). A null versionTag is fine — it
-        // is the FIRST localAppData write on the file and the server treats it as a
-        // create; the old "null versionTag ⇒ NotFound" guard wrongly conflated a
-        // missing versionTag with a missing file.
+        // Resolve the CURRENT server file at send time, not the fileId captured at
+        // enqueue. For an own-send that enqueue-time fileId is a temp id the create
+        // rekeys to the server id (rekeyCacheAfterCreate). Resolving by the stable
+        // uniqueId via getFileHeaderByUid returns the real server fileId + its current
+        // localAppData.versionTag even before the local DriveMainIndex row has rekeyed
+        // (that only happens on sync-back), so a just-confirmed message pins on the
+        // first attempt. Both branches hit the server — same cost as the pre-existing
+        // fileId lookup — so the drop-guard stays server-authoritative: a genuinely
+        // missing file 404s → drop (mirrors updateLocalMetadataContent). A null
+        // versionTag is fine — the FIRST localAppData write is treated as a create; the
+        // old "null versionTag ⇒ NotFound" guard wrongly conflated a missing versionTag
+        // with a missing file.
         val header = if (request.uniqueId != null) {
-            val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
-            databaseManager.driveMainIndex.selectHomebaseFileByUnique(identityId, driveId, request.uniqueId)
+            fileProvider.getFileHeaderByUid(driveId, request.uniqueId)
         } else {
             fileProvider.getFileHeader(driveId, Uuid.parse(request.file.fileId))
         }
         if (header == null) {
             Logger.w(tag = "MarkAsRead") {
-                "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} — local file no longer present"
+                "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} — file no longer present on server"
             }
             throw NotFoundException()
         }

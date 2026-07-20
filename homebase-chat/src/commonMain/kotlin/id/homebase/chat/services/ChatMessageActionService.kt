@@ -467,16 +467,28 @@ class ChatMessageActionService(
     }
 
     suspend fun pinMessage(messageId: Uuid, dependencyUniqueId: Uuid? = null) {
-        updateMessageTags(messageId, dependencyUniqueId) { it + ChatProtocol.MessagePinnedTag }
+        // Clear any prior dismissal — an explicit (re-)pin overrides it.
+        updateMessageTags(messageId, dependencyUniqueId) {
+            it + ChatProtocol.MessagePinnedTag - ChatProtocol.AutoPinDismissedTag
+        }
     }
 
     /**
      * Remove the pin. [localOnly] = true for auto-expiry unpins (ended events,
      * stale live-location) which each device recomputes on open — don't sync
      * those. User-driven unpins (manual, vote-answered) sync via the outbox.
+     *
+     * A user-driven unpin also sets the durable [ChatProtocol.AutoPinDismissedTag] so
+     * auto-pin won't resurrect the message (here after a restart, or on another
+     * device). An auto-expiry unpin ([localOnly]) doesn't — the message is already
+     * blocked by [ChatMessageStream.shouldAutoPin], and it must stay eligible if it
+     * later becomes live again.
      */
     suspend fun unpinMessage(messageId: Uuid, localOnly: Boolean = false) {
-        updateMessageTags(messageId, localOnly = localOnly) { it - ChatProtocol.MessagePinnedTag }
+        updateMessageTags(messageId, localOnly = localOnly) { tags ->
+            val withoutPin = tags - ChatProtocol.MessagePinnedTag
+            if (localOnly) withoutPin else withoutPin + ChatProtocol.AutoPinDismissedTag
+        }
     }
 
     suspend fun getPayloadBytes(

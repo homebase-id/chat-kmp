@@ -66,11 +66,14 @@ class ChatMessageStream(
     var autoPinTypedMessage: suspend (messageId: Uuid, dependencyUniqueId: Uuid?) -> Unit =
         { _, _ -> }
 
-    // Messages whose auto-pin candidacy has already been decided this session.
-    // Guards against re-pinning a manually-unpinned message when an unrelated
-    // update (reaction toggle, edit, delivery-status) re-emits the same file via
-    // BatchReceived. Cleared on logout. Silent cross-restart re-syncs go through
-    // DriveEvent.Stopped (not BatchReceived), so they never reach the auto-pin pass.
+    // Cheap in-session dedup: messages whose auto-pin candidacy was already decided
+    // this session, so an unrelated re-emit (reaction toggle, edit, delivery-status)
+    // doesn't re-run shouldAutoPin. Cleared on logout. This is NOT the guard against
+    // resurrecting a dismissed pin — that is the durable, synced
+    // ChatProtocol.AutoPinDismissedTag, which (unlike this per-session set) also holds
+    // across a restart and across the user's other devices. Auto-pin now runs on every
+    // path that surfaces messages — loadConversation, processIncrementalBatch, and
+    // refreshCachedWindows (DriveEvent.Stopped) — because that durable tag makes it safe.
     private val autoPinHandled = mutableSetOf<Uuid>()
 
     private val paginatedState = PaginatedConversationState()
@@ -230,6 +233,9 @@ class ChatMessageStream(
             olderCursor = result.cursor,
             hasOlderMessages = result.hasMoreRows,
         )
+        // Cold open: evaluate auto-pin so a message confirmed while the app was closed
+        // still pins. Dismissed messages carry AutoPinDismissedTag and are skipped.
+        autoPinNewTypedMessages(result.records)
         refreshPinnedFor(conversationId)
     }
 
@@ -423,6 +429,12 @@ class ChatMessageStream(
                 )
                 if (result.records.isEmpty()) continue
                 paginatedState.upsert(conversationId, result.records)
+                // Auto-pin here too, not only on live BatchReceived: an own-send
+                // confirmed while the WS was down (offline / backgrounded) syncs in via
+                // silent DriveSync (this path), and must still pin. Safe against
+                // re-pinning a dismissed message because the gate is now the durable
+                // AutoPinDismissedTag, not the per-session in-memory set.
+                autoPinNewTypedMessages(result.records)
                 refreshPinnedFor(conversationId)
             } catch (t: Throwable) {
                 Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
@@ -475,25 +487,26 @@ class ChatMessageStream(
     }
 
     /**
-     * Auto-pin (#887) freshly arrived/sent typed messages — Poll/Event/Groodle,
-     * and live-location only while its share is active. Runs for ALL conversations
-     * in the batch (not just open ones), so the pin is already present when the
-     * user opens the conversation.
+     * Auto-pin (#887) typed messages — Poll/Event/Groodle, and live-location only
+     * while its share is active. Called from every path that surfaces messages
+     * (loadConversation, processIncrementalBatch, refreshCachedWindows), so a message
+     * pins no matter how it reaches the client — a live WS push, a cold open, or a
+     * silent DriveSync of a send made while offline/backgrounded (that closes the
+     * gap where a WS-down confirm would otherwise never pin).
      *
-     * "Newly written" = first sighting this session ([autoPinHandled]). An already-
-     * pinned message is just remembered and skipped (idempotent); a manually
-     * unpinned message is never re-pinned because later BatchReceived for the same
-     * file are gated by the set, and silent cross-restart re-syncs don't reach here
-     * (they arrive via DriveEvent.Stopped, not BatchReceived).
+     * A message is skipped when it is already pinned, or when it carries the durable,
+     * synced [ChatProtocol.AutoPinDismissedTag] — the user unpinned it, and that tag
+     * (unlike the per-session [autoPinHandled] set) stops any device, in any session,
+     * from resurrecting the pin. [autoPinHandled] is only an in-session dedup.
      *
      * An own optimistic send (`isPendingSend`) is DEFERRED, not pinned inline: while
      * pending, the message file exists only under a temp id that the create rekeys to
      * the server id, and the create's echo replaces the optimistic row — a pin
      * enqueued during that window targets the dead temp fileId (server 400) and is
      * clobbered by the echo. Leaving it un-handled lets the confirmed sighting (real
-     * server fileId, no pending tag, re-delivered via BatchReceived) pin it cleanly.
-     * As a backstop for any other stale-fileId path (e.g. a manual pin of a still-
-     * pending message), the tags request also carries the message uniqueId so
+     * server fileId, no pending tag) pin it cleanly. As a backstop for any other
+     * stale-fileId path (e.g. a manual pin of a still-pending message), the tags
+     * request carries the message uniqueId so
      * DriveOutboxUploader.updateLocalMetadataTags re-resolves the fileId at send time.
      */
     private suspend fun autoPinNewTypedMessages(messages: List<MessageUiModel>) {
@@ -505,13 +518,13 @@ class ChatMessageStream(
                 autoPinHandled.add(msg.id)
                 continue
             }
-            // Defer a still-sending message instead of pinning it now. Its file exists
-            // only under a temp id that the create rekeys to the server id, and the
-            // create's echo replaces the optimistic row — a pin enqueued now targets
-            // the dead temp fileId (server 400 "non-existent file") and is clobbered by
-            // the echo anyway. Leave it un-handled so the CONFIRMED sighting (real
-            // server fileId, no pending tag, re-delivered via BatchReceived) is a fresh
-            // candidate and pins cleanly on the first attempt.
+            // User dismissed this candidate (durable, synced AutoPinDismissedTag) —
+            // never resurrect it, on any device or after any restart.
+            if (msg.isAutoPinDismissed) {
+                autoPinHandled.add(msg.id)
+                continue
+            }
+            // Defer a still-sending message (temp fileId / echo-clobber) — see KDoc.
             if (msg.isPendingSend) continue
             if (!autoPinHandled.add(msg.id)) continue
 
