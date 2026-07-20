@@ -914,7 +914,6 @@ fun ConversationContent(
                     }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             ) {
-                // Pinned-messages bar (#887) — first child, hidden when empty.
                 PinnedMessagesBar(
                     pinnedMessages = uiState.pinnedMessages,
                     currentPinIndex = uiState.currentPinIndex,

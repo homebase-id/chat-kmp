@@ -1597,9 +1597,6 @@ class ConversationListViewModel(
                     }
                 }
             }
-            // Pinned-messages bar (#887) — collected in parallel with the message
-            // window below. A child of this job, so it's cancelled on conversation
-            // switch. Clamps currentPinIndex when the list shrinks (e.g. unpin).
             launch {
                 chatMessageStream.observePinnedMessages(conversationId).collect { pinned ->
                     val list = pinned.toPersistentList()

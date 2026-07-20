@@ -96,7 +96,6 @@ fun MessageItem(
         if (policy.allowShare) remember(message.id) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } } else null
     val onDelete =
         remember(message.id) { { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) } }
-    // Pin/unpin (#887) — delete-style: always available, independent of ActionPolicy.
     val onTogglePin =
         remember(message.id) { { onUiAction(ConversationListUiAction.TogglePinMessage(message.id)) } }
     val onShowReactions =
