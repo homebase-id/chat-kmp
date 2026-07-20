@@ -111,14 +111,14 @@ class MessagePinTagTest {
                 isPendingSend = true,
             )
 
-            service.pinMessage(messageId)
-            service.unpinMessage(messageId)
+            service.pinMessage(messageId, manual = true)
+            service.unpinMessage(messageId, dismiss = true)
 
             assertEquals(
                 setOf(ChatProtocol.isPendingSendTag, ChatProtocol.AutoPinDismissedTag),
                 fixture.localTags(messageId).toSet(),
-                "manual unpin drops MessagePinnedTag, keeps unrelated tags, and adds the " +
-                    "durable AutoPinDismissedTag so auto-pin can't resurrect it",
+                "manual unpin drops MessagePinnedTag + ManualPinnedTag, keeps unrelated " +
+                    "tags, and adds the durable AutoPinDismissedTag so auto-pin can't resurrect it",
             )
 
             // The final (unpin) outbox row syncs the dismissed tag to other devices.
@@ -138,36 +138,69 @@ class MessagePinTagTest {
     }
 
     @Test
+    fun manualPin_setsManualPinnedTag() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val messageId = fixture.seedDeletableMessage(conversationId = Uuid.random())
+
+            service.pinMessage(messageId, manual = true)
+
+            assertEquals(
+                setOf(ChatProtocol.MessagePinnedTag, ChatProtocol.ManualPinnedTag),
+                fixture.localTags(messageId).toSet(),
+                "a manual pin is sticky — it carries ManualPinnedTag so auto-expiry " +
+                    "pruning leaves it alone",
+            )
+        }
+    }
+
+    @Test
+    fun autoPin_doesNotSetManualPinnedTag() = runTest {
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val messageId = fixture.seedDeletableMessage(conversationId = Uuid.random())
+
+            service.pinMessage(messageId) // auto-pin (manual = false)
+
+            assertEquals(
+                listOf(ChatProtocol.MessagePinnedTag),
+                fixture.localTags(messageId),
+                "an auto-pin is not sticky — no ManualPinnedTag, so expiry pruning removes it",
+            )
+        }
+    }
+
+    @Test
     fun manualPin_clearsDismissedTag() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val messageId = fixture.seedDeletableMessage(conversationId = Uuid.random())
 
-            service.pinMessage(messageId)
-            service.unpinMessage(messageId) // sets AutoPinDismissedTag
-            service.pinMessage(messageId)   // an explicit re-pin must clear it
+            service.pinMessage(messageId, manual = true)
+            service.unpinMessage(messageId, dismiss = true) // sets AutoPinDismissedTag
+            service.pinMessage(messageId, manual = true)    // an explicit re-pin must clear it
 
             assertEquals(
-                listOf(ChatProtocol.MessagePinnedTag),
-                fixture.localTags(messageId),
+                setOf(ChatProtocol.MessagePinnedTag, ChatProtocol.ManualPinnedTag),
+                fixture.localTags(messageId).toSet(),
                 "re-pinning clears AutoPinDismissedTag — the message is pinned, not dismissed",
             )
         }
     }
 
     @Test
-    fun autoExpiryUnpin_localOnly_doesNotDismiss() = runTest {
+    fun autoConditionUnpin_syncsWithoutDismissing() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)
             val messageId = fixture.seedDeletableMessage(conversationId = Uuid.random())
 
-            service.pinMessage(messageId)
-            service.unpinMessage(messageId, localOnly = true) // e.g. an event ended
+            service.pinMessage(messageId)   // auto-pin
+            service.unpinMessage(messageId) // auto-condition unpin (expiry / answered): dismiss = false
 
             assertEquals(
                 emptyList<Uuid>(),
                 fixture.localTags(messageId),
-                "an auto-expiry (localOnly) unpin removes the pin without dismissing — the " +
+                "an auto-condition unpin removes the pin without dismissing — the " +
                     "message stays auto-pin-eligible if it becomes live again",
             )
         }

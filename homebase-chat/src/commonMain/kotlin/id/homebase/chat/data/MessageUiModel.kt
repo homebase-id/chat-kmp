@@ -85,6 +85,10 @@ data class MessageUiModel(
      *  — the user manually unpinned it, so auto-pin must not resurrect it. */
     val isAutoPinDismissed: Boolean = false,
 
+    /** True when this message carries [id.homebase.chat.services.ChatProtocol.ManualPinnedTag]
+     *  — a deliberate manual pin, so auto-expiry pruning must leave it alone. */
+    val isManuallyPinned: Boolean = false,
+
     /**
      * Typed rich-content parsed from `appData.dataType` + `appData.content` (event
      * today; poll and doodle later). Null for plain text + media messages — those

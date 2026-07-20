@@ -127,6 +127,16 @@ object ChatProtocol {
      */
     val AutoPinDismissedTag = Uuid.parse("9d4f1a2b-8c3e-4a5f-b6d7-1e2c3a4b5d6e")
 
+    /**
+     * Local metadata tag: the pin was created by a deliberate **manual** pin (menu),
+     * not by auto-pin. Durable + synced (same `localAppData.tags` lane as
+     * [MessagePinnedTag]). Marks the pin **sticky** — the on-open auto-expiry prune
+     * (ended events, stale live-shares) leaves a manually-pinned message alone, so a
+     * user who pins an already-ended event keeps it pinned. Set only by a manual pin,
+     * cleared by any unpin.
+     */
+    val ManualPinnedTag = Uuid.parse("c7a2f5e9-3b18-4d6a-9f21-8e4c1b0a5d3f")
+
     /** Server-side appData tag: conversation was originally created as a group (never removed) */
     val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")
 

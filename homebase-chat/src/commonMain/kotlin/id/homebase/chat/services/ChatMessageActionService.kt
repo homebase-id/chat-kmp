@@ -466,28 +466,40 @@ class ChatMessageActionService(
         )
     }
 
-    suspend fun pinMessage(messageId: Uuid, dependencyUniqueId: Uuid? = null) {
-        // Clear any prior dismissal — an explicit (re-)pin overrides it.
-        updateMessageTags(messageId, dependencyUniqueId) {
-            it + ChatProtocol.MessagePinnedTag - ChatProtocol.AutoPinDismissedTag
+    /**
+     * Pin a message. [manual] = true for a deliberate user pin from the menu: it sets
+     * the durable [ChatProtocol.ManualPinnedTag] so the pin is **sticky** — the on-open
+     * auto-expiry prune leaves it alone. Auto-pin passes false. Either way the pin
+     * clears any prior [ChatProtocol.AutoPinDismissedTag] — an explicit pin overrides a
+     * dismissal.
+     */
+    suspend fun pinMessage(
+        messageId: Uuid,
+        dependencyUniqueId: Uuid? = null,
+        manual: Boolean = false,
+    ) {
+        updateMessageTags(messageId, dependencyUniqueId) { tags ->
+            val pinned = tags + ChatProtocol.MessagePinnedTag - ChatProtocol.AutoPinDismissedTag
+            if (manual) pinned + ChatProtocol.ManualPinnedTag else pinned
         }
     }
 
     /**
-     * Remove the pin. [localOnly] = true for auto-expiry unpins (ended events,
-     * stale live-location) which each device recomputes on open — don't sync
-     * those. User-driven unpins (manual, vote-answered) sync via the outbox.
+     * Remove the pin (and the sticky [ChatProtocol.ManualPinnedTag] if present).
      *
-     * A user-driven unpin also sets the durable [ChatProtocol.AutoPinDismissedTag] so
-     * auto-pin won't resurrect the message (here after a restart, or on another
-     * device). An auto-expiry unpin ([localOnly]) doesn't — the message is already
-     * blocked by [ChatMessageStream.shouldAutoPin], and it must stay eligible if it
-     * later becomes live again.
+     * [dismiss] = true additionally sets the durable, synced
+     * [ChatProtocol.AutoPinDismissedTag] so auto-pin never resurrects the message — for
+     * a **user** dismissal (manual unpin). An auto-condition unpin (expired event,
+     * answered poll) passes false: the message isn't user-dismissed and stays eligible
+     * if the condition reverses (e.g. an un-answered poll).
+     *
+     * [localOnly] = true keeps the change on this device only (no outbox). Auto-expiry
+     * pruning now syncs, so this defaults false; kept for any purely-local unpin.
      */
-    suspend fun unpinMessage(messageId: Uuid, localOnly: Boolean = false) {
+    suspend fun unpinMessage(messageId: Uuid, localOnly: Boolean = false, dismiss: Boolean = false) {
         updateMessageTags(messageId, localOnly = localOnly) { tags ->
-            val withoutPin = tags - ChatProtocol.MessagePinnedTag
-            if (localOnly) withoutPin else withoutPin + ChatProtocol.AutoPinDismissedTag
+            val cleared = tags - ChatProtocol.MessagePinnedTag - ChatProtocol.ManualPinnedTag
+            if (dismiss) cleared + ChatProtocol.AutoPinDismissedTag else cleared
         }
     }
 

@@ -131,6 +131,7 @@ suspend fun mapToMessageData(
         (localTags?.contains(ChatProtocol.isPendingSendTag) ?: false) && !isFailedSend
     val isPinned = localTags?.contains(ChatProtocol.MessagePinnedTag) ?: false
     val isAutoPinDismissed = localTags?.contains(ChatProtocol.AutoPinDismissedTag) ?: false
+    val isManuallyPinned = localTags?.contains(ChatProtocol.ManualPinnedTag) ?: false
 
     val localReadTimestamp = metadata.localAppData?.readTime
     // localReactions on the wire are JSON-encoded ReactionContent objects
@@ -191,6 +192,7 @@ suspend fun mapToMessageData(
                 isStatusMessage = isStatusMessage,
                 isPinned = isPinned,
                 isAutoPinDismissed = isAutoPinDismissed,
+                isManuallyPinned = isManuallyPinned,
                 hasMore = hasMore
             )
         }
@@ -338,6 +340,7 @@ suspend fun mapToMessageData(
             isStatusMessage = isStatusMessage,
             isPinned = isPinned,
             isAutoPinDismissed = isAutoPinDismissed,
+            isManuallyPinned = isManuallyPinned,
             messageContent = messageContent,
             hasMore = hasMore
         )

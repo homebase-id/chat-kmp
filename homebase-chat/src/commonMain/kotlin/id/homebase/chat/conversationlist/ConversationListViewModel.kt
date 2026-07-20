@@ -1220,12 +1220,12 @@ class ConversationListViewModel(
             is ConversationListUiAction.TogglePinMessage -> viewModelScope.launch {
                 // delete-style: allowed for every kind, independent of ActionPolicy.
                 val isPinned = chatMessageStream.getMessage(action.messageId)?.isPinned ?: false
-                if (isPinned) chatMessageActionService.unpinMessage(action.messageId)
-                else chatMessageActionService.pinMessage(action.messageId)
+                if (isPinned) chatMessageActionService.unpinMessage(action.messageId, dismiss = true)
+                else chatMessageActionService.pinMessage(action.messageId, manual = true)
             }
 
             is ConversationListUiAction.UnpinMessage -> viewModelScope.launch {
-                chatMessageActionService.unpinMessage(action.messageId)
+                chatMessageActionService.unpinMessage(action.messageId, dismiss = true)
             }
             // endregion
 
@@ -1469,17 +1469,20 @@ class ConversationListViewModel(
     }
     /**
      * #887: one-shot prune of time-expired auto-pins for [conversationId] on open.
-     * Ended events (now past endUtcMs, or startUtcMs + 1h when open-ended) and
-     * stale live-location shares (now ≥ liveShareUntilMs) leave the pinned bar.
-     * LOCAL-ONLY ([unpinMessage] with localOnly = true): each device recomputes
-     * expiry on its own clock, so we don't fan a clock-relative decision out to
-     * the user's other devices via the outbox.
+     * Ended events (now past endUtcMs, or startUtcMs + 1h when open-ended) and stale
+     * live-location shares (now ≥ liveShareUntilMs) leave the pinned bar. The unpin
+     * SYNCS (endUtcMs is absolute UTC, so every device agrees) — the pin clears on the
+     * user's other devices too and the server stops carrying a stale pin. It is NOT a
+     * dismissal: the message stays auto-pin-eligible if it somehow becomes live again.
+     * A manually-pinned message ([MessageUiModel.isManuallyPinned]) is skipped — a
+     * deliberate pin is sticky, even past the event's end.
      */
     private fun unpinExpiredPins(conversationId: Uuid) {
         viewModelScope.launch {
             val now = Clock.System.now().toEpochMilliseconds()
             val pinned = chatMessageStream.getPinnedMessages(conversationId)
             for (msg in pinned) {
+                if (msg.isManuallyPinned) continue
                 val expired = when (val content = msg.messageContent) {
                     is MessageContent.Event -> content.descriptor?.let {
                         now > (it.endUtcMs ?: (it.startUtcMs + 3_600_000L))
@@ -1490,7 +1493,7 @@ class ConversationListViewModel(
                     }
                     else -> false
                 }
-                if (expired) chatMessageActionService.unpinMessage(msg.id, localOnly = true)
+                if (expired) chatMessageActionService.unpinMessage(msg.id)
             }
         }
     }
@@ -1525,8 +1528,6 @@ class ConversationListViewModel(
             if (convo != null && convo.unreadCount > 0) {
                 frozenUnreadBoundary[conversationId] = convo.lastRead
             }
-            // #887: prune time-expired auto-pins (ended events, stale live shares).
-            // LOCAL-ONLY — each device recomputes on open; not synced via the outbox.
             unpinExpiredPins(conversationId)
         }
 

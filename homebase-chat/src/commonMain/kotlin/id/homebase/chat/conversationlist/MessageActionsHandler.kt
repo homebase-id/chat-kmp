@@ -469,6 +469,7 @@ internal class MessageActionsHandler(
     private suspend fun maybeUnpinAnsweredVote(messageId: Uuid) {
         val message = chatMessageStream.getMessage(messageId) ?: return
         if (!message.isPinned) return
+        if (message.isManuallyPinned) return // a deliberate pin is sticky, even once answered
         val answered = when (val content = message.messageContent) {
             is MessageContent.Poll -> content.descriptor?.let {
                 PollVote.ownVotes(message.ownReactions, it.options.size).isNotEmpty()
