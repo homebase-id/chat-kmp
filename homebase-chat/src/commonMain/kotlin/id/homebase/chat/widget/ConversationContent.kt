@@ -519,7 +519,13 @@ fun ConversationContent(
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
-        onUiAction(ConversationListUiAction.CancelEditMessage)
+        // Only a back that's actually cancelling an in-progress edit should reset
+        // the composer — CancelEditMessage clears it. A back that's merely
+        // dismissing the keyboard must leave the typed text (and its draft) intact
+        // (#1122; previously it wiped whatever you were composing).
+        if (uiState.isEditingMessageId != null) {
+            onUiAction(ConversationListUiAction.CancelEditMessage)
+        }
     }
 
     val cameraLauncher = rememberCameraManager { file ->

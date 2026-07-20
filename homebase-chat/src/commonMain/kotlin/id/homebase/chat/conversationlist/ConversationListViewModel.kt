@@ -62,6 +62,8 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
+import id.homebase.core.util.applyMarkDownContent
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_location_unavailable
@@ -85,6 +87,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -581,8 +584,42 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            // TODO - restore any draft message stored for conversation here
-            messageInputTextState.setMarkdown("")
+            // Per-conversation composer draft (#1122). One collector owns the whole
+            // lifecycle: on the active conversation changing it persists the
+            // outgoing thread's draft and restores the incoming one; while a
+            // conversation is open it debounce-saves edits to that thread's
+            // owner-private, cross-device-synced `localAppData` draft. collectLatest
+            // cancels the inner edit-watcher when the active conversation changes.
+            var previous: Uuid? = null
+            ActiveConversation.conversation.collectLatest { current ->
+                // Leaving `previous`: capture whatever is in the composer now (still
+                // its text — the restore of `current` below hasn't run yet). Skip
+                // while an edit is in progress: edit mode hijacks the same composer,
+                // and its text is not the conversation's draft.
+                previous?.let {
+                    if (_messagesUiState.value.isEditingMessageId == null) {
+                        conversationService.updateLocalDraft(it, messageInputTextState.toMessageMarkdown())
+                    }
+                }
+                previous = current
+                if (current == null) {
+                    messageInputTextState.clear()
+                    return@collectLatest
+                }
+                // Entering `current`: restore its saved draft (byte-faithful).
+                val draft = conversationService.readDraft(current)
+                messageInputTextState.applyMarkDownContent(draft ?: "")
+                // Persist edits to THIS conversation, debounced. drop(1) skips the
+                // just-restored value so it can't echo straight back out.
+                snapshotFlow { messageInputTextState.annotatedString }
+                    .drop(1)
+                    .debounce(600)
+                    .collect {
+                        if (_messagesUiState.value.isEditingMessageId == null) {
+                            conversationService.updateLocalDraft(current, messageInputTextState.toMessageMarkdown())
+                        }
+                    }
+            }
         }
 
         viewModelScope.launch {

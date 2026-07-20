@@ -206,6 +206,16 @@ internal class MessageActionsHandler(
         }
     }
 
+    /**
+     * Blank the composer after a successful send AND clear this conversation's
+     * persisted draft (#1122), so a sent message never leaves a stale synced
+     * draft behind on this or another device.
+     */
+    private fun clearComposerDraft(conversationId: Uuid) {
+        messageInputTextState.clear()
+        scope.launch { conversationService.clearLocalDraft(conversationId) }
+    }
+
     fun handleDeleteMessage(action: ConversationListUiAction.DeleteMessage) {
         val messages = messagesUiState.value.messages.mapNotNull {
             if (it is MessageListContentModel.Message) it.message else null
@@ -843,7 +853,7 @@ internal class MessageActionsHandler(
             // NOTE: do NOT revoke the videos' blob: URLs here — they're now the ffmpeg compress
             // INPUT and are consumed by the async upload (revoked in writeFileFromUrl once written
             // into MEMFS). Unattach/dismiss still revoke for never-sent attachments.
-            messageInputTextState.clear()
+            clearComposerDraft(conversationId)
 
             scope.launch {
                 try {
@@ -1098,7 +1108,7 @@ internal class MessageActionsHandler(
                         dataType = payloadRenderers.toMessageDataType(),
                     )
                 }
-                messageInputTextState.clear()
+                clearComposerDraft(conversationId)
                 jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
@@ -1174,7 +1184,7 @@ internal class MessageActionsHandler(
                     payloadBundle = payloadBundle,
                     dataType = payloadRenderers.toMessageDataType(),
                 )
-                messageInputTextState.clear()
+                clearComposerDraft(conversationId)
                 messagesUiState.update { it.copy(replyToMessage = null) }
                 jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }

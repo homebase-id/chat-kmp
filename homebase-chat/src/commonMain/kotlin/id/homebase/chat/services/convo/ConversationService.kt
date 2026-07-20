@@ -156,6 +156,20 @@ class ConversationService(
     private var lastReadFlushJob: Job? = null
     // endregion
 
+    // region draft (#1122)
+    // The per-conversation composer draft rides `localAppData.content` alongside
+    // lastRead (owner-private, synced across the owner's devices, never sent to
+    // peers). Debouncing lives in the caller (the composer snapshotFlow); here we
+    // only dedup identical writes so restoring a draft can't echo back into the
+    // outbox, and cap the stored text so it stays within the header budget.
+    private val draftMutex = Mutex()
+    private var lastPersistedDraft: Pair<Uuid, String?>? = null
+    // ponytail: 2000 codepoints keeps the header comfortably under the 7 KB cap
+    // for normal text; a longer draft is truncated (raise only with a payload
+    // carrier, which v1 deliberately skips).
+    private val draftMaxCodepoints = 2000
+    // endregion
+
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
         dbm = dbm
@@ -2569,6 +2583,62 @@ class ConversationService(
                 }
             }
         }
+    }
+
+    /**
+     * The persisted composer draft for [conversationId] (markdown), or null when
+     * there is none. Reads the owner-private `localAppData.content` from the local
+     * index — which the drive-sync has already merged with any peer-device draft —
+     * so it is offline-safe. Also seeds the dedup guard so restoring this draft
+     * into the composer can't immediately echo back out to the outbox. #1122.
+     */
+    suspend fun readDraft(conversationId: Uuid): String? {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, conversationId)
+            ?: return null
+        val draft = file.fileMetadata.localAppData?.content?.let {
+            try {
+                OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it).draft
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        draftMutex.withLock { lastPersistedDraft = conversationId to draft }
+        return draft
+    }
+
+    /**
+     * Persist the composer [draft] for [conversationId] (null/blank to clear).
+     * Caps to the header budget, skips a write that matches what we last stored
+     * (so a burst of identical edits — or the restore echo — makes no outbox
+     * traffic), then optimistically stamps it locally and enqueues the synced
+     * push. The caller debounces; this is the per-edit sink. #1122.
+     */
+    suspend fun updateLocalDraft(conversationId: Uuid, draft: String?) {
+        val capped = draft?.truncateToCodePoints(draftMaxCodepoints)?.ifBlank { null }
+        val changed = draftMutex.withLock {
+            if (lastPersistedDraft == (conversationId to capped)) {
+                false
+            } else {
+                lastPersistedDraft = conversationId to capped
+                true
+            }
+        }
+        if (!changed) return
+        optimisticWriter.stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
+            ?.let { outboxSync.tryEnqueue(it) }
+    }
+
+    /**
+     * Clear the persisted draft for [conversationId] on a successful send. Stamps
+     * `now()` so it wins last-write-wins over any in-flight edit on another
+     * device, and updates the dedup guard so the composer's post-send blank can't
+     * re-write it. #1122.
+     */
+    suspend fun clearLocalDraft(conversationId: Uuid) {
+        draftMutex.withLock { lastPersistedDraft = conversationId to null }
+        optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
+            ?.let { outboxSync.tryEnqueue(it) }
     }
 
     /**
