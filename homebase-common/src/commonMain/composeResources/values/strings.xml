@@ -1225,6 +1225,10 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
+    <string name="dev_menu_force_logout">Force Logout (local only)</string>
+    <string name="dev_menu_force_logout_confirm_title">Force logout?</string>
+    <string name="dev_menu_force_logout_confirm_message">Clears credentials and all local data without contacting the server. Use this when the normal logout fails. You will need to sign in again, and anything not yet synced will be lost.</string>
+    <string name="dev_menu_force_logout_confirm_action">Force logout</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
     <string name="dev_menu_test_temporal_read">Test temporal location read (Frodo)</string>
     <string name="dev_menu_test_scheduled_push">Test scheduled push notifications</string>
