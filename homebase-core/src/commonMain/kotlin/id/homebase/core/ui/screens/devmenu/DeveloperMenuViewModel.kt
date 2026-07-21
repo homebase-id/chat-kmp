@@ -17,6 +17,7 @@ import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
@@ -38,6 +39,7 @@ class DeveloperMenuViewModel(
     private val userPreferences: UserPreferences,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
     private val serverIpStore: ServerIpStore,
+    private val youAuthFlowManager: YouAuthFlowManager,
 ) : ViewModel() {
 
     companion object {
@@ -84,6 +86,10 @@ class DeveloperMenuViewModel(
 
             is DeveloperMenuUiAction.ClearAllData -> {
                 clearAllData()
+            }
+
+            is DeveloperMenuUiAction.ForceLogout -> {
+                forceLogout()
             }
 
             is DeveloperMenuUiAction.TriggerTestCrash -> {
@@ -268,6 +274,20 @@ class DeveloperMenuViewModel(
     }
 
     /**
+     * Unconditional local logout — the escape hatch for a wedged session (corrupted shared
+     * secret, stale auth token, unreadable DB) where the normal Settings logout can't complete.
+     * Skips the backend notify, which is precisely the call that needs the credentials we no
+     * longer trust, and clears local state regardless of what fails on the way. The nav graph
+     * tears down on the resulting Unauthenticated flip, so no event is sent afterwards.
+     */
+    private fun forceLogout() {
+        viewModelScope.launch {
+            Logger.w(tag = "DeveloperMenu") { "Force logout triggered" }
+            youAuthFlowManager.logout(force = true)
+        }
+    }
+
+    /**
      * Intentionally crash the app to verify crash reporting end-to-end. Throws
      * an uncaught exception on the calling (main) thread so it propagates through
      * the platform crash handlers we install at startup — Firebase's native
@@ -311,6 +331,7 @@ sealed interface DeveloperMenuUiAction {
     data object ForceSyncAll : DeveloperMenuUiAction
     data object RunNetworkDiagnostics : DeveloperMenuUiAction
     data object ClearAllData : DeveloperMenuUiAction
+    data object ForceLogout : DeveloperMenuUiAction
     data object TriggerTestCrash : DeveloperMenuUiAction
     data object ForceReconnectWebSocket : DeveloperMenuUiAction
     data object ToggleAllowTenBitVideo : DeveloperMenuUiAction

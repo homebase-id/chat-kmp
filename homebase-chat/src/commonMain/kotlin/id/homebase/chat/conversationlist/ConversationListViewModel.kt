@@ -62,6 +62,8 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
+import id.homebase.core.util.applyMarkDownContent
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_location_unavailable
@@ -85,6 +87,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -171,6 +174,10 @@ class ConversationListViewModel(
         // before the watchdog logs it as stuck. Generous so a slow-but-legitimate DB
         // read isn't flagged; the point is to catch a load that never completes/fails.
         private const val SPINNER_WATCHDOG_MS = 8_000L
+
+        // How long the composer must sit idle before its draft is persisted (#1122).
+        // Long enough that composing-then-sending normally writes nothing at all.
+        private const val DRAFT_IDLE_MS = 2_000L
     }
 
     private val enricher = ConversationEnricher()
@@ -581,8 +588,43 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            // TODO - restore any draft message stored for conversation here
-            messageInputTextState.setMarkdown("")
+            // Per-conversation composer draft (#1122). One collector owns the whole
+            // lifecycle: on the active conversation changing it persists the
+            // outgoing thread's draft and restores the incoming one; while a
+            // conversation is open it debounce-saves edits to that thread's
+            // owner-private, cross-device-synced `localAppData` draft. collectLatest
+            // cancels the inner edit-watcher when the active conversation changes.
+            var previous: Uuid? = null
+            ActiveConversation.conversation.collectLatest { current ->
+                // Leaving `previous`: capture whatever is in the composer now (still
+                // its text — the restore of `current` below hasn't run yet). Skip
+                // while an edit is in progress: edit mode hijacks the same composer,
+                // and its text is not the conversation's draft.
+                previous?.let { flushDraft(it) }
+                previous = current
+                if (current == null) {
+                    messageInputTextState.clear()
+                    return@collectLatest
+                }
+                // Entering `current`: restore its saved draft (byte-faithful).
+                val draft = conversationService.readDraft(current)
+                messageInputTextState.applyMarkDownContent(draft ?: "")
+                // Persist edits to THIS conversation. debounce, deliberately not a
+                // periodic sample: every save is a DB read-modify-write plus an
+                // outbox push to the server, and a draft only has value if the
+                // message is *abandoned*. Someone who types straight through and
+                // hits send wants zero draft writes — a sample would bill them one
+                // network call every DRAFT_IDLE_MS for a draft that's deleted
+                // seconds later. A pause is the abandonment signal, so debounce is
+                // the operator that matches what a draft is for. The
+                // typed-continuously-then-killed case is covered by the ON_STOP
+                // flush (FlushDraft), not by ticking. drop(1) skips the
+                // just-restored value so it can't echo straight back out.
+                snapshotFlow { messageInputTextState.annotatedString }
+                    .drop(1)
+                    .debounce(DRAFT_IDLE_MS)
+                    .collect { flushDraft(current) }
+            }
         }
 
         viewModelScope.launch {
@@ -902,8 +944,29 @@ class ConversationListViewModel(
         _uiState.update { it.copy(uiDialog = null) }
     }
 
+    /**
+     * Persist whatever is in the composer right now as [conversationId]'s draft
+     * (#1122). No-op while an edit is in progress: edit mode hijacks the same
+     * composer, and its text is not the conversation's draft.
+     */
+    private suspend fun flushDraft(conversationId: Uuid) {
+        if (_messagesUiState.value.isEditingMessageId != null) return
+        conversationService.updateLocalDraft(conversationId, messageInputTextState.toMessageMarkdown())
+    }
+
     fun onAction(action: ConversationListUiAction) {
         when (action) {
+            // Belt-and-braces draft save (#1122): the thread's lifecycle owner is
+            // stopping — the user navigated away, or the app went to background and
+            // the OS may kill the process before anything else runs. Keyed off the
+            // live ActiveConversation, so it's a no-op once the thread has already
+            // been left (the collector saved and cleared the composer by then).
+            is ConversationListUiAction.FlushDraft -> {
+                ActiveConversation.conversation.value?.let {
+                    viewModelScope.launch { flushDraft(it) }
+                }
+            }
+
             is ConversationListUiAction.ConversationClicked -> {
                 // User explicitly picked a conversation — drop any pending
                 // notification tap so a late-arriving sync can't yank them

@@ -158,6 +158,9 @@ sealed interface ConversationListUiAction {
 
     data object EditMessageSave : ConversationListUiAction
     data object CancelEditMessage : ConversationListUiAction
+
+    /** Persist the composer draft for the active conversation right now (#1122). */
+    data object FlushDraft : ConversationListUiAction
     data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
