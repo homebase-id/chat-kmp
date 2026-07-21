@@ -46,6 +46,12 @@ data class ConversationUiModel(
     val lastMessageContent: MessageContent? = null,
     val lastMessageIsFromActiveUser: Boolean = false,
     val lastMessageSender: OdinId? = null,
+    /**
+     * Unsent composer draft for this conversation (markdown), surfaced as a
+     * "Draft:" preview in the list row when non-blank. Owner-private, synced
+     * across the user's own devices; null when there is no draft. #1122.
+     */
+    val draft: String? = null,
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
     val isGroup: Boolean = false,

@@ -156,6 +156,20 @@ class ConversationService(
     private var lastReadFlushJob: Job? = null
     // endregion
 
+    // region draft (#1122)
+    // The per-conversation composer draft rides `localAppData.content` alongside
+    // lastRead (owner-private, synced across the owner's devices, never sent to
+    // peers). Debouncing lives in the caller (the composer snapshotFlow); here we
+    // only dedup identical writes so restoring a draft can't echo back into the
+    // outbox, and cap the stored text so it stays within the header budget.
+    private val draftMutex = Mutex()
+    private var lastPersistedDraft: Pair<Uuid, String?>? = null
+    // ponytail: 2000 codepoints keeps the header comfortably under the 7 KB cap
+    // for normal text; a longer draft is truncated (raise only with a payload
+    // carrier, which v1 deliberately skips).
+    private val draftMaxCodepoints = 2000
+    // endregion
+
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
         dbm = dbm
@@ -2569,6 +2583,71 @@ class ConversationService(
                 }
             }
         }
+    }
+
+    /**
+     * The persisted composer draft for [conversationId] (markdown), or null when
+     * there is none. Reads the owner-private `localAppData.content` from the local
+     * index — which the drive-sync has already merged with any peer-device draft —
+     * so it is offline-safe. Also seeds the dedup guard so restoring this draft
+     * into the composer can't immediately echo back out to the outbox. #1122.
+     */
+    suspend fun readDraft(conversationId: Uuid): String? {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, conversationId)
+            ?: return null
+        val draft = file.fileMetadata.localAppData?.content?.let {
+            try {
+                OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it).draft
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        draftMutex.withLock { lastPersistedDraft = conversationId to draft }
+        return draft
+    }
+
+    /**
+     * Persist the composer [draft] for [conversationId] (null/blank to clear).
+     * Caps to the header budget, skips a write that matches what we last stored
+     * (so a burst of identical edits — or the restore echo — makes no outbox
+     * traffic), then optimistically stamps it locally and enqueues the synced
+     * push. The caller samples; this is the per-edit sink. #1122.
+     *
+     * The guard only advances once the local write has actually landed. Advancing
+     * it up-front would let a write that never happened — cancelled mid-flight by
+     * the `collectLatest` on a conversation switch, or skipped because the conv
+     * file isn't in the local index yet — still claim the draft was stored, making
+     * the very next attempt (the leaving-the-thread save) a silent no-op and
+     * losing the draft.
+     */
+    suspend fun updateLocalDraft(conversationId: Uuid, draft: String?) {
+        val capped = draft?.truncateToCodePoints(draftMaxCodepoints)?.ifBlank { null }
+        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to capped)) return
+        val request = optimisticWriter
+            .stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
+            ?: return
+        outboxSync.tryEnqueue(request)
+        draftMutex.withLock { lastPersistedDraft = conversationId to capped }
+    }
+
+    /**
+     * Clear the persisted draft for [conversationId] on a successful send. Stamps
+     * `now()` so it wins last-write-wins over any in-flight edit on another
+     * device, and updates the dedup guard so the composer's post-send blank can't
+     * re-write it. #1122.
+     *
+     * Nothing stored means nothing to clear — and that's the common case, since
+     * composing straight through and sending never trips the idle debounce. Without
+     * this check every send would bill a stamp + outbox push to erase a draft that
+     * was never written. The guard is accurate by send time: [readDraft] seeds it
+     * (null included) when the conversation is opened.
+     */
+    suspend fun clearLocalDraft(conversationId: Uuid) {
+        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to null)) return
+        draftMutex.withLock { lastPersistedDraft = conversationId to null }
+        optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
+            ?.let { outboxSync.tryEnqueue(it) }
     }
 
     /**

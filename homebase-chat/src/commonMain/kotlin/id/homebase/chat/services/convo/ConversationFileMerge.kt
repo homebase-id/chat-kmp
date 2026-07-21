@@ -117,6 +117,10 @@ internal fun mergeConversationFileUpdate(
         avatarInitials = incoming.avatarInitials,
         participants = incoming.participants,
         isPinned = incoming.isPinned,
+        // The draft rides the conversation file's localAppData, so the fresh file
+        // owns it — carry it from `incoming` or a live edit / clear on another
+        // device (or this one) wouldn't update the list row. #1122.
+        draft = incoming.draft,
         conversationState = resolvedState,
         exitedAt = resolvedExitedAt,
         fileUpdated = incoming.fileUpdated,
