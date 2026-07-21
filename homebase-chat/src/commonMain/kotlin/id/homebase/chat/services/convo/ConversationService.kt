@@ -2636,8 +2636,15 @@ class ConversationService(
      * `now()` so it wins last-write-wins over any in-flight edit on another
      * device, and updates the dedup guard so the composer's post-send blank can't
      * re-write it. #1122.
+     *
+     * Nothing stored means nothing to clear — and that's the common case, since
+     * composing straight through and sending never trips the idle debounce. Without
+     * this check every send would bill a stamp + outbox push to erase a draft that
+     * was never written. The guard is accurate by send time: [readDraft] seeds it
+     * (null included) when the conversation is opened.
      */
     suspend fun clearLocalDraft(conversationId: Uuid) {
+        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to null)) return
         draftMutex.withLock { lastPersistedDraft = conversationId to null }
         optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
             ?.let { outboxSync.tryEnqueue(it) }

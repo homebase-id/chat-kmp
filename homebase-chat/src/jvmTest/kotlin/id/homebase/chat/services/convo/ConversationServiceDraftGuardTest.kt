@@ -46,4 +46,38 @@ class ConversationServiceDraftGuardTest {
             scope.cancel()
         }
     }
+
+    /**
+     * Composing straight through and sending never trips the idle debounce, so the
+     * overwhelming majority of sends have no draft stored. Clearing one that was
+     * never written must cost nothing — otherwise every message sent bills a stamp
+     * and an outbox push to erase something that doesn't exist.
+     */
+    @Test
+    fun clearingADraftThatWasNeverWrittenCostsNothing() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            ConversationServiceTestFixture().use { fixture ->
+                val service = fixture.build(scope = scope)
+                val convoId = fixture.seedOneOnOne(other = "alice.test")
+
+                // Opening the conversation seeds the guard — no draft stored.
+                assertEquals(null, service.readDraft(convoId))
+
+                val outboxBefore = fixture.outboxRowCount()
+                val updatedBefore = fixture.getConversationFile(convoId)!!.fileMetadata.updated
+
+                service.clearLocalDraft(convoId)
+
+                assertEquals(outboxBefore, fixture.outboxRowCount(), "no outbox push")
+                assertEquals(
+                    updatedBefore,
+                    fixture.getConversationFile(convoId)!!.fileMetadata.updated,
+                    "conv file untouched",
+                )
+            }
+        } finally {
+            scope.cancel()
+        }
+    }
 }
