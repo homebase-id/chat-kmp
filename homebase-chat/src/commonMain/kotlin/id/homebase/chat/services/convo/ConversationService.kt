@@ -2612,21 +2612,23 @@ class ConversationService(
      * Caps to the header budget, skips a write that matches what we last stored
      * (so a burst of identical edits — or the restore echo — makes no outbox
      * traffic), then optimistically stamps it locally and enqueues the synced
-     * push. The caller debounces; this is the per-edit sink. #1122.
+     * push. The caller samples; this is the per-edit sink. #1122.
+     *
+     * The guard only advances once the local write has actually landed. Advancing
+     * it up-front would let a write that never happened — cancelled mid-flight by
+     * the `collectLatest` on a conversation switch, or skipped because the conv
+     * file isn't in the local index yet — still claim the draft was stored, making
+     * the very next attempt (the leaving-the-thread save) a silent no-op and
+     * losing the draft.
      */
     suspend fun updateLocalDraft(conversationId: Uuid, draft: String?) {
         val capped = draft?.truncateToCodePoints(draftMaxCodepoints)?.ifBlank { null }
-        val changed = draftMutex.withLock {
-            if (lastPersistedDraft == (conversationId to capped)) {
-                false
-            } else {
-                lastPersistedDraft = conversationId to capped
-                true
-            }
-        }
-        if (!changed) return
-        optimisticWriter.stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
-            ?.let { outboxSync.tryEnqueue(it) }
+        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to capped)) return
+        val request = optimisticWriter
+            .stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
+            ?: return
+        outboxSync.tryEnqueue(request)
+        draftMutex.withLock { lastPersistedDraft = conversationId to capped }
     }
 
     /**

@@ -106,6 +106,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
@@ -508,6 +510,14 @@ fun ConversationContent(
     // (the chain can no longer be overtaken).
     val chainCap = remember(conversation.conversation.participants.size) {
         computeBattleChainCap(conversation.conversation.participants.size)
+    }
+
+    // Save the draft whenever this thread stops — navigating away, or the app going
+    // to background (where the OS may kill the process without warning). Makes the
+    // periodic save the only thing the draft actually depends on: nothing here has
+    // to fire for the draft to survive, it just narrows the window (#1122).
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        onUiAction(ConversationListUiAction.FlushDraft)
     }
 
     @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {

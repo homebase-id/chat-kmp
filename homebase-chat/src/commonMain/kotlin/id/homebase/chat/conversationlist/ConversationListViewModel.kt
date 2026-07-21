@@ -91,6 +91,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -174,6 +175,9 @@ class ConversationListViewModel(
         // before the watchdog logs it as stuck. Generous so a slow-but-legitimate DB
         // read isn't flagged; the point is to catch a load that never completes/fails.
         private const val SPINNER_WATCHDOG_MS = 8_000L
+
+        // Ceiling on how stale a persisted composer draft may be while typing (#1122).
+        private const val DRAFT_SAVE_INTERVAL_MS = 2_000L
     }
 
     private val enricher = ConversationEnricher()
@@ -596,11 +600,7 @@ class ConversationListViewModel(
                 // its text — the restore of `current` below hasn't run yet). Skip
                 // while an edit is in progress: edit mode hijacks the same composer,
                 // and its text is not the conversation's draft.
-                previous?.let {
-                    if (_messagesUiState.value.isEditingMessageId == null) {
-                        conversationService.updateLocalDraft(it, messageInputTextState.toMessageMarkdown())
-                    }
-                }
+                previous?.let { flushDraft(it) }
                 previous = current
                 if (current == null) {
                     messageInputTextState.clear()
@@ -609,16 +609,17 @@ class ConversationListViewModel(
                 // Entering `current`: restore its saved draft (byte-faithful).
                 val draft = conversationService.readDraft(current)
                 messageInputTextState.applyMarkDownContent(draft ?: "")
-                // Persist edits to THIS conversation, debounced. drop(1) skips the
-                // just-restored value so it can't echo straight back out.
+                // Persist edits to THIS conversation. sample(), not debounce():
+                // debounce only fires on quiescence, so someone typing continuously
+                // for a minute would have nothing saved and the leave-the-thread
+                // capture below would be the only thing standing between them and a
+                // lost draft. sample ticks regardless, capping staleness at
+                // DRAFT_SAVE_INTERVAL_MS whatever the typing pattern. drop(1) skips
+                // the just-restored value so it can't echo straight back out.
                 snapshotFlow { messageInputTextState.annotatedString }
                     .drop(1)
-                    .debounce(600)
-                    .collect {
-                        if (_messagesUiState.value.isEditingMessageId == null) {
-                            conversationService.updateLocalDraft(current, messageInputTextState.toMessageMarkdown())
-                        }
-                    }
+                    .sample(DRAFT_SAVE_INTERVAL_MS)
+                    .collect { flushDraft(current) }
             }
         }
 
@@ -939,8 +940,29 @@ class ConversationListViewModel(
         _uiState.update { it.copy(uiDialog = null) }
     }
 
+    /**
+     * Persist whatever is in the composer right now as [conversationId]'s draft
+     * (#1122). No-op while an edit is in progress: edit mode hijacks the same
+     * composer, and its text is not the conversation's draft.
+     */
+    private suspend fun flushDraft(conversationId: Uuid) {
+        if (_messagesUiState.value.isEditingMessageId != null) return
+        conversationService.updateLocalDraft(conversationId, messageInputTextState.toMessageMarkdown())
+    }
+
     fun onAction(action: ConversationListUiAction) {
         when (action) {
+            // Belt-and-braces draft save (#1122): the thread's lifecycle owner is
+            // stopping — the user navigated away, or the app went to background and
+            // the OS may kill the process before anything else runs. Keyed off the
+            // live ActiveConversation, so it's a no-op once the thread has already
+            // been left (the collector saved and cleared the composer by then).
+            is ConversationListUiAction.FlushDraft -> {
+                ActiveConversation.conversation.value?.let {
+                    viewModelScope.launch { flushDraft(it) }
+                }
+            }
+
             is ConversationListUiAction.ConversationClicked -> {
                 // User explicitly picked a conversation — drop any pending
                 // notification tap so a late-arriving sync can't yank them
