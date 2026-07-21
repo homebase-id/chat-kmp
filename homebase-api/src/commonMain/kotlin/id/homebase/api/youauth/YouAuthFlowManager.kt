@@ -23,6 +23,7 @@ import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.share.ShareAuthBridge
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -331,17 +332,30 @@ class YouAuthFlowManager(
         }
     }
 
-    /** Logout and clear credentials. */
-    suspend fun logout() {
+    /**
+     * Logout and clear credentials.
+     *
+     * Every teardown step is individually guarded: once we've decided to log out, no single
+     * failing step may block the `_authState` flip below. A corrupted shared secret or DB key
+     * makes calls like [DriveSyncManager.clearStorage] throw, and an unguarded throw here used
+     * to leave the app wedged half-authenticated with a dead logout button — recoverable only
+     * by clearing app data.
+     *
+     * Pass [force] to skip the backend notify entirely (dev menu escape hatch) — the server
+     * round-trip needs valid credentials, which is exactly what's broken in that state.
+     */
+    suspend fun logout(force: Boolean = false) {
         // Notify the backend first — this needs valid credentials.
-        try {
-            val credentials = CredentialStorage.getCredentials()
-            if (credentials != null) {
-                val provider = YouAuthProvider(httpClient, credentials.identity)
-                provider.logout()
+        if (!force) {
+            try {
+                val credentials = CredentialStorage.getCredentials()
+                if (credentials != null) {
+                    val provider = YouAuthProvider(httpClient, credentials.identity)
+                    provider.logout()
+                }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "Error during logout" }
             }
-        } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Error during logout" }
         }
 
         // Tear down background work that reads credentials BEFORE nulling them.
@@ -351,29 +365,35 @@ class YouAuthFlowManager(
         // IllegalStateException: No active credentials set). stop() is idempotent;
         // AuthConnectionCoordinator.disconnect() will call it again when the
         // authState flip below lands.
-        driveSyncManager.stop()
+        stepOrLog("driveSyncManager.stop") { driveSyncManager.stop() }
 
         // Wipe all identity-scoped state BEFORE flipping _authState to Unauthenticated.
         // Emitting Unauthenticated tears down the authenticated nav graph (and with it
         // SettingsViewModel.viewModelScope, which is the coroutine currently running
         // this logout). If we emit first, driveSyncManager.clearStorage() — and any
         // other cache clears — get cancelled mid-flight, leaving stale DB rows behind.
-        credentialsManager.removeActiveCredentials()
-        driveSyncManager.clearStorage()
-        driveFileProviderCached.clearCaches()
-        publicProfileProviderCached.clearCaches()
+        //
+        // Credentials go first. They are what "logged in" actually means: CredentialStorage is
+        // the persistent copy that restoreSession() reads on the next launch, so if it survives,
+        // the user is silently signed back in no matter what the UI showed. Everything below it
+        // is cache/row cleanup — worth doing, but none of it can un-log-you-out. Ordering the
+        // fragile DB teardown ahead of the credential wipe (as this used to) meant a throwing
+        // clearStorage() left the Keychain populated.
+        stepOrLog("removeActiveCredentials") { credentialsManager.removeActiveCredentials() }
+        stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
+        stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
+
+        stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
+        stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }
+        stepOrLog("publicProfileProvider.clearCaches") { publicProfileProviderCached.clearCaches() }
         // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
-        // else the app-level module wants to flush). Wrapped in runCatching so a
-        // failing hook can't block the authState flip that follows — we'd rather
-        // log out with a stale Coil entry than get stuck half-authenticated.
-        runCatching { clearPlatformCaches() }
-            .onFailure { Logger.e(throwable = it, tag = TAG) { "clearPlatformCaches failed" } }
-        CredentialStorage.clearCredentials()
-        ShareAuthBridge.clearAuth()
+        // else the app-level module wants to flush).
+        stepOrLog("clearPlatformCaches") { clearPlatformCaches() }
 
         _authState.value = YouAuthState.Unauthenticated
         Logger.i(tag = TAG) { "User logged out" }
     }
+
 
     /** Check if authentication is in progress. */
     val isAuthenticating: Boolean
@@ -414,5 +434,20 @@ class YouAuthFlowManager(
                 cancelAuth()
             }
         }
+    }
+}
+
+/**
+ * Run one logout teardown step, logging and swallowing any failure so the caller can always
+ * reach the `_authState` flip. Cancellation is rethrown — it means our own scope is going away,
+ * which is a different situation from a step that simply failed.
+ */
+internal suspend fun stepOrLog(name: String, step: suspend () -> Unit) {
+    try {
+        step()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.e(throwable = e, tag = "YouAuth") { "Logout step '$name' failed — continuing" }
     }
 }
