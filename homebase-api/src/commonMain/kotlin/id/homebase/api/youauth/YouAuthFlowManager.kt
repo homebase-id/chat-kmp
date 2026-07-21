@@ -372,15 +372,23 @@ class YouAuthFlowManager(
         // SettingsViewModel.viewModelScope, which is the coroutine currently running
         // this logout). If we emit first, driveSyncManager.clearStorage() — and any
         // other cache clears — get cancelled mid-flight, leaving stale DB rows behind.
+        //
+        // Credentials go first. They are what "logged in" actually means: CredentialStorage is
+        // the persistent copy that restoreSession() reads on the next launch, so if it survives,
+        // the user is silently signed back in no matter what the UI showed. Everything below it
+        // is cache/row cleanup — worth doing, but none of it can un-log-you-out. Ordering the
+        // fragile DB teardown ahead of the credential wipe (as this used to) meant a throwing
+        // clearStorage() left the Keychain populated.
         stepOrLog("removeActiveCredentials") { credentialsManager.removeActiveCredentials() }
+        stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
+        stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
+
         stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
         stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }
         stepOrLog("publicProfileProvider.clearCaches") { publicProfileProviderCached.clearCaches() }
         // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
         // else the app-level module wants to flush).
         stepOrLog("clearPlatformCaches") { clearPlatformCaches() }
-        stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
-        stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
 
         _authState.value = YouAuthState.Unauthenticated
         Logger.i(tag = TAG) { "User logged out" }
