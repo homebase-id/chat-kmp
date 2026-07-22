@@ -250,13 +250,21 @@ fun ContactDetailScreen(
 
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }
-                    // Always show all three tabs; each renders a friendly empty state when it has
-                    // nothing, so the contact's layout stays consistent.
-                    val tabs = listOf(
-                        ContactDetailTab.DETAILS,
-                        ContactDetailTab.ACTIVITY,
-                        ContactDetailTab.ABOUT,
-                    )
+                    // A pending incoming request has no connection-scoped data yet: Activity needs
+                    // a conversation and About needs synced ext_data, neither of which exists before
+                    // connecting. Collapse to the single Details tab (which itself hides its
+                    // connection-scoped sections below) so the public profile stands alone (#921).
+                    val tabs = if (uiState.isPendingIncoming) {
+                        listOf(ContactDetailTab.DETAILS)
+                    } else {
+                        // Always show all three tabs; each renders a friendly empty state when it has
+                        // nothing, so the contact's layout stays consistent.
+                        listOf(
+                            ContactDetailTab.DETAILS,
+                            ContactDetailTab.ACTIVITY,
+                            ContactDetailTab.ABOUT,
+                        )
+                    }
                     var selectedTab by rememberSaveable(entry.uniqueId) {
                         mutableStateOf(ContactDetailTab.DETAILS)
                     }
@@ -302,13 +310,19 @@ fun ContactDetailScreen(
                             when (current) {
                                 ContactDetailTab.DETAILS -> {
                                     uiState.introducedByName?.let { IntroducedBySection(it) }
-                                    ContactFieldsSection(
-                                        entry = entry,
-                                        expanded = detailsExpanded,
-                                        onToggleMore = { detailsExpanded = !detailsExpanded },
-                                    )
+                                    // Contact fields ("None" pre-connection), groups-in-common, and
+                                    // circles are all empty/placeholder before connecting — for a
+                                    // pending incoming request show only the header's public profile
+                                    // so the Accept/Reject decision has real, non-placeholder context.
+                                    if (!uiState.isPendingIncoming) {
+                                        ContactFieldsSection(
+                                            entry = entry,
+                                            expanded = detailsExpanded,
+                                            onToggleMore = { detailsExpanded = !detailsExpanded },
+                                        )
+                                    }
                                     // Circles + groups-in-common only apply to Homebase identities.
-                                    if (uiState.hasOdinId) {
+                                    if (uiState.hasOdinId && !uiState.isPendingIncoming) {
                                         GroupsInCommonSection(
                                             groups = uiState.groupsInCommon,
                                             isConnected = uiState.isConnected,
