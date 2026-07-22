@@ -234,6 +234,8 @@ class ContactDetailViewModel(
                             .takeIf { it.isNotBlank() && !it.equals(baseEntry.odinId, ignoreCase = true) }
                             ?: publicIdentity.displayNameOrDomain(),
                         status = baseEntry.status?.takeIf { it.isNotBlank() } ?: publicIdentity.status,
+                        shortBio = baseEntry.shortBio?.takeIf { it.isNotBlank() }
+                            ?: publicIdentity.shortBioSummary,
                     )
                 } else {
                     baseEntry

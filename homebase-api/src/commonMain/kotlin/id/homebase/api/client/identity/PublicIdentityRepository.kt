@@ -96,6 +96,9 @@ class PublicIdentityRepository(
         return try {
             val nameData = root.siteDataSectionData("name")
             val statusData = root.siteDataSectionData("status")
+            // Bio summary lives in its own section; its text field key is `short_bio`
+            // (ProfileConfig.BioId in odin-js), same key the long bio uses.
+            val bioSummaryData = root.siteDataSectionData("short-bio-summary")
 
             PublicIdentity(
                 odinId = odinId,
@@ -103,6 +106,7 @@ class PublicIdentityRepository(
                 firstName = nameData?.get("givenName")?.jsonPrimitive?.contentOrNull,
                 surName = nameData?.get("surname")?.jsonPrimitive?.contentOrNull,
                 status = statusData?.get("status")?.jsonPrimitive?.contentOrNull,
+                shortBioSummary = bioSummaryData?.get("short_bio")?.jsonPrimitive?.contentOrNull,
             )
         } catch (e: Exception) {
             Logger.e(tag = TAG) { "Parsing identity sections for $odinId failed: ${e.message}" }

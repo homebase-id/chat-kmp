@@ -223,14 +223,19 @@ fun ContactDetailScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
-                            Icon(
-                                Icons.Outlined.Edit,
-                                contentDescription = stringResource(MR.string.contactbook_detail_edit),
-                            )
-                        }
-                        if (uiState.entry != null) {
-                            ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                        // Edit + the management menu (block/disconnect/delete) act on a saved
+                        // contact — meaningless for a not-yet-accepted incoming request, whose
+                        // only actions are Accept/Reject in the profile card below (#921).
+                        if (!uiState.isPendingIncoming) {
+                            IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = stringResource(MR.string.contactbook_detail_edit),
+                                )
+                            }
+                            if (uiState.entry != null) {
+                                ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                            }
                         }
                     },
                 )
@@ -248,23 +253,27 @@ fun ContactDetailScreen(
 
                 entry == null -> {}
 
+                // A pending incoming request has no connection-scoped data (contact fields,
+                // groups-in-common, circles are empty; Activity needs a conversation and About
+                // needs synced ext_data — none exist before connecting). Show a self-contained
+                // public-profile card to inform Accept/Reject instead of the placeholder tabs
+                // (#921). Once accepted, this same screen flips to the full detail below.
+                uiState.isPendingIncoming -> PendingRequestProfile(
+                    entry = entry,
+                    onAccept = { viewModel.onAction(ContactDetailAction.AcceptRequestClicked) },
+                    onReject = { viewModel.onAction(ContactDetailAction.RejectRequestClicked) },
+                    actionInProgress = uiState.actionInProgress,
+                )
+
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }
-                    // A pending incoming request has no connection-scoped data yet: Activity needs
-                    // a conversation and About needs synced ext_data, neither of which exists before
-                    // connecting. Collapse to the single Details tab (which itself hides its
-                    // connection-scoped sections below) so the public profile stands alone (#921).
-                    val tabs = if (uiState.isPendingIncoming) {
-                        listOf(ContactDetailTab.DETAILS)
-                    } else {
-                        // Always show all three tabs; each renders a friendly empty state when it has
-                        // nothing, so the contact's layout stays consistent.
-                        listOf(
-                            ContactDetailTab.DETAILS,
-                            ContactDetailTab.ACTIVITY,
-                            ContactDetailTab.ABOUT,
-                        )
-                    }
+                    // Always show all three tabs; each renders a friendly empty state when it has
+                    // nothing, so the contact's layout stays consistent.
+                    val tabs = listOf(
+                        ContactDetailTab.DETAILS,
+                        ContactDetailTab.ACTIVITY,
+                        ContactDetailTab.ABOUT,
+                    )
                     var selectedTab by rememberSaveable(entry.uniqueId) {
                         mutableStateOf(ContactDetailTab.DETAILS)
                     }
@@ -310,19 +319,13 @@ fun ContactDetailScreen(
                             when (current) {
                                 ContactDetailTab.DETAILS -> {
                                     uiState.introducedByName?.let { IntroducedBySection(it) }
-                                    // Contact fields ("None" pre-connection), groups-in-common, and
-                                    // circles are all empty/placeholder before connecting — for a
-                                    // pending incoming request show only the header's public profile
-                                    // so the Accept/Reject decision has real, non-placeholder context.
-                                    if (!uiState.isPendingIncoming) {
-                                        ContactFieldsSection(
-                                            entry = entry,
-                                            expanded = detailsExpanded,
-                                            onToggleMore = { detailsExpanded = !detailsExpanded },
-                                        )
-                                    }
+                                    ContactFieldsSection(
+                                        entry = entry,
+                                        expanded = detailsExpanded,
+                                        onToggleMore = { detailsExpanded = !detailsExpanded },
+                                    )
                                     // Circles + groups-in-common only apply to Homebase identities.
-                                    if (uiState.hasOdinId && !uiState.isPendingIncoming) {
+                                    if (uiState.hasOdinId) {
                                         GroupsInCommonSection(
                                             groups = uiState.groupsInCommon,
                                             isConnected = uiState.isConnected,
