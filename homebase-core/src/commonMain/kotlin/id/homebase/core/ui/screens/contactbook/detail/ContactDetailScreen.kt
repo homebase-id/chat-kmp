@@ -260,7 +260,12 @@ fun ContactDetailScreen(
                 // (#921). Once accepted, this same screen flips to the full detail below.
                 uiState.isPendingIncoming -> PendingRequestProfile(
                     entry = entry,
-                    onAccept = { viewModel.onAction(ContactDetailAction.AcceptRequestClicked) },
+                    assignableCircles = uiState.assignableCircles,
+                    onAccept = { selectedCircleIds ->
+                        viewModel.onAction(
+                            ContactDetailAction.AcceptRequestWithCircles(selectedCircleIds)
+                        )
+                    },
                     onReject = { viewModel.onAction(ContactDetailAction.RejectRequestClicked) },
                     actionInProgress = uiState.actionInProgress,
                 )

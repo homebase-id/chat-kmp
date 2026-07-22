@@ -285,11 +285,22 @@ class ContactDetailViewModel(
                     .filter { it.name.isNotBlank() }
                     .distinctBy { it.id.lowercase() }
                     .sortedBy { it.name.lowercase() }
+                // Every user-defined circle the user could add a contact to — independent of this
+                // contact's membership. Same system-circle exclusion as the chips above; feeds the
+                // pending-request circle picker (#921 Part B).
+                val assignableCircles = circ.circles
+                    .map { it.circle }
+                    .filterNot { it.disabled || isSystemCircle(it.id) }
+                    .filter { it.name.isNotBlank() }
+                    .map { ContactCircleUi(it.id, it.name, pending = false) }
+                    .distinctBy { it.id.lowercase() }
+                    .sortedBy { it.name.lowercase() }
                 _uiState.update {
                     it.copy(
                         entry = entry,
                         connectionStatus = status,
                         circles = circleItems,
+                        assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
                         requestDirection = requestDirection,
@@ -526,6 +537,16 @@ class ContactDetailViewModel(
             ContactDetailAction.AcceptRequestClicked -> handleRequestAction(
                 event = ContactDetailEvent.RequestAccepted,
             ) { connectionRequestService.acceptIncomingRequest(it) }
+            is ContactDetailAction.AcceptRequestWithCircles -> {
+                // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
+                // any that fail to parse rather than aborting the accept.
+                val circleUuids = action.circleIds.mapNotNull {
+                    runCatching { Uuid.parseHex(it) }.getOrNull()
+                }
+                handleRequestAction(event = ContactDetailEvent.RequestAccepted) {
+                    connectionRequestService.acceptIncomingRequest(it, circleUuids)
+                }
+            }
             ContactDetailAction.RejectRequestClicked -> handleRequestAction(
                 event = ContactDetailEvent.RequestRejected,
             ) { connectionRequestService.rejectIncomingRequest(it) }
