@@ -237,8 +237,10 @@ actual object FFmpegUtils {
         val heightPx = probe?.heightPx ?: 0
         val codecMime = probe?.codec  // short form, e.g. "h264" / "hevc"; null forces re-encode
         val rotation = probe?.rotation ?: 0
-        val bitDepth = probe?.bitDepth ?: 8
-        val isHdr = probe?.isHdr ?: false
+        // Keep null when the probe couldn't determine these — the planner fails closed and
+        // re-encodes rather than passing a possibly-10-bit source through untouched (#959).
+        val bitDepth = probe?.bitDepth
+        val isHdr = probe?.isHdr
 
         val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
         val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
@@ -263,7 +265,7 @@ actual object FFmpegUtils {
         // unreadable file), so the hardware encoder is never handed a degenerate command.
         val dimensionsUnknown = widthPx <= 0 || heightPx <= 0
         val encoders =
-            if ((allowTenBit && bitDepth > 8) || dimensionsUnknown) listOf("libx264")
+            if ((allowTenBit && (bitDepth ?: 0) > 8) || dimensionsUnknown) listOf("libx264")
             else listOf("h264_videotoolbox", "libx264")
         for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(
