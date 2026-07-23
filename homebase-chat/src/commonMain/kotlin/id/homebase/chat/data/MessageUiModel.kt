@@ -26,6 +26,18 @@ data class MessageUiModel(
     val conversationId: Uuid, // groupId
     val content: String, // the message
     val userDate: Instant, // User-specified message timestamp (from appData.userDate)
+    /**
+     * The value stored in `DriveMainIndex.userDate` for this message
+     * (`HomebaseFile.sqlUserDateMs`), i.e. [userDate] *without* the
+     * display-safety clamp to the server-stamped `transitCreated`.
+     *
+     * Read-bookkeeping must compare on this scale: `selectAllUnreadCount`
+     * filters on the SQL column, so advancing `lastReadTime` to the clamped
+     * [userDate] can leave the badge stuck on a message the user has read.
+     * Rendering and ordering keep using [userDate]. Defaults to [userDate] for
+     * synthetic models that have no SQL row.
+     */
+    val sqlUserDate: Instant = userDate,
     val modified: Instant?, // When the message was last modified
     val created: Instant, // Server-side creation timestamp
     val originalAuthor: OdinId?,

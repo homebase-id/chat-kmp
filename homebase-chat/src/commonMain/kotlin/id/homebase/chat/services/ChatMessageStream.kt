@@ -148,17 +148,46 @@ class ChatMessageStream(
     suspend fun loadConversation(conversationId: Uuid) {
         val start = TimeSource.Monotonic.markNow()
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
-        val result = fetchMessages(
+        // Register the load before reading: until setInitialWindow runs there is no
+        // window, and both reconcilers skip windowless conversations — so a write
+        // committing inside the fetch would be invisible to the fetch's SQLite
+        // snapshot AND dropped by them, leaving a stale window cached forever (#1135).
+        paginatedState.beginInitialLoad(conversationId)
+        val racedConcurrentWrite = try {
+            val result = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+            )
+            val elapsed = start.elapsedNow()
+            Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
+            paginatedState.setInitialWindow(
+                conversationId = conversationId,
+                messages = result.records,
+                olderCursor = result.cursor,
+                hasOlderMessages = result.hasMoreRows,
+            )
+            paginatedState.endInitialLoad(conversationId)
+        } catch (t: Throwable) {
+            // Without this a thrown fetch leaves the conversation permanently
+            // "loading", so every later reconciler flags it and no one clears it.
+            paginatedState.endInitialLoad(conversationId)
+            throw t
+        }
+        if (!racedConcurrentWrite) return
+
+        // Exactly one re-read: the window now exists, so anything landing from
+        // here on is picked up by the reconcilers. Looping until quiet would
+        // never terminate under sustained sync traffic.
+        val fresh = fetchMessages(
             conversationId = conversationId,
             limit = PaginatedConversationState.PAGE_SIZE,
         )
-        val elapsed = start.elapsedNow()
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
+        Logger.d("ChatMessageStream: loadConversation($conversationId) raced a concurrent write → re-read ${fresh.records.size} messages (hasMore=${fresh.hasMoreRows})")
         paginatedState.setInitialWindow(
             conversationId = conversationId,
-            messages = result.records,
-            olderCursor = result.cursor,
-            hasOlderMessages = result.hasMoreRows,
+            messages = fresh.records,
+            olderCursor = fresh.cursor,
+            hasOlderMessages = fresh.hasMoreRows,
         )
     }
 
@@ -275,7 +304,6 @@ class ChatMessageStream(
      * rather than silently landing on the latest page.
      */
     suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid): Boolean {
-        val start = TimeSource.Monotonic.markNow()
         val target = getMessage(messageUniqueId) ?: run {
             Logger.d(tag = "ChatPaging") {
                 "loadAround($conversationId, $messageUniqueId) anchor not in DB; falling back to loadConversation"
@@ -283,6 +311,27 @@ class ChatMessageStream(
             loadConversation(conversationId)
             return false
         }
+        // Same read-then-register race as loadConversation, and this is the path a
+        // scroll-anchored open takes (#1135).
+        paginatedState.beginInitialLoad(conversationId)
+        val racedConcurrentWrite = try {
+            seedWindowAround(conversationId, messageUniqueId, target)
+            paginatedState.endInitialLoad(conversationId)
+        } catch (t: Throwable) {
+            paginatedState.endInitialLoad(conversationId)
+            throw t
+        }
+        if (racedConcurrentWrite) seedWindowAround(conversationId, messageUniqueId, target)
+        return true
+    }
+
+    /** Build (or rebuild) a window centered on [target]. */
+    private suspend fun seedWindowAround(
+        conversationId: Uuid,
+        messageUniqueId: Uuid,
+        target: MessageUiModel,
+    ) {
+        val start = TimeSource.Monotonic.markNow()
         val halfPage = PaginatedConversationState.PAGE_SIZE / 2
         val olderHalfCursor = QueryBatchCursor(
             paging = TimeRowCursor(UnixTimeUtc(target.userDate), 0L)
@@ -316,7 +365,6 @@ class ChatMessageStream(
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
                 "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
         }
-        return true
     }
 
     /**
@@ -338,6 +386,9 @@ class ChatMessageStream(
      * preserved.
      */
     private suspend fun refreshCachedWindows() {
+        // Conversations mid-initial-load have no window to walk yet; flag them so
+        // loadConversation re-reads instead of caching its pre-write snapshot.
+        paginatedState.markAllInitialLoadsDirty()
         val snapshot = paginatedState.windows.value
         if (snapshot.isEmpty()) return
         for ((conversationId, window) in snapshot) {
@@ -371,7 +422,13 @@ class ChatMessageStream(
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
             if (isConversationLeft(conversationId)) return@forEach
-            val window = paginatedState.getWindow(conversationId) ?: return@forEach
+            val window = paginatedState.getWindow(conversationId) ?: run {
+                // No window yet. If that's because an initial load is mid-fetch,
+                // flag it — otherwise this batch is lost to both this gate and the
+                // loader's pre-write snapshot (#1135).
+                paginatedState.markInitialLoadDirty(conversationId)
+                return@forEach
+            }
             // Gate: when the user has paged backwards (hasNewerMessages == true), the
             // window doesn't include the latest messages. Stream events that arrive while
             // the user is deep in history would land out of order; defer them until the

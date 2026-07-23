@@ -98,6 +98,73 @@ class PaginatedConversationStateTest {
         assertTrue(state.windows.value.isEmpty())
     }
 
+    // ---------- initial-load race bookkeeping (#1135) ----------
+
+    @Test
+    fun endInitialLoad_reportsWhetherAWriteLandedDuringTheLoad() {
+        val state = PaginatedConversationState()
+
+        state.beginInitialLoad(convoId)
+        assertFalse(state.endInitialLoad(convoId), "quiet load must not ask for a re-read")
+
+        state.beginInitialLoad(convoId)
+        state.markInitialLoadDirty(convoId)
+        assertTrue(state.endInitialLoad(convoId), "a write during the load must ask for a re-read")
+    }
+
+    @Test
+    fun endInitialLoad_clearsTheMarker_soALaterWriteIsNotAttributedToTheFinishedLoad() {
+        // The failure path calls endInitialLoad too; if the marker survived, every
+        // later sync round would keep flagging the conversation forever.
+        val state = PaginatedConversationState()
+        state.beginInitialLoad(convoId)
+        state.endInitialLoad(convoId)
+
+        state.markInitialLoadDirty(convoId)
+        state.markAllInitialLoadsDirty()
+
+        assertFalse(state.endInitialLoad(convoId))
+    }
+
+    @Test
+    fun markInitialLoadDirty_isScopedToTheConversation() {
+        val state = PaginatedConversationState()
+        val otherConvoId = Uuid.parse("44444444-4444-4444-4444-444444444444")
+        state.beginInitialLoad(convoId)
+        state.beginInitialLoad(otherConvoId)
+
+        state.markInitialLoadDirty(otherConvoId)
+
+        assertFalse(state.endInitialLoad(convoId))
+        assertTrue(state.endInitialLoad(otherConvoId))
+    }
+
+    @Test
+    fun markAllInitialLoadsDirty_flagsEveryInFlightLoad() {
+        // refreshCachedWindows walks `windows`, which a mid-load conversation is
+        // absent from — so the post-sync path has to flag them all.
+        val state = PaginatedConversationState()
+        val otherConvoId = Uuid.parse("55555555-5555-5555-5555-555555555555")
+        state.beginInitialLoad(convoId)
+        state.beginInitialLoad(otherConvoId)
+
+        state.markAllInitialLoadsDirty()
+
+        assertTrue(state.endInitialLoad(convoId))
+        assertTrue(state.endInitialLoad(otherConvoId))
+    }
+
+    @Test
+    fun reset_dropsInFlightLoadMarkers() {
+        val state = PaginatedConversationState()
+        state.beginInitialLoad(convoId)
+        state.markInitialLoadDirty(convoId)
+
+        state.reset()
+
+        assertFalse(state.endInitialLoad(convoId), "logout must not leave a re-read pending")
+    }
+
     @Test
     fun prependOlderMessages_keepsAscendingOrder_andDedupesByMessageId() {
         val state = PaginatedConversationState()

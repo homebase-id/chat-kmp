@@ -58,6 +58,7 @@ import id.homebase.resources.chat_poll_ended_other
 import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
@@ -169,6 +170,7 @@ suspend fun mapToMessageData(
                 fileId = header.fileId,
                 conversationId = appData.groupId!!,
                 userDate = deletedUserDate.toInstant(),
+                sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
                 modified = metadata.updated.toInstant(),
                 created = metadata.created.toInstant(),
                 originalAuthor = metadata.originalAuthor,
@@ -315,6 +317,7 @@ suspend fun mapToMessageData(
             conversationId = appData.groupId!!,
             content = messageAppData.getMessage(),
             userDate = userDate.toInstant(),
+            sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
             modified = metadata.updated.toInstant(),
             created = metadata.created.toInstant(),
             originalAuthor = metadata.originalAuthor,
@@ -354,6 +357,7 @@ suspend fun mapToMessageData(
                 conversationId = appData.groupId!!,
                 content = "Failed to parse message from server",
                 userDate = metadata.created.toInstant(),
+                sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
                 modified = metadata.updated.toInstant(),
                 created = metadata.created.toInstant(),
                 originalAuthor = metadata.originalAuthor,
