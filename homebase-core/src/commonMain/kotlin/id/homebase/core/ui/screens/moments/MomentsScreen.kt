@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -74,6 +73,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -104,11 +104,14 @@ import id.homebase.core.moments.services.MomentSource
 import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.core.ui.screens.moments.widget.MomentDatePill
 import id.homebase.core.ui.screens.moments.widget.MomentInlineVideoTile
+import id.homebase.core.ui.screens.moments.widget.MomentMediaFrame
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import id.homebase.core.ui.screens.moments.widget.MomentMediaTestTags
 import id.homebase.core.ui.screens.moments.widget.MomentUploadProgressOverlay
 import id.homebase.core.ui.screens.moments.widget.SenderAvatarBadge
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
 import id.homebase.core.ui.screens.moments.widget.aspectRatioFor
+import id.homebase.core.ui.screens.moments.widget.momentMediaMaxHeight
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
@@ -1067,6 +1070,7 @@ private fun MomentPostCard(
                 )
             }
             .padding(horizontal = 16.dp)
+            .testTag(MomentMediaTestTags.CARD)
             .clip(MaterialTheme.shapes.large)
             // Selected ring shows up in wide-screen mode where the right pane
             // mirrors this card's contents. In compact mode `isSelected` is
@@ -1149,29 +1153,31 @@ private fun MomentPostCard(
                     // is preserved by forwarding to onAddReaction; the
                     // triple-tap flame is lost only on the video tile itself
                     // (still works on header / badges / engagement strip).
-                    // Same landscape cap as the photo path so a wide video
-                    // doesn't render as a thin strip (see [MaxFeedMediaAspect]).
+                    // Crop cap so a wide video doesn't render as a thin strip
+                    // (see [MaxFeedMediaAspect]); the frame then applies the same
+                    // viewport height bound the photo paths use, so a portrait
+                    // video can't grow past one screen either.
                     val aspect = (aspectRatioFor(singleVideoPayload) ?: 1f)
                         .coerceAtMost(MaxFeedMediaAspect)
-                    MomentInlineVideoTile(
-                        payload = singleVideoPayload,
-                        fileId = moment.fileId,
-                        driveId = moment.driveId,
-                        keyHeader = moment.keyHeader,
-                        previewThumbnail = moment.previewThumbnail,
-                        isUploading = uploadStatus != null,
-                        isPlaying = isVideoPlaying,
-                        onPlayTap = onToggleVideoPlay,
-                        onDoubleTap = { onAddReaction(HeartEmoji) },
-                        isMuted = isMuted,
-                        onToggleMute = onToggleMute,
-                        sharedTransitionScope = null,
-                        animatedVisibilityScope = null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(aspect),
-                        fitToContent = commentsOpen,
-                    )
+                    MomentMediaFrame(aspect = aspect, maxHeight = momentMediaMaxHeight()) {
+                        MomentInlineVideoTile(
+                            payload = singleVideoPayload,
+                            fileId = moment.fileId,
+                            driveId = moment.driveId,
+                            keyHeader = moment.keyHeader,
+                            previewThumbnail = moment.previewThumbnail,
+                            isUploading = uploadStatus != null,
+                            isPlaying = isVideoPlaying,
+                            onPlayTap = onToggleVideoPlay,
+                            onDoubleTap = { onAddReaction(HeartEmoji) },
+                            isMuted = isMuted,
+                            onToggleMute = onToggleMute,
+                            sharedTransitionScope = null,
+                            animatedVisibilityScope = null,
+                            modifier = Modifier.fillMaxSize(),
+                            fitToContent = commentsOpen,
+                        )
+                    }
                 } else {
                     MomentMediaGallery(
                         payloads = moment.payloads,
