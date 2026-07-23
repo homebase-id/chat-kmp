@@ -46,8 +46,8 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -82,12 +82,12 @@ class ChatMessageStreamLoadRaceTest {
         val alreadySynced = fixture.seedMessage(userDateMs = 1_000L)
         val racingMessage = fixture.buildMessageFile(userDateMs = 2_000L)
 
-        fixture.gate.armNextRead()
+        val fetchA = fixture.gate.armNextRead()
         val load = launch { fixture.stream.loadConversation(conversationId) }
         advanceUntilIdle()
 
         // Reader is now parked holding the pre-write snapshot.
-        fixture.gate.readTaken.await()
+        fetchA.reached.await()
         fixture.commit(racingMessage)
         fixture.eventBus.emit(
             BackendEvent.DriveEvent.Stopped(
@@ -98,7 +98,7 @@ class ChatMessageStreamLoadRaceTest {
         )
         advanceUntilIdle()
 
-        fixture.gate.releaseRead()
+        fetchA.release()
         load.join()
 
         val racingId = racingMessage.fileMetadata.appData.uniqueId!!
@@ -130,11 +130,11 @@ class ChatMessageStreamLoadRaceTest {
             false
         }
 
-        fixture.gate.armNextRead()
+        val fetchA = fixture.gate.armNextRead()
         val load = launch { fixture.stream.loadConversation(conversationId) }
         advanceUntilIdle()
 
-        fixture.gate.readTaken.await()
+        fetchA.reached.await()
         fixture.commit(racingMessage)
         fixture.eventBus.emit(
             BackendEvent.DataEvent.BatchReceived(
@@ -144,7 +144,7 @@ class ChatMessageStreamLoadRaceTest {
         )
         batchAtWindowGate.await()
 
-        fixture.gate.releaseRead()
+        fetchA.release()
         load.join()
 
         assertTrue(
@@ -153,6 +153,76 @@ class ChatMessageStreamLoadRaceTest {
                 racingMessage.fileMetadata.appData.uniqueId!!,
             ),
             "a WS-pushed batch for a conversation whose initial load is mid-fetch must not be dropped",
+        )
+        fixture.close()
+    }
+
+    @Test
+    fun loadConversation_rowCommittedDuringTheReRead_survivesTheWriteBack() = runTest {
+        // The re-read has its own snapshot boundary. By then the window exists, so a
+        // batch landing mid-re-read IS upserted into it by processIncrementalBatch —
+        // but the re-read's own write-back would replace that window with a page that
+        // predates the upsert. Same permanent loss as #1135, one fetch later, and with
+        // no reconciler left to heal it until the next DriveEvent.Stopped.
+        val fixture = buildFixture(this)
+        fixture.seedMessage(userDateMs = 1_000L)
+        val duringFetchA = fixture.buildMessageFile(userDateMs = 2_000L)
+        val duringReRead = fixture.buildMessageFile(userDateMs = 3_000L)
+
+        val batchAtWindowGate = CompletableDeferred<Unit>()
+        fixture.stream.isConversationLeft = { id ->
+            if (id == conversationId) batchAtWindowGate.complete(Unit)
+            false
+        }
+
+        val fetchA = fixture.gate.armNextRead()
+        val load = launch { fixture.stream.loadConversation(conversationId) }
+        advanceUntilIdle()
+
+        // Commit during the initial fetch — this is what triggers the re-read.
+        fetchA.reached.await()
+        fixture.commit(duringFetchA)
+        fixture.eventBus.emit(
+            BackendEvent.DriveEvent.Stopped(
+                driveId = chatDriveId,
+                totalCount = 1,
+                result = BackendEvent.DriveResult.Completed,
+            )
+        )
+        advanceUntilIdle()
+
+        // Arm the re-read's query before letting the initial fetch finish.
+        val reRead = fixture.gate.armNextRead()
+        fetchA.release()
+        reRead.reached.await()
+
+        // Commit during the re-read. The window exists now, so the WS path upserts it.
+        fixture.commit(duringReRead)
+        fixture.eventBus.emit(
+            BackendEvent.DataEvent.BatchReceived(
+                driveId = chatDriveId,
+                batchData = listOf(duringReRead),
+            )
+        )
+        batchAtWindowGate.await()
+
+        reRead.release()
+        load.join()
+
+        assertTrue(
+            fixture.stream.isMessageInWindow(
+                conversationId,
+                duringFetchA.fileMetadata.appData.uniqueId!!,
+            ),
+            "the re-read must still deliver the row that triggered it",
+        )
+        assertTrue(
+            fixture.stream.isMessageInWindow(
+                conversationId,
+                duringReRead.fileMetadata.appData.uniqueId!!,
+            ),
+            "a row upserted into the window while the re-read was in flight must survive " +
+                "its write-back — the re-read merges, it does not replace",
         )
         fixture.close()
     }
@@ -168,11 +238,11 @@ class ChatMessageStreamLoadRaceTest {
         // loadAround issues anchor-lookup → older half (DESC) → newer half (ASC).
         // Park on the newer half: it is the last read, and the racing row sorts
         // into it, so the pre-park snapshot provably excludes it.
-        fixture.gate.armNextRead { sql -> sql.contains("ORDER BY") && sql.contains("ASC") }
+        val fetchA = fixture.gate.armNextRead { sql -> sql.contains("ORDER BY") && sql.contains("ASC") }
         val load = launch { fixture.stream.loadConversationAroundMessage(conversationId, anchor) }
         advanceUntilIdle()
 
-        fixture.gate.readTaken.await()
+        fetchA.reached.await()
         fixture.commit(racingMessage)
         fixture.eventBus.emit(
             BackendEvent.DriveEvent.Stopped(
@@ -183,7 +253,7 @@ class ChatMessageStreamLoadRaceTest {
         )
         advanceUntilIdle()
 
-        fixture.gate.releaseRead()
+        fetchA.release()
         load.join()
 
         assertTrue(
@@ -370,37 +440,37 @@ class ChatMessageStreamLoadRaceTest {
 }
 
 /**
- * `SqlDriver` decorator that parks the reader thread immediately AFTER a single
- * armed `executeQuery` has run — the query's result set is already materialised,
- * so the caller provably holds a pre-park snapshot of the database while the
- * test mutates it from another thread.
+ * `SqlDriver` decorator that parks the reader thread immediately AFTER an armed
+ * `executeQuery` has run — the query's result set is already materialised, so the
+ * caller provably holds a pre-park snapshot of the database while the test mutates
+ * it from another thread.
+ *
+ * One stop is armed at a time; a test that needs to park twice (initial fetch and
+ * re-read) arms the second before releasing the first.
  *
  * Blocking here is intentional and safe: reads run on `DatabaseManager`'s IO
  * read dispatcher, never on the test scheduler.
  */
 private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
 
-    private val armed = AtomicBoolean(false)
-    private val release = CountDownLatch(1)
+    class ReadStop internal constructor(internal val matches: (String) -> Boolean) {
+        internal val gate = CountDownLatch(1)
 
-    @Volatile
-    private var matches: (String) -> Boolean = { true }
+        /** Completes once the parked query has produced its snapshot. */
+        val reached = CompletableDeferred<Unit>()
 
-    /** Completed once the armed query has produced its snapshot. */
-    val readTaken = CompletableDeferred<Unit>()
+        fun release() = gate.countDown()
+    }
 
+    private val armed = AtomicReference<ReadStop?>(null)
     private val reads = AtomicInteger(0)
 
     /** Total `executeQuery` calls seen; tests read deltas around a single call. */
     val readCount: Int get() = reads.get()
 
     /** Park on the next query, optionally only one whose SQL satisfies [matching]. */
-    fun armNextRead(matching: (String) -> Boolean = { true }) {
-        matches = matching
-        armed.set(true)
-    }
-
-    fun releaseRead() = release.countDown()
+    fun armNextRead(matching: (String) -> Boolean = { true }): ReadStop =
+        ReadStop(matching).also { armed.set(it) }
 
     override fun <R> executeQuery(
         identifier: Int?,
@@ -409,12 +479,14 @@ private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)?,
     ): QueryResult<R> {
-        val gated = armed.get() && matches(sql) && armed.compareAndSet(true, false)
+        val candidate = armed.get()
+        val stop = candidate
+            ?.takeIf { it.matches(sql) && armed.compareAndSet(it, null) }
         reads.incrementAndGet()
         val result = delegate.executeQuery(identifier, sql, mapper, parameters, binders)
-        if (gated) {
-            readTaken.complete(Unit)
-            release.await()
+        if (stop != null) {
+            stop.reached.complete(Unit)
+            stop.gate.await()
         }
         return result
     }

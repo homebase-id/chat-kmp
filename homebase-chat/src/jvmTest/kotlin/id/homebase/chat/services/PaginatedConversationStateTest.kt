@@ -98,6 +98,50 @@ class PaginatedConversationStateTest {
         assertTrue(state.windows.value.isEmpty())
     }
 
+    @Test
+    fun setInitialWindow_merge_keepsConcurrentUpsertsAndLetsTheFreshPageWinOnConflicts() {
+        // The raced re-read's write-back. Anything upserted into the window while
+        // that fetch ran is absent from its results; replacing would drop it.
+        val state = PaginatedConversationState()
+        val stale = message(userDateMs = 10, conversationId = convoId)
+        val upsertedDuringReRead = message(userDateMs = 30, conversationId = convoId)
+        state.setInitialWindow(convoId, listOf(stale, upsertedDuringReRead))
+
+        val refreshed = stale.copy(content = "edited")
+        val fromReRead = message(userDateMs = 20, conversationId = convoId)
+        state.setInitialWindow(
+            conversationId = convoId,
+            messages = listOf(refreshed, fromReRead),
+            olderCursor = QueryBatchCursor(paging = TimeRowCursor(UnixTimeUtc(10), 0L)),
+            hasOlderMessages = true,
+            merge = true,
+        )
+
+        val window = state.getWindow(convoId)!!
+        assertEquals(
+            listOf(stale.id, fromReRead.id, upsertedDuringReRead.id),
+            window.messages.map { it.id },
+            "a message the fresh page doesn't carry must survive the merge",
+        )
+        assertEquals(
+            "edited", window.messages.first { it.id == stale.id }.content,
+            "the fresh page wins on id conflicts",
+        )
+        assertTrue(window.hasOlderMessages, "cursors come from the fresh page")
+    }
+
+    @Test
+    fun setInitialWindow_withoutMerge_replaces() {
+        val state = PaginatedConversationState()
+        val gone = message(userDateMs = 10, conversationId = convoId)
+        state.setInitialWindow(convoId, listOf(gone))
+
+        val fresh = message(userDateMs = 20, conversationId = convoId)
+        state.setInitialWindow(convoId, listOf(fresh))
+
+        assertEquals(listOf(fresh.id), state.getWindow(convoId)!!.messages.map { it.id })
+    }
+
     // ---------- initial-load race bookkeeping (#1135) ----------
 
     @Test

@@ -178,6 +178,10 @@ class ChatMessageStream(
         // Exactly one re-read: the window now exists, so anything landing from
         // here on is picked up by the reconcilers. Looping until quiet would
         // never terminate under sustained sync traffic.
+        //
+        // merge = true because the re-read has its own snapshot boundary: a batch
+        // upserted into the (now existing) window while this fetch runs is absent
+        // from its results, and a replacing write would drop it permanently.
         val fresh = fetchMessages(
             conversationId = conversationId,
             limit = PaginatedConversationState.PAGE_SIZE,
@@ -188,6 +192,7 @@ class ChatMessageStream(
             messages = fresh.records,
             olderCursor = fresh.cursor,
             hasOlderMessages = fresh.hasMoreRows,
+            merge = true,
         )
     }
 
@@ -321,15 +326,22 @@ class ChatMessageStream(
             paginatedState.endInitialLoad(conversationId)
             throw t
         }
-        if (racedConcurrentWrite) seedWindowAround(conversationId, messageUniqueId, target)
+        if (racedConcurrentWrite) {
+            seedWindowAround(conversationId, messageUniqueId, target, merge = true)
+        }
         return true
     }
 
-    /** Build (or rebuild) a window centered on [target]. */
+    /**
+     * Build (or rebuild) a window centered on [target]. [merge] is set on the
+     * raced re-seed so a write upserted into the window while this fetch runs
+     * survives the write-back — see [PaginatedConversationState.setInitialWindow].
+     */
     private suspend fun seedWindowAround(
         conversationId: Uuid,
         messageUniqueId: Uuid,
         target: MessageUiModel,
+        merge: Boolean = false,
     ) {
         val start = TimeSource.Monotonic.markNow()
         val halfPage = PaginatedConversationState.PAGE_SIZE / 2
@@ -360,6 +372,7 @@ class ChatMessageStream(
             hasOlderMessages = olderHalf.hasMoreRows,
             newerCursor = newerHalf.cursor,
             hasNewerMessages = newerHalf.hasMoreRows,
+            merge = merge,
         )
         Logger.d(tag = "ChatPaging") {
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
