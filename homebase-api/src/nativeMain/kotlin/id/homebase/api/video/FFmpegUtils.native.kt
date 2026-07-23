@@ -138,8 +138,9 @@ actual object FFmpegUtils {
         val widthPx: Int,
         val heightPx: Int,
         val rotation: Int,
-        val bitDepth: Int,
-        val isHdr: Boolean,
+        /** Null when the probe couldn't determine it — planner fails closed (#959). */
+        val bitDepth: Int?,
+        val isHdr: Boolean?,
     )
 
     /**
@@ -157,27 +158,18 @@ actual object FFmpegUtils {
     private fun probeVideoNative(inputPath: String): NativeVideoProbe? {
         val v = bridge.getMediaInformation(inputPath)?.streams?.firstOrNull { it.type == "video" }
         if (v != null && (v.width ?: 0) > 0 && (v.height ?: 0) > 0) {
-            val pixFmt = v.pixelFormat?.lowercase().orEmpty()
-            val transfer = v.colorTransfer?.lowercase().orEmpty()
-            val primaries = v.colorPrimaries?.lowercase().orEmpty()
             return NativeVideoProbe(
                 codec = v.codec,
                 widthPx = v.width ?: 0,
                 heightPx = v.height ?: 0,
                 rotation = v.rotation ?: 0,
-                bitDepth = bitDepthFromPixFmt(pixFmt),
-                isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
-                    primaries.startsWith("bt2020"),
+                // Shared, fail-closed parsing (#959): null when the tags are absent, so an
+                // undeterminable source re-encodes rather than passing through as assumed 8-bit.
+                bitDepth = bitDepthFromPixFmt(v.pixelFormat),
+                isHdr = isHdrFromColorTags(v.colorTransfer, v.colorPrimaries),
             )
         }
         return avProbeVideoTrack(inputPath)
-    }
-
-    private fun bitDepthFromPixFmt(pixFmt: String): Int = when {
-        pixFmt.isBlank() -> 8
-        "12" in pixFmt -> 12
-        "10" in pixFmt || pixFmt.startsWith("p010") -> 10
-        else -> 8
     }
 
     /** AVFoundation track probe — native iOS metadata for files ffprobe can't read. */
@@ -194,10 +186,10 @@ actual object FFmpegUtils {
             ((deg % 360) + 360) % 360
         }
         // codec=null on the AVFoundation path: these files are re-encoded regardless
-        // (HEVC -> H.264), so the already-optimal short-circuit must stay off, and the
-        // real output codec is filled in post-encode. bitDepth/HDR default to 8-bit SDR
-        // (the planner's safe yuv420p pin); 10-bit/HDR detection here is a follow-up.
-        return NativeVideoProbe(codec = null, widthPx = w, heightPx = h, rotation = rotation, bitDepth = 8, isHdr = false)
+        // (HEVC -> H.264), so the already-optimal short-circuit must stay off. bitDepth/HDR are
+        // left null (AVFoundation can't read pix_fmt) — harmless since null codec already forces
+        // a re-encode, and consistent with the fail-closed contract (#959).
+        return NativeVideoProbe(codec = null, widthPx = w, heightPx = h, rotation = rotation, bitDepth = null, isHdr = null)
     }
 
     @OptIn(ExperimentalForeignApi::class)
