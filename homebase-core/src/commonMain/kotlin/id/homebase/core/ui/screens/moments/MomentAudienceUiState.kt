@@ -24,6 +24,10 @@ data class MomentAudienceUiState(
     val filteredGroups: List<MomentsRecipient>
         get() = recipients.groups.matching(query)
 
+    /** User-defined circles matching the search query. */
+    val filteredCircles: List<MomentsRecipient>
+        get() = recipients.circles.matching(query)
+
     /** Address-book contacts matching the search query. */
     val filteredContacts: List<MomentsRecipient>
         get() = recipients.contacts.matching(query)

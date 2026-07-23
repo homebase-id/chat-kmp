@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Group
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,6 +58,7 @@ import id.homebase.resources.moments_audience_create_group
 import id.homebase.resources.moments_audience_post
 import id.homebase.resources.moments_audience_post_failed
 import id.homebase.resources.moments_audience_save_privately
+import id.homebase.resources.moments_audience_section_circles
 import id.homebase.resources.moments_audience_section_contacts
 import id.homebase.resources.moments_audience_section_groups
 import id.homebase.resources.moments_audience_section_recent
@@ -93,6 +95,7 @@ fun MomentAudienceScreen(
     val searchHint = stringResource(MR.string.moments_create_search_hint)
     val recentLabel = stringResource(MR.string.moments_audience_section_recent)
     val groupsLabel = stringResource(MR.string.moments_audience_section_groups)
+    val circlesLabel = stringResource(MR.string.moments_audience_section_circles)
     val contactsLabel = stringResource(MR.string.moments_audience_section_contacts)
     val createGroupLabel = stringResource(MR.string.moments_audience_create_group)
 
@@ -123,6 +126,7 @@ fun MomentAudienceScreen(
     ) { innerPadding ->
         val recent = uiState.filteredRecent
         val groupsSection = uiState.filteredGroups
+        val circlesSection = uiState.filteredCircles
         val contactsSection = uiState.filteredContacts
 
         LazyColumn(
@@ -214,6 +218,20 @@ fun MomentAudienceScreen(
                 )
             }
 
+            // Circles — share to everyone in a user-defined circle in one tap (#1087).
+            if (circlesSection.isNotEmpty()) {
+                section(circlesLabel)
+                items(circlesSection, key = { "ci-${it.id.raw}" }) { recipient ->
+                    RecipientRow(
+                        recipient = recipient,
+                        selected = recipient.id in uiState.selected,
+                        onClick = {
+                            viewModel.onAction(MomentAudienceUiAction.ToggleRecipient(recipient.id))
+                        },
+                    )
+                }
+            }
+
             if (contactsSection.isNotEmpty()) {
                 section(contactsLabel)
                 items(contactsSection, key = { "c-${it.id.raw}" }) { recipient ->
@@ -274,17 +292,28 @@ private fun RecipientRow(
                 options = avatarOptions,
                 imageVector = Icons.Outlined.Group,
             )
+
+            is MomentsRecipient.Circle -> FallbackAvatar(
+                initials = recipient.avatarInitials,
+                options = avatarOptions,
+                imageVector = Icons.Outlined.Groups,
+            )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = recipient.displayName,
                 style = MaterialTheme.typography.bodyLarge,
             )
-            if (recipient is MomentsRecipient.Group) {
+            val memberCount = when (recipient) {
+                is MomentsRecipient.Group -> recipient.memberCount
+                is MomentsRecipient.Circle -> recipient.memberCount
+                is MomentsRecipient.Individual -> null
+            }
+            if (memberCount != null) {
                 Text(
                     text = stringResource(
                         MR.string.number_of_members,
-                        recipient.memberCount.toString(),
+                        memberCount.toString(),
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

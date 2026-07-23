@@ -2,9 +2,13 @@ package id.homebase.core.moments.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.util.initials
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +33,7 @@ private const val TAG = "MomentsRecipientLookupService"
 class MomentsRecipientLookupService(
     private val contactService: ContactService,
     private val groupService: MomentGroupService,
+    private val connectionService: ConnectionService,
     private val mruStore: MomentsUserStateStore,
     private val credentialsManager: CredentialsManager,
     private val scope: CoroutineScope,
@@ -51,18 +56,27 @@ class MomentsRecipientLookupService(
             combine(
                 contactService.contacts,
                 groupService.groups,
+                connectionService.circles,
                 mruStore.stableKeys,
-            ) { contacts, groups, mru ->
-                Triple(contacts, groups, mru)
-            }.collect { (contacts, groups, mru) ->
+            ) { contacts, groups, circleState, mru ->
+                LookupInputs(contacts, groups, circleState.circles, mru)
+            }.collect { inputs ->
                 val activeUserDomain = credentialsManager.getActiveDomain()
-                val (snapshot, keyMap) =
-                    buildRecipients(contacts, groups, mru, activeUserDomain)
+                val (snapshot, keyMap) = buildRecipients(
+                    inputs.contacts, inputs.groups, inputs.circles, inputs.mru, activeUserDomain,
+                )
                 stableKeyById = keyMap
                 _recipients.value = snapshot
             }
         }
     }
+
+    private data class LookupInputs(
+        val contacts: List<ContactUiModel>,
+        val groups: List<MomentGroup>,
+        val circles: List<CircleWithMembers>,
+        val mru: List<String>,
+    )
 
     /**
      * Bumps [recipients] to the head of the MRU list and persists them so the
@@ -100,11 +114,13 @@ class MomentsRecipientLookupService(
     private fun buildRecipients(
         contacts: List<ContactUiModel>,
         groups: List<MomentGroup>,
+        circles: List<CircleWithMembers>,
         mru: List<String>,
         activeUserDomain: OdinId?,
     ): Pair<MomentsRecipientsSnapshot, Map<MomentsRecipientId, String>> {
         val contactsRaw = mutableListOf<Pair<MomentsRecipient, String>>()
         val groupsRaw = mutableListOf<Pair<MomentsRecipient, String>>()
+        val circlesRaw = mutableListOf<Pair<MomentsRecipient, String>>()
 
         for (contact in contacts) {
             // Self-contact (if the drive ever lists the active user) is not a
@@ -139,13 +155,42 @@ class MomentsRecipientLookupService(
             groupsRaw += recipient to "momentgroup:${group.id}"
         }
 
+        for (cwm in circles) {
+            val def = cwm.circle
+            // User-defined circles only: drop the disabled ones and the Confirmed/Auto system
+            // circles (Emergency and any other user circle stay). Mirrors the contact-detail
+            // circle filter (#921/#916).
+            if (def.disabled) continue
+            if (def.id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
+                def.id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
+            ) continue
+            if (def.name.isBlank()) continue
+            // Snapshot the members (v1 member expansion); self isn't a transit recipient.
+            val others = cwm.members.filterNot { it == activeUserDomain }
+            if (others.isEmpty()) continue
+
+            val recipient = MomentsRecipient.Circle(
+                id = MomentsRecipientId(Uuid.random()),
+                displayName = def.name,
+                odinIds = others,
+                avatarInitials = def.name.initials(),
+                avatarUrl = "",
+                memberCount = others.size,
+                circleId = def.id,
+            )
+            circlesRaw += recipient to "circle:${def.id.lowercase()}"
+        }
+
         val mruIndex = mru.withIndex().associate { (i, k) -> k to i }
         fun isMru(p: Pair<MomentsRecipient, String>) = mruIndex.containsKey(p.second)
 
-        val recentRaw = (contactsRaw + groupsRaw).filter { isMru(it) }
+        val recentRaw = (contactsRaw + groupsRaw + circlesRaw).filter { isMru(it) }
         val recentSorted = recentRaw.sortedBy { mruIndex.getValue(it.second) }
 
         val nonRecentGroups = groupsRaw
+            .filterNot { isMru(it) }
+            .sortedBy { it.first.displayName.lowercase() }
+        val nonRecentCircles = circlesRaw
             .filterNot { isMru(it) }
             .sortedBy { it.first.displayName.lowercase() }
         val nonRecentContacts = contactsRaw
@@ -155,9 +200,10 @@ class MomentsRecipientLookupService(
         val snapshot = MomentsRecipientsSnapshot(
             recent = recentSorted.map { it.first },
             groups = nonRecentGroups.map { it.first },
+            circles = nonRecentCircles.map { it.first },
             contacts = nonRecentContacts.map { it.first },
         )
-        val keyMap = (recentSorted + nonRecentGroups + nonRecentContacts)
+        val keyMap = (recentSorted + nonRecentGroups + nonRecentCircles + nonRecentContacts)
             .associate { (recipient, key) -> recipient.id to key }
         return snapshot to keyMap
     }
@@ -170,21 +216,25 @@ class MomentsRecipientLookupService(
  *                     May contain entries from either source.
  * @property groups    Moments groups (defined via `MomentGroupService`) NOT in
  *                     [recent], sorted alphabetically by title.
+ * @property circles   User-defined circles (system circles excluded) NOT in
+ *                     [recent], sorted alphabetically by name.
  * @property contacts  Address-book contacts NOT in [recent], sorted
  *                     alphabetically by displayName.
  */
 data class MomentsRecipientsSnapshot(
     val recent: List<MomentsRecipient>,
     val groups: List<MomentsRecipient>,
+    val circles: List<MomentsRecipient>,
     val contacts: List<MomentsRecipient>,
 ) {
-    /** Flat MRU-first view — recent + groups + contacts. */
-    val all: List<MomentsRecipient> get() = recent + groups + contacts
+    /** Flat MRU-first view — recent + groups + circles + contacts. */
+    val all: List<MomentsRecipient> get() = recent + groups + circles + contacts
 
     companion object {
         fun empty(): MomentsRecipientsSnapshot = MomentsRecipientsSnapshot(
             recent = emptyList(),
             groups = emptyList(),
+            circles = emptyList(),
             contacts = emptyList(),
         )
     }
