@@ -12,6 +12,8 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
+import id.homebase.api.client.drives.upload.FileIdFileIdentifier
+import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -402,6 +404,105 @@ class ChatMessageActionService(
         val recipients =
             conversation.participants.filterNot { odinId -> odinId == credentials.domain }
         return recipients
+    }
+
+    // -------------------- PIN / UNPIN --------------------
+    //
+    // Per-message pin state rides on localAppData.tags ([ChatProtocol.MessagePinnedTag]),
+    // mirroring ConversationService.updateConversationTags but against a MESSAGE file:
+    // optimistic local write first (so the bar updates immediately), then an
+    // update-local-metadata-tags outbox row so the pin syncs to the user's other
+    // devices. Never shared with peers.
+
+    /**
+     * Read-modify-write the message file's local tags. Writes the new tag set
+     * optimistically (immediate UI), then — unless [localOnly] — enqueues an
+     * update-local-metadata-tags outbox row carrying the full new tag list.
+     *
+     * [dependencyUniqueId]: order the tags update AFTER another pending row for
+     * the same message. Critical for a just-sent message — its create
+     * (UploadNewFile) is still queued and `localAppData.versionTag` is null until
+     * the server confirms; running the tags update first would 404 (NotFound) and
+     * the outbox would drop it. Passing the messageId chains it behind the create.
+     */
+    private suspend fun updateMessageTags(
+        messageId: Uuid,
+        dependencyUniqueId: Uuid? = null,
+        localOnly: Boolean = false,
+        transform: (Set<Uuid>) -> Set<Uuid>,
+    ) {
+        val credentials = credentialsManager.requireActiveCredentials()
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), chatDrive, messageId
+        ) ?: return
+
+        val currentTags = file.fileMetadata.localAppData?.tags?.toSet() ?: emptySet()
+        val newTags = transform(currentTags)
+        if (newTags == currentTags) return // idempotent — no write, no sync
+
+        optimisticWriter.updateLocalTags(
+            driveId = chatDrive,
+            uniqueId = messageId,
+            newTags = newTags.toList(),
+        )
+        if (localOnly) return
+
+        // Random outbox uniqueId so this doesn't collide with a concurrent
+        // UpdateFileByUniqueId row keyed by messageId (UNIQUE(driveId, uniqueId)
+        // would otherwise silently drop one); dependencyUniqueId still orders it.
+        outboxSync.tryEnqueue(
+            request = UpdateLocalMetadataTagsOutboxRequest(
+                file = FileIdFileIdentifier(
+                    fileId = file.fileId.toString(),
+                    targetDrive = chatTargetDrive,
+                ),
+                versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
+                tags = newTags.map { it.toString() },
+                // Stable id so the uploader targets the current (post-rekey) fileId —
+                // a just-sent message's fileId here is a temp id that the create rekeys.
+                uniqueId = messageId,
+            ),
+            driveId = chatDrive,
+            uniqueId = Uuid.random(),
+            dependencyUniqueId = dependencyUniqueId,
+        )
+    }
+
+    /**
+     * Pin a message. [manual] = true for a deliberate user pin from the menu: it sets
+     * the durable [ChatProtocol.ManualPinnedTag] so the pin is **sticky** — the on-open
+     * auto-expiry prune leaves it alone. Auto-pin passes false. Either way the pin
+     * clears any prior [ChatProtocol.AutoPinDismissedTag] — an explicit pin overrides a
+     * dismissal.
+     */
+    suspend fun pinMessage(
+        messageId: Uuid,
+        dependencyUniqueId: Uuid? = null,
+        manual: Boolean = false,
+    ) {
+        updateMessageTags(messageId, dependencyUniqueId) { tags ->
+            val pinned = tags + ChatProtocol.MessagePinnedTag - ChatProtocol.AutoPinDismissedTag
+            if (manual) pinned + ChatProtocol.ManualPinnedTag else pinned
+        }
+    }
+
+    /**
+     * Remove the pin (and the sticky [ChatProtocol.ManualPinnedTag] if present).
+     *
+     * [dismiss] = true additionally sets the durable, synced
+     * [ChatProtocol.AutoPinDismissedTag] so auto-pin never resurrects the message — for
+     * a **user** dismissal (manual unpin). An auto-condition unpin (expired event,
+     * answered poll) passes false: the message isn't user-dismissed and stays eligible
+     * if the condition reverses (e.g. an un-answered poll).
+     *
+     * [localOnly] = true keeps the change on this device only (no outbox). Auto-expiry
+     * pruning now syncs, so this defaults false; kept for any purely-local unpin.
+     */
+    suspend fun unpinMessage(messageId: Uuid, localOnly: Boolean = false, dismiss: Boolean = false) {
+        updateMessageTags(messageId, localOnly = localOnly) { tags ->
+            val cleared = tags - ChatProtocol.MessagePinnedTag - ChatProtocol.ManualPinnedTag
+            if (dismiss) cleared + ChatProtocol.AutoPinDismissedTag else cleared
+        }
     }
 
     suspend fun getPayloadBytes(

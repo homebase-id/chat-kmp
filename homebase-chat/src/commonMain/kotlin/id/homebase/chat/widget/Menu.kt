@@ -80,6 +80,8 @@ import id.homebase.resources.chat_dice_battle_action
 import id.homebase.resources.chat_message_reply
 import id.homebase.resources.chat_message_report
 import id.homebase.resources.chat_pin
+import id.homebase.resources.chat_pin_message
+import id.homebase.resources.chat_unpin_message
 import id.homebase.resources.chat_save_sticker
 import id.homebase.resources.chat_settings
 import id.homebase.resources.chat_unarchive
@@ -219,11 +221,12 @@ fun ReceivedMessagePopup(
     onForward: (() -> Unit)?,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    onTogglePin: () -> Unit,
     onBlock: () -> Unit,
     onReport: () -> Unit,
 ) {
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy, onBattle) {
+    val actionMenu = remember(policy, onBattle, message.isPinned) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -271,6 +274,15 @@ fun ReceivedMessagePopup(
                         onClick = onCopy,
                         text = stringResource(MR.string.chat_message_copy),
                         imageVector = Icons.Default.ContentCopy,
+                    )
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onTogglePin,
+                        text = stringResource(
+                            if (message.isPinned) MR.string.chat_unpin_message
+                            else MR.string.chat_pin_message
+                        ),
+                        imageVector = Icons.Filled.PushPin,
                     )
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
@@ -413,9 +425,10 @@ fun SentMessagePopup(
     onShare: (() -> Unit)?,
     onEdit: (() -> Unit)?,
     onDelete: () -> Unit,
+    onTogglePin: () -> Unit,
 ) {
     val policy = message.messageContent?.actions ?: ActionPolicy.Standard
-    val actionMenu = remember(policy, onBattle) {
+    val actionMenu = remember(policy, onBattle, message.isPinned) {
         movableContentOf<Unit> {
             Surface(
                 modifier = Modifier
@@ -472,6 +485,15 @@ fun SentMessagePopup(
                             imageVector = Icons.Filled.Edit,
                         )
                     }
+                    ListItemActionNormalIcon(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onTogglePin,
+                        text = stringResource(
+                            if (message.isPinned) MR.string.chat_unpin_message
+                            else MR.string.chat_pin_message
+                        ),
+                        imageVector = Icons.Filled.PushPin,
+                    )
                     ListItemActionNormalIcon(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onDelete,

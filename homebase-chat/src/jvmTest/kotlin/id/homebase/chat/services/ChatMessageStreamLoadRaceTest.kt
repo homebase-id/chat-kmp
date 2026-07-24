@@ -267,19 +267,24 @@ class ChatMessageStreamLoadRaceTest {
     }
 
     @Test
-    fun loadConversation_withoutAConcurrentWrite_readsTheDatabaseOnce() = runTest {
+    fun loadConversation_withoutAConcurrentWrite_issuesOnePagingQuery() = runTest {
         // Guard on the other side of the fix: the re-read must be conditional,
         // not an unconditional second page fetch on every conversation open.
+        // The pinned-bar read that also runs on open is a separate query (it hits
+        // DriveLocalTagIndex, the message paging query does not), so it is excluded
+        // from the count below.
         val fixture = buildFixture(this)
         val onlyMessage = fixture.seedMessage(userDateMs = 1_000L)
-        val readsBefore = fixture.gate.readCount
+        val sqlBefore = fixture.gate.readSqls.size
 
         fixture.stream.loadConversation(conversationId)
         advanceUntilIdle()
 
         assertTrue(fixture.stream.isMessageInWindow(conversationId, onlyMessage))
+        val pagingQueries = fixture.gate.readSqls.drop(sqlBefore)
+            .count { !it.contains("DriveLocalTagIndex") }
         assertEquals(
-            1, fixture.gate.readCount - readsBefore,
+            1, pagingQueries,
             "an uncontended load must issue exactly one paging query",
         )
         fixture.close()
@@ -464,9 +469,13 @@ private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
 
     private val armed = AtomicReference<ReadStop?>(null)
     private val reads = AtomicInteger(0)
+    private val readSql = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     /** Total `executeQuery` calls seen; tests read deltas around a single call. */
     val readCount: Int get() = reads.get()
+
+    /** SQL of every `executeQuery`, in order — lets tests count reads by query shape. */
+    val readSqls: List<String> get() = readSql.toList()
 
     /** Park on the next query, optionally only one whose SQL satisfies [matching]. */
     fun armNextRead(matching: (String) -> Boolean = { true }): ReadStop =
@@ -483,6 +492,7 @@ private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
         val stop = candidate
             ?.takeIf { it.matches(sql) && armed.compareAndSet(it, null) }
         reads.incrementAndGet()
+        readSql.add(sql)
         val result = delegate.executeQuery(identifier, sql, mapper, parameters, binders)
         if (stop != null) {
             stop.reached.complete(Unit)

@@ -89,6 +89,18 @@ data class MessageUiModel(
     /** Indicates if this was created by the app/system and should be rendered differently **/
     val isStatusMessage: Boolean = false,
 
+    /** True when this message carries [id.homebase.chat.services.ChatProtocol.MessagePinnedTag]
+     *  in its localAppData — i.e. it's in the user's pinned-messages bar for this conversation. */
+    val isPinned: Boolean = false,
+
+    /** True when this message carries [id.homebase.chat.services.ChatProtocol.AutoPinDismissedTag]
+     *  — the user manually unpinned it, so auto-pin must not resurrect it. */
+    val isAutoPinDismissed: Boolean = false,
+
+    /** True when this message carries [id.homebase.chat.services.ChatProtocol.ManualPinnedTag]
+     *  — a deliberate manual pin, so auto-expiry pruning must leave it alone. */
+    val isManuallyPinned: Boolean = false,
+
     /**
      * Typed rich-content parsed from `appData.dataType` + `appData.content` (event
      * today; poll and doodle later). Null for plain text + media messages — those
