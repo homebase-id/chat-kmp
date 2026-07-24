@@ -718,6 +718,7 @@
 
     <!-- Event attachment -->
     <string name="chat_event_share">Event</string>
+    <string name="chat_event_reminder_push">Upcoming event reminder</string>
     <string name="chat_event_create_title">New event</string>
     <string name="chat_event_field_title">Title</string>
     <string name="chat_event_field_description">Description</string>

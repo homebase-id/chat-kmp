@@ -21,6 +21,9 @@ import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.notifications.ScheduledPushJobStore
+import id.homebase.api.client.notifications.ScheduledPushOutboxUploader
+import id.homebase.api.sync.database.CompositeOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -88,7 +91,12 @@ val apiModule = module {
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
-    single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
+    // Composite outbox uploader: drive transit + the scheduled-push shim (offline-durable
+    // schedule/cancel of reminder pushes; see ScheduledPushOutboxUploader).
+    singleOf(::ScheduledPushJobStore)
+    single { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
+    single { ScheduledPushOutboxUploader(get(), get()) }
+    single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
     singleOf(::OutboxSync)
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
