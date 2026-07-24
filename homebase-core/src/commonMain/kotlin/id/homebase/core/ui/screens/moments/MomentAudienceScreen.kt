@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,6 +54,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.moments.services.MomentsRecipient
+import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_audience_create_group
@@ -64,6 +67,7 @@ import id.homebase.resources.moments_audience_section_groups
 import id.homebase.resources.moments_audience_section_recent
 import id.homebase.resources.moments_audience_title
 import id.homebase.resources.moments_audience_to_myself_only
+import id.homebase.resources.moments_audience_view_circle_members
 import id.homebase.resources.moments_compose_comments_enabled
 import id.homebase.resources.moments_create_search_hint
 import id.homebase.resources.moments_create_selected_count
@@ -128,6 +132,15 @@ fun MomentAudienceScreen(
         val groupsSection = uiState.filteredGroups
         val circlesSection = uiState.filteredCircles
         val contactsSection = uiState.filteredContacts
+
+        // Only circle rows expose a "view members" affordance; everything else gets null.
+        val infoClickFor: (MomentsRecipient) -> (() -> Unit)? = { recipient ->
+            if (recipient is MomentsRecipient.Circle) {
+                { viewModel.onAction(MomentAudienceUiAction.ShowCircleMembers(recipient.id)) }
+            } else {
+                null
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -198,6 +211,7 @@ fun MomentAudienceScreen(
                         onClick = {
                             viewModel.onAction(MomentAudienceUiAction.ToggleRecipient(recipient.id))
                         },
+                        onInfoClick = infoClickFor(recipient),
                     )
                 }
             }
@@ -215,10 +229,13 @@ fun MomentAudienceScreen(
                     onClick = {
                         viewModel.onAction(MomentAudienceUiAction.ToggleRecipient(recipient.id))
                     },
+                    onInfoClick = infoClickFor(recipient),
                 )
             }
 
-            // Circles — share to everyone in a user-defined circle in one tap (#1087).
+            // Circles — share to everyone in a user-defined circle in one tap (#1087). Empty
+            // circles are shown greyed-out + non-selectable (RecipientRow gates on member count);
+            // the "i" affordance opens the view-only roster.
             if (circlesSection.isNotEmpty()) {
                 section(circlesLabel)
                 items(circlesSection, key = { "ci-${it.id.raw}" }) { recipient ->
@@ -228,6 +245,7 @@ fun MomentAudienceScreen(
                         onClick = {
                             viewModel.onAction(MomentAudienceUiAction.ToggleRecipient(recipient.id))
                         },
+                        onInfoClick = infoClickFor(recipient),
                     )
                 }
             }
@@ -241,9 +259,22 @@ fun MomentAudienceScreen(
                         onClick = {
                             viewModel.onAction(MomentAudienceUiAction.ToggleRecipient(recipient.id))
                         },
+                        onInfoClick = infoClickFor(recipient),
                     )
                 }
             }
+        }
+
+        // View-only roster for a tapped circle — reuses the contact-book sheet with management
+        // affordances disabled (manageable = false). Members are the circle's snapshot audience.
+        uiState.circleDetail?.let { detail ->
+            CircleMembersSheet(
+                state = detail,
+                onDismiss = { viewModel.onAction(MomentAudienceUiAction.DismissCircleMembers) },
+                onMemberClick = {},
+                onAddMemberClick = {},
+                onRemoveMemberClick = {},
+            )
         }
     }
 }
@@ -266,61 +297,87 @@ private fun RecipientRow(
     recipient: MomentsRecipient,
     selected: Boolean,
     onClick: () -> Unit,
+    onInfoClick: (() -> Unit)? = null,
 ) {
+    // A circle with no members can't be a share target — show it, greyed, but don't let it be
+    // selected (odinIds is the exact fan-out set, and it's empty). Everything else is selectable.
+    val selectable = recipient !is MomentsRecipient.Circle || recipient.odinIds.isNotEmpty()
+    val contentAlpha = if (selectable) 1f else 0.38f
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = selectable, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Render avatars the same way chat does: individuals resolve their
-        // public profile image from the odinId via PublicAvatar; groups fall
-        // back to chat's group glyph (mirrors ConversationAvatar's
-        // GroupFallback). See ConversationAvatar.kt / PublicAvatar.kt.
-        val avatarOptions = AvatarOptions(size = 40.dp)
-        when (recipient) {
-            is MomentsRecipient.Individual -> PublicAvatar(
-                odinId = recipient.odinId,
-                initials = recipient.avatarInitials,
-                options = avatarOptions,
-            )
+        // Avatar + label are dimmed together when the row isn't selectable; the info affordance
+        // and selection indicator keep full opacity so the "view members" tap stays clear.
+        Row(
+            modifier = Modifier.weight(1f).alpha(contentAlpha),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Render avatars the same way chat does: individuals resolve their
+            // public profile image from the odinId via PublicAvatar; groups fall
+            // back to chat's group glyph (mirrors ConversationAvatar's
+            // GroupFallback). See ConversationAvatar.kt / PublicAvatar.kt.
+            val avatarOptions = AvatarOptions(size = 40.dp)
+            when (recipient) {
+                is MomentsRecipient.Individual -> PublicAvatar(
+                    odinId = recipient.odinId,
+                    initials = recipient.avatarInitials,
+                    options = avatarOptions,
+                )
 
-            is MomentsRecipient.Group -> FallbackAvatar(
-                initials = recipient.avatarInitials,
-                options = avatarOptions,
-                imageVector = Icons.Outlined.Group,
-            )
+                is MomentsRecipient.Group -> FallbackAvatar(
+                    initials = recipient.avatarInitials,
+                    options = avatarOptions,
+                    imageVector = Icons.Outlined.Group,
+                )
 
-            is MomentsRecipient.Circle -> FallbackAvatar(
-                initials = recipient.avatarInitials,
-                options = avatarOptions,
-                imageVector = Icons.Outlined.Groups,
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = recipient.displayName,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            val memberCount = when (recipient) {
-                is MomentsRecipient.Group -> recipient.memberCount
-                is MomentsRecipient.Circle -> recipient.memberCount
-                is MomentsRecipient.Individual -> null
+                is MomentsRecipient.Circle -> FallbackAvatar(
+                    initials = recipient.avatarInitials,
+                    options = avatarOptions,
+                    imageVector = Icons.Outlined.Groups,
+                )
             }
-            if (memberCount != null) {
+            Column {
                 Text(
-                    text = stringResource(
-                        MR.string.number_of_members,
-                        memberCount.toString(),
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = recipient.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                val memberCount = when (recipient) {
+                    is MomentsRecipient.Group -> recipient.memberCount
+                    is MomentsRecipient.Circle -> recipient.memberCount
+                    is MomentsRecipient.Individual -> null
+                }
+                if (memberCount != null) {
+                    Text(
+                        text = stringResource(
+                            MR.string.number_of_members,
+                            memberCount.toString(),
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        if (onInfoClick != null) {
+            IconButton(onClick = onInfoClick) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = stringResource(MR.string.moments_audience_view_circle_members),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-        SelectionIndicator(selected = selected)
+        // Always shown so the row keeps a consistent trailing column; dimmed (and never
+        // "selected") for a non-selectable empty circle so it reads as unavailable, not checkable.
+        Box(modifier = Modifier.alpha(contentAlpha)) {
+            SelectionIndicator(selected = selectable && selected)
+        }
     }
 }
 

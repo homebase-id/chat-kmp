@@ -166,8 +166,9 @@ class MomentsRecipientLookupService(
             ) continue
             if (def.name.isBlank()) continue
             // Snapshot the members (v1 member expansion); self isn't a transit recipient.
+            // Empty circles are kept (they render greyed-out + non-selectable in the picker so the
+            // count is always visible) — the audience screen gates selection on odinIds.isNotEmpty().
             val others = cwm.members.filterNot { it == activeUserDomain }
-            if (others.isEmpty()) continue
 
             val recipient = MomentsRecipient.Circle(
                 id = MomentsRecipientId(Uuid.random()),

@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.moments
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientsSnapshot
+import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 
 data class MomentAudienceUiState(
     val recipients: MomentsRecipientsSnapshot = MomentsRecipientsSnapshot.empty(),
@@ -12,6 +13,8 @@ data class MomentAudienceUiState(
     val draftReady: Boolean = false,
     val commentsEnabled: Boolean = true,
     val selfOnly: Boolean = false,
+    /** Non-null while the "who's in this circle" roster sheet is open (view-only). */
+    val circleDetail: CircleMembersUi? = null,
 ) {
     val canPost: Boolean
         get() = draftReady && !isPosting && (selfOnly || selected.isNotEmpty())
@@ -43,6 +46,10 @@ sealed interface MomentAudienceUiAction {
     data class CommentsEnabledChanged(val enabled: Boolean) : MomentAudienceUiAction
     data object ToggleSelfOnly : MomentAudienceUiAction
     data object PostClicked : MomentAudienceUiAction
+
+    /** Open the view-only roster for a circle recipient (the "i" affordance on a circle row). */
+    data class ShowCircleMembers(val id: MomentsRecipientId) : MomentAudienceUiAction
+    data object DismissCircleMembers : MomentAudienceUiAction
 }
 
 sealed interface MomentAudienceUiEvent {
