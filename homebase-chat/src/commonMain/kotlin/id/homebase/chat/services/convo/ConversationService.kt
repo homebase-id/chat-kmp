@@ -2275,7 +2275,9 @@ class ConversationService(
                     targetDrive = chatTargetDrive
                 ),
                 versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
-                tags = newTags.map { it.toString() }
+                tags = newTags.map { it.toString() },
+                // Stable id so the uploader resolves the current fileId at send time.
+                uniqueId = conversationId
             ),
             driveId = chatDrive,
             uniqueId = Uuid.random(),
