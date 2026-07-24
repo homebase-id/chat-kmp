@@ -76,13 +76,23 @@ class ChatMessageStreamLoadRaceTest {
     private val testDomain: String = "owner.test"
     private val conversationId: Uuid = Uuid.parse("11111111-1111-1111-1111-111111111111")
 
+    // Connection warm-up (sqlite_master, PRAGMAs), #887's pinned-bar refresh (a
+    // DriveLocalTagIndex read), and background service reads all pass through the
+    // gate on the same 4-wide read pool as the message-page fetch. An unqualified
+    // armNextRead() matches whichever of them the pool happens to run first, so the
+    // gate can park on the wrong query and mis-sequence the choreography — it passes
+    // locally but hangs on CI (runTest timeout). This index hint is emitted only by
+    // the per-conversation message-paging SELECT (groupId filter + userDate sort),
+    // so it parks on that read alone.
+    private val messagePageRead: (String) -> Boolean = { it.contains("idx_chatmessage_convid_userDate") }
+
     @Test
     fun loadConversation_rowCommittedMidFetch_isRecoveredViaDriveSyncStopped() = runTest {
         val fixture = buildFixture(this)
         val alreadySynced = fixture.seedMessage(userDateMs = 1_000L)
         val racingMessage = fixture.buildMessageFile(userDateMs = 2_000L)
 
-        val fetchA = fixture.gate.armNextRead()
+        val fetchA = fixture.gate.armNextRead(messagePageRead)
         val load = launch { fixture.stream.loadConversation(conversationId) }
         advanceUntilIdle()
 
@@ -130,7 +140,7 @@ class ChatMessageStreamLoadRaceTest {
             false
         }
 
-        val fetchA = fixture.gate.armNextRead()
+        val fetchA = fixture.gate.armNextRead(messagePageRead)
         val load = launch { fixture.stream.loadConversation(conversationId) }
         advanceUntilIdle()
 
@@ -175,7 +185,7 @@ class ChatMessageStreamLoadRaceTest {
             false
         }
 
-        val fetchA = fixture.gate.armNextRead()
+        val fetchA = fixture.gate.armNextRead(messagePageRead)
         val load = launch { fixture.stream.loadConversation(conversationId) }
         advanceUntilIdle()
 
@@ -192,7 +202,7 @@ class ChatMessageStreamLoadRaceTest {
         advanceUntilIdle()
 
         // Arm the re-read's query before letting the initial fetch finish.
-        val reRead = fixture.gate.armNextRead()
+        val reRead = fixture.gate.armNextRead(messagePageRead)
         fetchA.release()
         reRead.reached.await()
 
@@ -238,7 +248,7 @@ class ChatMessageStreamLoadRaceTest {
         // loadAround issues anchor-lookup → older half (DESC) → newer half (ASC).
         // Park on the newer half: it is the last read, and the racing row sorts
         // into it, so the pre-park snapshot provably excludes it.
-        val fetchA = fixture.gate.armNextRead { sql -> sql.contains("ORDER BY") && sql.contains("ASC") }
+        val fetchA = fixture.gate.armNextRead { messagePageRead(it) && it.contains("ASC") }
         val load = launch { fixture.stream.loadConversationAroundMessage(conversationId, anchor) }
         advanceUntilIdle()
 
@@ -477,8 +487,14 @@ private class GatedSqlDriver(private val delegate: SqlDriver) : SqlDriver {
     /** SQL of every `executeQuery`, in order — lets tests count reads by query shape. */
     val readSqls: List<String> get() = readSql.toList()
 
-    /** Park on the next query, optionally only one whose SQL satisfies [matching]. */
-    fun armNextRead(matching: (String) -> Boolean = { true }): ReadStop =
+    /**
+     * Park on the next query whose SQL satisfies [matching]. There is deliberately
+     * no match-all default: connection warm-up (sqlite_master, PRAGMAs), the pinned
+     * bar's DriveLocalTagIndex read, and background service reads all pass through
+     * this gate on the same read pool, so a caller must name the query it means to
+     * park on or it will race them.
+     */
+    fun armNextRead(matching: (String) -> Boolean): ReadStop =
         ReadStop(matching).also { armed.set(it) }
 
     override fun <R> executeQuery(
