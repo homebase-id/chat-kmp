@@ -242,6 +242,8 @@ Replace the current **Public / Vetted** segmented control with:
 - Below: Pick a circle.
 - User can select "Any of my circles" (default )**or** pick one or more specific circles.
 
+These are likely private circles, probably not audience circles.
+
 This single pattern supports both simple use and the advanced "special beer drinking
 buddies photo" case.
 
