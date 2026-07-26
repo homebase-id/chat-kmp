@@ -11,7 +11,6 @@ import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.localization.TranslationUtil
-import id.homebase.core.util.detectContentTypeFromExtensionOrHint
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.removeBackground
 import id.homebase.chat.services.image.warmUpBackgroundRemoval
@@ -22,8 +21,6 @@ import id.homebase.resources.chat_attach_file_failed
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_remove_background_failed
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -124,6 +121,9 @@ internal class AttachmentHandler(
         scope.launch {
             try {
                 val newFiles = action.files.map { picked ->
+                    // Read the type off the PICKED handle first — the copy below is a plain file
+                    // whose extension-less photo-picker name resolves to octet-stream (#1149).
+                    val ct = picked.pickedContentType()
                     // Copy the picked file into the sandbox NOW, while the picker's iOS
                     // security scope is still live. The send path later reads the file by
                     // path from a separate coroutine, where a path-rebuilt NSURL has no
@@ -131,21 +131,25 @@ internal class AttachmentHandler(
                     // file". No-op on web; a cheap sandbox copy elsewhere. See
                     // AttachmentUploadResolve.materializeForUpload.
                     val it = picked.materializeForUpload(fileOperationsProvider)
-                    val ct = it.mimeType()?.toString()
-                        ?: detectContentTypeFromExtensionOrHint(it.name)
                     when {
                         ct.startsWith("video/") -> AttachmentPendingFile.FileVideo(
                             Uuid.generateV7(),
                             it,
                             thumbnailBytes = null,
+                            sourceContentType = ct,
                         )
 
                         action.isImage || ct.startsWith("image/") -> AttachmentPendingFile.FileImage(
                             Uuid.generateV7(),
-                            it
+                            it,
+                            sourceContentType = ct,
                         )
 
-                        else -> AttachmentPendingFile.File(Uuid.generateV7(), it)
+                        else -> AttachmentPendingFile.File(
+                            Uuid.generateV7(),
+                            it,
+                            sourceContentType = ct,
+                        )
                     }
                 }
                 val conversation = uiState.value.activeConversations.find {

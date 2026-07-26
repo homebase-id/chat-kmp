@@ -377,6 +377,8 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
          * from the tray; threaded into [AttachmentInput.forceSticker] at send time.
          */
         val forceSticker: Boolean = false,
+        /** See [File.sourceContentType]. */
+        val sourceContentType: String? = null,
     ) : AttachmentPendingFile(id)
     data class FileVideo(
         val id: Uuid,
@@ -396,8 +398,20 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
         // (a browser-picked PlatformFile has no path, so file.toString() isn't readable); on
         // native it equals file.toString(). Populated by AttachmentHandler.extractThumbnailAsync.
         val playablePath: String? = null,
+        /** See [File.sourceContentType]. */
+        val sourceContentType: String? = null,
     ) : AttachmentPendingFile(id)
-    data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
+    data class File(
+        val id: Uuid,
+        val file: PlatformFile,
+        // Content type read from the ORIGINAL picked handle (see PlatformFile.pickedContentType),
+        // before the pick-time sandbox copy dropped it. [file] here is that copy: a plain file whose
+        // type can only come from its name, and Android's photo picker vends extension-less names
+        // ("photopicker-1000022602") that resolve to application/octet-stream — which ships the
+        // message as a thumbnail-less generic file chip (#1149). Null falls back to resolving from
+        // [file] (share-received / already-local files, whose names carry extensions).
+        val sourceContentType: String? = null,
+    ) : AttachmentPendingFile(id)
     data class Gallery(
         val id: Uuid,
         val image: GalleryImage,
