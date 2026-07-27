@@ -3,6 +3,7 @@ package id.homebase.api.client.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxUploader
@@ -14,10 +15,12 @@ import kotlin.uuid.Uuid
 @Serializable
 data class CancelScheduledPushRequest(val tagId: Uuid)
 
-/** What to do with a schedule request given what the server already has for this tagId. */
+/** What to do with a schedule request given what the server already has for this tagId. Each action
+ *  names the single job that should survive for the tag ([keepJobId]); the uploader cancels every
+ *  other job for that tag so exactly one remains. */
 sealed interface ScheduleAction {
-    /** A job for this tagId is already scheduled at the requested time — nothing to do. */
-    data object Skip : ScheduleAction
+    /** A job for this tagId is already scheduled at the requested time — keep it, schedule nothing. */
+    data class Skip(val jobId: Uuid) : ScheduleAction
 
     /** A job for this tagId exists but at a different `sendAt` — move it (PUT) instead of adding a
      *  duplicate. Covers the organizer-edited-start-time case for free. */
@@ -25,6 +28,14 @@ sealed interface ScheduleAction {
 
     /** No job for this tagId — schedule a new one. */
     data object Create : ScheduleAction
+
+    /** The job this action keeps/creates, or null for [Create] (nothing to keep yet). */
+    val keepJobId: Uuid?
+        get() = when (this) {
+            is Skip -> jobId
+            is Update -> jobId
+            Create -> null
+        }
 }
 
 /**
@@ -32,9 +43,10 @@ sealed interface ScheduleAction {
  *
  * The server has **no idempotency key and no upsert**, so this client-side reconcile against
  * [existing] (keyed on the device-independent `tagId`) is what keeps a retry — or a second device —
- * from stacking duplicate jobs. Accumulated duplicates from a genuine concurrent-two-device race
- * aren't garbage-collected here (only the first match is reused); they're all removed together by
- * [jobsToCancelForTag] on the next cancel.
+ * from stacking duplicate jobs. When several jobs already exist for the tag (a genuine concurrent
+ * two-device race), one is chosen to keep and [duplicateJobsToPrune] names the rest for the uploader
+ * to cancel, so a re-affirmed Going collapses back to exactly one — duplicates no longer wait for a
+ * cancel to clear.
  */
 fun decideScheduleAction(
     existing: List<ScheduledPushNotificationEntry>,
@@ -42,7 +54,7 @@ fun decideScheduleAction(
     sendAtMs: Long,
 ): ScheduleAction {
     val matches = existing.filter { it.options.tagId == tagId }
-    if (matches.any { it.sendAt.milliseconds == sendAtMs }) return ScheduleAction.Skip
+    matches.firstOrNull { it.sendAt.milliseconds == sendAtMs }?.let { return ScheduleAction.Skip(it.jobId) }
     matches.firstOrNull()?.let { return ScheduleAction.Update(it.jobId) }
     return ScheduleAction.Create
 }
@@ -52,6 +64,14 @@ fun jobsToCancelForTag(
     existing: List<ScheduledPushNotificationEntry>,
     tagId: Uuid,
 ): List<Uuid> = existing.filter { it.options.tagId == tagId }.map { it.jobId }
+
+/** Jobs for [tagId] other than [keepJobId] — the stale duplicates a schedule should prune so exactly
+ *  one job survives for the tag. Pure. */
+fun duplicateJobsToPrune(
+    existing: List<ScheduledPushNotificationEntry>,
+    tagId: Uuid,
+    keepJobId: Uuid?,
+): List<Uuid> = existing.filter { it.options.tagId == tagId && it.jobId != keepJobId }.map { it.jobId }
 
 /**
  * Outbox uploader for **scheduled push notifications** — the shim that lets a schedule/cancel
@@ -71,13 +91,17 @@ fun jobsToCancelForTag(
  * ## Sharp edges (intentional, for the "should we properly adjust the outbox / server" discussion)
  *
  * 1. **No server upsert / idempotency key.** `schedule()` unconditionally creates a job; there is no
- *    dedup server-side. We reconcile client-side ([decideScheduleAction] over `list()`), which
- *    closes the retry and single-device-re-RSVP cases and the common cross-device case. It does NOT
- *    close a genuine concurrent-two-device schedule (both `list()` before either creates → two
- *    jobs). Duplicates also count against the server's `MaxPendingPerTenant = 100` cap, so an
- *    unmitigated retry loop could eat it — the reconcile is what prevents that. A server-side unique
- *    key (client-supplied, upsert-on-conflict) would remove the race and the extra `list()` round
- *    trip entirely; that's the ask on the table.
+ *    dedup server-side. We reconcile client-side ([decideScheduleAction] + [duplicateJobsToPrune]
+ *    over `list()`), which closes the retry, single-device re-RSVP, and common cross-device cases,
+ *    and now collapses any accumulated duplicates back to one on the next schedule. It still does
+ *    NOT close a genuine concurrent schedule where two racers both `list()` before either creates
+ *    (a two-device tap at the same instant, OR — single device — a cancel enqueued while a schedule
+ *    for the same tag is already checked out and mid-POST, so the cancel's `list()` runs before the
+ *    schedule's job is visible → cancel no-ops, schedule creates a job that outlives the
+ *    retraction). Both leave a stray job that the next cancel-by-tag (or a re-affirmed Going's
+ *    prune) removes. Duplicates also count against the server's `MaxPendingPerTenant = 100` cap. A
+ *    server-side unique key (client-supplied, upsert-on-conflict) would remove the race and the
+ *    extra `list()` round trip entirely; that's the ask on the table.
  *
  * 2. **An extra `list()` per schedule/cancel.** The reconcile costs one round trip each. Fine for a
  *    low-frequency RSVP action; would disappear with server-side upsert + a cancel-by-tag endpoint.
@@ -103,8 +127,22 @@ class ScheduledPushOutboxUploader(
         )
         val tagId = request.options.tagId
         val existing = provider.list()
-        when (val action = decideScheduleAction(existing, tagId, request.sendAt.milliseconds)) {
-            ScheduleAction.Skip ->
+
+        // Drain-time past guard: an offline Going can sit queued past its sendAt (a phone in airplane
+        // mode until after the event). Don't post a job the server would fire late/immediately — drop
+        // the row and clear any stale job for the tag. The enqueue-time guard can't cover this.
+        if (request.sendAt.milliseconds <= UnixTimeUtc.now().milliseconds) {
+            cancelJobs(jobsToCancelForTag(existing, tagId), tagId)
+            Logger.d("$TAG: schedule tag=$tagId past sendAt at drain — cleared, not scheduling")
+            return
+        }
+
+        val action = decideScheduleAction(existing, tagId, request.sendAt.milliseconds)
+        // Collapse to exactly one job for the tag: cancel every existing job except the one we keep.
+        cancelJobs(duplicateJobsToPrune(existing, tagId, action.keepJobId), tagId)
+
+        when (action) {
+            is ScheduleAction.Skip ->
                 Logger.d("$TAG: schedule tag=$tagId already present at sendAt — skipping")
 
             is ScheduleAction.Update -> {
@@ -134,12 +172,17 @@ class ScheduledPushOutboxUploader(
             Logger.d("$TAG: cancel tag=${request.tagId} — no matching job on server")
             return
         }
-        for (jobId in jobs) {
+        cancelJobs(jobs, request.tagId)
+    }
+
+    /** Cancel each job, swallowing a 404 (already fired/cancelled). A non-404 error propagates so the
+     *  outbox retries the whole row; the retry re-lists, so already-cancelled jobs aren't re-touched. */
+    private suspend fun cancelJobs(jobIds: List<Uuid>, tagId: Uuid) {
+        for (jobId in jobIds) {
             try {
                 provider.cancel(jobId)
-                Logger.i("$TAG: cancelled job=$jobId tag=${request.tagId}")
+                Logger.i("$TAG: cancelled job=$jobId tag=$tagId")
             } catch (e: NotFoundException) {
-                // Already fired / already cancelled — the reminder is gone either way.
                 Logger.d("$TAG: cancel job=$jobId returned 404 — already handled")
             }
         }

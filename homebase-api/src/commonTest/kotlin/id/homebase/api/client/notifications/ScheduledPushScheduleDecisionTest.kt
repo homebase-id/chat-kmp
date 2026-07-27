@@ -34,10 +34,11 @@ class ScheduledPushScheduleDecisionTest {
     }
 
     @Test
-    fun sameTagSameSendAt_skips() {
+    fun sameTagSameSendAt_skipsAndKeepsThatJob() {
         val tag = Uuid.random()
-        val existing = listOf(entry(tag, 5_000L))
-        assertEquals(ScheduleAction.Skip, decideScheduleAction(existing, tag, 5_000L))
+        val job = Uuid.random()
+        val existing = listOf(entry(tag, 5_000L, jobId = job))
+        assertEquals(ScheduleAction.Skip(job), decideScheduleAction(existing, tag, 5_000L))
     }
 
     @Test
@@ -46,6 +47,28 @@ class ScheduledPushScheduleDecisionTest {
         val job = Uuid.random()
         val existing = listOf(entry(tag, 5_000L, jobId = job))
         assertEquals(ScheduleAction.Update(job), decideScheduleAction(existing, tag, 9_000L))
+    }
+
+    @Test
+    fun prune_returnsEveryJobForTagExceptTheKeeper() {
+        val tag = Uuid.random()
+        val keep = Uuid.random()
+        val dupe = Uuid.random()
+        val existing = listOf(
+            entry(tag, 5_000L, jobId = keep),
+            entry(tag, 9_000L, jobId = dupe),        // accumulated duplicate at a different time
+            entry(Uuid.random(), 5_000L),            // other tag — untouched
+        )
+        assertEquals(listOf(dupe), duplicateJobsToPrune(existing, tag, keep))
+    }
+
+    @Test
+    fun prune_withNoKeeper_returnsAllJobsForTag() {
+        val tag = Uuid.random()
+        val a = Uuid.random()
+        val b = Uuid.random()
+        val existing = listOf(entry(tag, 5_000L, jobId = a), entry(tag, 9_000L, jobId = b))
+        assertEquals(setOf(a, b), duplicateJobsToPrune(existing, tag, keepJobId = null).toSet())
     }
 
     @Test

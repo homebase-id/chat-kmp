@@ -4,8 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.notifications.CancelScheduledPushRequest
 import id.homebase.api.client.notifications.SchedulePushNotificationRequest
 import id.homebase.api.client.notifications.ScheduledPushNotificationOptions
-import id.homebase.api.client.notifications.ScheduledPushOutboxUploader
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.crypto.Md5
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.chat.services.ChatProtocol
 import kotlin.uuid.Uuid
@@ -92,25 +92,21 @@ class EventReminderService(
             sendAt = UnixTimeUtc(sendAt),
             recurrenceInterval = null,        // one-shot.
         )
-        val result = outboxSync.enqueueScheduledPush(EVENT_REMINDER_PSEUDO_DRIVE, messageId, request)
+        val result = outboxSync.enqueueScheduledPush(EVENT_REMINDER_PSEUDO_DRIVE, outboxRowKey(messageId), request)
         Logger.i(tag = TAG) { "scheduleReminder msg=$messageId sendAt=$sendAt enqueue=$result" }
     }
 
     private suspend fun cancelReminder(messageId: Uuid) {
-        // If a schedule is still sitting in the outbox (never sent — e.g. RSVP'd offline then
-        // retracted before reconnect), just remove it: nothing was scheduled server-side, so there's
-        // nothing to cancel and no need for a list() round-trip when the cancel would drain.
-        if (outboxSync.pendingUploadType(EVENT_REMINDER_PSEUDO_DRIVE, messageId)
-            == ScheduledPushOutboxUploader.SchedulePush
-        ) {
-            val outcome = outboxSync.cancelPending(EVENT_REMINDER_PSEUDO_DRIVE, messageId)
-            Logger.i(tag = TAG) { "cancelReminder msg=$messageId removed still-queued schedule ($outcome)" }
-            return
-        }
-        // Otherwise durably enqueue a cancel-by-tag; the uploader resolves the actual job(s) via
-        // list() at drain time, so this works even for a reminder another device scheduled.
+        // Always enqueue a durable cancel-by-tag — never try to "yank" a still-queued schedule as a
+        // shortcut. A yank is only safe if NO server job exists, but one can already exist (an
+        // earlier Going that drained; a re-Going that superseded a pending cancel; another device),
+        // and the yank can't tell — so it would silently drop a needed cancel and the reminder would
+        // fire despite the retraction. This is correct in every case instead: `replaceEnqueue`
+        // supersedes any still-queued schedule row for this key, and the uploader's cancel() is a
+        // cheap list()-driven no-op when the server holds no job. Keying on the tag (not a local
+        // jobId) is what makes cross-device retraction work.
         val result = outboxSync.enqueueCancelScheduledPush(
-            EVENT_REMINDER_PSEUDO_DRIVE, messageId, CancelScheduledPushRequest(tagId = messageId),
+            EVENT_REMINDER_PSEUDO_DRIVE, outboxRowKey(messageId), CancelScheduledPushRequest(tagId = messageId),
         )
         Logger.i(tag = TAG) { "cancelReminder msg=$messageId enqueue cancel-by-tag=$result" }
     }
@@ -122,5 +118,17 @@ class EventReminderService(
          * drive, and its outbox events don't match any conversation's per-drive UI.
          */
         val EVENT_REMINDER_PSEUDO_DRIVE: Uuid = Uuid.parse("00000000-0000-0000-0000-0000e4e4e4e4")
+
+        /**
+         * Outbox row `uniqueId` for a message's reminder — a DERIVED id, deliberately NOT the raw
+         * [messageId]. The event message's own drive upload already uses `uniqueId = messageId`, and
+         * parts of the outbox (dependency resolution: `existsByUniqueId` / `selectByUniqueId`) match
+         * on uniqueId **across drives** — so reusing the messageId here would let a reminder row and
+         * the message's own row be confused. Deriving keeps one reminder row per message (the
+         * `UNIQUE(driveId, uniqueId)` dedup and `cancelPending` targeting still hold) with no
+         * collision. The push `tagId` stays the raw [messageId] — that's the device-independent
+         * server correlation key, unaffected by this.
+         */
+        fun outboxRowKey(messageId: Uuid): Uuid = Md5.toGuidId("event-reminder:$messageId")
     }
 }

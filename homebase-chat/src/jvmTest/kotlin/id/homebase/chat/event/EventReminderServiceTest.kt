@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 /**
@@ -38,6 +37,10 @@ class EventReminderServiceTest {
     private val fixedNow = 1_700_000_000_000L
     private val hourMs = 3_600_000L
     private val drive = EventReminderService.EVENT_REMINDER_PSEUDO_DRIVE
+
+    /** The outbox row is keyed by a DERIVED id, not the raw messageId (avoids cross-drive collision
+     *  with the event message's own outbox row) — so assertions must query by the same derived key. */
+    private fun rowKey(messageId: Uuid) = EventReminderService.outboxRowKey(messageId)
 
     private fun descriptorStartingAt(startUtcMs: Long) =
         EventDescriptor(title = "Standup", startUtcMs = startUtcMs, timezone = "UTC")
@@ -69,7 +72,7 @@ class EventReminderServiceTest {
         )
         assertEquals(
             ScheduledPushOutboxUploader.SchedulePush,
-            d.outboxSync.pendingUploadType(drive, messageId),
+            d.outboxSync.pendingUploadType(drive, rowKey(messageId)),
         )
     }
 
@@ -89,21 +92,22 @@ class EventReminderServiceTest {
         )
         assertEquals(
             ScheduledPushOutboxUploader.CancelPush,
-            d.outboxSync.pendingUploadType(drive, messageId),
+            d.outboxSync.pendingUploadType(drive, rowKey(messageId)),
         )
     }
 
     @Test
-    fun retractWhileStillQueued_removesTheScheduleRow() = runTest {
+    fun retractWhileScheduleQueued_replacesItWithCancelByTag() = runTest {
         val d = deps(backgroundScope)
         val messageId = Uuid.random()
         val descriptor = descriptorStartingAt(fixedNow + 2 * hourMs)
         // Going (offline) → schedule row queued, never sent.
         d.service.onRsvpChanged(Uuid.random(), messageId, descriptor, isGoing = true, reminderText = "x")
-        assertEquals(ScheduledPushOutboxUploader.SchedulePush, d.outboxSync.pendingUploadType(drive, messageId))
-        // Not going before it ever drained → the queued schedule is simply yanked; nothing scheduled.
+        assertEquals(ScheduledPushOutboxUploader.SchedulePush, d.outboxSync.pendingUploadType(drive, rowKey(messageId)))
+        // Not going → always enqueue a durable cancel-by-tag (never a silent yank, since a server job
+        // could already exist). replaceEnqueue supersedes the queued schedule with the cancel row.
         d.service.onRsvpChanged(Uuid.random(), messageId, descriptor, isGoing = false, reminderText = "x")
-        assertNull(d.outboxSync.pendingUploadType(drive, messageId))
+        assertEquals(ScheduledPushOutboxUploader.CancelPush, d.outboxSync.pendingUploadType(drive, rowKey(messageId)))
     }
 
     @Test
@@ -121,7 +125,7 @@ class EventReminderServiceTest {
         )
         assertEquals(
             ScheduledPushOutboxUploader.CancelPush,
-            d.outboxSync.pendingUploadType(drive, messageId),
+            d.outboxSync.pendingUploadType(drive, rowKey(messageId)),
         )
     }
 }

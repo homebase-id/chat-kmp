@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * settings UI ships with #1116 — this is the storage + default only.
  *
  * Stored in the encrypted local key/value store via [DatabaseManager.keyValue].
- * UUID namespace `0a05xx` (Vault `0a01xx`, Moments `0a02xx`, Dice/Location `0a03xx`, `0a04xx` taken).
+ * UUID namespace `0a06xx`. Taken already: Vault `0a01xx`, Moments `0a02xx`, Dice/Location `0a03xx`,
+ * ContactBook `0a04xx`, network-diagnostics ServerIpStore `0a05xx`.
  */
 class EventReminderPreferences(private val databaseManager: DatabaseManager) {
 
@@ -52,6 +53,6 @@ class EventReminderPreferences(private val databaseManager: DatabaseManager) {
 
     companion object {
         const val DEFAULT_LEAD_MINUTES = 60
-        val LEAD_MINUTES_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0501")
+        val LEAD_MINUTES_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0601")
     }
 }
