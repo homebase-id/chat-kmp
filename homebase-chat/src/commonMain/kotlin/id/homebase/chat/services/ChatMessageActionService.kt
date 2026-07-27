@@ -104,20 +104,22 @@ class ChatMessageActionService(
             return
         }
 
-        // The MessageUiModel.userDate carried here is the *clamped* value from
-        // ChatMessageStream.mapToMessageData (`min(appData.userDate, transitCreated)`).
-        // selectAllUnreadCount filters on the *un-clamped* DriveMainIndex.userDate,
-        // so capping newReadTime at `viewedRecords.maxOf { userDate }` can leave
-        // the badge stuck on a row whose appData.userDate exceeded transitCreated.
-        // The conversation's `latestMessageTimestamp` (sourced from the SQL column
-        // since `enrichWithLastMessages` was fixed) is authoritative — use it as
-        // a floor when it's ahead of the per-file value.
-        val viewedMax = viewedRecords.maxOf { it.userDate }
+        // Advance no further than the newest message the user actually saw.
+        // `MessageUiModel.userDate` is the *clamped* display value
+        // (`min(appData.userDate, transitCreated)`) while selectAllUnreadCount
+        // filters on the un-clamped DriveMainIndex.userDate — so read-bookkeeping
+        // runs on `sqlUserDate`, which is that same SQL column. Using the clamped
+        // value here is what stuck the badge at 1 for a message that had been read.
+        //
+        // The conversation's `latestMessageTimestamp` is deliberately NOT used as a
+        // floor: it belongs to the newest message in the DB, which is not necessarily
+        // one that ever reached the window. Marking that read (#1135) clears the badge
+        // that is the only signal the tail is missing.
+        val newReadTime = viewedRecords.maxOf { it.sqlUserDate }
         val convoLatest = participantLookup.getConversationById(conversationId)?.latestMessageTimestamp
-        val newReadTime = if (convoLatest != null && convoLatest > viewedMax) convoLatest else viewedMax
         Logger.d(tag = TAG) {
             "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
-                    "(viewedMax=${viewedMax.toEpochMilliseconds()} " +
+                    "(clampedViewedMax=${viewedRecords.maxOf { it.userDate }.toEpochMilliseconds()} " +
                     "convoLatest=${convoLatest?.toEpochMilliseconds()} " +
                     "viewed=${viewedRecords.size} receipt-eligible=${unreadRecords.size})"
         }

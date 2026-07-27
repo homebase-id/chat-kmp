@@ -693,6 +693,11 @@ class ConversationListViewModel(
             eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemProgress }
                 .collect { event ->
                     event as BackendEvent.OutboxEvent.ItemProgress
+                    // A header-only update (editing a caption) still streams a
+                    // multipart body, so it reports byte progress — but no media is
+                    // moving. Reacting to it scrimmed the photo and parked it on
+                    // "Finalizing…" for the whole round-trip (#1155).
+                    if (!event.isCreate) return@collect
                     _messagesUiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Uploading(
@@ -728,6 +733,10 @@ class ConversationListViewModel(
             eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemCompleted }
                 .collect { event ->
                     event as BackendEvent.OutboxEvent.ItemCompleted
+                    // Completed is the tail of a progression already on screen, never
+                    // its start. Without this an edit — which shows no progress at all
+                    // now — would still flash the scrim for 800ms on completion (#1155).
+                    if (_messagesUiState.value.uploadProgress[event.uniqueId] == null) return@collect
                     viewModelScope.launch {
                         _messagesUiState.update { state ->
                             state.copy(

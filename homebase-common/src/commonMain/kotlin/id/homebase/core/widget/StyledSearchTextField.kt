@@ -42,6 +42,8 @@ fun StyledSearchTextField(
     TextField(
         state = textFieldState,
         modifier = modifier,
+        // Not LocalTextStyle: both search bars sit in a TopAppBar title slot, which provides titleLarge (22sp).
+        textStyle = MaterialTheme.typography.bodyLarge,
         lineLimits = TextFieldLineLimits.SingleLine,
         placeholder = {
             Text(placeHolderText)
