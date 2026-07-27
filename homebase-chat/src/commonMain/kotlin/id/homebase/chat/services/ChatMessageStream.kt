@@ -20,18 +20,24 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.groodle.GroodleVote
+import id.homebase.chat.poll.PollVote
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.chatTargetDrive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.io.encoding.Base64
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
@@ -49,8 +55,36 @@ class ChatMessageStream(
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
 
+    /**
+     * Auto-pin hook (#887). Wired at construction in DI to
+     * [id.homebase.chat.services.ChatMessageActionService.pinMessage]; a settable
+     * hook (like [isConversationLeft]) avoids a circular DI dependency
+     * (ActionService → MessageLookup → ChatMessageStream). Wired at construction —
+     * NOT in onPostAuthenticated, which is dropped on a warm relaunch / session
+     * restore and left auto-pin permanently no-op. No-op only in tests that skip DI.
+     */
+    var autoPinTypedMessage: suspend (messageId: Uuid, dependencyUniqueId: Uuid?) -> Unit =
+        { _, _ -> }
+
+    // Cheap in-session dedup: messages whose auto-pin candidacy was already decided
+    // this session, so an unrelated re-emit (reaction toggle, edit, delivery-status)
+    // doesn't re-run shouldAutoPin. Cleared on logout. This is NOT the guard against
+    // resurrecting a dismissed pin — that is the durable, synced
+    // ChatProtocol.AutoPinDismissedTag, which (unlike this per-session set) also holds
+    // across a restart and across the user's other devices. Auto-pin now runs on every
+    // path that surfaces messages — loadConversation, processIncrementalBatch, and
+    // refreshCachedWindows (DriveEvent.Stopped) — because that durable tag makes it safe.
+    private val autoPinHandled = mutableSetOf<Uuid>()
+
     private val paginatedState = PaginatedConversationState()
     private val chatDrive = chatTargetDrive.alias
+
+    // Per-conversation pinned-messages bar state (newest-first). Recomputed off the
+    // same signals that refresh message windows: loadConversation, processIncrementalBatch
+    // (covers both peer arrivals and own optimistic pin/unpin writes, which emit
+    // BatchReceived) and DriveEvent.Stopped (silent cross-device sync). Keyed by
+    // conversationId; only conversations the user has opened ever get an entry.
+    private val _pinnedMessages = MutableStateFlow<Map<Uuid, List<MessageUiModel>>>(emptyMap())
 
     // Messages for open conversations are loaded on demand via loadConversation().
     // Two paths converge on paginatedState afterward:
@@ -67,7 +101,11 @@ class ChatMessageStream(
             eventBus.events.collect { event ->
                 when (event) {
                     // Logout: drop cached message windows for the previous identity.
-                    is BackendEvent.SessionEnded -> paginatedState.reset()
+                    is BackendEvent.SessionEnded -> {
+                        paginatedState.reset()
+                        _pinnedMessages.value = emptyMap()
+                        autoPinHandled.clear()
+                    }
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
                         if (event.driveId == chatDrive) {
                             paginatedState.removeMessage(event.uniqueId)
@@ -154,6 +192,41 @@ class ChatMessageStream(
     fun hasCachedMessages(conversationId: Uuid): Boolean =
         paginatedState.hasCachedMessages(conversationId)
 
+    /**
+     * Reactive pinned-messages bar for [conversationId] (newest-first). Updates
+     * whenever a pin/unpin lands (own optimistic write or cross-device sync) for
+     * an open conversation. Empty until [loadConversation] runs.
+     */
+    fun observePinnedMessages(conversationId: Uuid): StateFlow<List<MessageUiModel>> =
+        _pinnedMessages
+            .map { it[conversationId].orEmpty() }
+            .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** One-shot read of the pinned messages for [conversationId] (newest-first). */
+    suspend fun getPinnedMessages(conversationId: Uuid): List<MessageUiModel> {
+        val c = credentialsManager.requireActiveCredentials()
+        val jsonHeaders = dbm.driveLocalTagIndex.selectJsonHeadersByLocalTagInGroup(
+            identityId = c.getIdentityId(),
+            driveId = chatDrive,
+            tagId = ChatProtocol.MessagePinnedTag,
+            groupId = conversationId,
+        )
+        return withContext(Dispatchers.Default) {
+            jsonHeaders.mapNotNull { json ->
+                val header = runCatching {
+                    OdinSystemSerializer.deserialize<HomebaseFile>(json)
+                }.getOrNull() ?: return@mapNotNull null
+                mapToMessageData(header, credentialsManager, ::resolveDisplayName)
+            }
+        }
+    }
+
+    /** Recompute and publish the pinned bar for one conversation. */
+    private suspend fun refreshPinnedFor(conversationId: Uuid) {
+        val pinned = getPinnedMessages(conversationId)
+        _pinnedMessages.update { it + (conversationId to pinned) }
+    }
+
     // Full message load from local DB for a single conversation.
     // Called when the user opens a conversation (ConversationListViewModel.selectConversation).
     // Do NOT call from DriveEvent.Stopped or other sync events — see init block above.
@@ -164,18 +237,60 @@ class ChatMessageStream(
     suspend fun loadConversation(conversationId: Uuid) {
         val start = TimeSource.Monotonic.markNow()
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
-        val result = fetchMessages(
-            conversationId = conversationId,
-            limit = PaginatedConversationState.PAGE_SIZE,
-        )
-        val elapsed = start.elapsedNow()
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
-        paginatedState.setInitialWindow(
-            conversationId = conversationId,
-            messages = result.records,
-            olderCursor = result.cursor,
-            hasOlderMessages = result.hasMoreRows,
-        )
+        // Register the load before reading: until setInitialWindow runs there is no
+        // window, and both reconcilers skip windowless conversations — so a write
+        // committing inside the fetch would be invisible to the fetch's SQLite
+        // snapshot AND dropped by them, leaving a stale window cached forever (#1135).
+        paginatedState.beginInitialLoad(conversationId)
+        val racedConcurrentWrite = try {
+            val result = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+            )
+            val elapsed = start.elapsedNow()
+            Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
+            paginatedState.setInitialWindow(
+                conversationId = conversationId,
+                messages = result.records,
+                olderCursor = result.cursor,
+                hasOlderMessages = result.hasMoreRows,
+            )
+            paginatedState.endInitialLoad(conversationId)
+        } catch (t: Throwable) {
+            // Without this a thrown fetch leaves the conversation permanently
+            // "loading", so every later reconciler flags it and no one clears it.
+            paginatedState.endInitialLoad(conversationId)
+            throw t
+        }
+        if (racedConcurrentWrite) {
+            // Exactly one re-read: the window now exists, so anything landing from
+            // here on is picked up by the reconcilers. Looping until quiet would
+            // never terminate under sustained sync traffic.
+            //
+            // merge = true because the re-read has its own snapshot boundary: a batch
+            // upserted into the (now existing) window while this fetch runs is absent
+            // from its results, and a replacing write would drop it permanently.
+            val fresh = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+            )
+            Logger.d("ChatMessageStream: loadConversation($conversationId) raced a concurrent write → re-read ${fresh.records.size} messages (hasMore=${fresh.hasMoreRows})")
+            paginatedState.setInitialWindow(
+                conversationId = conversationId,
+                messages = fresh.records,
+                olderCursor = fresh.cursor,
+                hasOlderMessages = fresh.hasMoreRows,
+                merge = true,
+            )
+        }
+
+        // Cold open: evaluate auto-pin so a message confirmed while the app was closed
+        // still pins, and populate the pinned bar — mirrors loadConversationAroundMessage.
+        // Read the finalized window so a merged raced write is included; runs on both the
+        // raced and common paths. Dismissed messages carry AutoPinDismissedTag and are skipped.
+        val windowMessages = paginatedState.getWindow(conversationId)?.messages ?: return
+        autoPinNewTypedMessages(windowMessages)
+        refreshPinnedFor(conversationId)
     }
 
     /**
@@ -291,7 +406,6 @@ class ChatMessageStream(
      * rather than silently landing on the latest page.
      */
     suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid): Boolean {
-        val start = TimeSource.Monotonic.markNow()
         val target = getMessage(messageUniqueId) ?: run {
             Logger.d(tag = "ChatPaging") {
                 "loadAround($conversationId, $messageUniqueId) anchor not in DB; falling back to loadConversation"
@@ -299,6 +413,34 @@ class ChatMessageStream(
             loadConversation(conversationId)
             return false
         }
+        // Same read-then-register race as loadConversation, and this is the path a
+        // scroll-anchored open takes (#1135).
+        paginatedState.beginInitialLoad(conversationId)
+        val racedConcurrentWrite = try {
+            seedWindowAround(conversationId, messageUniqueId, target)
+            paginatedState.endInitialLoad(conversationId)
+        } catch (t: Throwable) {
+            paginatedState.endInitialLoad(conversationId)
+            throw t
+        }
+        if (racedConcurrentWrite) {
+            seedWindowAround(conversationId, messageUniqueId, target, merge = true)
+        }
+        return true
+    }
+
+    /**
+     * Build (or rebuild) a window centered on [target]. [merge] is set on the
+     * raced re-seed so a write upserted into the window while this fetch runs
+     * survives the write-back — see [PaginatedConversationState.setInitialWindow].
+     */
+    private suspend fun seedWindowAround(
+        conversationId: Uuid,
+        messageUniqueId: Uuid,
+        target: MessageUiModel,
+        merge: Boolean = false,
+    ) {
+        val start = TimeSource.Monotonic.markNow()
         val halfPage = PaginatedConversationState.PAGE_SIZE / 2
         val olderHalfCursor = QueryBatchCursor(
             paging = TimeRowCursor(UnixTimeUtc(target.userDate), 0L)
@@ -327,12 +469,19 @@ class ChatMessageStream(
             hasOlderMessages = olderHalf.hasMoreRows,
             newerCursor = newerHalf.cursor,
             hasNewerMessages = newerHalf.hasMoreRows,
+            merge = merge,
         )
         Logger.d(tag = "ChatPaging") {
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
                 "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
         }
-        return true
+        // Evaluate auto-pin and populate the pinned bar on open — mirrors
+        // loadConversation. Without the refresh, opening to a saved scroll anchor
+        // (the common case) leaves the bar empty until a live BatchReceived arrives.
+        // Runs on both the initial seed and the raced merge=true re-seed
+        // (autoPinNewTypedMessages/refreshPinnedFor are idempotent).
+        autoPinNewTypedMessages(combined)
+        refreshPinnedFor(conversationId)
     }
 
     /**
@@ -354,6 +503,9 @@ class ChatMessageStream(
      * preserved.
      */
     private suspend fun refreshCachedWindows() {
+        // Conversations mid-initial-load have no window to walk yet; flag them so
+        // loadConversation re-reads instead of caching its pre-write snapshot.
+        paginatedState.markAllInitialLoadsDirty()
         val snapshot = paginatedState.windows.value
         if (snapshot.isEmpty()) return
         for ((conversationId, window) in snapshot) {
@@ -368,6 +520,13 @@ class ChatMessageStream(
                 )
                 if (result.records.isEmpty()) continue
                 paginatedState.upsert(conversationId, result.records)
+                // Auto-pin here too, not only on live BatchReceived: an own-send
+                // confirmed while the WS was down (offline / backgrounded) syncs in via
+                // silent DriveSync (this path), and must still pin. Safe against
+                // re-pinning a dismissed message because the gate is now the durable
+                // AutoPinDismissedTag, not the per-session in-memory set.
+                autoPinNewTypedMessages(result.records)
+                refreshPinnedFor(conversationId)
             } catch (t: Throwable) {
                 Logger.e(t) { "ChatMessageStream: refreshCachedWindows convo=$conversationId failed: ${t.message}" }
             }
@@ -387,7 +546,13 @@ class ChatMessageStream(
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
             if (isConversationLeft(conversationId)) return@forEach
-            val window = paginatedState.getWindow(conversationId) ?: return@forEach
+            val window = paginatedState.getWindow(conversationId) ?: run {
+                // No window yet. If that's because an initial load is mid-fetch,
+                // flag it — otherwise this batch is lost to both this gate and the
+                // loader's pre-write snapshot (#1135).
+                paginatedState.markInitialLoadDirty(conversationId)
+                return@forEach
+            }
             // Gate: when the user has paged backwards (hasNewerMessages == true), the
             // window doesn't include the latest messages. Stream events that arrive while
             // the user is deep in history would land out of order; defer them until the
@@ -403,6 +568,70 @@ class ChatMessageStream(
                 }
             }
             paginatedState.upsert(conversationId, msgs)
+        }
+
+        autoPinNewTypedMessages(messages)
+
+        // Refresh the pinned bar for every affected OPEN conversation. Done off the
+        // window gate above (which defers history-paged windows) because a pin/unpin
+        // must surface in the bar regardless of the scroll window. Covers own
+        // optimistic pin/unpin writes (they emit BatchReceived) and peer arrivals.
+        for (conversationId in grouped.keys) {
+            if (isConversationLeft(conversationId)) continue
+            if (paginatedState.getWindow(conversationId) == null) continue
+            refreshPinnedFor(conversationId)
+        }
+    }
+
+    /**
+     * Auto-pin (#887) typed messages — Poll/Event/Groodle, and live-location only
+     * while its share is active. Called from every path that surfaces messages
+     * (loadConversation, processIncrementalBatch, refreshCachedWindows), so a message
+     * pins no matter how it reaches the client — a live WS push, a cold open, or a
+     * silent DriveSync of a send made while offline/backgrounded (that closes the
+     * gap where a WS-down confirm would otherwise never pin).
+     *
+     * A message is skipped when it is already pinned, or when it carries the durable,
+     * synced [ChatProtocol.AutoPinDismissedTag] — the user unpinned it, and that tag
+     * (unlike the per-session [autoPinHandled] set) stops any device, in any session,
+     * from resurrecting the pin. [autoPinHandled] is only an in-session dedup.
+     *
+     * An own optimistic send (`isPendingSend`) is DEFERRED, not pinned inline: while
+     * pending, the message file exists only under a temp id that the create rekeys to
+     * the server id, and the create's echo replaces the optimistic row — a pin
+     * enqueued during that window targets the dead temp fileId (server 400) and is
+     * clobbered by the echo. Leaving it un-handled lets the confirmed sighting (real
+     * server fileId, no pending tag) pin it cleanly. As a backstop for any other
+     * stale-fileId path (e.g. a manual pin of a still-pending message), the tags
+     * request carries the message uniqueId so
+     * DriveOutboxUploader.updateLocalMetadataTags re-resolves the fileId at send time.
+     */
+    private suspend fun autoPinNewTypedMessages(messages: List<MessageUiModel>) {
+        if (messages.isEmpty()) return
+        val now = Clock.System.now().toEpochMilliseconds()
+        for (msg in messages) {
+            if (msg.isDeleted) continue
+            if (msg.isPinned) {
+                autoPinHandled.add(msg.id)
+                continue
+            }
+            // User dismissed this candidate (durable, synced AutoPinDismissedTag) —
+            // never resurrect it, on any device or after any restart.
+            if (msg.isAutoPinDismissed) {
+                autoPinHandled.add(msg.id)
+                continue
+            }
+            // Defer a still-sending message (temp fileId / echo-clobber) — see KDoc.
+            if (msg.isPendingSend) continue
+            if (!autoPinHandled.add(msg.id)) continue
+
+            if (!shouldAutoPin(msg.messageContent, msg.ownReactions, now)) continue
+
+            try {
+                autoPinTypedMessage(msg.id, null)
+            } catch (t: Throwable) {
+                Logger.e(t) { "ChatMessageStream: auto-pin failed for ${msg.id}: ${t.message}" }
+            }
         }
     }
 
@@ -772,4 +1001,37 @@ class ChatMessageStream(
 sealed interface ChatMessagesData {
     data object Initializing : ChatMessagesData
     data class Messages(val window: MessageWindow) : ChatMessagesData
+}
+
+/**
+ * Auto-pin decision for #887, extracted so the actionability guards are unit-testable.
+ *
+ * True only when a freshly-seen typed message is still actionable, so a re-delivery
+ * via BatchReceived — a peer's reaction/edit, or a fresh device's first sighting — can
+ * NOT resurrect a pin the user already dismissed by voting or by the event/share
+ * ending. [ChatMessageStream.autoPinHandled] is per-device and in-memory, so it can't
+ * carry that decision across devices or restarts; the durable signal is the message's
+ * own state. A null (parse-failed) descriptor is left unpinned — we can neither preview
+ * nor age it. [nowMs] is epoch-ms; [ownReactions] are the current user's decoded vote
+ * codes (`_p0`, `_1Y`).
+ */
+internal fun shouldAutoPin(
+    content: MessageContent?,
+    ownReactions: List<String>,
+    nowMs: Long,
+): Boolean = when (content) {
+    is MessageContent.Poll -> content.descriptor?.let {
+        PollVote.ownVotes(ownReactions, it.options.size).isEmpty()
+    } ?: false
+    is MessageContent.Groodle -> content.descriptor?.let {
+        GroodleVote.myVotes(ownReactions, it.slots.size, it.allowMaybe).isEmpty()
+    } ?: false
+    is MessageContent.Event -> content.descriptor?.let {
+        nowMs <= (it.endUtcMs ?: (it.startUtcMs + 3_600_000L))
+    } ?: false
+    is MessageContent.Location -> {
+        val until = content.descriptor?.liveShareUntilMs
+        until != null && nowMs < until
+    }
+    else -> false
 }

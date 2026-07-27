@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +54,7 @@ import id.homebase.resources.chat_connection_invitation_sent
 import id.homebase.resources.chat_connection_invited
 import id.homebase.resources.chat_connection_not_connected
 import id.homebase.resources.chat_connection_wants_to_connect
+import id.homebase.resources.chat_conversation_draft
 import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
@@ -204,11 +206,24 @@ fun ConversationItem(
                 }
                 val iconRes = if (pendingSubtitle != null) null else contentLabel?.icon
 
+                // A non-blank draft takes over the preview line ("Draft: …", tinted)
+                // so the row advertises unsent text the way every messenger does.
+                val draftRaw = enrichedData.conversation.draft
+                val draftPreview = remember(draftRaw) {
+                    draftRaw?.stripComposerLineBreakArtifacts()?.takeIf { it.isNotBlank() }
+                }
+                val draftLabel = stringResource(
+                    MR.string.chat_preview_sender_label,
+                    stringResource(MR.string.chat_conversation_draft),
+                )
+
                 ConversationMessagePreview(
-                    text = rawPreview,
-                    prefix = senderPrefix,
-                    iconRes = iconRes,
-                    isDeleted = enrichedData.conversation.lastMessageIsDeleted,
+                    text = draftPreview ?: rawPreview,
+                    prefix = if (draftPreview != null) draftLabel else senderPrefix,
+                    prefixColor = if (draftPreview != null) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    iconRes = if (draftPreview != null) null else iconRes,
+                    isDeleted = draftPreview == null && enrichedData.conversation.lastMessageIsDeleted,
                     modifier = Modifier.weight(1f)
                 )
 
@@ -226,7 +241,7 @@ fun ConversationItem(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                } else if (enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
+                } else if (draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                     Spacer(modifier = Modifier.width(4.dp))
                     DeliveryStatus(
                         isPendingSend = enrichedData.conversation.lastMessageIsPendingSend,
@@ -352,6 +367,7 @@ fun ConversationMessagePreview(
     isDeleted: Boolean,
     modifier: Modifier = Modifier,
     prefix: String? = null,
+    prefixColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -362,7 +378,7 @@ fun ConversationMessagePreview(
             Text(
                 text = prefix,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                color = prefixColor.copy(
                     alpha = if (isDeleted) 0.5f else 1f
                 ),
                 maxLines = 1,
