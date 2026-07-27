@@ -124,16 +124,9 @@ class ChatMessageStream(
                         }
                     }
 
-                    // The outbox uploaded this item successfully. Clear the
-                    // message's isPendingSendTag NOW rather than waiting for the
-                    // server-canonical copy to sync back and replace the optimistic
-                    // row — that echo can be missed by the open conversation window
-                    // when DriveSync (silent) applies it before the duplicate WS
-                    // push is guard-rejected on equal `modified`, leaving the bubble
-                    // stuck on the pending clock until a cold reload (#1120; same
-                    // live-refresh gap class as #1042). Non-message completions
-                    // (conversation/admin files, reactions, receipts) are ignored in
-                    // markSendSucceeded.
+                    // Upload succeeded — clear isPendingSendTag now instead of
+                    // waiting for the server echo, which the open window can miss
+                    // (#1120). See markSendSucceeded.
                     is BackendEvent.OutboxEvent.ItemCompleted -> {
                         if (event.driveId == chatDrive) {
                             scope.launch { markSendSucceeded(event.uniqueId) }
@@ -708,19 +701,16 @@ class ChatMessageStream(
     }
 
     /**
-     * An outbox item for [uniqueId] uploaded successfully. If it's a chat *message*
-     * still carrying [ChatProtocol.isPendingSendTag], drop that tag now so the bubble
-     * flips from the pending clock to the Sent tick immediately — instead of relying
-     * solely on the server echo replacing the optimistic row, which the open window
-     * can miss (see the `ItemCompleted` handler / #1120).
+     * An outbox item for [uniqueId] uploaded successfully — drop its
+     * [ChatProtocol.isPendingSendTag] so the bubble flips from the pending clock to
+     * the Sent tick. Relying on the server echo alone isn't enough: DriveSync applies
+     * the echo silently, then the duplicate WS push is guard-rejected on equal
+     * `modified` and emits no BatchReceived, so an open window keeps serving the stale
+     * pending model until a cold reload (#1120).
      *
-     * Non-message completions (a conversation/admin file, a reaction, a read receipt)
-     * carry no message bubble and are ignored via the [ChatProtocol.MessageFileType]
-     * gate. Safe and idempotent: if the echo already cleared the tag,
-     * [tagsForSendSuccess] returns null and we no-op (no redundant upsert/BatchReceived).
-     * The local `updated` bump is +1 ms (`updateLocalTags`), far below the server
-     * `modified`, so a later echo still passes the DriveMainIndex guard and replaces
-     * the row.
+     * The `updated` bump is +1 ms, far below the server `modified`, so the echo still
+     * passes the DriveMainIndex guard and replaces the row. Idempotent — a tag already
+     * cleared gives null from [tagsForSendSuccess] and no-ops.
      */
     private suspend fun markSendSucceeded(uniqueId: Uuid) {
         val file = getMessageFile(uniqueId) ?: return
