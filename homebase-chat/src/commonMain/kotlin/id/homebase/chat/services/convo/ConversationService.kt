@@ -1041,7 +1041,7 @@ class ConversationService(
         val domain = credentialsManager.requireActiveDomain()
         val leaveFile = getConversationHomebaseFile(conversationId)
         val preVersionTag = leaveFile?.fileMetadata?.versionTag
-        Logger.d { "leaveGroup START: conversationId=$conversationId forceLocalOnly=$forceLocalOnly isEncrypted=${leaveFile?.fileMetadata?.isEncrypted} aesKey=${leaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
+        Logger.d { "leaveGroup START: conversationId=$conversationId forceLocalOnly=$forceLocalOnly isEncrypted=${leaveFile?.fileMetadata?.isEncrypted}" }
         audit.pre("convo: isGroup=${conversation.isGroupConversation} legacyGroup=${conversation.isLegacyGroup} state=${conversation.conversationState} participants=${conversation.participants.size} admins=${conversation.admins.size} amIAdmin=${conversation.admins.contains(domain)}")
         audit.pre("file: exists=${leaveFile != null} versionTag=$preVersionTag")
 
@@ -1189,8 +1189,6 @@ class ConversationService(
 //                outboxSync.tryEnqueue(it)
 //            }
 
-//        val postLeaveFile = getConversationHomebaseFile(conversationId)
-//        Logger.d { "leaveGroup END: conversationId=$conversationId aesKey=${postLeaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
     }
 
     suspend fun acceptRejoin(conversationId: Uuid) {
@@ -1355,7 +1353,7 @@ class ConversationService(
         if (conversationFile == null) error("No conversation found")
         val preVersionTag = conversationFile.fileMetadata.versionTag
 
-        Logger.d { "updateConversationInternal: conversationId=$conversationId isEncrypted=${conversationFile.fileMetadata.isEncrypted} aesKey=${conversationFile.keyHeader.aesKey.unsafeBytes.toBase64()} ivLen=${conversationFile.keyHeader.iv.size} keyLen=${conversationFile.keyHeader.aesKey.unsafeBytes.size}" }
+        Logger.d { "updateConversationInternal: conversationId=$conversationId isEncrypted=${conversationFile.fileMetadata.isEncrypted} ivLen=${conversationFile.keyHeader.iv.size} keyLen=${conversationFile.keyHeader.aesKey.unsafeBytes.size}" }
 
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
@@ -1468,7 +1466,7 @@ class ConversationService(
                 manifest = manifest
             )
 
-        Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} versionTag=${conversationFile.fileMetadata.versionTag}" }
+        Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId versionTag=${conversationFile.fileMetadata.versionTag}" }
 
         // Full-shape log of what we're about to enqueue. Lets us read the
         // log and see exactly which recipients are on this push, whether the
@@ -1501,7 +1499,7 @@ class ConversationService(
                 thumbnails = thumbs
             )
 
-        Logger.d { "updateConversationInternal POST-ENCRYPT: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} requestKeyHeader=${request.keyHeader?.aesKey?.unsafeBytes?.toBase64()}" }
+        Logger.d { "updateConversationInternal POST-ENCRYPT: conversationId=$conversationId keyHeaderPresent=${request.keyHeader != null}" }
 
         // Optimistically apply the participant/content change to the local DB immediately.
         // This ensures that any code running after this call (e.g. updateConversationTags)
@@ -2099,7 +2097,7 @@ class ConversationService(
         // tag"), and the outbox then pointlessly retries for hours. Skip the
         // server roundtrip and delete the local row directly.
         val isLocalOnlyPlaceholder = deleteFile != null && deleteFile.fileMetadata.versionTag == null
-        Logger.d { "deleteConversation: conversationId=$conversationId localOnly=$isLocalOnlyPlaceholder isEncrypted=${deleteFile?.fileMetadata?.isEncrypted} aesKey=${deleteFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
+        Logger.d { "deleteConversation: conversationId=$conversationId localOnly=$isLocalOnlyPlaceholder isEncrypted=${deleteFile?.fileMetadata?.isEncrypted}" }
 
         if (isLocalOnlyPlaceholder) {
             audit.step(1, "local-only placeholder — bypass server, delete local row + remove in-memory entry")
@@ -2275,7 +2273,9 @@ class ConversationService(
                     targetDrive = chatTargetDrive
                 ),
                 versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
-                tags = newTags.map { it.toString() }
+                tags = newTags.map { it.toString() },
+                // Stable id so the uploader resolves the current fileId at send time.
+                uniqueId = conversationId
             ),
             driveId = chatDrive,
             uniqueId = Uuid.random(),
