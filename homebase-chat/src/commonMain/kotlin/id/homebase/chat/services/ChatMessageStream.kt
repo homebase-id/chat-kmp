@@ -124,6 +124,15 @@ class ChatMessageStream(
                         }
                     }
 
+                    // Upload succeeded — clear isPendingSendTag now instead of
+                    // waiting for the server echo, which the open window can miss
+                    // (#1120). See markSendSucceeded.
+                    is BackendEvent.OutboxEvent.ItemCompleted -> {
+                        if (event.driveId == chatDrive) {
+                            scope.launch { markSendSucceeded(event.uniqueId) }
+                        }
+                    }
+
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount}, result=${event.result})")
@@ -688,6 +697,27 @@ class ChatMessageStream(
 
         val newTags = existingTags
             .filterNot { it == ChatProtocol.isPendingSendTag } + ChatProtocol.isFailedSendTag
+        optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
+    }
+
+    /**
+     * An outbox item for [uniqueId] uploaded successfully — drop its
+     * [ChatProtocol.isPendingSendTag] so the bubble flips from the pending clock to
+     * the Sent tick. Relying on the server echo alone isn't enough: DriveSync applies
+     * the echo silently, then the duplicate WS push is guard-rejected on equal
+     * `modified` and emits no BatchReceived, so an open window keeps serving the stale
+     * pending model until a cold reload (#1120).
+     *
+     * The `updated` bump is +1 ms, far below the server `modified`, so the echo still
+     * passes the DriveMainIndex guard and replaces the row. Idempotent — a tag already
+     * cleared gives null from [tagsForSendSuccess] and no-ops.
+     */
+    private suspend fun markSendSucceeded(uniqueId: Uuid) {
+        val file = getMessageFile(uniqueId) ?: return
+        if (file.fileMetadata.appData.fileType != ChatProtocol.MessageFileType) return
+
+        val existingTags = file.fileMetadata.localAppData?.tags.orEmpty()
+        val newTags = tagsForSendSuccess(existingTags) ?: return
         optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
     }
 
