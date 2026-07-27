@@ -99,6 +99,117 @@ class PaginatedConversationStateTest {
     }
 
     @Test
+    fun setInitialWindow_merge_keepsConcurrentUpsertsAndLetsTheFreshPageWinOnConflicts() {
+        // The raced re-read's write-back. Anything upserted into the window while
+        // that fetch ran is absent from its results; replacing would drop it.
+        val state = PaginatedConversationState()
+        val stale = message(userDateMs = 10, conversationId = convoId)
+        val upsertedDuringReRead = message(userDateMs = 30, conversationId = convoId)
+        state.setInitialWindow(convoId, listOf(stale, upsertedDuringReRead))
+
+        val refreshed = stale.copy(content = "edited")
+        val fromReRead = message(userDateMs = 20, conversationId = convoId)
+        state.setInitialWindow(
+            conversationId = convoId,
+            messages = listOf(refreshed, fromReRead),
+            olderCursor = QueryBatchCursor(paging = TimeRowCursor(UnixTimeUtc(10), 0L)),
+            hasOlderMessages = true,
+            merge = true,
+        )
+
+        val window = state.getWindow(convoId)!!
+        assertEquals(
+            listOf(stale.id, fromReRead.id, upsertedDuringReRead.id),
+            window.messages.map { it.id },
+            "a message the fresh page doesn't carry must survive the merge",
+        )
+        assertEquals(
+            "edited", window.messages.first { it.id == stale.id }.content,
+            "the fresh page wins on id conflicts",
+        )
+        assertTrue(window.hasOlderMessages, "cursors come from the fresh page")
+    }
+
+    @Test
+    fun setInitialWindow_withoutMerge_replaces() {
+        val state = PaginatedConversationState()
+        val gone = message(userDateMs = 10, conversationId = convoId)
+        state.setInitialWindow(convoId, listOf(gone))
+
+        val fresh = message(userDateMs = 20, conversationId = convoId)
+        state.setInitialWindow(convoId, listOf(fresh))
+
+        assertEquals(listOf(fresh.id), state.getWindow(convoId)!!.messages.map { it.id })
+    }
+
+    // ---------- initial-load race bookkeeping (#1135) ----------
+
+    @Test
+    fun endInitialLoad_reportsWhetherAWriteLandedDuringTheLoad() {
+        val state = PaginatedConversationState()
+
+        state.beginInitialLoad(convoId)
+        assertFalse(state.endInitialLoad(convoId), "quiet load must not ask for a re-read")
+
+        state.beginInitialLoad(convoId)
+        state.markInitialLoadDirty(convoId)
+        assertTrue(state.endInitialLoad(convoId), "a write during the load must ask for a re-read")
+    }
+
+    @Test
+    fun endInitialLoad_clearsTheMarker_soALaterWriteIsNotAttributedToTheFinishedLoad() {
+        // The failure path calls endInitialLoad too; if the marker survived, every
+        // later sync round would keep flagging the conversation forever.
+        val state = PaginatedConversationState()
+        state.beginInitialLoad(convoId)
+        state.endInitialLoad(convoId)
+
+        state.markInitialLoadDirty(convoId)
+        state.markAllInitialLoadsDirty()
+
+        assertFalse(state.endInitialLoad(convoId))
+    }
+
+    @Test
+    fun markInitialLoadDirty_isScopedToTheConversation() {
+        val state = PaginatedConversationState()
+        val otherConvoId = Uuid.parse("44444444-4444-4444-4444-444444444444")
+        state.beginInitialLoad(convoId)
+        state.beginInitialLoad(otherConvoId)
+
+        state.markInitialLoadDirty(otherConvoId)
+
+        assertFalse(state.endInitialLoad(convoId))
+        assertTrue(state.endInitialLoad(otherConvoId))
+    }
+
+    @Test
+    fun markAllInitialLoadsDirty_flagsEveryInFlightLoad() {
+        // refreshCachedWindows walks `windows`, which a mid-load conversation is
+        // absent from — so the post-sync path has to flag them all.
+        val state = PaginatedConversationState()
+        val otherConvoId = Uuid.parse("55555555-5555-5555-5555-555555555555")
+        state.beginInitialLoad(convoId)
+        state.beginInitialLoad(otherConvoId)
+
+        state.markAllInitialLoadsDirty()
+
+        assertTrue(state.endInitialLoad(convoId))
+        assertTrue(state.endInitialLoad(otherConvoId))
+    }
+
+    @Test
+    fun reset_dropsInFlightLoadMarkers() {
+        val state = PaginatedConversationState()
+        state.beginInitialLoad(convoId)
+        state.markInitialLoadDirty(convoId)
+
+        state.reset()
+
+        assertFalse(state.endInitialLoad(convoId), "logout must not leave a re-read pending")
+    }
+
+    @Test
     fun prependOlderMessages_keepsAscendingOrder_andDedupesByMessageId() {
         val state = PaginatedConversationState()
         val mid = message(userDateMs = 50, conversationId = convoId)

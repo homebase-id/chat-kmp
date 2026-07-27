@@ -154,7 +154,12 @@ sealed interface BackendEvent {
             val driveId: Uuid,
             val uniqueId: Uuid,
             val progress: Float,  // 0.0 to 1.0
-            val bytesSent: Long? = null
+            val bytesSent: Long? = null,
+            // True when the outbox row is a file *create*, which carries the item's
+            // payloads. False for a header-only update (an edit): the bytes moving
+            // are metadata, not media, so a media-progress UI must not react to it
+            // (#1155).
+            val isCreate: Boolean = true
         ) : OutboxEvent  // New: For ongoing upload progress updates
 
         data class ItemFailed(
