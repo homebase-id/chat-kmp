@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+
 plugins {
     // this is necessary to avoid the plugins to be loaded multiple times
     // in each subproject's classloader
@@ -28,6 +30,17 @@ subprojects {
                     because("Using encrypted SQLite JDBC driver")
                 }
             }
+        }
+    }
+
+    // Without this a CI failure prints only `java.lang.AssertionError at Foo.kt:171`
+    // — no assertion message, no stack. For a coroutine test that line is the
+    // `runTest` lambda, so it doesn't even say which assertion blew, and an
+    // intermittent failure is undiagnosable from the logs alone.
+    tasks.withType<Test>().configureEach {
+        testLogging {
+            events("failed")
+            exceptionFormat = TestExceptionFormat.FULL
         }
     }
 }
