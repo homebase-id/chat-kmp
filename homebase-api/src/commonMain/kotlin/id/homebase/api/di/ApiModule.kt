@@ -21,7 +21,6 @@ import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.DriveOutboxUploader
-import id.homebase.api.client.notifications.ScheduledPushJobStore
 import id.homebase.api.client.notifications.ScheduledPushOutboxUploader
 import id.homebase.api.sync.database.CompositeOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
@@ -92,10 +91,10 @@ val apiModule = module {
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
     // Composite outbox uploader: drive transit + the scheduled-push shim (offline-durable
-    // schedule/cancel of reminder pushes; see ScheduledPushOutboxUploader).
-    singleOf(::ScheduledPushJobStore)
+    // schedule/cancel of reminder pushes, reconciled against the server via tagId; see
+    // ScheduledPushOutboxUploader).
     single { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
-    single { ScheduledPushOutboxUploader(get(), get()) }
+    single { ScheduledPushOutboxUploader(get()) }
     single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
     singleOf(::OutboxSync)
 

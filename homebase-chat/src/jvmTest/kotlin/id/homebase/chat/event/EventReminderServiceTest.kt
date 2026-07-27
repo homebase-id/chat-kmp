@@ -2,13 +2,13 @@ package id.homebase.chat.event
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.notifications.ScheduledPushJobStore
 import id.homebase.api.client.notifications.ScheduledPushOutboxUploader
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,7 +19,9 @@ import kotlin.uuid.Uuid
  * Guard + enqueue/cancel semantics for [EventReminderService] (#1116). The service enqueues onto a
  * real in-memory outbox and never calls the push provider directly (the uploader does), so these
  * assertions need no HTTP fake — they inspect the queued outbox row via [OutboxSync.pendingUploadType].
- * The outbox is left **offline** so rows stay queued for inspection instead of draining.
+ * The outbox is left **offline** so rows stay queued for inspection instead of draining. (The
+ * uploader's list()-based schedule/cancel reconcile is covered by pure-function tests in
+ * homebase-api's ScheduledPushScheduleDecisionTest.)
  */
 class EventReminderServiceTest {
 
@@ -40,24 +42,17 @@ class EventReminderServiceTest {
     private fun descriptorStartingAt(startUtcMs: Long) =
         EventDescriptor(title = "Standup", startUtcMs = startUtcMs, timezone = "UTC")
 
-    private fun TestDeps.service() = EventReminderService(
-        outboxSync = outboxSync,
-        jobStore = jobStore,
-        preferences = preferences,     // default lead = 60 min
-        now = { fixedNow },
-    )
+    private class TestDeps(val outboxSync: OutboxSync, val service: EventReminderService)
 
-    private class TestDeps(
-        val dbm: DatabaseManager,
-        val outboxSync: OutboxSync,
-        val jobStore: ScheduledPushJobStore,
-        val preferences: EventReminderPreferences,
-    )
-
-    private suspend fun deps(scope: kotlinx.coroutines.CoroutineScope): TestDeps {
+    private fun deps(scope: CoroutineScope): TestDeps {
         val dbm = inMemoryDbm()
         val outboxSync = OutboxSync(dbm, NoopUploader, EventBus(), scope).also { it.setOnline(false) }
-        return TestDeps(dbm, outboxSync, ScheduledPushJobStore(dbm), EventReminderPreferences(dbm))
+        val service = EventReminderService(
+            outboxSync = outboxSync,
+            preferences = EventReminderPreferences(dbm),  // default lead = 60 min
+            now = { fixedNow },
+        )
+        return TestDeps(outboxSync, service)
     }
 
     @Test
@@ -65,7 +60,7 @@ class EventReminderServiceTest {
         val d = deps(backgroundScope)
         val messageId = Uuid.random()
         // Starts in 2h; lead 60m ⇒ sendAt = now + 1h > now ⇒ schedule.
-        d.service().onRsvpChanged(
+        d.service.onRsvpChanged(
             conversationId = Uuid.random(),
             messageId = messageId,
             descriptor = descriptorStartingAt(fixedNow + 2 * hourMs),
@@ -79,18 +74,23 @@ class EventReminderServiceTest {
     }
 
     @Test
-    fun going_insideLeadWindow_doesNotSchedule() = runTest {
+    fun going_insideLeadWindow_doesNotSchedule_butDefensivelyCancels() = runTest {
         val d = deps(backgroundScope)
         val messageId = Uuid.random()
-        // Starts in 30m; lead 60m ⇒ sendAt = now - 30m ≤ now ⇒ guard skips (no phantom past-fire).
-        d.service().onRsvpChanged(
+        // Starts in 30m; lead 60m ⇒ sendAt = now - 30m ≤ now ⇒ guard does NOT schedule (no
+        // phantom past-fire). It defensively enqueues a cancel-by-tag instead, so any reminder set
+        // earlier (when the event was further out / before an organizer moved it in) is cleared.
+        d.service.onRsvpChanged(
             conversationId = Uuid.random(),
             messageId = messageId,
             descriptor = descriptorStartingAt(fixedNow + 30 * 60_000L),
             isGoing = true,
             reminderText = "Upcoming event reminder",
         )
-        assertNull(d.outboxSync.pendingUploadType(drive, messageId))
+        assertEquals(
+            ScheduledPushOutboxUploader.CancelPush,
+            d.outboxSync.pendingUploadType(drive, messageId),
+        )
     }
 
     @Test
@@ -98,24 +98,30 @@ class EventReminderServiceTest {
         val d = deps(backgroundScope)
         val messageId = Uuid.random()
         val descriptor = descriptorStartingAt(fixedNow + 2 * hourMs)
-        val svc = d.service()
         // Going (offline) → schedule row queued, never sent.
-        svc.onRsvpChanged(Uuid.random(), messageId, descriptor, isGoing = true, reminderText = "x")
+        d.service.onRsvpChanged(Uuid.random(), messageId, descriptor, isGoing = true, reminderText = "x")
         assertEquals(ScheduledPushOutboxUploader.SchedulePush, d.outboxSync.pendingUploadType(drive, messageId))
         // Not going before it ever drained → the queued schedule is simply yanked; nothing scheduled.
-        svc.onRsvpChanged(Uuid.random(), messageId, descriptor, isGoing = false, reminderText = "x")
+        d.service.onRsvpChanged(Uuid.random(), messageId, descriptor, isGoing = false, reminderText = "x")
         assertNull(d.outboxSync.pendingUploadType(drive, messageId))
     }
 
     @Test
-    fun jobStore_roundTrips() = runTest {
+    fun retractWithNoQueuedSchedule_enqueuesCancelByTag() = runTest {
         val d = deps(backgroundScope)
-        val key = Uuid.random()
-        val jobId = Uuid.random()
-        assertNull(d.jobStore.get(key))
-        d.jobStore.put(key, jobId)
-        assertEquals(jobId, d.jobStore.get(key))
-        d.jobStore.delete(key)
-        assertNull(d.jobStore.get(key))
+        val messageId = Uuid.random()
+        // No prior schedule row queued (e.g. it already drained, or was scheduled on another device)
+        // → cancel must be enqueued so the uploader can list()-and-cancel by tag on this device.
+        d.service.onRsvpChanged(
+            conversationId = Uuid.random(),
+            messageId = messageId,
+            descriptor = descriptorStartingAt(fixedNow + 2 * hourMs),
+            isGoing = false,
+            reminderText = "x",
+        )
+        assertEquals(
+            ScheduledPushOutboxUploader.CancelPush,
+            d.outboxSync.pendingUploadType(drive, messageId),
+        )
     }
 }

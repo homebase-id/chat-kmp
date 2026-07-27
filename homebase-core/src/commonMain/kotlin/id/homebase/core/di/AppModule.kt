@@ -730,7 +730,7 @@ val appModule = module {
     singleOf(::EventReminderPreferences)
     // Explicit `single` (not `singleOf`) — the ctor's `now` clock arg is an intentional Kotlin
     // default the container can't resolve reflectively.
-    single { EventReminderService(get(), get(), get()) }
+    single { EventReminderService(get(), get()) }
     // singleOf(::PendingNotificationTap) would force Koin to resolve every
     // constructor parameter from the container — including the Duration TTL
     // and the CoroutineScope, which are intentionally Kotlin-default args.
