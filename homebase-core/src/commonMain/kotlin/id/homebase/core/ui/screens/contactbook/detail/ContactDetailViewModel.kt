@@ -688,7 +688,7 @@ class ContactDetailViewModel(
                         }
                         // repo.delete does the optimistic remove and restores on failure.
                         val event = try {
-                            if (contactRepository.delete(entry.uniqueId)) ContactDetailEvent.Back
+                            if (contactRepository.delete(entry.uniqueId)) ContactDetailEvent.DeletedAndBack
                             else ContactDetailEvent.DeleteError
                         } catch (e: ForbiddenException) {
                             ContactDetailEvent.DeleteForbidden

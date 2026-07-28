@@ -131,6 +131,13 @@ sealed interface ContactDetailEvent {
     data class OpenConversation(val conversationId: Uuid) : ContactDetailEvent
     data class SeeAllMedia(val conversationId: String) : ContactDetailEvent
     data object Back : ContactDetailEvent
+
+    /**
+     * The contact was deleted and the screen should close. Distinct from [Back] so the
+     * contact book can clear its search query — the deleted contact may have been the
+     * query's only match, and a plain back must NOT clear an in-progress search (#876).
+     */
+    data object DeletedAndBack : ContactDetailEvent
     data object Error : ContactDetailEvent
     /** 403 — app lacks manage-contacts permission. */
     data object Forbidden : ContactDetailEvent
