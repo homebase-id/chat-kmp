@@ -16,6 +16,21 @@ plugins {
 }
 
 subprojects {
+    // Gradle's default SHORT exception format prints only "<ExceptionClass> at File.kt:<line>",
+    // and for a coroutine test it attributes that line to the enclosing `runTest {` rather than
+    // to the failing assertion — so a CI-only failure arrives with neither the assertion message
+    // nor a usable line. That is not enough to triage a flake from a log alone. Print the full
+    // trace and message for failing tests.
+    tasks.withType<Test>().configureEach {
+        testLogging {
+            events("failed")
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
+        }
+    }
+
     configurations.all {
         resolutionStrategy {
             // Force encrypted sqlite-jdbc version everywhere
