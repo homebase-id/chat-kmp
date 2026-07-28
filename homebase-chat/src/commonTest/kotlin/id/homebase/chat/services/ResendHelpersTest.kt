@@ -2,6 +2,7 @@ package id.homebase.chat.services
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
 class ResendHelpersTest {
@@ -93,5 +94,29 @@ class ResendHelpersTest {
     @Test
     fun emptyTagsGainPending() {
         assertEquals(listOf(ChatProtocol.isPendingSendTag), tagsForRetry(emptyList()))
+    }
+
+    // ---- tagsForSendSuccess (#1120) ----
+
+    @Test
+    fun pendingTagDroppedOnSuccess() {
+        val result = tagsForSendSuccess(listOf(otherTag, ChatProtocol.isPendingSendTag))
+        assertEquals(listOf(otherTag), result)
+    }
+
+    @Test
+    fun noPendingTagIsNoOp() {
+        // Already cleared by the server echo (or never pending) → null, so the
+        // caller skips a redundant upsert + BatchReceived.
+        assertNull(tagsForSendSuccess(listOf(otherTag)))
+        assertNull(tagsForSendSuccess(emptyList()))
+    }
+
+    @Test
+    fun onlyPendingTagDroppedOthersKept() {
+        assertEquals(
+            listOf(otherTag),
+            tagsForSendSuccess(listOf(ChatProtocol.isPendingSendTag, otherTag)),
+        )
     }
 }
