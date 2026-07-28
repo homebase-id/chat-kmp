@@ -313,6 +313,21 @@ sealed interface FullScreenOverlay {
         val payloads: List<PayloadDescriptor>,
         val keyHeader: KeyHeader,
         val selectedPayloadKey: String,
+        /**
+         * Whether the payloads are encrypted. Chat media always is (hence the default);
+         * a public feed post ships plaintext with no per-payload IV, which the viewer
+         * must render rather than mistake for a still-uploading attachment.
+         */
+        val isEncrypted: Boolean = true,
+        /**
+         * Author identity to read the payloads from **over peer**, when the bytes live on a
+         * followed identity's drive rather than the local one (a feed post from someone you
+         * follow). Null for local media — chat and own posts. Requires [globalTransitId];
+         * see [id.homebase.core.image.HomebaseImageData.isOverPeer].
+         */
+        val remoteOdinId: OdinId? = null,
+        /** Cross-identity id of the file on [remoteOdinId]'s drive, required for an over-peer read. */
+        val globalTransitId: Uuid? = null,
     ) : FullScreenOverlay
 
     data class AttachmentData(
@@ -340,6 +355,13 @@ sealed interface FullScreenOverlay {
         val payload: PayloadDescriptor,
         val localFilePath: String? = null,
         val uploadMessageId: Uuid? = null,
+        /**
+         * Whether the payload is encrypted. Chat video always is (hence the default); a public
+         * feed post's video is plaintext and carries no per-payload IV, which the paused-state
+         * poster must not mistake for a not-yet-uploaded payload. Playback itself never reads
+         * the IV — the drive provider decrypts (or doesn't) off the response header.
+         */
+        val isEncrypted: Boolean = true,
     ) : FullScreenOverlay
 
     @Immutable

@@ -15,7 +15,12 @@ import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostCommentItem
 import id.homebase.core.feed.services.PostCommentsService
+import id.homebase.core.feed.services.CanReact
+import id.homebase.core.feed.services.FeedPermissionService
 import id.homebase.core.feed.services.PostReactionService
+import id.homebase.core.feed.services.ReportingUrlProvider
+import id.homebase.core.feed.services.authorOdinId
+import id.homebase.core.feed.services.isAuthoredBy
 import id.homebase.core.widget.ReactionDisplayItem
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,6 +69,8 @@ class PostDetailViewModel(
     private val contactService: ContactService,
     private val stickerStream: StickerStream,
     private val publicProfileProvider: PublicProfileProviderCached,
+    private val reportingUrlProvider: ReportingUrlProvider,
+    private val permissionService: FeedPermissionService,
 ) : ViewModel() {
 
     private val _selfOdinId = MutableStateFlow<OdinId?>(null)
@@ -72,11 +79,20 @@ class PostDetailViewModel(
 
     /**
      * Live reaction tallies for the open post, read fresh via
-     * [PostReactionService.liveReactionSummary] (the same group-reactions path chat uses) — this
-     * overrides the header's stale `reactionPreview` snapshot, which never reflects reactions that
-     * landed after the post was aggregated into the feed. Null until the first load resolves.
+     * [PostReactionService.liveReactionSummary] (the same group-reactions path chat uses).
+     *
+     * Applied to **our own posts only**. That endpoint targets our own identity, so on a followed
+     * identity's post it reads our feed-drive copy — which holds only reactions we ourselves sent
+     * — and would undercount. A feed reference's header preview is kept accurate by the author's
+     * distribution, so that stays the source of truth for someone else's post.
      */
     private val _liveReactionSummary = MutableStateFlow<ReactionSummary?>(null)
+
+    /** Null until the first permission resolve lands — the UI renders no verdict before then. */
+    private val _canReact = MutableStateFlow<CanReact?>(null)
+
+    // Paired so the aux fold below stays on the typed 5-arg combine overload.
+    private val _postAux = combine(_liveReactionSummary, _canReact, ::Pair)
 
     /**
      * Reactor roster for the "who reacted" sheet. `list == null` means the sheet is
@@ -108,9 +124,9 @@ class PostDetailViewModel(
         // FOLLOW-UP: fix the race at the source in AuthConnectionCoordinator (run onPostAuthenticated
         // exactly once even when promoted mid-bootstrap) and drop these consumer-side start() calls.
         stickerStream.start()
-        // Live-load the post's reactions the way chat does (fresh group-reactions read), rather than
-        // trusting the header snapshot. Reload whenever a sync batch bumps the header's reaction
-        // preview (someone reacted) or the file is replaced — that re-emits the timeline.
+        // Live-load the post's reactions the way chat does (fresh group-reactions read). Only used
+        // for our own posts — see [_liveReactionSummary]. Reload whenever a sync batch bumps the
+        // header's reaction preview (someone reacted) or the file is replaced.
         viewModelScope.launch {
             timelineService.timeline
                 .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
@@ -118,6 +134,16 @@ class PostDetailViewModel(
                     a.fileId == b.fileId && a.reactionPreview == b.reactionPreview
                 }
                 .collect { post -> loadLiveReactions(post) }
+        }
+        // Whether we may react/comment depends on the grants the post's channel carries, so it is
+        // re-resolved whenever the post's routing or its author's interaction setting changes.
+        viewModelScope.launch {
+            timelineService.timeline
+                .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+                .distinctUntilChangedBy {
+                    listOf(it.driveId, it.channelId, it.authorOdinId, it.reactAccess)
+                }
+                .collect { post -> _canReact.value = permissionService.canReact(post) }
         }
         viewModelScope.launch {
             val self = credentialsManager.getActiveCredentials()?.domain
@@ -138,12 +164,12 @@ class PostDetailViewModel(
         _reactors,
         contactService.contacts,
         _selfName,
-        _liveReactionSummary,
-    ) { self, reactors, contacts, selfName, liveReactions ->
+        _postAux,
+    ) { self, reactors, contacts, selfName, (liveReactions, canReact) ->
         val names = contacts.associate { it.odinId to it.name }.toMutableMap()
         // Overlay the owner's own resolved name so your posts/comments show your name, not domain.
         if (self != null && !selfName.isNullOrBlank()) names[self] = selfName
-        DetailAux(self, reactors, names.toMap(), liveReactions)
+        DetailAux(self, reactors, names.toMap(), liveReactions, canReact)
     }
 
     /**
@@ -172,11 +198,16 @@ class PostDetailViewModel(
         _detailAux,
         _timelineEmitted,
     ) { postRaw, comments, replyingTo, aux, timelineEmitted ->
-        // Override the header's stale reaction snapshot with the live read (chat parity). Keep the
-        // snapshot only when the live read is empty/not-yet-loaded, so reactions never blank out.
-        // Comment count reflects the live thread rendered right below.
+        // The live read (chat parity) is only trustworthy on OUR OWN post: the group-reactions
+        // endpoint targets our own identity, so on a followed post it reads our feed-drive copy,
+        // which holds only reactions we sent — it can only undercount (a post with two hearts
+        // renders one once we've reacted). The author's distribution keeps the header preview on a
+        // feed reference accurate — spot-checked 18/18 against the authors' own servers — so for
+        // someone else's post the header wins. Comment count reflects the thread rendered below.
+        val useLiveReactions = postRaw != null && postRaw.isAuthoredBy(aux.self)
         val post = postRaw?.copy(
-            reactionPreview = aux.liveReactions?.takeIf { it.reactions.isNotEmpty() }
+            reactionPreview = aux.liveReactions
+                ?.takeIf { useLiveReactions && it.reactions.isNotEmpty() }
                 ?: postRaw.reactionPreview,
             commentCount = comments.size,
         )
@@ -193,6 +224,7 @@ class PostDetailViewModel(
             displayNames = aux.displayNames,
             reactorsSheet = aux.reactors.list,
             isReactorsLoading = aux.reactors.loading,
+            canReact = aux.canReact,
             errorMessage = null,
         )
     }.stateIn(
@@ -321,8 +353,8 @@ class PostDetailViewModel(
                 val reactors = reactionService.listReactors(post, null).map {
                     ReactionDisplayItem(
                         odinId = it.odinId.domainName,
-                        displayName = contactService.resolveByOdinId(it.odinId)?.name
-                            ?: it.odinId.domainName,
+                        displayName = contactService.resolveByOdinId(it.odinId).name
+                            .ifBlank { it.odinId.domainName },
                         emoji = it.emoji,
                     )
                 }
@@ -365,9 +397,20 @@ class PostDetailViewModel(
     }
 
     fun navigateToAuthor() {
-        val author: OdinId = uiState.value.post?.let { it.originalAuthor ?: it.senderOdinId }
-            ?: return
+        val author: OdinId = uiState.value.post?.authorOdinId ?: return
         _events.tryEmit(PostDetailEvent.NavigateToAuthor(author))
+    }
+
+    /**
+     * Report the post to whoever hosts its author. The destination is the author's own
+     * `config/reporting` endpoint (with a shared fallback) — resolving it is a network call,
+     * so this runs in the VM and the screen just opens whatever URL comes back.
+     */
+    fun reportPost() {
+        val author = uiState.value.post?.authorOdinId ?: return
+        viewModelScope.launch {
+            _events.tryEmit(PostDetailEvent.OpenUrl(reportingUrlProvider.reportUrlFor(author)))
+        }
     }
 }
 
@@ -390,6 +433,7 @@ private data class DetailAux(
     val reactors: ReactorsState,
     val displayNames: Map<OdinId, String>,
     val liveReactions: ReactionSummary?,
+    val canReact: CanReact?,
 )
 
 /** One-time navigation / snackbar events for the post detail screen. */
@@ -397,4 +441,7 @@ sealed interface PostDetailEvent {
     data object NavigateBack : PostDetailEvent
     data class ShowSnackbar(val message: String?) : PostDetailEvent
     data class NavigateToAuthor(val odinId: OdinId) : PostDetailEvent
+
+    /** Hand off to the browser — abuse reporting lives on the author's host, not in-app. */
+    data class OpenUrl(val url: String) : PostDetailEvent
 }

@@ -2,8 +2,10 @@ package id.homebase.core.feed.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.AccessControlList
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.CommentPreview
+import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
@@ -55,7 +57,65 @@ data class FeedPostItem(
     val ownReactions: List<String>,
     /** Comment count from the embedded reaction/comment preview. */
     val commentCount: Int,
+    /** Public posts ship unencrypted; anything narrower is encrypted. Drives the lock glyph. */
+    val isEncrypted: Boolean,
+    /** Who the post was shared with. Null when the server didn't return server metadata. */
+    val acl: AccessControlList?,
 )
+
+/**
+ * The identity that wrote this. `originalAuthor` is set on the author's own copy; a post
+ * aggregated onto someone else's feed drive carries `senderOdinId` instead. Null only when
+ * the server returned neither.
+ */
+val FeedPostItem.authorOdinId: OdinId? get() = originalAuthor ?: senderOdinId
+
+/** @see FeedPostItem.authorOdinId */
+val PostCommentItem.authorOdinId: OdinId? get() = originalAuthor ?: senderOdinId
+
+/** Whether [self] wrote this post — gates the owner-only affordances (edit, delete). */
+fun FeedPostItem.isAuthoredBy(self: OdinId?): Boolean = self != null && authorOdinId == self
+
+/** Whether [self] wrote this comment — gates edit/delete vs. block. */
+fun PostCommentItem.isAuthoredBy(self: OdinId?): Boolean = self != null && authorOdinId == self
+
+/**
+ * Who a post is visible to, as the audience chip renders it. Mirrors the web's `AclSummary`
+ * mapping (`AclInfo.tsx`): unknown/blank security groups fall back to [Owner], the narrowest
+ * reading, so a post is never labelled more public than it is.
+ */
+enum class PostAudience {
+    Public,
+    Authenticated,
+    AutoConnected,
+    Connections,
+    Circles,
+    Owner,
+}
+
+/** True when the audience is narrower than "anyone" — the closed-padlock case in the web UI. */
+val PostAudience.isRestricted: Boolean
+    get() = this != PostAudience.Public && this != PostAudience.Authenticated
+
+/**
+ * Map a file's ACL to its [PostAudience]. A file with no ACL at all is public (that's how the
+ * server represents an anonymous-readable file); an ACL whose security group is missing or
+ * unrecognised is treated as owner-only rather than guessed at.
+ *
+ * Not routed through [SecurityGroupType.fromString] on purpose — that helper defaults unknown
+ * values to `Anonymous`, which would label a post public that we can't actually classify.
+ */
+fun AccessControlList?.toPostAudience(): PostAudience {
+    if (this == null) return PostAudience.Public
+    return when (requiredSecurityGroup?.lowercase()) {
+        SecurityGroupType.Anonymous.value -> PostAudience.Public
+        SecurityGroupType.Authenticated.value -> PostAudience.Authenticated
+        SecurityGroupType.AutoConnected.value -> PostAudience.AutoConnected
+        SecurityGroupType.Connected.value ->
+            if (circleIdList.isNullOrEmpty()) PostAudience.Connections else PostAudience.Circles
+        else -> PostAudience.Owner
+    }
+}
 
 /**
  * Everything a comment list/item needs from a single comment file (`fileType = 801`).
@@ -85,10 +145,10 @@ data class PostCommentItem(
 )
 
 /**
- * Map a post file into a [FeedPostItem]. Returns null when the file has no uniqueId — the
- * post can't be addressed without one. A failed [PostContent] parse yields a best-effort item
- * (empty caption, Tweet type) rather than dropping the post entirely. Mirrors
- * `MomentsFeedService.toFeedItem`.
+ * Map a post file into a [FeedPostItem]. Returns null only when the file carries neither a
+ * uniqueId nor a globalTransitId — with no stable id the post can't be addressed. A failed
+ * [PostContent] parse yields a best-effort item (empty caption, Tweet type) rather than
+ * dropping the post entirely. Mirrors `MomentsFeedService.toFeedItem`.
  */
 fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     val appData = fileMetadata.appData
@@ -127,6 +187,8 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
         versionTag = fileMetadata.versionTag,
         ownReactions = ownReactions,
         commentCount = fileMetadata.reactionPreview?.totalCommentCount ?: 0,
+        isEncrypted = fileMetadata.isEncrypted,
+        acl = serverMetadata.accessControlList,
     )
 }
 

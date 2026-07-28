@@ -119,6 +119,8 @@ class PostReactionServiceTest {
             versionTag = null,
             ownReactions = emptyList(),
             commentCount = 0,
+            isEncrypted = false,
+            acl = null,
         )
     }
 

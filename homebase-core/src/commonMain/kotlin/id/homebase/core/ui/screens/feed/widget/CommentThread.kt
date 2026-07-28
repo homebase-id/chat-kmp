@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -32,11 +33,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.PostCommentItem
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import id.homebase.core.util.formatTimestamp
@@ -45,8 +48,10 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.delete
 import id.homebase.resources.edit
+import id.homebase.resources.feed_comment_delete_confirm
 import id.homebase.resources.feed_comment_like
 import id.homebase.resources.feed_comment_reply
+import id.homebase.resources.feed_post_block
 import id.homebase.resources.feed_post_detail_more_actions
 import id.homebase.resources.save
 import org.jetbrains.compose.resources.stringResource
@@ -55,6 +60,16 @@ import kotlin.uuid.Uuid
 
 /** Default emoji applied by a comment's like affordance. */
 private const val COMMENT_LIKE_EMOJI = "❤️"
+
+/** Block is offered only on someone else's comment, and only when its author is known. */
+private fun PostCommentItem.blockAction(
+    isMine: Boolean,
+    onBlockAuthor: (OdinId) -> Unit,
+): (() -> Unit)? {
+    if (isMine) return null
+    val author = originalAuthor ?: senderOdinId ?: return null
+    return { onBlockAuthor(author) }
+}
 
 /**
  * Renders [comments] as one-level threads: each top-level comment (`replyToId == null`)
@@ -68,6 +83,11 @@ private const val COMMENT_LIKE_EMOJI = "❤️"
  * @param onReply starts a reply to a top-level comment.
  * @param onEdit commits an edited body for a comment. The widget owns the inline edit
  *   field (prefilled with the current body) and only invokes this on Save.
+ * @param onBlockAuthor blocks the author of someone else's comment (web `CommentHead` offers
+ *   exactly this one action on a comment that isn't yours).
+ * @param permission the viewer's react/comment grants on the parent post's channel. Like and
+ *   Reply follow it exactly as the web's `CommentMeta` does — one verdict resolved for the post,
+ *   applied to every row, never re-fetched per comment. Null (unresolved) leaves them visible.
  */
 @Composable
 fun CommentThread(
@@ -78,7 +98,9 @@ fun CommentThread(
     onReply: (PostCommentItem) -> Unit,
     onEdit: (PostCommentItem, String) -> Unit,
     onDelete: (PostCommentItem) -> Unit,
+    onBlockAuthor: (OdinId) -> Unit,
     modifier: Modifier = Modifier,
+    permission: CanReact? = null,
 ) {
     val topLevel = comments.filter { it.replyToId == null }
     val repliesByParent: Map<Uuid, List<PostCommentItem>> =
@@ -94,8 +116,9 @@ fun CommentThread(
                 comment = comment,
                 displayName = displayNameFor(comment.originalAuthor ?: comment.senderOdinId),
                 isMine = isMine(comment),
-                canReply = true,
+                canReply = permission?.allowsComment ?: true,
                 isEditing = editingId == comment.id,
+                canLike = permission?.allowsEmoji ?: true,
                 onToggleReaction = { emoji -> onToggleCommentReaction(comment, emoji) },
                 onReply = { onReply(comment) },
                 onStartEdit = { editingId = comment.id },
@@ -105,6 +128,7 @@ fun CommentThread(
                 },
                 onCancelEdit = { editingId = null },
                 onDelete = { onDelete(comment) },
+                onBlock = comment.blockAction(isMine(comment), onBlockAuthor),
             )
             repliesByParent[comment.id].orEmpty().forEach { reply ->
                 CommentRow(
@@ -113,6 +137,7 @@ fun CommentThread(
                     isMine = isMine(reply),
                     canReply = false,
                     isEditing = editingId == reply.id,
+                    canLike = permission?.allowsEmoji ?: true,
                     onToggleReaction = { emoji -> onToggleCommentReaction(reply, emoji) },
                     onReply = {},
                     onStartEdit = { editingId = reply.id },
@@ -122,6 +147,7 @@ fun CommentThread(
                     },
                     onCancelEdit = { editingId = null },
                     onDelete = { onDelete(reply) },
+                    onBlock = reply.blockAction(isMine(reply), onBlockAuthor),
                     modifier = Modifier.padding(start = 40.dp),
                 )
             }
@@ -136,12 +162,14 @@ private fun CommentRow(
     isMine: Boolean,
     canReply: Boolean,
     isEditing: Boolean,
+    canLike: Boolean,
     onToggleReaction: (String) -> Unit,
     onReply: () -> Unit,
     onStartEdit: () -> Unit,
     onSaveEdit: (String) -> Unit,
     onCancelEdit: () -> Unit,
     onDelete: () -> Unit,
+    onBlock: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val avatarOdinId = comment.originalAuthor ?: comment.senderOdinId
@@ -239,12 +267,14 @@ private fun CommentRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Text(
-                        text = stringResource(MR.string.feed_comment_like),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.clickable { onToggleReaction(COMMENT_LIKE_EMOJI) },
-                    )
+                    if (canLike) {
+                        Text(
+                            text = stringResource(MR.string.feed_comment_like),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable { onToggleReaction(COMMENT_LIKE_EMOJI) },
+                        )
+                    }
                     if (canReply) {
                         Text(
                             text = stringResource(MR.string.feed_comment_reply),
@@ -253,8 +283,9 @@ private fun CommentRow(
                             modifier = Modifier.clickable(onClick = onReply),
                         )
                     }
-                    if (isMine) {
+                    if (isMine || onBlock != null) {
                         var menuOpen by remember { mutableStateOf(false) }
+                        var confirmDelete by remember { mutableStateOf(false) }
                         Box {
                             IconButton(
                                 onClick = { menuOpen = !menuOpen },
@@ -272,22 +303,67 @@ private fun CommentRow(
                             DropdownMenu(
                                 expanded = menuOpen,
                                 onDismissRequest = { menuOpen = false },
+                                // Focusable so the popup owns input while it's open. On the iOS
+                                // simulator this menu stayed open through repeated taps outside it
+                                // while hosted in CommentsModalSheet; the post-level menu, which
+                                // has no sheet above it, dismissed normally. Synthetic taps can't
+                                // tell the sheet's scrim from the status bar, so that A/B is
+                                // suggestive, not conclusive — worth a real-finger check.
+                                properties = PopupProperties(focusable = true),
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(MR.string.edit)) },
-                                    onClick = {
-                                        menuOpen = false
-                                        onStartEdit()
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(MR.string.delete)) },
-                                    onClick = {
-                                        menuOpen = false
-                                        onDelete()
-                                    },
-                                )
+                                if (isMine) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(MR.string.edit)) },
+                                        onClick = {
+                                            menuOpen = false
+                                            onStartEdit()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(MR.string.delete)) },
+                                        onClick = {
+                                            menuOpen = false
+                                            confirmDelete = true
+                                        },
+                                    )
+                                }
+                                onBlock?.let { block ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(MR.string.feed_post_block)) },
+                                        onClick = {
+                                            menuOpen = false
+                                            block()
+                                        },
+                                    )
+                                }
                             }
+                        }
+
+                        // The web deletes a comment straight from the menu; on touch that's one
+                        // stray tap from losing it, and post delete already confirms here.
+                        if (confirmDelete) {
+                            AlertDialog(
+                                onDismissRequest = { confirmDelete = false },
+                                title = { Text(stringResource(MR.string.delete)) },
+                                text = {
+                                    Text(stringResource(MR.string.feed_comment_delete_confirm))
+                                },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            confirmDelete = false
+                                            onDelete()
+                                        },
+                                    ) {
+                                        Text(stringResource(MR.string.delete))
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { confirmDelete = false }) {
+                                        Text(stringResource(MR.string.cancel))
+                                    }
+                                },
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.weight(1f))

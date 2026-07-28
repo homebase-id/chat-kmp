@@ -116,10 +116,12 @@ import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.ChannelPostQueryService
+import id.homebase.core.feed.services.FeedPermissionService
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedTimelineService
 import id.homebase.core.feed.services.PostCommentsService
 import id.homebase.core.feed.services.PostReactionService
+import id.homebase.core.feed.services.ReportingUrlProvider
 import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.core.ui.screens.feed.following.FollowingViewModel
@@ -262,6 +264,8 @@ val appModule = module {
     singleOf(::FeedPostSenderService)
     singleOf(::PostCommentsService)
     singleOf(::PostReactionService)
+    singleOf(::FeedPermissionService)
+    singleOf(::ReportingUrlProvider)
 
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
@@ -590,6 +594,9 @@ val appModule = module {
                 // then cold-load + subscribe the FeedDrive + public-channel drive.
                 get<FeedTimelineService>().reset()
                 get<PostCommentsService>().reset()
+                // Permissions are per-identity: a re-login must re-read them, not reuse a
+                // cached security context that belonged to whoever was signed in before.
+                get<FeedPermissionService>().reset()
                 get<FeedTimelineService>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
@@ -1037,6 +1044,8 @@ val appModule = module {
             contactService = get(),
             stickerStream = get(),
             publicProfileProvider = get(),
+            reportingUrlProvider = get(),
+            permissionService = get(),
         )
     }
     viewModel { params ->

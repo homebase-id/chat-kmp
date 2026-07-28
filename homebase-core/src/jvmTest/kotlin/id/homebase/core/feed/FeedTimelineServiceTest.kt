@@ -81,6 +81,22 @@ class FeedTimelineServiceTest {
         )
     }
 
+    /** A followed identity's post as it lands on the feed drive: globalTransitId, no uniqueId. */
+    private fun feedReferenceFile(
+        globalTransitId: Uuid,
+        caption: String,
+        createdMs: Long,
+        deleted: Boolean = false,
+    ): HomebaseFile {
+        val base = postFile(globalTransitId, feedDrive, caption, createdMs, deleted)
+        return base.copy(
+            fileMetadata = base.fileMetadata.copy(
+                globalTransitId = globalTransitId,
+                appData = base.fileMetadata.appData.copy(uniqueId = null),
+            ),
+        )
+    }
+
     private fun TestScope.newService(): Pair<FeedTimelineService, EventBus> {
         val eventBus = EventBus()
         // No active credentials → cold-load returns early; the test drives logic via BatchReceived.
@@ -140,6 +156,29 @@ class FeedTimelineServiceTest {
 
         assertEquals(1, service.timeline.value.size)
         assertEquals(sharedId, service.timeline.value.single().id)
+    }
+
+    @Test
+    fun feedReferenceWithoutUniqueIdStillAppliesIncrementally() = runTest {
+        val (service, eventBus) = newService()
+        service.start()
+        advanceUntilIdle()
+
+        // A followed identity's post lands on the feed drive as a reference: globalTransitId only,
+        // no uniqueId. Keying the incremental path on uniqueId dropped every one of them, so a
+        // live push for a followed post only showed up on the next cold load.
+        val gtid = Uuid.random()
+        emitBatch(eventBus, feedDrive, listOf(feedReferenceFile(gtid, "followed post", 4_000)))
+
+        assertEquals(1, service.timeline.value.size)
+        assertEquals(gtid, service.timeline.value.single().id)
+
+        emitBatch(
+            eventBus,
+            feedDrive,
+            listOf(feedReferenceFile(gtid, "followed post", 4_000, deleted = true)),
+        )
+        assertEquals(0, service.timeline.value.size)
     }
 
     @Test

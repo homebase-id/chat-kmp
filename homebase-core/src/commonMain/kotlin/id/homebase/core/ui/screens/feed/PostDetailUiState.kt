@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.feed
 
 import id.homebase.api.common.OdinId
+import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.PostCommentItem
 import id.homebase.core.widget.ReactionDisplayItem
@@ -27,6 +28,12 @@ data class PostDetailUiState(
      * are still loading; the UI treats that as "not mine" until it lands.
      */
     val selfOdinId: OdinId? = null,
+    /**
+     * Whether this user may react/comment on the post, per the channel's drive grants and the
+     * author's own interaction setting. Null while it is still being resolved — render nothing
+     * rather than flashing a denial that turns into an allow a moment later.
+     */
+    val canReact: CanReact? = null,
     /**
      * Reactive `odinId → resolved display name` for the post author and every comment author,
      * sourced from [id.homebase.chat.services.convo.contact.ContactService]. Known identities

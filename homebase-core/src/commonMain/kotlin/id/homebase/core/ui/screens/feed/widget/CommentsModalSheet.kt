@@ -26,6 +26,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.core.feed.services.isAuthoredBy
+import id.homebase.core.util.buildBlockUrl
+import id.homebase.core.util.getUriHandler
 import id.homebase.core.ui.screens.feed.PostDetailEvent
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.resources.MR
@@ -59,6 +62,7 @@ fun CommentsModalSheet(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val uriHandler = getUriHandler()
 
     // Resolve comment-author names via the contact/connection map the VM streams; fall back
     // to the raw domain for unknown identities (web `AuthorName` parity).
@@ -68,9 +72,11 @@ fun CommentsModalSheet(
     }
 
     val post = uiState.post
-    val canComment = post == null ||
+    // Same two gates as the detail screen: the post's own setting, then this viewer's grants.
+    val postAllowsComment = post == null ||
         post.reactAccess == ReactAccess.All ||
         post.reactAccess == ReactAccess.CommentOnly
+    val canComment = postAllowsComment && uiState.canReact?.allowsComment != false
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
@@ -84,12 +90,16 @@ fun CommentsModalSheet(
 
             Box(modifier = Modifier.weight(1f)) {
                 when {
-                    !canComment -> CenteredHint(
-                        text = stringResource(MR.string.feed_post_detail_comments_disabled),
-                    )
-
+                    // Reading comments is never gated — only writing is (web parity: `canReact`
+                    // governs the composer, the list always renders what the post already has).
                     uiState.comments.isEmpty() -> CenteredHint(
-                        text = stringResource(MR.string.feed_post_empty_comments),
+                        text = stringResource(
+                            if (canComment) {
+                                MR.string.feed_post_empty_comments
+                            } else {
+                                MR.string.feed_post_detail_comments_disabled
+                            },
+                        ),
                     )
 
                     else -> Column(
@@ -101,15 +111,17 @@ fun CommentsModalSheet(
                         CommentThread(
                             comments = uiState.comments,
                             displayNameFor = displayNameFor,
-                            isMine = { comment ->
-                                val self = uiState.selfOdinId
-                                self != null &&
-                                    (comment.originalAuthor ?: comment.senderOdinId) == self
-                            },
+                            isMine = { it.isAuthoredBy(uiState.selfOdinId) },
                             onToggleCommentReaction = viewModel::toggleCommentReaction,
                             onReply = viewModel::startReply,
                             onEdit = { comment, newBody -> viewModel.editComment(comment, newBody) },
                             onDelete = viewModel::deleteComment,
+                            permission = uiState.canReact,
+                            onBlockAuthor = { author ->
+                                uiState.selfOdinId?.let {
+                                    uriHandler.openUrl(it.buildBlockUrl(author))
+                                }
+                            },
                         )
                     }
                 }

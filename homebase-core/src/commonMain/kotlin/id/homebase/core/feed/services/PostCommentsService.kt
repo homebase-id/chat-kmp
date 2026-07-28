@@ -358,6 +358,13 @@ class PostCommentsService(
 
         // Public post (unencrypted) → unencrypted comment with an Anonymous ACL; encrypted post →
         // encrypted comment readable by AutoConnected. Mirrors FeedPostSenderService.createPost.
+        //
+        // Deliberate divergence from the web on ONE case: dotyoucore-js overrides the ACL to
+        // AutoConnected for every comment written over peer (`saveComment`'s peer branch),
+        // including comments on an unencrypted public post. Anonymous is kept here because a
+        // comment on a public post that only connections can read is invisible to exactly the
+        // audience the post was written for. Encryption still follows the parent post either way,
+        // and `allowDistribution` is already true whenever there are recipients — matching web.
         val isPublic = post?.fileMetadata?.isEncrypted == false
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()

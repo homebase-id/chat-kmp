@@ -13,7 +13,11 @@ import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedPostSenderService
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.FeedTimelineService
+import id.homebase.core.feed.services.PostOwnReactionResolver
 import id.homebase.core.feed.services.PostReactionService
+import id.homebase.core.feed.services.ReportingUrlProvider
+import id.homebase.core.feed.services.authorOdinId
+import id.homebase.core.feed.services.withOwnReactions
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
 import id.homebase.resources.feed_post_delete_failed
@@ -47,6 +51,11 @@ import kotlin.uuid.Uuid
  * Reactions go through [PostReactionService.toggleReaction], whose optimistic write updates
  * the underlying file's reaction preview; the service re-emits the timeline so the card
  * re-renders with the new tally — no local mutation of [FeedTimelineUiState.posts] needed.
+ *
+ * The reaction TALLY is taken straight off the header preview, which the server maintains and the
+ * author's feed distribution keeps in step (verified against the author's live summary). What the
+ * header cannot carry is which reaction is ours, so [PostOwnReactionResolver] resolves that
+ * separately — lazily, cached, and only for posts that show a reaction at all.
  */
 class FeedTimelineViewModel(
     private val timelineService: FeedTimelineService,
@@ -56,6 +65,7 @@ class FeedTimelineViewModel(
     private val credentialsManager: CredentialsManager,
     private val publicProfileProvider: PublicProfileProviderCached,
     private val senderService: FeedPostSenderService,
+    private val reportingUrlProvider: ReportingUrlProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FeedTimelineUiState(isLoading = true))
@@ -99,8 +109,19 @@ class FeedTimelineViewModel(
     private val _events = MutableSharedFlow<FeedTimelineEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<FeedTimelineEvent> = _events.asSharedFlow()
 
+    private val ownReactionResolver = PostOwnReactionResolver(reactionService)
+
+    /** The timeline as the service emitted it, before the own-reaction overlay. */
+    private var rawPosts: List<FeedPostItem> = emptyList()
+
+    /** How far down the list own-reactions are resolved; widened by [loadMore] as the user pages. */
+    private var reactionWindow = REACTION_WINDOW
+
     companion object {
         private const val TAG = "FeedTimelineViewModel"
+
+        /** Posts resolved ahead of the scroll position (~7 screenfuls of cards). */
+        private const val REACTION_WINDOW = 20
     }
 
     init {
@@ -124,23 +145,49 @@ class FeedTimelineViewModel(
         }
         viewModelScope.launch {
             timelineService.timeline.collect { posts ->
+                rawPosts = posts
                 _uiState.update {
                     it.copy(
-                        posts = posts,
+                        posts = overlayOwnReactions(posts),
                         isLoading = false,
                         isRefreshing = false,
                     )
                 }
+                // Off the collector: a roster read must not hold up the next timeline emission.
+                launch { ownReactionResolver.resolve(posts, reactionWindow) }
+            }
+        }
+        viewModelScope.launch {
+            ownReactionResolver.ownReactions.collect {
+                _uiState.update { it.copy(posts = overlayOwnReactions(rawPosts)) }
+            }
+        }
+        viewModelScope.launch {
+            timelineService.endReached.collect { reached ->
+                _uiState.update { it.copy(endReached = reached) }
             }
         }
     }
 
+    private fun overlayOwnReactions(posts: List<FeedPostItem>): List<FeedPostItem> {
+        val resolved = ownReactionResolver.ownReactions.value
+        return posts.map { it.withOwnReactions(resolved[it.fileId]) }
+    }
+
     /**
-     * Pull older posts. v1 of the service keeps the whole local timeline in memory after its
-     * cold-load, so this is a no-op there — kept so the list can call it on scroll without
-     * branching and a future cursored variant slots in transparently.
+     * Pull older posts: asks the service for one more page per source drive. Gated on
+     * [FeedTimelineUiState.endReached] so the scroll trigger goes quiet once every drive is
+     * depleted; the service separately drops a call made while a page fetch is already in flight,
+     * so the repeated firing of that trigger can't stack up page reads.
      */
     fun loadMore() {
+        // The screen fires this within a few rows of the end, so "everything loaded + a page" is a
+        // window that always covers what the user has actually scrolled past. Resolving it here as
+        // well as on the next timeline emission matters once the feed is fully paged: no further
+        // emission would come to trigger it.
+        val loaded = rawPosts
+        reactionWindow = loaded.size + REACTION_WINDOW
+        viewModelScope.launch { ownReactionResolver.resolve(loaded, reactionWindow) }
         if (_uiState.value.endReached) return
         viewModelScope.launch {
             try {
@@ -179,15 +226,23 @@ class FeedTimelineViewModel(
      * Fire-and-forget reaction toggle from a feed card. The optimistic write inside
      * [PostReactionService] updates the UI via the timeline re-emit; a failure rolls back
      * there and we surface a snackbar.
+     *
+     * The own-reaction flip is applied here too, against the RAW timeline item: on a followed
+     * identity's post the optimistic write can't run (the feed-drive reference has no uniqueId) and
+     * the header tally only moves once the author redistributes it, so nothing else would light the
+     * like button up. A failed toggle flips it back.
      */
     fun onToggleReaction(post: FeedPostItem, emoji: String) {
+        val raw = rawPosts.firstOrNull { it.id == post.id } ?: post
+        ownReactionResolver.applyLocalToggle(raw, emoji)
         viewModelScope.launch {
             try {
-                reactionService.toggleReaction(post, emoji)
+                reactionService.toggleReaction(raw, emoji)
             } catch (t: Throwable) {
                 Logger.e(throwable = t, tag = TAG) {
                     "toggleReaction failed for post=${post.id} emoji=$emoji: ${t.message}"
                 }
+                ownReactionResolver.applyLocalToggle(raw, emoji)
                 _events.tryEmit(FeedTimelineEvent.ShowSnackbar(MR.string.feed_reaction_failed))
             }
         }
@@ -248,10 +303,25 @@ class FeedTimelineViewModel(
             }
         }
     }
+
+    /**
+     * Report [post] to whoever hosts its author. The destination is that identity's own
+     * `config/reporting` endpoint (with a shared fallback); resolving it is a network call, so
+     * it happens here and the screen just opens the URL that comes back.
+     */
+    fun reportPost(post: FeedPostItem) {
+        val author = post.authorOdinId ?: return
+        viewModelScope.launch {
+            _events.tryEmit(FeedTimelineEvent.OpenUrl(reportingUrlProvider.reportUrlFor(author)))
+        }
+    }
 }
 
 /** One-time effects the [FeedTimelineScreen] reacts to (navigation, snackbars). */
 sealed interface FeedTimelineEvent {
     data class NavigateToDetail(val postId: Uuid) : FeedTimelineEvent
     data class ShowSnackbar(val messageKey: StringResource) : FeedTimelineEvent
+
+    /** Hand off to the browser — abuse reporting lives on the author's host, not in-app. */
+    data class OpenUrl(val url: String) : FeedTimelineEvent
 }

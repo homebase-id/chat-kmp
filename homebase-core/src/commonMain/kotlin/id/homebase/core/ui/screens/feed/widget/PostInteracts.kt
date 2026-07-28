@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.ReactAccess
 import id.homebase.core.feed.services.decodeReactionEmoji
 import id.homebase.core.widget.EmojiSelectorDialog
@@ -56,6 +57,12 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * The interaction row beneath a post: an overlapping-glyph reaction summary (facepile + count), an
  * add-reaction affordance (quick ❤️ 😆 😥 menu + full picker), and a comment button with its count.
+ *
+ * Visibility follows BOTH the author's [reactAccess] and the viewer's [permission] — the post
+ * says what interaction it allows at all, the drive grants say whether this viewer holds it (web
+ * splits these the same way: `postDisabled*` in `PostInteracts.tsx` vs `useCanReact`). A null
+ * [permission] means "not resolved yet"; the affordance stays visible rather than falsely
+ * disappearing, and the write itself is still authorised server-side.
  *
  * Visibility follows [reactAccess]:
  *  - [ReactAccess.None] hides both reactions and comments.
@@ -84,9 +91,12 @@ fun PostInteracts(
     onShowReactors: () -> Unit,
     modifier: Modifier = Modifier,
     onRepost: (() -> Unit)? = null,
+    permission: CanReact? = null,
 ) {
-    val canReact = reactAccess == ReactAccess.All || reactAccess == ReactAccess.EmojiOnly
-    val canComment = reactAccess == ReactAccess.All || reactAccess == ReactAccess.CommentOnly
+    val canReact = (reactAccess == ReactAccess.All || reactAccess == ReactAccess.EmojiOnly) &&
+        (permission?.allowsEmoji ?: true)
+    val canComment = (reactAccess == ReactAccess.All || reactAccess == ReactAccess.CommentOnly) &&
+        (permission?.allowsComment ?: true)
     // Repost is offered whenever the post is interactable at all — only a fully locked-down
     // (ReactAccess.None) post hides it.
     val canRepost = reactAccess != ReactAccess.None

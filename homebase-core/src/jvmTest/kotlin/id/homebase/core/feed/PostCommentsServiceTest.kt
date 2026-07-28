@@ -89,6 +89,8 @@ class PostCommentsServiceTest {
         versionTag = null,
         ownReactions = emptyList(),
         commentCount = 0,
+        isEncrypted = false,
+        acl = null,
     )
 
     /** Write a post row locally so the comment service can resolve the post's drive/audience. */

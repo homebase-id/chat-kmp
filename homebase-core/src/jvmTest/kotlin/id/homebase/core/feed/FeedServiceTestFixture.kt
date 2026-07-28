@@ -37,11 +37,19 @@ import id.homebase.api.common.SecureByteArray as Sba
  * actually hits the network. The JDBC SQLite driver is on the homebase-core jvmTest runtime
  * classpath transitively (sqlite-driver → jdbc-driver), so this needs no build-file change.
  */
-class FeedTestEnv(testScope: TestScope) {
+class FeedTestEnv(
+    testScope: TestScope,
+    /**
+     * Optional hook to wrap the in-memory driver before [DatabaseManager] opens it — lets a test
+     * inject a failure (e.g. a refused `INSERT INTO Outbox`) so the enqueue-failure / rollback
+     * branches of a service become reachable. Identity by default.
+     */
+    wrapDriver: (SqlDriver) -> SqlDriver = { it },
+) {
     // The JDBC SQLite driver is on the jvmTest *runtime* classpath (sqlite-driver → jdbc-driver)
     // but NOT the compile classpath, so we instantiate it reflectively here rather than add a
     // build-file dependency. DatabaseManager runs OdinDatabase.Schema.create on the driver itself.
-    val driver: SqlDriver = newInMemoryJdbcDriver()
+    val driver: SqlDriver = wrapDriver(newInMemoryJdbcDriver())
 
     // Bind the DB dispatchers to the test scheduler so advanceUntilIdle drains all DB work and the
     // outbox is quiescent before assertions (mirrors OutboxSyncTest.runOutboxTest).

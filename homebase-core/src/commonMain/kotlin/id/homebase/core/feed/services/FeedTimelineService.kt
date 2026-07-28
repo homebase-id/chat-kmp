@@ -6,6 +6,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.DatabaseManager
@@ -29,9 +30,9 @@ import kotlin.uuid.Uuid
  *     so the author sees their own posts in their home feed too.
  *
  * Modeled on [id.homebase.core.moments.services.MomentsFeedService]:
- *   - On [start], a one-shot cold-load via `QueryBatch.queryBatchAsync`
- *     (`filetypesAnyOf = [PostFileType]`, NewestFirst / UserDate) over each drive populates the
- *     feed immediately from the local DB (no HTTP).
+ *   - On [start], a cold-load via `QueryBatch.queryBatchAsync`
+ *     (`filetypesAnyOf = [PostFileType]`, NewestFirst / UserDate) reads the *first page* of each
+ *     drive from the local DB (no HTTP); [loadMore] walks each drive's cursor for older pages.
  *   - `BatchReceived` for either drive is applied incrementally (live WebSocket pushes).
  *   - `DriveEvent.Stopped(totalCount > 0)` re-cold-loads — bulk `DriveSync.performSync` is silent.
  *
@@ -49,7 +50,11 @@ class FeedTimelineService(
 
     companion object {
         private const val TAG = "FeedTimelineService"
-        private const val ColdLoadPageSize = 1000
+
+        // Rows per drive per page. Well clear of the screen's 4-item load-more threshold, so one
+        // page is several screens of (tall) post cards and the trigger has slack, while a cold-load
+        // deserializes at most 2 x PageSize headers instead of the whole local index.
+        private const val PageSize = 30
     }
 
     private val feedDrive = feedLabeledDrive.drive.alias
@@ -58,18 +63,46 @@ class FeedTimelineService(
     /** The two drives this timeline aggregates. */
     private val sourceDrives = setOf(feedDrive, channelDrive)
 
-    // `byId` is mutated from two coroutines on Dispatchers.Default — coldLoad (its own launch) and
-    // the event collector (incremental batch / rollback / reset) — so every read/write/iteration of
-    // it (including the emitSorted snapshot) is guarded by `lock`.
+    // `byId` and the paging state are mutated from two coroutines on Dispatchers.Default —
+    // coldLoad / loadMore (their own launches) and the event collector (incremental batch /
+    // rollback / reset) — so every read/write/iteration of them (including the emitSorted
+    // snapshot) is guarded by `lock`.
     private val lock = SynchronizedObject()
 
     // Keyed by uniqueId for O(1) upsert/remove + automatic dedup across drives.
     private val byId = mutableMapOf<Uuid, FeedPostItem>()
 
+    // drive → cursor for the page to read next (null = its first page). A drive is dropped once
+    // QueryBatch reports no more rows, so an empty map means every source drive is exhausted.
+    private val nextPage = mutableMapOf<Uuid, QueryBatchCursor?>()
+
+    // Set for the duration of a loadMore fetch. The scroll trigger fires repeatedly, and a second
+    // fetch would read the same cursors and append the same page again.
+    private var loadingMore = false
+
+    // Bumped by every rebuild (coldLoad, reset). A page fetch that started before the bump and
+    // lands after it is discarded, so it can neither resurrect posts the rebuild dropped nor write
+    // its stale, deeper cursor over the one the rebuild just rewound.
+    private var generation = 0
+
     private val _timeline = MutableStateFlow<List<FeedPostItem>>(emptyList())
     val timeline: StateFlow<List<FeedPostItem>> = _timeline.asStateFlow()
 
+    /** True once every source drive's cursor is depleted — the UI then stops calling [loadMore]. */
+    private val _endReached = MutableStateFlow(false)
+    val endReached: StateFlow<Boolean> = _endReached.asStateFlow()
+
     private var started = false
+
+    init {
+        rewindPaging()
+    }
+
+    /** Caller must hold [lock] (except at construction). Puts every drive back on its first page. */
+    private fun rewindPaging() {
+        nextPage.clear()
+        for (drive in sourceDrives) nextPage[drive] = null
+    }
 
     fun start() {
         if (started) return
@@ -116,48 +149,63 @@ class FeedTimelineService(
     }
 
     /**
-     * One-shot fetch of every post on both source drives in the local DB, newest first.
-     * Clears the in-memory map first so a re-cold-load (after Stopped) converges exactly.
+     * Read the first page of each source drive in the local DB, newest first, and replace the
+     * in-memory map with it — rewinding the per-drive cursors so a re-cold-load (after Stopped, or
+     * a pull-to-refresh) converges exactly instead of keeping whatever depth the user paged to.
      */
     private suspend fun coldLoad() {
         try {
             val active = credentialsManager.getActiveCredentials() ?: return
             val identityId = active.getIdentityId()
 
-            // Query (suspend) outside the lock; collect every drive's records into a local, then
+            val gen = synchronized(lock) { ++generation }
+
+            // Query (suspend) outside the lock; collect every drive's page into a local, then
             // apply the rebuild atomically so the event collector never observes a half-cleared map.
-            val scanned = mutableListOf<FeedPostItem>()
-            for (drive in sourceDrives) {
-                val result = QueryBatch(identityId).queryBatchAsync(
-                    dbm = databaseManager,
-                    driveId = drive,
-                    noOfItems = ColdLoadPageSize,
-                    cursor = null,
-                    sortOrder = QueryBatchSortOrder.NewestFirst,
-                    sortField = QueryBatchSortField.UserDate,
-                    fileSystemType = 0,
-                    filetypesAnyOf = listOf(FeedProtocol.PostFileType),
-                )
-                result.records
-                    .filterNot { it.isSoftDeleted() }
-                    .mapNotNullTo(scanned) { it.toFeedPostItem() }
-            }
+            val pages = sourceDrives.associateWith { queryPage(identityId, it, cursor = null) }
 
             val size = synchronized(lock) {
+                if (generation != gen) return@synchronized null
                 byId.clear()
-                for (item in scanned) {
-                    // Dedup across drives by uniqueId; keep whichever copy is newer-published.
-                    val existing = byId[item.id]
-                    if (existing == null || item.createdMs >= existing.createdMs) {
-                        byId[item.id] = item
-                    }
+                nextPage.clear()
+                for ((drive, page) in pages) {
+                    if (page.hasMoreRows) nextPage[drive] = page.cursor
+                    mergeLocked(page.records)
                 }
                 byId.size
+            } ?: return
+
+            Logger.i(tag = TAG) {
+                "coldLoad: feedSize=$size (scanned=${pages.values.sumOf { it.records.size }}, " +
+                    "drivesWithMore=${pages.count { it.value.hasMoreRows }})"
             }
-            Logger.i(tag = TAG) { "coldLoad: feedSize=$size (scanned=${scanned.size})" }
             emitSorted()
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Cold-load failed: ${e.message}" }
+        }
+    }
+
+    private suspend fun queryPage(identityId: Uuid, drive: Uuid, cursor: QueryBatchCursor?) =
+        QueryBatch(identityId).queryBatchAsync(
+            dbm = databaseManager,
+            driveId = drive,
+            noOfItems = PageSize,
+            cursor = cursor,
+            sortOrder = QueryBatchSortOrder.NewestFirst,
+            sortField = QueryBatchSortField.UserDate,
+            fileSystemType = 0,
+            filetypesAnyOf = listOf(FeedProtocol.PostFileType),
+        )
+
+    /** Caller must hold [lock]. Dedups across drives by uniqueId, keeping the newer-published copy. */
+    private fun mergeLocked(records: List<HomebaseFile>) {
+        for (file in records) {
+            if (file.isSoftDeleted()) continue
+            val item = file.toFeedPostItem() ?: continue
+            val existing = byId[item.id]
+            if (existing == null || item.createdMs >= existing.createdMs) {
+                byId[item.id] = item
+            }
         }
     }
 
@@ -176,13 +224,19 @@ class FeedTimelineService(
         val changed = synchronized(lock) {
             var dirty = false
             for (file in posts) {
-                val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
+                // Same id fallback the cold-load mapper uses: a followed identity's post lands on
+                // the feed drive as a reference with NO uniqueId, only a globalTransitId. Keying on
+                // uniqueId alone dropped every one of them here, so a live push for a followed post
+                // never applied incrementally — it only appeared on the next cold load.
+                val id = file.fileMetadata.appData.uniqueId
+                    ?: file.fileMetadata.globalTransitId
+                    ?: continue
                 if (file.isSoftDeleted()) {
-                    if (byId.remove(uniqueId) != null) dirty = true
+                    if (byId.remove(id) != null) dirty = true
                     continue
                 }
                 val item = file.toFeedPostItem() ?: continue
-                byId[uniqueId] = item
+                byId[id] = item
                 dirty = true
             }
             dirty
@@ -191,23 +245,68 @@ class FeedTimelineService(
     }
 
     private fun emitSorted() {
-        val sorted = synchronized(lock) { byId.values.sortedByDescending { it.createdMs } }
+        val (sorted, exhausted) = synchronized(lock) {
+            byId.values.sortedByDescending { it.createdMs } to nextPage.isEmpty()
+        }
         _timeline.value = sorted
+        _endReached.value = exhausted
     }
 
     /**
-     * Pull older posts. v1 keeps the full local set in memory after [coldLoad] (a single drive
-     * scan is cheap), so there is nothing further to page — kept on the interface so the UI can
-     * call it on scroll without branching, and so a future cursored variant can slot in here.
+     * Pull older posts: one more page from every source drive that still has rows, appended to the
+     * in-memory map. Safe to call repeatedly from the scroll trigger — a fetch already in flight
+     * makes the call a no-op, so each drive's cursor is consumed once and only ever moves forward.
+     * Returns immediately once every drive is depleted ([endReached]).
      */
     suspend fun loadMore() {
-        // No-op for v1: cold-load already holds the full local timeline. The Stopped re-cold-load
-        // path keeps it current as sync drains the inbox.
+        val active = credentialsManager.getActiveCredentials() ?: return
+        val identityId = active.getIdentityId()
+
+        val claim = synchronized(lock) {
+            if (loadingMore || nextPage.isEmpty()) {
+                null
+            } else {
+                loadingMore = true
+                generation to nextPage.toMap()
+            }
+        } ?: return
+        val (gen, pending) = claim
+
+        try {
+            val pages = pending.mapValues { (drive, cursor) -> queryPage(identityId, drive, cursor) }
+
+            val applied = synchronized(lock) {
+                if (generation != gen) return@synchronized false
+                for ((drive, page) in pages) {
+                    if (page.hasMoreRows) nextPage[drive] = page.cursor else nextPage.remove(drive)
+                    mergeLocked(page.records)
+                }
+                true
+            }
+            if (applied) {
+                emitSorted()
+                Logger.d(tag = TAG) {
+                    "loadMore: paged ${pending.keys.size} drive(s), " +
+                        "fetched=${pages.values.sumOf { it.records.size }} " +
+                        "feedSize=${_timeline.value.size} endReached=${_endReached.value}"
+                }
+            }
+        } finally {
+            synchronized(lock) { loadingMore = false }
+        }
     }
 
-    /** Logout: drop the previous identity's feed. `started` stays set (app-scoped collector). */
+    /**
+     * Logout: drop the previous identity's feed and rewind paging to the first page.
+     * `started` stays set (app-scoped collector).
+     */
     fun reset() {
-        synchronized(lock) { byId.clear() }
-        _timeline.value = emptyList()
+        synchronized(lock) {
+            byId.clear()
+            rewindPaging()
+            // Discard any page fetch still in flight for the identity being logged out.
+            generation++
+        }
+        emitSorted()
     }
 }

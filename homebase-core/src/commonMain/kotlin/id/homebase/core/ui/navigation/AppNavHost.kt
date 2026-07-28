@@ -826,7 +826,9 @@ fun AppNavHost(
                                         onNavigateToFollowing = {
                                             navController.navigate(Route.Following)
                                         },
-                                        onAuthorClick = { /* identity/profile nav not yet wired */ },
+                                        onAuthorClick = {
+                                            navController.navigateToIdentity(it.domainName)
+                                        },
                                     )
                                 } else {
                                     // Legacy WebView feed — user opted out of the native feed.
@@ -843,7 +845,9 @@ fun AppNavHost(
                                         parametersOf(Uuid.parse(r.postId))
                                     },
                                     onBack = { navController.popBackStack() },
-                                    onAuthorClick = {},
+                                    onAuthorClick = {
+                                        navController.navigateToIdentity(it.domainName)
+                                    },
                                 )
                             }
                         }
@@ -853,7 +857,7 @@ fun AppNavHost(
                                 FollowingScreen(
                                     viewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
-                                    onIdentityClick = {},
+                                    onIdentityClick = { navController.navigateToIdentity(it) },
                                 )
                             }
                         }
@@ -1750,6 +1754,20 @@ fun AppNavHost(
     }
 }
 
+
+/**
+ * Open an identity's contact detail. Contacts are keyed by `md5(odinId)` (same derivation as
+ * GroupSettings' 1:1 contact info), and an author who isn't in the contact book still lands on
+ * a usable screen — ContactDetailViewModel.syntheticEntry builds an entry from the route odinId.
+ */
+private fun NavHostController.navigateToIdentity(odinId: String) {
+    navigate(
+        Route.ContactBookDetail(
+            uniqueId = Md5.toGuidId(odinId.lowercase()).toString(),
+            odinId = odinId,
+        )
+    )
+}
 
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,

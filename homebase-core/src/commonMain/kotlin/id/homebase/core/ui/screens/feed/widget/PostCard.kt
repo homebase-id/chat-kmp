@@ -31,8 +31,11 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.widget.LinkPreviewCard
+import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
+import id.homebase.core.feed.services.authorOdinId
+import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
 import androidx.compose.foundation.BorderStroke
@@ -102,6 +105,8 @@ fun PostCard(
     onEditPost: (() -> Unit)? = null,
     onDeletePost: (() -> Unit)? = null,
     onReportPost: (() -> Unit)? = null,
+    onBlockAuthor: (() -> Unit)? = null,
+    permission: CanReact? = null,
 ) {
     Column(
         modifier = modifier
@@ -109,7 +114,7 @@ fun PostCard(
             .background(MaterialTheme.colorScheme.surface)
             .padding(bottom = 4.dp),
     ) {
-        val authorOdinId = post.originalAuthor ?: post.senderOdinId
+        val authorOdinId = post.authorOdinId
         if (authorOdinId != null) {
             PostAuthorHeader(
                 authorOdinId = authorOdinId,
@@ -123,9 +128,13 @@ fun PostCard(
                 modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp),
                 isPublic = isPublic,
                 isOwnPost = isOwnPost,
+                // Only the author sees the audience: it's their own sharing choice, and on
+                // someone else's post the ACL we hold is just our own copy's (web parity).
+                audience = post.acl.toPostAudience().takeIf { isOwnPost },
                 onEditPost = onEditPost,
                 onDeletePost = onDeletePost,
                 onReportPost = onReportPost,
+                onBlockAuthor = onBlockAuthor,
             )
         }
 
@@ -176,6 +185,7 @@ fun PostCard(
             onOpenComments = onOpenComments,
             onShowReactors = onShowReactors,
             onRepost = onRepost,
+            permission = permission,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
         )
 

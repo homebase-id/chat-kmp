@@ -43,17 +43,21 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.core.ui.screens.feed.widget.CommentsModalSheet
 import id.homebase.core.ui.screens.feed.widget.FEED_SKELETON_COUNT
+import id.homebase.core.ui.screens.feed.widget.FeedMediaFullScreenHost
 import id.homebase.core.ui.screens.feed.widget.FeedMessageState
 import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.PostSkeleton
+import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.feed_timeline_empty_body
 import id.homebase.resources.feed_timeline_empty_title
@@ -86,7 +90,7 @@ fun FeedTimelineScreen(
     onAuthorClick: (OdinId) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    // Opens the author's report intake when a viewer reports someone else's post (web parity).
+    // Opens the author's report intake / the owner console's block page (web parity).
     val uriHandler = getUriHandler()
     // Collected so the list recomposes (and channel labels appear) once definitions load.
     val channels by viewModel.channels.collectAsStateWithLifecycle()
@@ -100,106 +104,122 @@ fun FeedTimelineScreen(
         state = rememberTopAppBarState(),
     )
     // Tapping a post or its comment button opens comments as a bottom-sheet modal over the feed
-    // (vs navigating away); null == closed. Reactors / media still route to the detail screen.
+    // (vs navigating away); null == closed.
     var commentsPostId by remember { mutableStateOf<Uuid?>(null) }
+    // Tapped photo/video, shown full-screen over the timeline; null == closed. Pure view state, so
+    // it lives here rather than in the VM.
+    var overlay by remember { mutableStateOf<FullScreenOverlay?>(null) }
+    // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps the list out of the
+    // composition, so a state remembered inside it would come back scrolled to the top.
+    val listState = rememberLazyListState()
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 is FeedTimelineEvent.NavigateToDetail -> onNavigateToDetail(event.postId)
+                is FeedTimelineEvent.OpenUrl -> uriHandler.openUrl(event.url)
                 is FeedTimelineEvent.ShowSnackbar ->
                     snackbarHostState.showSnackbar(TranslationUtil.getString(event.messageKey))
             }
         }
     }
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.feed_timeline_title)) },
-                actions = {
-                    IconButton(onClick = onNavigateToFollowing) {
-                        Icon(
-                            imageVector = Icons.Outlined.Group,
-                            contentDescription = stringResource(
-                                MR.string.feed_timeline_following_action,
-                            ),
-                        )
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { innerPadding ->
-        val contentModifier = Modifier
-            .fillMaxSize()
-            .consumeWindowInsets(innerPadding)
-            .padding(innerPadding)
+    FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) {
+        Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(MR.string.feed_timeline_title)) },
+                    actions = {
+                        IconButton(onClick = onNavigateToFollowing) {
+                            Icon(
+                                imageVector = Icons.Outlined.Group,
+                                contentDescription = stringResource(
+                                    MR.string.feed_timeline_following_action,
+                                ),
+                            )
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+        ) { innerPadding ->
+            val contentModifier = Modifier
+                .fillMaxSize()
+                .consumeWindowInsets(innerPadding)
+                .padding(innerPadding)
 
-        when {
-            uiState.errorMessage != null -> FeedMessageState(
-                icon = Icons.Outlined.CloudOff,
-                iconContentDescription = null,
-                title = stringResource(MR.string.feed_timeline_error_title),
-                body = stringResource(MR.string.feed_timeline_error_body),
-                actionLabel = stringResource(MR.string.feed_timeline_error_retry),
-                onAction = viewModel::refresh,
-                modifier = contentModifier,
-            )
+            when {
+                uiState.errorMessage != null -> FeedMessageState(
+                    icon = Icons.Outlined.CloudOff,
+                    iconContentDescription = null,
+                    title = stringResource(MR.string.feed_timeline_error_title),
+                    body = stringResource(MR.string.feed_timeline_error_body),
+                    actionLabel = stringResource(MR.string.feed_timeline_error_retry),
+                    onAction = viewModel::refresh,
+                    modifier = contentModifier,
+                )
 
-            uiState.isLoading && uiState.posts.isEmpty() -> FeedTimelineLoading(
-                modifier = contentModifier,
-            )
+                uiState.isLoading && uiState.posts.isEmpty() -> FeedTimelineLoading(
+                    modifier = contentModifier,
+                )
 
-            uiState.posts.isEmpty() -> FeedMessageState(
-                icon = Icons.Outlined.DynamicFeed,
-                iconContentDescription = null,
-                title = stringResource(MR.string.feed_timeline_empty_title),
-                body = stringResource(MR.string.feed_timeline_empty_body),
-                modifier = contentModifier,
-            )
+                uiState.posts.isEmpty() -> FeedMessageState(
+                    icon = Icons.Outlined.DynamicFeed,
+                    iconContentDescription = null,
+                    title = stringResource(MR.string.feed_timeline_empty_title),
+                    body = stringResource(MR.string.feed_timeline_empty_body),
+                    modifier = contentModifier,
+                )
 
-            else -> FeedTimelineList(
-                uiState = uiState,
-                onRefresh = viewModel::refresh,
-                onLoadMore = viewModel::loadMore,
-                onPostClick = viewModel::onPostClick,
-                onOpenComments = { commentsPostId = it },
-                onShowReactors = viewModel::showReactors,
-                onToggleReaction = viewModel::onToggleReaction,
+                else -> FeedTimelineList(
+                    uiState = uiState,
+                    listState = listState,
+                    onRefresh = viewModel::refresh,
+                    onLoadMore = viewModel::loadMore,
+                    onPostClick = viewModel::onPostClick,
+                    onOpenComments = { commentsPostId = it },
+                    onOpenMedia = { post, index, title ->
+                        feedMediaOverlay(post, index, title)?.let { overlay = it }
+                    },
+                    onShowReactors = viewModel::showReactors,
+                    onToggleReaction = viewModel::onToggleReaction,
+                    onAuthorClick = onAuthorClick,
+                    onDeletePost = viewModel::deletePost,
+                    onReportPost = viewModel::reportPost,
+                    onBlockAuthor = { author ->
+                        uiState.selfOdinId?.let { uriHandler.openUrl(it.buildBlockUrl(author)) }
+                    },
+                    selfOdinId = uiState.selfOdinId,
+                    channels = channels,
+                    channelNameFor = viewModel::channelNameFor,
+                    isPublicChannel = viewModel::isPublicChannel,
+                    displayNames = displayNames,
+                    modifier = contentModifier,
+                )
+            }
+        }
+
+        commentsPostId?.let { pid ->
+            CommentsModalSheet(
+                postId = pid,
+                onDismiss = { commentsPostId = null },
                 onAuthorClick = onAuthorClick,
-                onDeletePost = viewModel::deletePost,
-                onReportPost = { uriHandler.openUrl(FEED_REPORT_URL) },
-                selfOdinId = uiState.selfOdinId,
-                channels = channels,
-                channelNameFor = viewModel::channelNameFor,
-                isPublicChannel = viewModel::isPublicChannel,
-                displayNames = displayNames,
-                modifier = contentModifier,
             )
         }
-    }
 
-    commentsPostId?.let { pid ->
-        CommentsModalSheet(
-            postId = pid,
-            onDismiss = { commentsPostId = null },
-            onAuthorClick = onAuthorClick,
-        )
-    }
-
-    // Inline "who reacted" sheet for tweet/media posts (articles use the detail screen). Names
-    // fall back to the reactor's domain; the avatar is derived from the odinId inside the sheet.
-    uiState.reactorsSheet?.let { reactors ->
-        ReactionsBottomSheet(
-            reactions = reactors,
-            isLoading = uiState.isReactorsLoading,
-            ownerOdinId = uiState.selfOdinId?.domainName,
-            onContactClick = { onAuthorClick(OdinId(it)) },
-            onDismiss = viewModel::dismissReactors,
-        )
+        // Inline "who reacted" sheet for tweet/media posts (articles use the detail screen). Names
+        // fall back to the reactor's domain; the avatar is derived from the odinId inside the sheet.
+        uiState.reactorsSheet?.let { reactors ->
+            ReactionsBottomSheet(
+                reactions = reactors,
+                isLoading = uiState.isReactorsLoading,
+                ownerOdinId = uiState.selfOdinId?.domainName,
+                onContactClick = { onAuthorClick(OdinId(it)) },
+                onDismiss = viewModel::dismissReactors,
+            )
+        }
     }
 }
 
@@ -237,24 +257,23 @@ private fun FeedWidthContainer(
     }
 }
 
-// Reporting intake opened by the post overflow "Report" action on someone else's post.
-// ponytail: the documented web fallback URL; the per-identity `{author}/config/reporting` lookup
-// is the refinement (it needs an HTTP client wired into the feed layer — not worth it yet).
-private const val FEED_REPORT_URL = "https://ravenhosting.cloud/report"
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FeedTimelineList(
     uiState: FeedTimelineUiState,
+    listState: LazyListState,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onPostClick: (Uuid) -> Unit,
     onOpenComments: (Uuid) -> Unit,
+    /** Opens the tapped media full-screen; the String is the resolved author name for its app bar. */
+    onOpenMedia: (post: FeedPostItem, index: Int, title: String) -> Unit,
     onShowReactors: (FeedPostItem) -> Unit,
     onToggleReaction: (post: FeedPostItem, emoji: String) -> Unit,
     onAuthorClick: (OdinId) -> Unit,
     onDeletePost: (FeedPostItem) -> Unit,
     onReportPost: (FeedPostItem) -> Unit,
+    onBlockAuthor: (OdinId) -> Unit,
     selfOdinId: OdinId?,
     channels: Map<String, ChannelDefinition>,
     channelNameFor: (String) -> String?,
@@ -262,7 +281,6 @@ private fun FeedTimelineList(
     displayNames: Map<OdinId, String>,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
     val pullState = rememberPullToRefreshState()
 
     // Trigger loadMore as the user nears the end. The snapshotFlow body returns a coarse
@@ -298,17 +316,18 @@ private fun FeedTimelineList(
                 val author = post.originalAuthor ?: post.senderOdinId
                 // The full PostDetail screen is reserved for long-form Articles. A tweet/media
                 // post stays inline: comments open as a modal sheet, the reaction facepile opens
-                // the inline reactors sheet, and tapping media is a no-op (double-tap still likes;
-                // the fullscreen lightbox is deferred until the over-peer media route lands).
+                // the inline reactors sheet, and tapping a photo opens it full-screen over the
+                // timeline (double-tap still likes). An Article's media opens the article instead.
                 val isArticle = post.type == PostType.Article
                 // originalAuthor survives the server stripping senderOdinId, so it's the reliable
                 // own-vs-other signal for the overflow menu (Edit/Delete vs Report).
                 val isOwnPost = selfOdinId != null && author == selfOdinId
+                val displayName = author
+                    ?.let { displayNames[it]?.takeIf { n -> n.isNotBlank() } ?: it.domainName }
+                    .orEmpty()
                 PostCard(
                     post = post,
-                    displayName = author
-                    ?.let { displayNames[it]?.takeIf { n -> n.isNotBlank() } ?: it.domainName }
-                    .orEmpty(),
+                    displayName = displayName,
                     channelName = channelNameFor(post.channelId),
                     isPublic = isPublicChannel(post.channelId),
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
@@ -319,7 +338,10 @@ private fun FeedTimelineList(
                     onOpenComments = { onOpenComments(post.id) },
                     onShowReactors = { if (isArticle) onPostClick(post.id) else onShowReactors(post) },
                     onPostClick = { onOpenComments(post.id) },
-                    onMediaClick = { if (isArticle) onPostClick(post.id) },
+                    onMediaClick = { index ->
+                        if (isArticle) onPostClick(post.id)
+                        else onOpenMedia(post, index, displayName)
+                    },
                     onAuthorClick = { if (author != null) onAuthorClick(author) },
                     embeddedAuthorName = post.embeddedPost?.author
                         ?.let { displayNames[OdinId(it)]?.takeIf { n -> n.isNotBlank() } },
@@ -327,6 +349,7 @@ private fun FeedTimelineList(
                     onEditPost = null,
                     onDeletePost = { onDeletePost(post) },
                     onReportPost = { onReportPost(post) },
+                    onBlockAuthor = author?.let { { onBlockAuthor(it) } },
                 )
             }
         }
