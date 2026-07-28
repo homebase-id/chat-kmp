@@ -1,5 +1,6 @@
 package id.homebase.chat.event
 
+import co.touchlab.kermit.Logger
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -58,6 +60,7 @@ import id.homebase.api.common.OdinId
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.chat.widget.MediaItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
@@ -75,6 +78,7 @@ import id.homebase.resources.chat_event_download_ics
 import id.homebase.resources.chat_event_join_meeting
 import id.homebase.resources.chat_event_open_in_maps
 import id.homebase.resources.chat_event_organized_by
+import id.homebase.resources.chat_event_reminder_push
 import id.homebase.resources.chat_event_rsvp_maybe
 import id.homebase.resources.chat_event_rsvp_no
 import id.homebase.resources.chat_event_rsvp_summary
@@ -150,6 +154,7 @@ private fun EventDetailContent(
     coverPreviewThumbnail: EmbeddedThumb? = null,
 ) {
     val actionService: ChatMessageActionService = koinInject()
+    val reminderService: EventReminderService = koinInject()
     val contactService: ContactService = koinInject()
     val ownerSession: OwnerSessionRepository = koinInject()
     val uriHandler = LocalUriHandler.current
@@ -172,6 +177,25 @@ private fun EventDetailContent(
 
     val times = rememberEventTimes(descriptor)
     val currentRsvp = remember(ownReactions) { EventRsvp.currentRsvp(ownReactions) }
+
+    // Generic, title-free reminder text (privacy: it rides the push provider in cleartext) — the
+    // deep-link tap reopens this event with the real details. Resolved here so the service stays
+    // free of compose-resources. See EventReminderService / issue #1116.
+    val reminderText = stringResource(MR.string.chat_event_reminder_push)
+    val onRsvp: (String) -> Unit = { target ->
+        scope.launch {
+            applyRsvp(
+                actionService = actionService,
+                reminderService = reminderService,
+                descriptor = descriptor,
+                reminderText = reminderText,
+                conversationId = conversationId,
+                messageId = messageId,
+                currentRsvp = currentRsvp,
+                newRsvp = target,
+            )
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -230,11 +254,19 @@ private fun EventDetailContent(
 
             if (descriptor.description.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    text = descriptor.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                // Route through ChatMarkdown so URLs in the description autolink
+                // (tappable, opened via LocalUriHandler) exactly like a chat text
+                // bubble — the event description bypassed that entirely and was
+                // inert plain text (#1117). SelectionContainer adds copy-by-drag on
+                // top; unlike the meeting-URL ActionRow this block is not inside a
+                // clickable Surface, so nothing eats the selection gesture.
+                SelectionContainer {
+                    ChatMarkdown(
+                        content = descriptor.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -326,21 +358,21 @@ private fun EventDetailContent(
                     icon = Icons.Default.Check,
                     label = stringResource(MR.string.chat_event_rsvp_yes),
                     selected = currentRsvp == EventRsvp.GOING,
-                    onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.GOING) } },
+                    onClick = { onRsvp(EventRsvp.GOING) },
                     modifier = Modifier.weight(1f),
                 )
                 RsvpButton(
                     icon = Icons.Default.QuestionMark,
                     label = stringResource(MR.string.chat_event_rsvp_maybe),
                     selected = currentRsvp == EventRsvp.MAYBE,
-                    onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.MAYBE) } },
+                    onClick = { onRsvp(EventRsvp.MAYBE) },
                     modifier = Modifier.weight(1f),
                 )
                 RsvpButton(
                     icon = Icons.Default.Close,
                     label = stringResource(MR.string.chat_event_rsvp_no),
                     selected = currentRsvp == EventRsvp.NOT_GOING,
-                    onClick = { scope.launch { applyRsvp(actionService, conversationId, messageId, currentRsvp, EventRsvp.NOT_GOING) } },
+                    onClick = { onRsvp(EventRsvp.NOT_GOING) },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -529,22 +561,43 @@ private fun ReactorRow(
 @OptIn(ExperimentalUuidApi::class)
 private suspend fun applyRsvp(
     actionService: ChatMessageActionService,
+    reminderService: EventReminderService,
+    descriptor: EventDescriptor,
+    reminderText: String,
     conversationId: Uuid,
     messageId: Uuid,
     currentRsvp: String?,
     newRsvp: String,
 ) {
-    // The reaction service uses toggle semantics (add if absent, remove if present).
-    if (currentRsvp == newRsvp) {
-        // Same button tapped twice → toggle off.
+    // The reaction toggle uses toggle semantics (add if absent, remove if present); compute the
+    // RSVP the user ends up on so the reminder can be reconciled to match.
+    val resultingRsvp: String? = if (currentRsvp == newRsvp) {
+        // Same button tapped twice → toggle off (no RSVP).
         actionService.toggleReaction(conversationId, messageId, newRsvp)
-        return
+        null
+    } else {
+        if (currentRsvp != null) {
+            // Switch RSVP: clear the prior one before recording the new.
+            actionService.toggleReaction(conversationId, messageId, currentRsvp)
+        }
+        actionService.toggleReaction(conversationId, messageId, newRsvp)
+        newRsvp
     }
-    if (currentRsvp != null) {
-        // Switch RSVP: clear the prior one before recording the new.
-        actionService.toggleReaction(conversationId, messageId, currentRsvp)
+
+    // Reconcile the self-reminder to the resulting state: Going schedules, anything else (Maybe /
+    // Not going / retracted) cancels. Best-effort — a reminder hiccup must never fail the RSVP,
+    // which is already durably queued on the outbox above (#1116).
+    runCatching {
+        reminderService.onRsvpChanged(
+            conversationId = conversationId,
+            messageId = messageId,
+            descriptor = descriptor,
+            isGoing = resultingRsvp == EventRsvp.GOING,
+            reminderText = reminderText,
+        )
+    }.onFailure {
+        Logger.w(throwable = it, tag = "EventDetailDialog") { "reminder reconcile failed for msg=$messageId" }
     }
-    actionService.toggleReaction(conversationId, messageId, newRsvp)
 }
 
 @Composable

@@ -29,6 +29,8 @@ import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.dice.DiceRollPreferences
+import id.homebase.chat.event.EventReminderPreferences
+import id.homebase.chat.event.EventReminderService
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -41,10 +43,11 @@ import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.permissions.isLocationPermissionGranted
 import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.emergency.EmergencyLocateStore
-import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
+import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
@@ -78,11 +81,13 @@ import id.homebase.core.NotificationActionBridge
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
+import id.homebase.api.client.diagnostics.ServerIpCapture
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
@@ -120,6 +125,7 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.notifications.NotificationEntry
+import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
 import id.homebase.core.settings.UserPreferences
@@ -130,6 +136,7 @@ import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
+import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
@@ -174,6 +181,7 @@ import id.homebase.core.location.tracking.LocationTracker
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
 import id.homebase.core.location.tracking.createLocationTracker
 import id.homebase.core.ui.screens.location.LocationTrackUploaderService
+import id.homebase.core.ui.screens.location.EmergencyContactPickerViewModel
 import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.PushCaptureUploader
 import id.homebase.core.ui.screens.location.model.locationHourFileUid
@@ -510,14 +518,22 @@ val appModule = module {
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
             startsHeadless = get<PlatformInfo>().supportsBackgroundWake,
+            // #1108: close the notify WS while backgrounded on platforms that have an FCM/APNs +
+            // background-worker HTTP fallback (Android/iOS). Desktop/Web (false) keep the WS, as they
+            // have no push path. Same capability that governs headless cold-wake.
+            backgroundSyncViaPush = get<PlatformInfo>().supportsBackgroundWake,
             onPostAuthenticated = {
-                // Live Relay receive store: clear any prior identity's positions for a clean
-                // slate (they rehydrate from the server's flush-on-connect). Resolved FIRST and
-                // independent of the other services so its app-lifetime init{} collector is
-                // guaranteed up — a throw in a later location reset() below can't prevent the
-                // consumer from existing when relay packets arrive (bug #824). The collector is
-                // never cancelled here; logout clears it in-stream via SessionEnded.
-                get<LiveLocationReceiveStore>().reset()
+                // Live Relay receive store: resolve it FIRST and independent of the other services
+                // so its app-lifetime init{} collector is guaranteed up — a throw in a later
+                // location reset() below can't prevent the consumer from existing when relay packets
+                // arrive (bug #824). We deliberately do NOT clear it here: clearing on this (auth)
+                // coroutine raced the server's flush-on-connect populating it on the collector
+                // coroutine, wiping a just-received peer at cold reopen (#1072). Logout clears it
+                // in-stream via SessionEnded, so no clear is needed on this path.
+                get<LiveLocationReceiveStore>()
+                // Arm the last-known-good server-IP capture bridge (its init sets the global
+                // registry the Android OkHttp EventListener forwards validated connects to).
+                get<ServerIpCapture>()
                 // Emergency-retrieved peer location history is memory-only and per-identity —
                 // clear any prior identity's retrievals (same in-stream SessionEnded backstop).
                 get<EmergencyLocateStore>().reset()
@@ -618,7 +634,10 @@ val appModule = module {
                 // the right GPS hold. reset() pokes the coordinator via refreshGpsHold().
                 get<LiveLocationShareService>().reset()
                 get<LocationTrackingCoordinator>().reset()
-            }
+            },
+            // #1109: attribute a background window to the active location profile in the
+            // BgTrace transition line. Lambda keeps the auth layer decoupled from the location module.
+            locationProfileLabel = { get<LocationTrackingCoordinator>().currentProfileLabel() },
         )
     }
     single {
@@ -686,13 +705,32 @@ val appModule = module {
     // emits after successful group creation, ConversationListViewModel collects and
     // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
     singleOf(::PostCreateIntroductionPreflightBus)
-    singleOf(::ChatMessageStream)
+    single {
+        ChatMessageStream(
+            get(), get(), get(), get(), get(), get(), get(), get(),
+        ).also { stream ->
+            // #887: wire auto-pin at construction, NOT in onPostAuthenticated. That
+            // post-auth block is deferred and frequently never runs on a warm
+            // relaunch / session-restore (the AuthCC promoteToForeground race), which
+            // left autoPinTypedMessage a no-op for the whole session — auto-pin
+            // silently did nothing while manual pin still worked. Resolving
+            // ChatMessageActionService lazily *inside* the lambda keeps the
+            // ActionService → MessageLookup → ChatMessageStream construction cycle broken.
+            stream.autoPinTypedMessage = { messageId, dependencyUniqueId ->
+                get<ChatMessageActionService>().pinMessage(messageId, dependencyUniqueId)
+            }
+        }
+    }
     single<MessageLookup> { get<ChatMessageStream>() }
     singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
+    singleOf(::EventReminderPreferences)
+    // Explicit `single` (not `singleOf`) — the ctor's `now` clock arg is an intentional Kotlin
+    // default the container can't resolve reflectively.
+    single { EventReminderService(get(), get()) }
     // singleOf(::PendingNotificationTap) would force Koin to resolve every
     // constructor parameter from the container — including the Duration TTL
     // and the CoroutineScope, which are intentionally Kotlin-default args.
@@ -712,8 +750,10 @@ val appModule = module {
             notificationBackend = get(),
             eventBus = get(),
             authState = get<id.homebase.api.youauth.YouAuthFlowManager>().authState,
+            messageResolver = get(),
         )
     }
+    single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
     singleOf(::NotificationEntry)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
@@ -839,6 +879,7 @@ val appModule = module {
             stickerService = get(),
             stickerPermissionViewModel = get(StickerPermissionQualifier),
             liveLocationShareService = get(),
+            liveLocationReceiveStore = get(),
             liveShareReadiness = get(),
             locationService = get(),
         )
@@ -896,6 +937,7 @@ val appModule = module {
             authConnectionCoordinator = get(),
         )
     }
+    viewModelOf(::EmergencyContactPickerViewModel)
     // Manual block: the optional peerDomain (emergency-locate peer mode) arrives as a Koin
     // runtime parameter from the LocationPeerHistory route; the own-history call site passes none.
     viewModel { params ->
@@ -932,6 +974,16 @@ val appModule = module {
         )
     }
     viewModelOf(::ContactBookViewModel)
+    // Manual block: circleId/circleName arrive as Koin runtime parameters from the
+    // CircleMemberAdd route — viewModelOf would try to autowire them from the DI graph.
+    viewModel { params ->
+        CircleMemberPickerViewModel(
+            circleId = params.get(),
+            circleName = params.get(),
+            repo = get(),
+            connectionService = get(),
+        )
+    }
     viewModelOf(::ContactDetailViewModel)
     viewModelOf(::AddContactViewModel)
     viewModelOf(::ContactBookSettingsViewModel)
@@ -987,6 +1039,7 @@ val appModule = module {
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
+    viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)

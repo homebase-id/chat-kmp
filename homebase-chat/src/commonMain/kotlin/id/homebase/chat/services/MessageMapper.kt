@@ -58,6 +58,7 @@ import id.homebase.resources.chat_poll_ended_other
 import id.homebase.resources.chat_poll_ended_self
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
@@ -129,6 +130,9 @@ suspend fun mapToMessageData(
     val isFailedSend = localTags?.contains(ChatProtocol.isFailedSendTag) ?: false
     val isPendingSend =
         (localTags?.contains(ChatProtocol.isPendingSendTag) ?: false) && !isFailedSend
+    val isPinned = localTags?.contains(ChatProtocol.MessagePinnedTag) ?: false
+    val isAutoPinDismissed = localTags?.contains(ChatProtocol.AutoPinDismissedTag) ?: false
+    val isManuallyPinned = localTags?.contains(ChatProtocol.ManualPinnedTag) ?: false
 
     val localReadTimestamp = metadata.localAppData?.readTime
     // localReactions on the wire are JSON-encoded ReactionContent objects
@@ -169,6 +173,7 @@ suspend fun mapToMessageData(
                 fileId = header.fileId,
                 conversationId = appData.groupId!!,
                 userDate = deletedUserDate.toInstant(),
+                sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
                 modified = metadata.updated.toInstant(),
                 created = metadata.created.toInstant(),
                 originalAuthor = metadata.originalAuthor,
@@ -187,6 +192,9 @@ suspend fun mapToMessageData(
                 versionTag = versionTag,
                 isPendingSend = isPendingSend,
                 isStatusMessage = isStatusMessage,
+                isPinned = isPinned,
+                isAutoPinDismissed = isAutoPinDismissed,
+                isManuallyPinned = isManuallyPinned,
                 hasMore = hasMore
             )
         }
@@ -315,6 +323,7 @@ suspend fun mapToMessageData(
             conversationId = appData.groupId!!,
             content = messageAppData.getMessage(),
             userDate = userDate.toInstant(),
+            sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
             modified = metadata.updated.toInstant(),
             created = metadata.created.toInstant(),
             originalAuthor = metadata.originalAuthor,
@@ -332,6 +341,9 @@ suspend fun mapToMessageData(
             isPendingSend = isPendingSend,
             isFailedSend = isFailedSend,
             isStatusMessage = isStatusMessage,
+            isPinned = isPinned,
+            isAutoPinDismissed = isAutoPinDismissed,
+            isManuallyPinned = isManuallyPinned,
             messageContent = messageContent,
             hasMore = hasMore
         )
@@ -354,6 +366,7 @@ suspend fun mapToMessageData(
                 conversationId = appData.groupId!!,
                 content = "Failed to parse message from server",
                 userDate = metadata.created.toInstant(),
+                sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
                 modified = metadata.updated.toInstant(),
                 created = metadata.created.toInstant(),
                 originalAuthor = metadata.originalAuthor,
@@ -570,7 +583,8 @@ internal suspend fun renderStatusMessage(
             else TranslationUtil.getString(MR.string.chat_poll_ended_other, name, q)
         }
 
-        StatusMessage.EmergencyContactDesignated ->
+        StatusMessage.EmergencyContactDesignated,
+        StatusMessage.EmergencyContactDesignatedNotice ->
             when {
                 authorIsYou && subject != null ->
                     TranslationUtil.getString(MR.string.system_emergency_contact_designated_you, subject)
@@ -580,7 +594,8 @@ internal suspend fun renderStatusMessage(
                     TranslationUtil.getString(MR.string.system_emergency_contact_designated, name)
             }
 
-        StatusMessage.EmergencyContactRevoked ->
+        StatusMessage.EmergencyContactRevoked,
+        StatusMessage.EmergencyContactRevokedNotice ->
             when {
                 authorIsYou && subject != null ->
                     TranslationUtil.getString(MR.string.system_emergency_contact_revoked_you, subject)

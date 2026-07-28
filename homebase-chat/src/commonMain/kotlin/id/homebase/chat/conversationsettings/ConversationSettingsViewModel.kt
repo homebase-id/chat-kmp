@@ -12,6 +12,9 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
+import id.homebase.chat.services.livelocation.LiveLocationShareService
+import id.homebase.chat.services.livelocation.conversationLiveSharePinUntilMs
 import id.homebase.core.ui.navigation.Route
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -19,9 +22,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Clock
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 class ConversationSettingsViewModel(
@@ -31,6 +38,8 @@ class ConversationSettingsViewModel(
     private val ownerSessionRepository: OwnerSessionRepository,
     private val chatMessageStream: ChatMessageStream,
     private val contactService: ContactService,
+    private val liveLocationShareService: LiveLocationShareService,
+    private val liveLocationReceiveStore: LiveLocationReceiveStore,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.ConversationSettings>()
@@ -40,6 +49,7 @@ class ConversationSettingsViewModel(
     init {
         loadData()
         loadOverview()
+        observeLiveShare()
     }
 
 
@@ -150,6 +160,49 @@ class ConversationSettingsViewModel(
                 Logger.e("Failed to load conversation overview", e)
                 _uiState.update { it.copy(isOverviewLoading = false) }
             }
+        }
+    }
+
+    /**
+     * Drives this screen's live-share pin via [conversationLiveSharePinUntilMs] — the same
+     * function the in-chat pin uses, so the two can never diverge (#1012): lit when I'm sharing
+     * with anyone in this conversation (outgoing) OR the other party is sharing their live location
+     * with me (incoming, quantized live-relay freshness), whichever ends later.
+     *
+     * The other participants are resolved through [ConversationStream.getRecipients] — again the
+     * in-chat pin's seam — inheriting its empty-participants re-map fallback (#934).
+     * [ConversationStream.conversations] is a combine source so the pin re-resolves once the
+     * conversation row hydrates (otherwise an already-running outgoing share with no incoming stream
+     * could leave the pin dark until the next roster/relay event). Note-to-self has no other party.
+     */
+    private fun observeLiveShare() {
+        val conversationId = Uuid.parse(route.conversationId)
+        if (conversationId == ChatProtocol.ConversationWithYourselfId) return
+        viewModelScope.launch {
+            combine(
+                liveLocationShareService.recipients,
+                liveLocationReceiveStore.positions,
+                conversationStream.conversations,
+            ) { roster, positions, _ -> roster to positions }
+                .collectLatest { (roster, positions) ->
+                    val now = Clock.System.now().toEpochMilliseconds()
+                    // Re-resolves per relay packet during an incoming stream; slow-path log is the
+                    // evidence gate for whether caching is ever needed (#1012 review).
+                    val (others, took) = measureTimedValue {
+                        runCatching {
+                            conversationStream.getRecipients(conversationId, emptyList(), null)
+                        }.getOrDefault(emptyList())
+                    }
+                    if (took.inWholeMilliseconds >= 5) {
+                        Logger.i(tag = "LiveRelay") {
+                            "settings pin getRecipients slow conv=$conversationId " +
+                                "took=${took.inWholeMilliseconds}ms (re-runs per relay packet — cache if this recurs)"
+                        }
+                    }
+                    _uiState.update {
+                        it.copy(liveShareUntilMs = conversationLiveSharePinUntilMs(roster, positions, others, now))
+                    }
+                }
         }
     }
 

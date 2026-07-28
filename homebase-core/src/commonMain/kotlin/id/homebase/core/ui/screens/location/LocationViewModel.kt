@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.location
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
@@ -27,8 +28,7 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.localDayStart
 import id.homebase.core.ui.screens.location.history.shiftDay
-import id.homebase.core.ui.screens.location.livelocation.LIVE_STALE_MS
-import id.homebase.core.ui.screens.location.livelocation.LiveLocationReceiveStore
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.core.util.initials
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -52,6 +52,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
+import kotlin.uuid.Uuid
+
+private const val TAG = "LocationViewModel"
 
 class LocationViewModel(
     private val locationPreferences: LocationPreferences,
@@ -126,10 +129,21 @@ class LocationViewModel(
                     .asSequence()
                     .filterNot { it == self }
                     .map { contactService.resolveByOdinId(OdinId(it)) }
+                    .distinctBy { it.odinId }
                     .sortedBy { it.name.lowercase() }
                     .toList()
                 _uiState.update {
-                    it.copy(whoCanLocateMe = members, whoCanLocateMeLoaded = circleState.isLoaded)
+                    it.copy(
+                        whoCanLocateMe = members,
+                        whoCanLocateMeLoaded = circleState.isLoaded,
+                        // Drop anyone who just converted from pending to real — closes the
+                        // window where a stale pending snapshot and a freshly-updated real
+                        // membership list briefly disagree and render the same person twice
+                        // (#1096). checkWhoCanLocateMePending re-derives the full pending set
+                        // on its own cadence; this only prevents the transient overlap.
+                        whoCanLocateMePending = it.whoCanLocateMePending
+                            .filterNot { pending -> members.any { m -> m.odinId == pending.odinId } },
+                    )
                 }
             }
         }
@@ -144,6 +158,7 @@ class LocationViewModel(
                 .map { list ->
                     list.mapNotNull { it.toContactUiModel() }
                         .filterNot { it.odinId.domainName.lowercase() == self }
+                        .distinctBy { it.odinId }
                         .sortedBy { it.name.lowercase() }
                 }
                 .collect { members ->
@@ -257,9 +272,10 @@ class LocationViewModel(
                     }
                     .sortedBy { it.name.lowercase() }
 
-                // Incoming: people whose last fix is still fresh, with its age.
+                // Incoming: everyone whose last fix we've received, with its age. No staleness
+                // cutoff — the server won't flush an evicted point, so we show whatever it gave us
+                // and let the age label convey freshness (#1072).
                 val incoming = positions.values
-                    .filter { now - it.receivedAtMs <= LIVE_STALE_MS }
                     .map { lp ->
                         val id = lp.senderOdinId.domainName
                         val contact = resolveContact(lp.senderOdinId)
@@ -474,6 +490,11 @@ class LocationViewModel(
 
             is LocationUiAction.SetLocatableExpanded -> setLocatableExpanded(action.expanded)
 
+            is LocationUiAction.SetWhoCanLocateMeExpanded ->
+                if (action.expanded) checkWhoCanLocateMePending()
+
+            is LocationUiAction.RemoveEmergencyContact -> removeEmergencyContact(action.odinId)
+
             is LocationUiAction.ConfirmEmergencyLocate -> confirmEmergencyLocate(action)
 
             // Permission requests are dispatched at the screen level (the
@@ -516,6 +537,80 @@ class LocationViewModel(
                 }
             } finally {
                 _uiState.update { it.copy(locateSubmitInFlight = false) }
+            }
+        }
+    }
+
+    private var whoCanLocateMePendingJob: Job? = null
+
+    /**
+     * Live read, never a periodic loop (a sealed deposit doesn't change moment to moment, and a
+     * conversion to real membership already flips whoCanLocateMe via ConnectionService's normal
+     * refresh). Runs on every [refresh] (screen entry/resume) rather than only on section-expand
+     * — a contact just added from the picker lands as a pending deposit far more often than not,
+     * and gating this behind manual expand left it invisible until the user thought to tap the
+     * section, which reads as "the add silently failed" (#1096). The explicit
+     * [LocationUiAction.SetWhoCanLocateMeExpanded] trigger stays too, so opening the section
+     * mid-session (no intervening resume) still gets a fresh read. Delegates the actual fan-out
+     * to [ConnectionService.findPendingMembers] — circle-agnostic, shared with the Contact
+     * Book's generic circle-management screen — and applies the one Location-specific rule: you
+     * are never your own emergency contact.
+     */
+    private fun checkWhoCanLocateMePending() {
+        if (whoCanLocateMePendingJob?.isActive == true) return
+        whoCanLocateMePendingJob = viewModelScope.launch {
+            _uiState.update { it.copy(whoCanLocateMePendingChecking = true) }
+            try {
+                val self = runCatching { credentialsManager.getActiveDomain() }
+                    .getOrNull()?.domainName?.lowercase()
+                val circleId = Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID)
+                val pending = connectionService.findPendingMembers(circleId)
+                    .filterNot { it.domainName.lowercase() == self }
+
+                _uiState.update {
+                    it.copy(
+                        // Exclude against the CURRENT whoCanLocateMe, not the snapshot findPendingMembers
+                        // started from — someone can convert from pending to real while this fan-out is
+                        // still in flight, and rendering both lists un-deduped briefly shows them twice
+                        // (#1096).
+                        whoCanLocateMePending = pending
+                            .distinct()
+                            .map { odinId -> contactService.resolveByOdinId(odinId) }
+                            .filterNot { contact -> it.whoCanLocateMe.any { m -> m.odinId == contact.odinId } }
+                            .sortedBy { contact -> contact.name.lowercase() },
+                        whoCanLocateMePendingChecking = false,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "checkWhoCanLocateMePending failed" }
+                _uiState.update { it.copy(whoCanLocateMePendingChecking = false) }
+            }
+        }
+    }
+
+    /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
+     *  both (revoke also silently drops a still-sealed deposit). */
+    private fun removeEmergencyContact(odinId: String) {
+        if (odinId in _uiState.value.removingEmergencyContacts) return
+        _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts + odinId) }
+        viewModelScope.launch {
+            try {
+                connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
+                _uiState.update {
+                    it.copy(
+                        whoCanLocateMePending = it.whoCanLocateMePending
+                            .filterNot { contact -> contact.odinId.domainName == odinId },
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "removeFromCircle failed for $odinId" }
+                _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
+            } finally {
+                _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts - odinId) }
             }
         }
     }
@@ -581,6 +676,11 @@ class LocationViewModel(
             refreshCounts()
         }
         loadDashboard()
+        // Re-derive "who can locate me" pending status on every resume (not just on manual
+        // section-expand) — otherwise returning here right after adding someone shows nothing
+        // for them until the section happens to be expanded, which reads as "the add failed"
+        // (#1096: a real add landed as a pending deposit and stayed invisible until expand).
+        checkWhoCanLocateMePending()
     }
 
     /** Dashboard data: today's traces (map preview), the device list, and the
@@ -593,18 +693,10 @@ class LocationViewModel(
             val devices = runCatching { deviceDirectory.loadDevices() }
                 .getOrDefault(emptyList())
 
-            // The "who can locate you" list itself comes from the emergency-contact flag (collected
-            // reactively in init). Here we only resolve the owner-console deep link for managing the
-            // Emergency Location Access circle (the actual location-drive grant).
-            val domain = runCatching { credentialsManager.getActiveCredentials()?.domain?.domainName }
-                .getOrNull()
-            val manageUrl = domain?.let { "https://$it/owner/circles/$EMERGENCY_LOCATION_CIRCLE_ID" }
-
             _uiState.update {
                 it.copy(
                     todayTraces = traces,
                     devices = devices,
-                    emergencyManageUrl = manageUrl,
                 )
             }
         }

@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.diagnostics.ServerIpCapture
+import id.homebase.api.client.diagnostics.ServerIpStore
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
@@ -19,6 +21,8 @@ import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.notifications.ScheduledPushOutboxUploader
+import id.homebase.api.sync.database.CompositeOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -27,6 +31,7 @@ import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
+import id.homebase.api.client.notifications.ScheduledPushNotificationProvider
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
@@ -78,10 +83,19 @@ val apiModule = module {
     singleOf(::VideoPreloadService)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
+    // Last-known-good owner-server IP: the store + the production-capture bridge (its init arms
+    // the global registry the Android OkHttp EventListener forwards to).
+    singleOf(::ServerIpStore)
+    single { ServerIpCapture(get(), get(), get()) }
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
-    single<OutboxUploader> { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
+    // Composite outbox uploader: drive transit + the scheduled-push shim (offline-durable
+    // schedule/cancel of reminder pushes, reconciled against the server via tagId; see
+    // ScheduledPushOutboxUploader).
+    single { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
+    single { ScheduledPushOutboxUploader(get()) }
+    single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
     singleOf(::OutboxSync)
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
@@ -149,6 +163,7 @@ val apiModule = module {
 
     factoryOf(::SecurityContextProvider)
     factoryOf(::PushNotificationApi)
+    factoryOf(::ScheduledPushNotificationProvider)
     singleOf(::LinkPreviewProvider)
     singleOf(::LocationPreviewProvider)
 

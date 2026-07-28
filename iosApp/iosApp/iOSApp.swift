@@ -53,6 +53,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   }
 
   private func registerNotificationCategories() {
+      // Reply-from-notification is disabled until the flow is hardened and pushes show real
+      // content (#1048 / #859): the send can silently fail, and replying blind to the
+      // content-less "You have a new message" push is nonsensical. Flip to re-enable; the
+      // action stays defined (dormant).
+      let replyFromNotificationEnabled = false
+
       let replyAction = UNTextInputNotificationAction(
           identifier: "REPLY_ACTION",
           title: "Reply",
@@ -66,16 +72,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       )
       let messageCategory = UNNotificationCategory(
           identifier: "MESSAGE_CATEGORY",
-          actions: [replyAction, markReadAction],
+          actions: replyFromNotificationEnabled ? [replyAction, markReadAction] : [markReadAction],
           intentIdentifiers: [],
           options: []
       )
       // Reply-only category for content-less pushes ("You have a new message"
       // placeholder) — no Mark as Read when there's nothing to read (#983).
-      // The extension picks between the two categories.
+      // The extension picks between the two categories. With reply disabled this
+      // carries no actions.
       let messageNoContentCategory = UNNotificationCategory(
           identifier: "MESSAGE_NO_CONTENT_CATEGORY",
-          actions: [replyAction],
+          actions: replyFromNotificationEnabled ? [replyAction] : [],
           intentIdentifiers: [],
           options: []
       )

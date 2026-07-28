@@ -52,7 +52,7 @@ class ConversationUiModelUpdateWithLatestMessageTest {
     )
 
     /** Mimics what `mapToMessageData` returns for a peer message: userDate clamped to transitCreated. */
-    private fun peerMessage(clampedUserDateMs: Long) = MessageUiModel(
+    private fun peerMessage(clampedUserDateMs: Long, isPendingSend: Boolean = false) = MessageUiModel(
         id = Uuid.random(),
         globalTransitId = null,
         fileId = Uuid.random(),
@@ -66,7 +66,7 @@ class ConversationUiModelUpdateWithLatestMessageTest {
         displayName = "alice",
         localReadTimestamp = null as UnixTimeUtc?,
         isDeleted = false,
-        isPendingSend = false,
+        isPendingSend = isPendingSend,
         versionTag = Uuid.NIL,
         messageAppData = MessageAppData(),
         reactionPreview = null,
@@ -119,5 +119,40 @@ class ConversationUiModelUpdateWithLatestMessageTest {
 
         // Equality not required; the contract is "no regression".
         assertEquals(ahead, result.latestMessageTimestamp.toEpochMilliseconds())
+    }
+
+    /**
+     * #1148 — a status message ("You updated the conversation photo") advances
+     * `latestMessageTimestamp` and gets that value persisted into `localAppData`,
+     * but `selectAllConversationPlusLastMessage` excludes `dataType = 202`. Cold-load
+     * enrichment therefore arrives with a message OLDER than the seeded sort key; the
+     * old `candidate >= latestMessageTimestamp` guard rejected it and the row kept
+     * `mapToBasic`'s `" "` placeholder, rendering "No messages yet" beside a correct
+     * timestamp. The preview must apply anyway; the sort key must not regress.
+     */
+    @Test
+    fun appliesPreview_whenSeedTimestampIsNewerThanEnrichmentMessage() {
+        val statusMs = 2_000_000_000_000L // status message time, persisted in localAppData
+        val realMs = 1_999_999_000_000L   // newest non-status message the SQL JOIN can return
+        val convo = convo(latestMs = statusMs)
+
+        val result = convo.updateWithLatestMessage(
+            msg = peerMessage(clampedUserDateMs = realMs),
+            activeUserDomain = me,
+            latestTimestampOverrideMs = realMs,
+        )
+
+        assertEquals("hi", result.lastMessage)
+        assertEquals(statusMs, result.latestMessageTimestamp.toEpochMilliseconds())
+    }
+
+    @Test
+    fun propagates_isPendingSend_forStuckOutgoingLastMessage() {
+        val convo = convo(latestMs = 0L)
+        val pending = peerMessage(clampedUserDateMs = 1_776_843_935_755L, isPendingSend = true)
+
+        val result = convo.updateWithLatestMessage(msg = pending, activeUserDomain = me)
+
+        assertEquals(true, result.lastMessageIsPendingSend)
     }
 }

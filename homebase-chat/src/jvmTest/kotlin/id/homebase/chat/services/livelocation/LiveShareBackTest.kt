@@ -1,6 +1,7 @@
 package id.homebase.chat.services.livelocation
 
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
+import id.homebase.core.location.LIVE_SHARE_INDEFINITE
 import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.core.location.tracking.RawLocationPoint
 import kotlinx.coroutines.test.runTest
@@ -78,6 +79,30 @@ class LiveShareBackTest {
         assertNull(d.imageHeight)
         assertNull(d.caption)
         assertEquals("", d.address)
+    }
+
+    @Test
+    fun indefinitePickPassesTheSentinelThroughUnchanged() = runTest {
+        // An indefinite duration pick must NOT flow through `now + duration` — the sentinel IS the
+        // absolute end-time, and descriptor + relay must both carry it exactly (the stop key).
+        val h = Harness()
+        val result = run(
+            durationMs = LIVE_SHARE_INDEFINITE, senderUntilMs = null, nowMs = 10_000L, fixResult = fix, h = h,
+        )
+        assertEquals(ShareBackResult.Sent, result)
+        assertEquals(LIVE_SHARE_INDEFINITE, h.sent.single().liveShareUntilMs)
+        assertEquals(listOf(LIVE_SHARE_INDEFINITE), h.relayStarts)
+    }
+
+    @Test
+    fun mirroringAnIndefiniteShareNeverReadsExpired() = runTest {
+        // Single-tap share-back on a sender's indefinite bubble mirrors the sentinel.
+        val h = Harness()
+        val result = run(
+            durationMs = null, senderUntilMs = LIVE_SHARE_INDEFINITE, nowMs = 10_000L, fixResult = fix, h = h,
+        )
+        assertEquals(ShareBackResult.Sent, result)
+        assertEquals(LIVE_SHARE_INDEFINITE, h.sent.single().liveShareUntilMs)
     }
 
     @Test

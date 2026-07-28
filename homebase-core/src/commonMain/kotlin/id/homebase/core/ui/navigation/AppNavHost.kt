@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
@@ -94,6 +95,7 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
+import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
@@ -109,6 +111,7 @@ import id.homebase.core.ui.screens.moments.MomentsViewModel
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.ui.screens.location.EmergencyContactPickerScreen
 import id.homebase.core.ui.screens.location.LocationScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
@@ -134,8 +137,10 @@ import id.homebase.core.ui.screens.storage.StorageSettingsScreen
 import id.homebase.core.ui.screens.widget.RichTextExample
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.core.contactbook.ContactBookPreferences
+import id.homebase.core.ui.screens.contactbook.CircleMemberPickerScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookScreen
 import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
+import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
@@ -146,6 +151,7 @@ import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
 import id.homebase.resources.location_label
+import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
@@ -369,6 +375,8 @@ fun AppNavHost(
                     navController.navigate(Route.ContactBookDetail(event.uniqueId, event.odinId))
                 ContactBookUiEvent.OpenAddContact ->
                     navController.navigate(Route.AddContact())
+                is ContactBookUiEvent.OpenCircleMemberAdd ->
+                    navController.navigate(Route.CircleMemberAdd(event.circleId, event.circleName))
                 ContactBookUiEvent.CloseOnboarding ->
                     navController.popBackStack(Route.ChatList, inclusive = false)
                 else -> { /* Error handled by ContactBookScreen */ }
@@ -511,6 +519,7 @@ fun AppNavHost(
 
     // Translate Location onboarding one-shot events into nav-stack changes.
     val locateFetchFailedMsg = stringResource(MR.string.location_locate_fetch_failed)
+    val emergencyContactActionFailedMsg = stringResource(MR.string.location_emergency_action_failed)
     LaunchedEffect(Unit) {
         locationViewModel.events.collect { event ->
             when (event) {
@@ -532,6 +541,11 @@ fun AppNavHost(
 
                 LocationUiEvent.LocateFetchFailed -> snackbarHostState.showSnackbar(
                     message = locateFetchFailedMsg,
+                    duration = SnackbarDuration.Long,
+                )
+
+                LocationUiEvent.EmergencyContactActionFailed -> snackbarHostState.showSnackbar(
+                    message = emergencyContactActionFailedMsg,
                     duration = SnackbarDuration.Long,
                 )
             }
@@ -626,9 +640,14 @@ fun AppNavHost(
                     }
                 }
 
-                Column {
+                val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
+                Column(
+                    // statusBarsPadding consumes the inset, so screens in the NavHost
+                    // below don't re-pad while the banner occupies the top edge.
+                    modifier = if (showUpdateBanner) Modifier.statusBarsPadding() else Modifier,
+                ) {
                     if (isOnTopLevelScreen) {
-                        if (uiState.updateAvailable) {
+                        if (showUpdateBanner) {
                             UpdateAvailableBanner(
                                 versionName = uiState.updateAvailableVersion,
                                 onUpdateClick = { viewModel.triggerUpdate() }
@@ -820,6 +839,24 @@ fun AppNavHost(
                             }
                         }
 
+                        composable<Route.CircleMemberAdd> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.CircleMemberAdd>()
+                                CircleMemberPickerScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.circleId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parseHex(route.circleId),
+                                                route.circleName,
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
                         composable<Route.ContactBookSettings> {
                             if (isAuthenticated) {
                                 val fromContacts = navController.previousBackStackEntry
@@ -855,12 +892,24 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     connectRequestViewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
+                                    onDeleted = {
+                                        // The deleted contact may have been the search's only
+                                        // match — clear the query so the contact book shows the
+                                        // full list instead of a stale empty "no results" (#876).
+                                        contactBookViewModel.onAction(
+                                            ContactBookUiAction.SearchChanged("")
+                                        )
+                                        navController.popBackStack()
+                                    },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(Route.ChatList, inclusive = false)
                                     },
                                     onSeeAllMedia = { conversationId ->
                                         navController.navigate(Route.ConversationMedia(conversationId))
+                                    },
+                                    onOpenContact = { uniqueId, odinId ->
+                                        navController.navigate(Route.ContactBookDetail(uniqueId, odinId))
                                     },
                                 )
                             }
@@ -1101,6 +1150,9 @@ fun AppNavHost(
                                         navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(Route.ChatList, inclusive = false)
                                     },
+                                    onNavigateToLiveLocationMap = {
+                                        navController.navigate(Route.LocationLive)
+                                    },
                                 )
                             }
                         }
@@ -1215,7 +1267,13 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 ProfileEditScreen(
                                     viewModel = koinViewModel(),
+                                    avatarViewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
+                                    onNavigateToCropper = { requestId ->
+                                        navController.navigate(
+                                            Route.Crop(requestId.toString(), lockedAspect = "square")
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -1367,6 +1425,18 @@ fun AppNavHost(
                                     onNavigateToLiveMap = {
                                         navController.navigate(Route.LocationLive)
                                     },
+                                    onNavigateToEmergencyContactAdd = {
+                                        navController.navigate(Route.LocationEmergencyContactAdd)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationEmergencyContactAdd> {
+                            if (isAuthenticated) {
+                                EmergencyContactPickerScreen(
+                                    viewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }
@@ -1596,6 +1666,18 @@ fun AppNavHost(
                         composable<Route.DeveloperMenu> {
                             if (isAuthenticated) {
                                 DeveloperMenuScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onNavigateToScheduledPushTest = {
+                                        navController.navigate(Route.DevScheduledPushTest)
+                                    },
+                                )
+                            }
+                        }
+
+                        composable<Route.DevScheduledPushTest> {
+                            if (isAuthenticated) {
+                                DeveloperScheduledPushTestScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
                             }

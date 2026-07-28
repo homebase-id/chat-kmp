@@ -49,10 +49,12 @@ class ConversationFileMergeTest {
         participants: List<OdinId> = listOf(me, alice),
         state: ConversationState = ConversationState.Active,
         isGroup: Boolean = false,
+        draft: String? = null,
     ) = ConversationUiModel(
         id = convoId,
         name = name,
         lastMessage = lastMessage,
+        draft = draft,
         latestMessageTimestamp = Instant.fromEpochMilliseconds(latestMs),
         unreadCount = 0,
         avatarInitials = "",
@@ -85,10 +87,12 @@ class ConversationFileMergeTest {
         participants: List<OdinId> = listOf(me, alice),
         state: ConversationState = ConversationState.Active,
         isGroup: Boolean = false,
+        draft: String? = null,
     ) = ConversationUiModel(
         id = convoId,
         name = name,
         lastMessage = " ",
+        draft = draft,
         latestMessageTimestamp = Instant.fromEpochMilliseconds(latestMs),
         unreadCount = 0,
         avatarInitials = "",
@@ -152,6 +156,28 @@ class ConversationFileMergeTest {
             result.merged.latestMessageTimestamp.toEpochMilliseconds(),
             "a strictly-newer placeholder file must not advance the sort key past the message pipeline",
         )
+    }
+
+    /**
+     * The draft rides the conversation file's localAppData, so the fresh file
+     * owns it: a live edit or clear (locally or on another device) must overwrite
+     * the stale in-memory draft, or the list row wouldn't update. #1122.
+     */
+    @Test
+    fun draftMergesFromIncomingFile() {
+        val edited = mergeConversationFileUpdate(
+            existing = existing(draft = "old draft"),
+            incoming = incomingFile(latestMs = 10_000L, draft = "new draft"),
+            now = now,
+        )
+        assertEquals("new draft", edited.merged.draft)
+
+        val cleared = mergeConversationFileUpdate(
+            existing = existing(draft = "old draft"),
+            incoming = incomingFile(latestMs = 10_000L, draft = null),
+            now = now,
+        )
+        assertEquals(null, cleared.merged.draft, "a cleared draft on the fresh file must clear the row")
     }
 
     /** Structural fields still merge from the file; only the preview is frozen. */

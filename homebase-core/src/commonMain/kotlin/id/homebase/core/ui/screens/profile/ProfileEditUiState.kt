@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.profile
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
-import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 
 /**
  * Form state for the owner's standard-profile editor. Every field has an independent value per
@@ -13,13 +12,16 @@ import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
  * back to the Anonymous value at *display* time (see [id.homebase.core.ui.screens.profile.ProfilePreview]),
  * not here — [value] never substitutes across tiers.
  *
+ * There's no screen-wide Save: each attribute persists individually (see
+ * [ProfileEditAction.SaveAttribute]), so [savingAttributes] tracks in-flight saves per
+ * (attribute type, tier) pair rather than a single global flag.
+ *
  * The loaded attributes (id / versionTag / unmodelled data keys, per tier) live in the ViewModel,
  * not here — this state is purely what the form shows and binds to.
  */
 @Immutable
 data class ProfileEditUiState(
     val isLoading: Boolean = true,
-    val isSaving: Boolean = false,
     /** True when the initial attribute read failed (e.g. missing ProfileDrive grant) — show retry. */
     val loadFailed: Boolean = false,
 
@@ -31,25 +33,21 @@ data class ProfileEditUiState(
      *  avatar editor ([ProfileAvatarEditViewModel]); read-only here, just for [ProfilePreview]. */
     val anonymousPhoto: ProfileAttribute? = null,
     val connectedPhoto: ProfileAttribute? = null,
+
+    /** (attribute type, tier) pairs whose [ProfileEditAction.SaveAttribute] is currently in flight. */
+    val savingAttributes: Set<Pair<String, ProfileVisibility>> = emptySet(),
 ) {
     /** Raw per-tier lookup — no cross-tier fallback; "" if [field] has no value in [tier]. */
     fun value(field: ProfileField, tier: ProfileVisibility): String =
         (if (tier == ProfileVisibility.ANONYMOUS) anonymousValues else connectedValues)[field].orEmpty()
 
-    val emailValid: Boolean get() =
-        ContactFieldValidation.isValidEmail(value(ProfileField.EMAIL, ProfileVisibility.ANONYMOUS)) &&
-            ContactFieldValidation.isValidEmail(value(ProfileField.EMAIL, ProfileVisibility.CONNECTED))
-    val phoneValid: Boolean get() =
-        ContactFieldValidation.isValidPhone(value(ProfileField.PHONE, ProfileVisibility.ANONYMOUS)) &&
-            ContactFieldValidation.isValidPhone(value(ProfileField.PHONE, ProfileVisibility.CONNECTED))
-
-    // Legacy data may not be E.164/well-formed; show it but block Save until corrected.
-    val canSave: Boolean get() = !isLoading && !isSaving && !loadFailed && emailValid && phoneValid
+    fun isSaving(type: String, tier: ProfileVisibility): Boolean = (type to tier) in savingAttributes
 }
 
 sealed interface ProfileEditAction {
     data class FieldChanged(val field: ProfileField, val tier: ProfileVisibility, val value: String) : ProfileEditAction
-    data object SaveClicked : ProfileEditAction
+    /** Persists just this one attribute type's [tier] record — fired by a row's checkmark. */
+    data class SaveAttribute(val type: String, val tier: ProfileVisibility) : ProfileEditAction
     data object RetryLoadClicked : ProfileEditAction
     data object BackClicked : ProfileEditAction
 }
@@ -65,11 +63,11 @@ enum class ProfileField {
 }
 
 sealed interface ProfileEditEvent {
-    /** All changed attributes saved — pop back. */
-    data object Saved : ProfileEditEvent
+    /** [ProfileEditAction.SaveAttribute] for (type, tier) finished successfully — collapse its row. */
+    data class AttributeSaved(val type: String, val tier: ProfileVisibility) : ProfileEditEvent
     /** 403 — the app lacks the ManageProfile permission. */
     data object Forbidden : ProfileEditEvent
-    /** A save failed for some other reason; the form stays open for retry. */
+    /** A [ProfileEditAction.SaveAttribute] failed for some other reason; its row stays open for retry. */
     data object Error : ProfileEditEvent
     data object Back : ProfileEditEvent
 }

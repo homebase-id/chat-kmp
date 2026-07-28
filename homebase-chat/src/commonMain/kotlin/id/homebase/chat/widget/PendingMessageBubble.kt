@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
@@ -131,41 +132,70 @@ private fun MediaPlaceholderBubble(
         shape = bubbleShape,
         color = HomebaseTheme.extendedColors.bubbleSentSurface,
     ) {
-        Column {
-            message.replyPreview?.let { reply ->
-                InlineReplyPreview(
-                    replyPreview = reply,
-                    sentByYou = true,
-                    onClick = {},
-                    replyMessage = null,
+        // Mirror the real bubble's media+caption layout so the placeholder matches it at
+        // the same size (no pop on takeover): the gallery renders full-bleed and the
+        // caption below is clamped to the media's width. Without the clamp a caption wider
+        // than the album width stretches the bubble while the gallery stays pinned to the
+        // album width — the #964 blue gap beside the images, in the pending state.
+        Layout(
+            content = {
+                message.replyPreview?.let { reply ->
+                    InlineReplyPreview(
+                        replyPreview = reply,
+                        sentByYou = true,
+                        onClick = {},
+                        replyMessage = null,
+                        driveId = chatTargetDrive.alias,
+                    )
+                }
+                MediaMessage(
+                    payloads = syntheticPayloads,
+                    decryptedFiles = persistentMapOf(),
+                    fileId = message.id,
                     driveId = chatTargetDrive.alias,
+                    keyHeader = fakeKeyHeader,
+                    shape = if (hasText || message.replyPreview != null) {
+                        RoundedCornerShape(0.dp)
+                    } else {
+                        bubbleShape
+                    },
+                    sharedTransitionScope = null,
+                    animatedVisibilityScope = null,
+                    messageId = message.id,
+                    downloadingFiles = emptySet(),
+                    uploadStatus = uploadStatus ?: UploadStatus.Preparing,
                 )
-            }
-            MediaMessage(
-                payloads = syntheticPayloads,
-                decryptedFiles = persistentMapOf(),
-                fileId = message.id,
-                driveId = chatTargetDrive.alias,
-                keyHeader = fakeKeyHeader,
-                shape = if (hasText || message.replyPreview != null) {
-                    RoundedCornerShape(0.dp)
-                } else {
-                    bubbleShape
-                },
-                sharedTransitionScope = null,
-                animatedVisibilityScope = null,
-                messageId = message.id,
-                downloadingFiles = emptySet(),
-                uploadStatus = uploadStatus ?: UploadStatus.Preparing,
-            )
 
-            if (hasText) {
-                Text(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                )
+                if (hasText) {
+                    Text(
+                        text = message.text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    )
+                }
+            },
+        ) { measurables, constraints ->
+            val hasReply = message.replyPreview != null
+            var i = 0
+            val replyIndex = if (hasReply) i++ else -1
+            val mediaIndex = i++
+            val captionIndex = if (hasText) i else -1
+
+            // Media drives the width (the gallery's discrete album width); reply and
+            // caption are clamped to it so neither can widen the bubble past the images.
+            val mediaPlaceable = measurables[mediaIndex].measure(constraints)
+            val width = mediaPlaceable.width
+            val clamped = constraints.copy(minWidth = width, maxWidth = width)
+            val replyPlaceable = if (replyIndex >= 0) measurables[replyIndex].measure(clamped) else null
+            val captionPlaceable = if (captionIndex >= 0) measurables[captionIndex].measure(clamped) else null
+
+            val height = (replyPlaceable?.height ?: 0) + mediaPlaceable.height + (captionPlaceable?.height ?: 0)
+            layout(width, height) {
+                var y = 0
+                replyPlaceable?.let { it.placeRelative(0, y); y += it.height }
+                mediaPlaceable.placeRelative(0, y); y += mediaPlaceable.height
+                captionPlaceable?.placeRelative(0, y)
             }
         }
     }

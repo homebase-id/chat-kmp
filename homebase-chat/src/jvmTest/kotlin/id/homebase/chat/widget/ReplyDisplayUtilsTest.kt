@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.util.truncateToCodePoints
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -148,6 +149,85 @@ class ReplyDisplayUtilsTest {
             mediaFallbackLabel = "Media",
         )
         assertEquals("Video", result)
+    }
+
+    // ── reply-quote "…" regression (leading whitespace) ──
+    // A replied-to message whose content starts with newlines/spaces rendered
+    // as a bare "…": maxLines=1 lays out the leading blank line and
+    // TextOverflow.Ellipsis paints the overflow marker on it. The body itself
+    // renders clean because it goes through the markdown parser (which collapses
+    // leading blank lines); the quote path did not. Trim at render so already-sent
+    // messages display correctly without a re-send.
+
+    @Test
+    fun contentText_trimsLeadingNewlines_soQuoteIsRealTextNotEllipsis() {
+        val result = resolveReplyContentText(
+            replyText = "\n\nWhats wrong with this one",
+            contentLabelText = null,
+            hasThumbnail = false,
+            hasMedia = false,
+            mediaFallbackLabel = "Media",
+        )
+        assertEquals("Whats wrong with this one", result)
+    }
+
+    @Test
+    fun contentText_trimsSurroundingWhitespace() {
+        val result = resolveReplyContentText(
+            replyText = "   Hello   ",
+            contentLabelText = null,
+            hasThumbnail = false,
+            hasMedia = false,
+            mediaFallbackLabel = "Media",
+        )
+        assertEquals("Hello", result)
+    }
+
+    @Test
+    fun contentText_whitespaceOnlyBecomesEmpty_notBlankEllipsis() {
+        val result = resolveReplyContentText(
+            replyText = "\n \n",
+            contentLabelText = null,
+            hasThumbnail = false,
+            hasMedia = false,
+            mediaFallbackLabel = "Media",
+        )
+        assertEquals("", result)
+    }
+
+    @Test
+    fun contentText_whitespaceOnlyWithMedia_fallsBackToMediaLabel() {
+        val result = resolveReplyContentText(
+            replyText = "\n\n",
+            contentLabelText = null,
+            hasThumbnail = false,
+            hasMedia = true,
+            mediaFallbackLabel = "Media",
+        )
+        assertEquals("Media", result)
+    }
+
+    @Test
+    fun contentText_interiorNewlinesSurvive_onlyEdgesTrimmed() {
+        val result = resolveReplyContentText(
+            replyText = "\nLine1\nLine2\n",
+            contentLabelText = null,
+            hasThumbnail = false,
+            hasMedia = false,
+            mediaFallbackLabel = "Media",
+        )
+        assertEquals("Line1\nLine2", result)
+    }
+
+    @Test
+    fun capture_trimsBeforeTruncate_soBudgetHoldsRealTextNotNewlines() {
+        // toReplyPreview() / ReplyPreviewBar must trim BEFORE truncateToCodePoints(80):
+        // a message led by 80 newlines would otherwise capture zero real text.
+        val content = "\n".repeat(80) + "Real text after the blank lines"
+        assertEquals(
+            "Real text after the blank lines",
+            content.trim().truncateToCodePoints(80),
+        )
     }
 
     // ── shouldShowContentIcon ──

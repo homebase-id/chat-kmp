@@ -158,6 +158,9 @@ sealed interface ConversationListUiAction {
 
     data object EditMessageSave : ConversationListUiAction
     data object CancelEditMessage : ConversationListUiAction
+
+    /** Persist the composer draft for the active conversation right now (#1122). */
+    data object FlushDraft : ConversationListUiAction
     data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
@@ -185,6 +188,23 @@ sealed interface ConversationListUiAction {
     ) : ConversationListUiAction
     data class ToggleReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
         ConversationListUiAction
+
+    // region Pinned messages bar (#887)
+
+    /** Long-press menu pin/unpin toggle. Routes to pin or unpin based on the
+     *  message's current [MessageUiModel.isPinned] state. */
+    data class TogglePinMessage(val messageId: Uuid) : ConversationListUiAction
+
+    /** Remove a message from the pinned bar (trailing icon in the bar / panel). */
+    data class UnpinMessage(val messageId: Uuid) : ConversationListUiAction
+
+    /** Open the "all pinned messages" bottom-sheet panel. */
+    data object ShowPinnedMessagesSheet : ConversationListUiAction
+
+    /** Tap the collapsed bar: advance to the next pin and scroll+highlight it. */
+    data object CyclePinnedBar : ConversationListUiAction
+
+    // endregion
 
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
@@ -346,7 +366,11 @@ sealed interface ConversationListUiAction {
 
     // region Live location sharing
 
-    /** Start (or extend) a live share on [messageId]'s location: sets liveShareUntilMs = now + duration. */
+    /**
+     * Start (or extend) a live share on [messageId]'s location: sets liveShareUntilMs to the
+     * absolute end-time derived from [durationMs] via liveShareEndTimeMs — [durationMs] may be
+     * the LIVE_SHARE_INDEFINITE sentinel (share until explicitly stopped).
+     */
     data class StartLiveLocationShare(
         val messageId: Uuid,
         val durationMs: Long,
@@ -370,7 +394,10 @@ sealed interface ConversationListUiAction {
         val durationMs: Long?,
     ) : ConversationListUiAction
 
-    /** Open the Live Location map (tap a live location bubble's map). */
+    /** Open the Live Location map — from a live location bubble's map, or the top-bar sharing pin
+     *  (#816/#1012: the pin means "live location active in either direction"; the map shows my dot
+     *  plus every sharer; stop controls live in the location dashboard, reachable via the
+     *  location nav icon). */
     data object OpenLiveLocationMap : ConversationListUiAction
 
     /** Open the full-screen share-location screen (attachment sheet → Location). */
@@ -379,12 +406,6 @@ sealed interface ConversationListUiAction {
     /** Open the location setup screen — from the "set up location" prompt shown when a live share
      *  can't start because location isn't ready. */
     data object OpenLocationSetup : ConversationListUiAction
-
-    /** Tap on the top-bar "you're sharing" pin (#816) — opens the location dashboard, which lists
-     *  every outgoing live share with per-person stop + stop-all. Routes through the same
-     *  navigation as [OpenLocationSetup]; an active share implies the add-on is activated, so it
-     *  lands on the dashboard rather than onboarding. */
-    data object OpenLocationDashboard : ConversationListUiAction
 
     // endregion
 }

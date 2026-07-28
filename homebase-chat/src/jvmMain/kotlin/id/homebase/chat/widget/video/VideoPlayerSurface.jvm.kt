@@ -105,6 +105,12 @@ actual fun VideoPlayerSurface(
     // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
     // built-in transport UI of its own (host renders controls). Param is
     // accepted for API parity with the mobile actuals.
+    // ponytail: no keep-screen-awake on Desktop. There is no portable JDK API to
+    // inhibit display sleep — it needs per-OS native calls (Windows
+    // SetThreadExecutionState / macOS IOPMAssertion / Linux org.freedesktop.ScreenSaver)
+    // and the only JDK-only alternative (a Robot mouse-jiggle) requires a
+    // background timer thread that would outlive this surface. Skipped rather
+    // than leaked; desktop sleep-during-playback is a minor annoyance at worst.
     val driveFileProvider = koinInject<DriveFileProvider>()
     val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
