@@ -140,6 +140,7 @@ import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookScreen
 import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
+import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
@@ -891,6 +892,15 @@ fun AppNavHost(
                                     viewModel = koinViewModel(),
                                     connectRequestViewModel = koinViewModel(),
                                     onBack = { navController.popBackStack() },
+                                    onDeleted = {
+                                        // The deleted contact may have been the search's only
+                                        // match — clear the query so the contact book shows the
+                                        // full list instead of a stale empty "no results" (#876).
+                                        contactBookViewModel.onAction(
+                                            ContactBookUiAction.SearchChanged("")
+                                        )
+                                        navController.popBackStack()
+                                    },
                                     onOpenConversation = { conversationId ->
                                         navController.selectConversationOnChatList(conversationId)
                                         navController.popBackStack(Route.ChatList, inclusive = false)
