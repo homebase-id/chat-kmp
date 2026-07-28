@@ -279,7 +279,9 @@ class DriveOutboxUploader(
         val gate = WholePercentProgressGate()
         val updateResult = driveUploadProvider.updateFileByUniqueId(updateRequest, onProgress = { sent, total ->
             gate.admit(percentOf(sent, total))?.let { pct ->
-                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent))
+                // isCreate stays true: update-shaped on the wire, but this row is a
+                // create and still carries `original.payloads` — real media bytes.
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent, isCreate = true))
             }
         })
         val rStatus = updateResult?.recipientStatus
@@ -306,7 +308,7 @@ class DriveOutboxUploader(
         val gate = WholePercentProgressGate()
         val result = driveUploadProvider.updateFileByUniqueId(request, onProgress = { sent, total ->
             gate.admit(percentOf(sent, total))?.let { pct ->
-                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent))
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent, isCreate = false))
             }
         })
         val rStatus = result?.recipientStatus

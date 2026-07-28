@@ -124,6 +124,15 @@ class ChatMessageStream(
                         }
                     }
 
+                    // Upload succeeded — clear isPendingSendTag now instead of
+                    // waiting for the server echo, which the open window can miss
+                    // (#1120). See markSendSucceeded.
+                    is BackendEvent.OutboxEvent.ItemCompleted -> {
+                        if (event.driveId == chatDrive) {
+                            scope.launch { markSendSucceeded(event.uniqueId) }
+                        }
+                    }
+
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId != chatDrive) return@collect
                         Logger.d("ChatMessageStream: Stopped(totalCount=${event.totalCount}, result=${event.result})")
@@ -221,21 +230,59 @@ class ChatMessageStream(
     suspend fun loadConversation(conversationId: Uuid) {
         val start = TimeSource.Monotonic.markNow()
         Logger.d("ChatMessageStream: loadConversation($conversationId)")
-        val result = fetchMessages(
-            conversationId = conversationId,
-            limit = PaginatedConversationState.PAGE_SIZE,
-        )
-        val elapsed = start.elapsedNow()
-        Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
-        paginatedState.setInitialWindow(
-            conversationId = conversationId,
-            messages = result.records,
-            olderCursor = result.cursor,
-            hasOlderMessages = result.hasMoreRows,
-        )
+        // Register the load before reading: until setInitialWindow runs there is no
+        // window, and both reconcilers skip windowless conversations — so a write
+        // committing inside the fetch would be invisible to the fetch's SQLite
+        // snapshot AND dropped by them, leaving a stale window cached forever (#1135).
+        paginatedState.beginInitialLoad(conversationId)
+        val racedConcurrentWrite = try {
+            val result = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+            )
+            val elapsed = start.elapsedNow()
+            Logger.d("ChatMessageStream: loadConversation($conversationId) → ${result.records.size} messages in $elapsed (hasMore=${result.hasMoreRows})")
+            paginatedState.setInitialWindow(
+                conversationId = conversationId,
+                messages = result.records,
+                olderCursor = result.cursor,
+                hasOlderMessages = result.hasMoreRows,
+            )
+            paginatedState.endInitialLoad(conversationId)
+        } catch (t: Throwable) {
+            // Without this a thrown fetch leaves the conversation permanently
+            // "loading", so every later reconciler flags it and no one clears it.
+            paginatedState.endInitialLoad(conversationId)
+            throw t
+        }
+        if (racedConcurrentWrite) {
+            // Exactly one re-read: the window now exists, so anything landing from
+            // here on is picked up by the reconcilers. Looping until quiet would
+            // never terminate under sustained sync traffic.
+            //
+            // merge = true because the re-read has its own snapshot boundary: a batch
+            // upserted into the (now existing) window while this fetch runs is absent
+            // from its results, and a replacing write would drop it permanently.
+            val fresh = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+            )
+            Logger.d("ChatMessageStream: loadConversation($conversationId) raced a concurrent write → re-read ${fresh.records.size} messages (hasMore=${fresh.hasMoreRows})")
+            paginatedState.setInitialWindow(
+                conversationId = conversationId,
+                messages = fresh.records,
+                olderCursor = fresh.cursor,
+                hasOlderMessages = fresh.hasMoreRows,
+                merge = true,
+            )
+        }
+
         // Cold open: evaluate auto-pin so a message confirmed while the app was closed
-        // still pins. Dismissed messages carry AutoPinDismissedTag and are skipped.
-        autoPinNewTypedMessages(result.records)
+        // still pins, and populate the pinned bar — mirrors loadConversationAroundMessage.
+        // Read the finalized window so a merged raced write is included; runs on both the
+        // raced and common paths. Dismissed messages carry AutoPinDismissedTag and are skipped.
+        val windowMessages = paginatedState.getWindow(conversationId)?.messages ?: return
+        autoPinNewTypedMessages(windowMessages)
         refreshPinnedFor(conversationId)
     }
 
@@ -352,7 +399,6 @@ class ChatMessageStream(
      * rather than silently landing on the latest page.
      */
     suspend fun loadConversationAroundMessage(conversationId: Uuid, messageUniqueId: Uuid): Boolean {
-        val start = TimeSource.Monotonic.markNow()
         val target = getMessage(messageUniqueId) ?: run {
             Logger.d(tag = "ChatPaging") {
                 "loadAround($conversationId, $messageUniqueId) anchor not in DB; falling back to loadConversation"
@@ -360,6 +406,34 @@ class ChatMessageStream(
             loadConversation(conversationId)
             return false
         }
+        // Same read-then-register race as loadConversation, and this is the path a
+        // scroll-anchored open takes (#1135).
+        paginatedState.beginInitialLoad(conversationId)
+        val racedConcurrentWrite = try {
+            seedWindowAround(conversationId, messageUniqueId, target)
+            paginatedState.endInitialLoad(conversationId)
+        } catch (t: Throwable) {
+            paginatedState.endInitialLoad(conversationId)
+            throw t
+        }
+        if (racedConcurrentWrite) {
+            seedWindowAround(conversationId, messageUniqueId, target, merge = true)
+        }
+        return true
+    }
+
+    /**
+     * Build (or rebuild) a window centered on [target]. [merge] is set on the
+     * raced re-seed so a write upserted into the window while this fetch runs
+     * survives the write-back — see [PaginatedConversationState.setInitialWindow].
+     */
+    private suspend fun seedWindowAround(
+        conversationId: Uuid,
+        messageUniqueId: Uuid,
+        target: MessageUiModel,
+        merge: Boolean = false,
+    ) {
+        val start = TimeSource.Monotonic.markNow()
         val halfPage = PaginatedConversationState.PAGE_SIZE / 2
         val olderHalfCursor = QueryBatchCursor(
             paging = TimeRowCursor(UnixTimeUtc(target.userDate), 0L)
@@ -388,6 +462,7 @@ class ChatMessageStream(
             hasOlderMessages = olderHalf.hasMoreRows,
             newerCursor = newerHalf.cursor,
             hasNewerMessages = newerHalf.hasMoreRows,
+            merge = merge,
         )
         Logger.d(tag = "ChatPaging") {
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
@@ -396,9 +471,10 @@ class ChatMessageStream(
         // Evaluate auto-pin and populate the pinned bar on open — mirrors
         // loadConversation. Without the refresh, opening to a saved scroll anchor
         // (the common case) leaves the bar empty until a live BatchReceived arrives.
+        // Runs on both the initial seed and the raced merge=true re-seed
+        // (autoPinNewTypedMessages/refreshPinnedFor are idempotent).
         autoPinNewTypedMessages(combined)
         refreshPinnedFor(conversationId)
-        return true
     }
 
     /**
@@ -420,6 +496,9 @@ class ChatMessageStream(
      * preserved.
      */
     private suspend fun refreshCachedWindows() {
+        // Conversations mid-initial-load have no window to walk yet; flag them so
+        // loadConversation re-reads instead of caching its pre-write snapshot.
+        paginatedState.markAllInitialLoadsDirty()
         val snapshot = paginatedState.windows.value
         if (snapshot.isEmpty()) return
         for ((conversationId, window) in snapshot) {
@@ -460,7 +539,13 @@ class ChatMessageStream(
         Logger.d("ChatMessageStream: processIncrementalBatch ${messages.size} messages across ${grouped.size} conversation(s)")
         grouped.forEach { (conversationId, msgs) ->
             if (isConversationLeft(conversationId)) return@forEach
-            val window = paginatedState.getWindow(conversationId) ?: return@forEach
+            val window = paginatedState.getWindow(conversationId) ?: run {
+                // No window yet. If that's because an initial load is mid-fetch,
+                // flag it — otherwise this batch is lost to both this gate and the
+                // loader's pre-write snapshot (#1135).
+                paginatedState.markInitialLoadDirty(conversationId)
+                return@forEach
+            }
             // Gate: when the user has paged backwards (hasNewerMessages == true), the
             // window doesn't include the latest messages. Stream events that arrive while
             // the user is deep in history would land out of order; defer them until the
@@ -612,6 +697,27 @@ class ChatMessageStream(
 
         val newTags = existingTags
             .filterNot { it == ChatProtocol.isPendingSendTag } + ChatProtocol.isFailedSendTag
+        optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
+    }
+
+    /**
+     * An outbox item for [uniqueId] uploaded successfully — drop its
+     * [ChatProtocol.isPendingSendTag] so the bubble flips from the pending clock to
+     * the Sent tick. Relying on the server echo alone isn't enough: DriveSync applies
+     * the echo silently, then the duplicate WS push is guard-rejected on equal
+     * `modified` and emits no BatchReceived, so an open window keeps serving the stale
+     * pending model until a cold reload (#1120).
+     *
+     * The `updated` bump is +1 ms, far below the server `modified`, so the echo still
+     * passes the DriveMainIndex guard and replaces the row. Idempotent — a tag already
+     * cleared gives null from [tagsForSendSuccess] and no-ops.
+     */
+    private suspend fun markSendSucceeded(uniqueId: Uuid) {
+        val file = getMessageFile(uniqueId) ?: return
+        if (file.fileMetadata.appData.fileType != ChatProtocol.MessageFileType) return
+
+        val existingTags = file.fileMetadata.localAppData?.tags.orEmpty()
+        val newTags = tagsForSendSuccess(existingTags) ?: return
         optimisticWriter.updateLocalTags(chatDrive, uniqueId, newTags)
     }
 
