@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -22,8 +20,6 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,11 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_detail_accept
-import id.homebase.resources.contactbook_detail_add_to_circles
 import id.homebase.resources.contactbook_detail_reject
 import id.homebase.resources.contactbook_detail_request_incoming
 import org.jetbrains.compose.resources.stringResource
@@ -53,12 +49,11 @@ import org.jetbrains.compose.resources.stringResource
  * short bio summary — so the Accept/Reject decision has real context instead of the empty
  * "Contact details: None" / "connect to see…" placeholders.
  *
- * This owns the whole pending presentation (rather than reusing the shared [DetailHeader] +
- * tabs) so the pre-connection state's logic lives in one place; the Accept/Reject buttons just
- * dispatch the same [ContactDetailAction]s the header would. Accepting flips the parent screen
- * to the full connected detail in place — no navigation.
+ * This owns the whole pending presentation (rather than reusing the shared header + tabs) so the
+ * pre-connection state's logic lives in one place — it is the *only* place the detail screen
+ * offers Accept/Reject, since the header renders only once the request is gone. Accepting flips
+ * the parent screen to the full connected detail in place — no navigation.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PendingRequestProfile(
     entry: ContactBookEntry,
@@ -145,44 +140,18 @@ fun PendingRequestProfile(
         // The circles ride the accept request atomically (see AcceptConnectionRequestV2).
         if (assignableCircles.isNotEmpty()) {
             Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = stringResource(MR.string.contactbook_detail_add_to_circles),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
+            CirclePickerChips(
+                circles = assignableCircles,
+                selectedIds = selectedCircleIds,
+                onToggle = { id ->
+                    selectedCircleIds = if (id in selectedCircleIds) {
+                        selectedCircleIds - id
+                    } else {
+                        selectedCircleIds + id
+                    }
+                },
+                enabled = !actionInProgress,
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                assignableCircles.forEach { circle ->
-                    val selected = circle.id in selectedCircleIds
-                    FilterChip(
-                        selected = selected,
-                        enabled = !actionInProgress,
-                        onClick = {
-                            selectedCircleIds = if (selected) {
-                                selectedCircleIds - circle.id
-                            } else {
-                                selectedCircleIds + circle.id
-                            }
-                        },
-                        label = { Text(circle.name) },
-                        leadingIcon = if (selected) {
-                            {
-                                Icon(
-                                    Icons.Outlined.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(FilterChipDefaults.IconSize),
-                                )
-                            }
-                        } else null,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
-                }
-            }
         }
 
         Spacer(modifier = Modifier.height(28.dp))
