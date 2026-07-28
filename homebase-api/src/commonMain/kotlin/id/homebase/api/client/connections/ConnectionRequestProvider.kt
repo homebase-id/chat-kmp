@@ -177,7 +177,8 @@ class ConnectionRequestProvider(
     // ------------------------------------------------------------
 
     suspend fun acceptIncomingRequest(
-        senderId: OdinId
+        senderId: OdinId,
+        request: AcceptConnectionRequestV2
     ) {
 
         val creds = requireCreds()
@@ -188,7 +189,7 @@ class ConnectionRequestProvider(
         val response = encryptedPutJson(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
-            jsonBody = "{}",   // API expects no body
+            jsonBody = OdinSystemSerializer.serialize(request),
             secret = creds.secret
         )
 

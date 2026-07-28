@@ -720,6 +720,7 @@
 
     <!-- Event attachment -->
     <string name="chat_event_share">Event</string>
+    <string name="chat_event_reminder_push">Upcoming event reminder</string>
     <string name="chat_event_create_title">New event</string>
     <string name="chat_event_field_title">Title</string>
     <string name="chat_event_field_description">Description</string>
@@ -1544,6 +1545,7 @@
     <string name="contactbook_detail_request_outgoing">Connection request sent</string>
     <string name="contactbook_detail_accept">Accept</string>
     <string name="contactbook_detail_reject">Reject</string>
+    <string name="contactbook_detail_add_to_circles">Add to circles (optional)</string>
     <string name="contactbook_detail_cancel_request">Cancel request</string>
     <string name="contactbook_detail_blocked">Blocked</string>
     <string name="contactbook_detail_recent_media">Recent media</string>

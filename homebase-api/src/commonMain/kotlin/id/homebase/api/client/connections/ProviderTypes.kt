@@ -24,6 +24,17 @@ data class AddCircleMembershipRequest(
     val circleId: Uuid
 )
 
+/**
+ * Body for the V2 accept-incoming-request endpoint: the circles the accepting user places the
+ * new connection into, atomically with the accept. Serialized via [id.homebase.api.serialization.OdinSystemSerializer]
+ * (camelCase `circleIds`); the backend's `AcceptConnectionRequestV2.CircleIds` binds it
+ * case-insensitively. Empty list = accept without adding to any circle.
+ */
+@Serializable
+data class AcceptConnectionRequestV2(
+    val circleIds: List<Uuid> = emptyList()
+)
+
 @Serializable
 data class RevokeCircleMembershipRequest(
     val odinId: OdinId,

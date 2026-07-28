@@ -33,6 +33,10 @@ data class ContactDetailUiState(
     val connectionStatus: ConnectionStatus? = null,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
     val circles: List<ContactCircleUi> = emptyList(),
+    /** All user-defined circles the signed-in user could add a contact to (system circles excluded),
+     *  A–Z. Independent of this contact's membership — used by the pending-request circle picker to
+     *  choose which circles to grant on Accept (#921 Part B). */
+    val assignableCircles: List<ContactCircleUi> = emptyList(),
     /** Open circle-detail dialog (tapped a chip in [circles]), or null when dismissed. View-only
      *  from this screen — [CircleMembersUi.manageable] is always false here. */
     val circleDetail: CircleMembersUi? = null,
@@ -75,6 +79,15 @@ data class ContactDetailUiState(
     val isConnected: Boolean get() = connectionStatus == ConnectionStatus.Connected
     val isBlocked: Boolean get() = connectionStatus == ConnectionStatus.Blocked
 
+    /**
+     * A pending incoming request from someone we're not connected to yet. In this state the
+     * detail body's connection-scoped sections (contact fields, groups-in-common, circles) and
+     * the Activity/About tabs are all empty placeholders — so the screen instead shows the
+     * requester's public profile to inform the Accept/Reject decision (#921).
+     */
+    val isPendingIncoming: Boolean
+        get() = requestDirection == RequestDirection.INCOMING && !isConnected
+
     /** The "About" tab has content: a short bio, an Experience attribute (text/image), or socials. */
     val hasAboutContent: Boolean
         get() = !entry?.shortBio.isNullOrBlank() ||
@@ -109,6 +122,9 @@ sealed interface ContactDetailAction {
     data object DisconnectClicked : ContactDetailAction
     /** Accept an incoming connection request from this contact. */
     data object AcceptRequestClicked : ContactDetailAction
+    /** Accept an incoming request and add the contact to the chosen circles (their 32-char
+     *  N-format ids). Empty list = accept without adding to any circle (#921 Part B). */
+    data class AcceptRequestWithCircles(val circleIds: List<String>) : ContactDetailAction
     /** Reject (decline) an incoming connection request from this contact. */
     data object RejectRequestClicked : ContactDetailAction
     /** Cancel (withdraw) an outgoing connection request to this contact. */

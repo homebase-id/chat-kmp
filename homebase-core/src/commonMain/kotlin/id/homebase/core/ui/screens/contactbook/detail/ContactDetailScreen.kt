@@ -227,14 +227,19 @@ fun ContactDetailScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
-                            Icon(
-                                Icons.Outlined.Edit,
-                                contentDescription = stringResource(MR.string.contactbook_detail_edit),
-                            )
-                        }
-                        if (uiState.entry != null) {
-                            ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                        // Edit + the management menu (block/disconnect/delete) act on a saved
+                        // contact — meaningless for a not-yet-accepted incoming request, whose
+                        // only actions are Accept/Reject in the profile card below (#921).
+                        if (!uiState.isPendingIncoming) {
+                            IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = stringResource(MR.string.contactbook_detail_edit),
+                                )
+                            }
+                            if (uiState.entry != null) {
+                                ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                            }
                         }
                     },
                 )
@@ -251,6 +256,23 @@ fun ContactDetailScreen(
                 ) { CircularProgressIndicator() }
 
                 entry == null -> {}
+
+                // A pending incoming request has no connection-scoped data (contact fields,
+                // groups-in-common, circles are empty; Activity needs a conversation and About
+                // needs synced ext_data — none exist before connecting). Show a self-contained
+                // public-profile card to inform Accept/Reject instead of the placeholder tabs
+                // (#921). Once accepted, this same screen flips to the full detail below.
+                uiState.isPendingIncoming -> PendingRequestProfile(
+                    entry = entry,
+                    assignableCircles = uiState.assignableCircles,
+                    onAccept = { selectedCircleIds ->
+                        viewModel.onAction(
+                            ContactDetailAction.AcceptRequestWithCircles(selectedCircleIds)
+                        )
+                    },
+                    onReject = { viewModel.onAction(ContactDetailAction.RejectRequestClicked) },
+                    actionInProgress = uiState.actionInProgress,
+                )
 
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }

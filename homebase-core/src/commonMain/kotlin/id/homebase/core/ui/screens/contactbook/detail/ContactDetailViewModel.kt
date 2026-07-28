@@ -14,6 +14,9 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestOrigin
+import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.identity.PublicIdentityRepository
+import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
@@ -80,7 +83,21 @@ class ContactDetailViewModel(
     private val credentialsManager: CredentialsManager,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
     private val overrideStore: ContactOverrideStore,
+    private val publicIdentityRepository: PublicIdentityRepository,
 ) : ViewModel() {
+
+    /**
+     * Public profile (name/status) for a not-yet-connected identity, fetched from their
+     * `sitedata.json` — the only profile data readable before connecting. Overlaid onto the
+     * synthetic entry so a pending incoming request shows a real name instead of the bare
+     * domain (#921). Null until resolved, or when the host is unreachable (best-effort — never
+     * blocks Accept/Reject).
+     */
+    private val _publicIdentity = MutableStateFlow<id.homebase.api.client.identity.PublicIdentity?>(null)
+
+    /** domain we last fetched the public profile for, so the collector only fires one lookup per
+     *  contact rather than on every combine emission. */
+    private var publicIdentityLoadedFor: String? = null
 
     /** The synced (pre-override) entry for the contact in view — the baseline for save diffs. */
     private var syncedEntry: ContactBookEntry? = null
@@ -155,6 +172,14 @@ class ContactDetailViewModel(
         val outgoing: List<OutgoingConnectionRequestUiModel>,
     )
 
+    /** The four independently-changing inputs the state collector folds into [ContactDetailUiState]. */
+    private data class CollectorInputs(
+        val bundle: DetailBundle,
+        val overrides: Map<Uuid, id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay>,
+        val pendingCircleIds: Set<String>,
+        val publicIdentity: id.homebase.api.client.identity.PublicIdentity?,
+    )
+
     init {
         // Self-sufficient on deep-link: ensure the repo has loaded even if the list wasn't opened.
         viewModelScope.launch { contactRepository.ensureLoaded() }
@@ -175,8 +200,11 @@ class ContactDetailViewModel(
                 },
                 overrideStore.overrides,
                 _pendingCircleIds,
-            ) { bundle, overrides, pendingCircleIds -> Triple(bundle, overrides, pendingCircleIds) }
-                .collect { (bundle, overrides, pendingCircleIds) ->
+                _publicIdentity,
+            ) { bundle, overrides, pendingCircleIds, publicIdentity ->
+                CollectorInputs(bundle, overrides, pendingCircleIds, publicIdentity)
+            }
+                .collect { (bundle, overrides, pendingCircleIds, publicIdentity) ->
                 val contacts = bundle.contacts
                 val conn = bundle.conn
                 val circ = bundle.circ
@@ -193,7 +221,25 @@ class ContactDetailViewModel(
                         overrideStore.hydrate(rawContact)
                         loadExtData(rawContact)
                     }
-                val entry = synced?.withOverride(overrides[synced.uniqueId])
+                val baseEntry = synced?.withOverride(overrides[synced.uniqueId])
+                // Before connecting there's no synced contact record, so the entry is synthetic
+                // (name = bare domain, no status/bio). Overlay the public profile so a pending
+                // requester shows a real name/status/bio (#921). Only fill blanks — never clobber
+                // a saved contact's own edited fields.
+                val entry = if (baseEntry != null && publicIdentity != null &&
+                    baseEntry.odinId?.equals(publicIdentity.odinId.domainName, ignoreCase = true) == true
+                ) {
+                    baseEntry.copy(
+                        displayName = baseEntry.displayName
+                            .takeIf { it.isNotBlank() && !it.equals(baseEntry.odinId, ignoreCase = true) }
+                            ?: publicIdentity.displayNameOrDomain(),
+                        status = baseEntry.status?.takeIf { it.isNotBlank() } ?: publicIdentity.status,
+                        shortBio = baseEntry.shortBio?.takeIf { it.isNotBlank() }
+                            ?: publicIdentity.shortBioSummary,
+                    )
+                } else {
+                    baseEntry
+                }
                 val domain = entry?.odinId
                 val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
                 val registration = domain?.let { d ->
@@ -239,11 +285,22 @@ class ContactDetailViewModel(
                     .filter { it.name.isNotBlank() }
                     .distinctBy { it.id.lowercase() }
                     .sortedBy { it.name.lowercase() }
+                // Every user-defined circle the user could add a contact to — independent of this
+                // contact's membership. Same system-circle exclusion as the chips above; feeds the
+                // pending-request circle picker (#921 Part B).
+                val assignableCircles = circ.circles
+                    .map { it.circle }
+                    .filterNot { it.disabled || isSystemCircle(it.id) }
+                    .filter { it.name.isNotBlank() }
+                    .map { ContactCircleUi(it.id, it.name, pending = false) }
+                    .distinctBy { it.id.lowercase() }
+                    .sortedBy { it.name.lowercase() }
                 _uiState.update {
                     it.copy(
                         entry = entry,
                         connectionStatus = status,
                         circles = circleItems,
+                        assignableCircles = assignableCircles,
                         isLoading = false,
                         isSelf = isSelf,
                         requestDirection = requestDirection,
@@ -254,9 +311,31 @@ class ContactDetailViewModel(
                     pendingCirclesLoadedFor = domain
                     refreshPendingCircles()
                 }
+                // Fetch the public profile once for a not-yet-connected identity so the pending
+                // request card can show name/status. Best-effort — failure just leaves the domain.
+                if (domain != null && status != ConnectionStatus.Connected &&
+                    publicIdentityLoadedFor != domain
+                ) {
+                    publicIdentityLoadedFor = domain
+                    loadPublicProfile(domain)
+                }
             }
         }
         loadConversationOverview()
+    }
+
+    /**
+     * Resolve a not-yet-connected identity's public profile (best-effort) and publish it to
+     * [_publicIdentity], which the state collector overlays onto the entry. A failure (host
+     * unreachable / no sitedata) leaves [_publicIdentity] null and the UI falls back to the
+     * bare domain — Accept/Reject is never gated on this. See #921.
+     */
+    private fun loadPublicProfile(domain: String) {
+        val odin = runCatching { OdinId(domain) }.getOrNull() ?: return
+        viewModelScope.launch {
+            val identity = runCatching { publicIdentityRepository.resolve(odin) }.getOrNull()
+            if (identity != null) _publicIdentity.value = identity
+        }
     }
 
     private fun syntheticEntry(): ContactBookEntry? {
@@ -458,6 +537,16 @@ class ContactDetailViewModel(
             ContactDetailAction.AcceptRequestClicked -> handleRequestAction(
                 event = ContactDetailEvent.RequestAccepted,
             ) { connectionRequestService.acceptIncomingRequest(it) }
+            is ContactDetailAction.AcceptRequestWithCircles -> {
+                // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
+                // any that fail to parse rather than aborting the accept.
+                val circleUuids = action.circleIds.mapNotNull {
+                    runCatching { Uuid.parseHex(it) }.getOrNull()
+                }
+                handleRequestAction(event = ContactDetailEvent.RequestAccepted) {
+                    connectionRequestService.acceptIncomingRequest(it, circleUuids)
+                }
+            }
             ContactDetailAction.RejectRequestClicked -> handleRequestAction(
                 event = ContactDetailEvent.RequestRejected,
             ) { connectionRequestService.rejectIncomingRequest(it) }
