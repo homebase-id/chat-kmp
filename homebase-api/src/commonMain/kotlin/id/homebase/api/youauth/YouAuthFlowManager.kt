@@ -33,6 +33,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /** Authentication state for the YouAuth flow. */
 @Immutable
@@ -62,6 +64,20 @@ private data class AuthCodeFlowState(
     val identity: OdinId,
     val password: SecureByteArray,
     val keyPair: EccKeyPair
+)
+
+/**
+ * [AuthCodeFlowState] flattened for persistence across a full-page redirect (web seamless
+ * login). The popup flow keeps the app — and the in-memory [AuthCodeFlowState] — alive; the
+ * redirect flow reloads the whole app, so everything `completeAuth` needs must survive in
+ * storage. The private key inside [keyPair] is already encrypted with [passwordB64]'s bytes.
+ */
+@Serializable
+private data class PersistedRedirectFlow(
+    val identityDomain: String,
+    val passwordB64: String,
+    val keyPair: EccKeyPair,
+    val state: String
 )
 
 /**
@@ -97,6 +113,7 @@ class YouAuthFlowManager(
 
     companion object {
         private val TAG = "YouAuthFlowManager"
+        private val json = Json { ignoreUnknownKeys = true }
     }
 
     init {
@@ -184,6 +201,10 @@ class YouAuthFlowManager(
      * @param appId Application ID
      * @param appName Application name
      * @param drives List of drive access requests
+     * @param persistForRedirect Persist the flow state (ECC key pair, password, CSRF state) to
+     *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
+     *   the web seamless-login path, which redirects the top window to the authorize endpoint
+     *   (unloading the app) instead of opening a popup. See issue #853.
      */
     suspend fun authorize(
         identity: OdinId,
@@ -194,7 +215,8 @@ class YouAuthFlowManager(
         circlePermissions: List<AppCirclePermissionType>? = null,
         circleDrives: List<TargetDriveAccessRequest>? = null,
         circles: List<String>? = null,
-        clientFriendlyName: String? = null
+        clientFriendlyName: String? = null,
+        persistForRedirect: Boolean = false
     ): String {
         if (_authState.value == YouAuthState.Authenticating ||
             _authState.value is YouAuthState.Authenticated
@@ -215,6 +237,21 @@ class YouAuthFlowManager(
 
             // Register for callback
             callbackRegistry[state] = authCodeFlowState
+
+            if (persistForRedirect) {
+                SecureStorage.put(
+                    YouAuthStorageKeys.PENDING_REDIRECT_FLOW,
+                    json.encodeToString(
+                        PersistedRedirectFlow.serializer(),
+                        PersistedRedirectFlow(
+                            identityDomain = identity.domainName,
+                            passwordB64 = Base64.encode(password.unsafeBytes),
+                            keyPair = keyPair,
+                            state = state
+                        )
+                    )
+                )
+            }
 
             // Build redirect URI
             val redirectUri = RedirectConfig.buildRedirectUri(appId)
@@ -261,7 +298,7 @@ class YouAuthFlowManager(
 
     /** Complete the authentication flow after browser callback. */
     private suspend fun completeAuth(url: String, state: String, queryParams: Map<String, String>) {
-        val authCodeFlowState = callbackRegistry[state]
+        val authCodeFlowState = callbackRegistry[state] ?: restorePersistedRedirectFlow(state)
         if (authCodeFlowState == null) {
             // Duplicate or late callback — registry entry was already consumed.
             // Don't stomp on the current _authState.
@@ -328,7 +365,40 @@ class YouAuthFlowManager(
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
             callbackRegistry.remove(state)
+            SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
             callbackReceived = false
+        }
+    }
+
+    /**
+     * Restore a redirect-flow [AuthCodeFlowState] persisted by [authorize] with
+     * `persistForRedirect = true`. Returns null unless a persisted flow exists AND its CSRF
+     * `state` matches the callback's — a mismatched state means the callback is stale or forged
+     * and must not consume the pending flow's key material.
+     *
+     * On success, flips [authState] to [YouAuthState.Authenticating]: this app instance booted
+     * fresh after the redirect (restoreSession found no credentials and reported
+     * Unauthenticated), and the token exchange is now genuinely in progress.
+     */
+    private fun restorePersistedRedirectFlow(state: String): AuthCodeFlowState? {
+        val serialized = SecureStorage.get(YouAuthStorageKeys.PENDING_REDIRECT_FLOW) ?: return null
+        return try {
+            val persisted = json.decodeFromString(PersistedRedirectFlow.serializer(), serialized)
+            if (persisted.state != state) {
+                Logger.w(tag = TAG) { "Persisted redirect flow state mismatch — ignoring callback" }
+                null
+            } else {
+                _authState.value = YouAuthState.Authenticating
+                AuthCodeFlowState(
+                    identity = OdinId(persisted.identityDomain),
+                    password = SecureByteArray(persisted.passwordB64),
+                    keyPair = persisted.keyPair
+                )
+            }
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "Failed to restore persisted redirect flow" }
+            SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
+            null
         }
     }
 
@@ -407,6 +477,7 @@ class YouAuthFlowManager(
         if (_authState.value == YouAuthState.Authenticating) {
             Logger.i(tag = TAG) { "Authentication cancelled by user" }
             callbackRegistry.clear()
+            SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
             callbackReceived = false
             _authState.value = YouAuthState.Unauthenticated
             credentialsManager.removeActiveCredentials()
