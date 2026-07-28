@@ -120,6 +120,7 @@ jetbrains-compose-ui-backhandler = { module = "org.jetbrains.compose.ui:ui-backh
 jetbrains-compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "composeMultiplatform" }
 jetbrains-compose-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version = "1.0.1" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-testRunner" }
 androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-testCore" }
 androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-testExt" }

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash logo: the Homebase app icon as a vector, so it stays crisp at the 288dp splash
+     canvas on every density instead of upscaling a mipmap. Android res/ has no SVG support
+     and a splash icon is a *window* attribute resolved before any app code runs, so this is
+     the hand-converted twin of icons/homebase_logo_rounded.svg — keep the two in sync.
+
+     432-unit canvas (the adaptive-icon canvas) with the 288-unit tile inscribed, which is
+     also the splash spec's "288dp icon, content within the inner 2/3". Mark and gradient
+     geometry come from the shipped AppIcon marketing asset.
+
+     The rounded corners never actually show on Android: both the API 31+ splash and
+     core-splashscreen's backport circle-mask the icon (see the library's
+     splashscreen_icon_mask_* dimens), with no opt-out, so this renders as the disc the
+     launcher already shows. The corners are kept so the geometry stays identical to the
+     SVG, which iOS renders unmasked as the rounded tile its home-screen icon uses. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+
+    <path android:pathData="M136.4,72h159.2a64.4,64.4 0 0 1 64.4,64.4v159.2a64.4,64.4 0 0 1 -64.4,64.4h-159.2a64.4,64.4 0 0 1 -64.4,-64.4v-159.2a64.4,64.4 0 0 1 64.4,-64.4z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="299.9"
+                android:startY="324.8"
+                android:endX="-82.0"
+                android:endY="-170.2"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#415A84" />
+                <item android:offset="0.2" android:color="#4F4D89" />
+                <item android:offset="0.3" android:color="#58458D" />
+                <item android:offset="0.5" android:color="#5B438E" />
+                <item android:offset="0.7" android:color="#57458C" />
+                <item android:offset="0.8" android:color="#534A8B" />
+                <item android:offset="1.0" android:color="#425985" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <group
+        android:translateX="138.6"
+        android:translateY="115.9"
+        android:scaleX="0.09089"
+        android:scaleY="0.09096">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M1417.9 567.5C1574.47 567.5 1701.4 440.573 1701.4 284C1701.4 127.427 1574.47 0.5 1417.9 0.5C1261.33 0.5 1134.4 127.427 1134.4 284C1134.4 440.573 1261.33 567.5 1417.9 567.5Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M1417.9 816.9H851C694.4 816.9 567.5 690 567.5 533.4V284C567.5 127.4 440.6 0.5 284 0.5C127.4 0.5 0.5 127.4 0.5 284V1916.8C0.5 2073.4 127.4 2200.3 284 2200.3C440.6 2200.3 567.5 2073.4 567.5 1916.8V1383.9C567.7 1227.5 694.5 1100.7 851 1100.7C1007.5 1100.7 1134.3 1227.5 1134.5 1383.9V1916.8C1134.5 2073.4 1261.4 2200.3 1418 2200.3C1574.6 2200.3 1701.5 2073.4 1701.5 1916.8V1100.4C1701.5 943.8 1574.6 816.9 1418 816.9H1417.9Z" />
+    </group>
+</vector>
