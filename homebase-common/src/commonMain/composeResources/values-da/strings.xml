@@ -1225,6 +1225,20 @@
     <string name="dev_menu_clear_data">Ryd alle data</string>
     <string name="dev_menu_test_notification">Test rig notifikation</string>
     <string name="dev_menu_test_temporal_read">Test tidsbestemt placeringslæsning (Frodo)</string>
+    <string name="dev_menu_test_scheduled_push">Test planlagte push-notifikationer</string>
+    <string name="scheduled_push_test_title">Test af planlagt push</string>
+    <string name="scheduled_push_test_schedule_one_shot">Planlæg engangsnotifikation (10s)</string>
+    <string name="scheduled_push_test_schedule_recurring">Planlæg gentagende (5 min)</string>
+    <string name="scheduled_push_test_recurring_confirm_title">Gentag for evigt?</string>
+    <string name="scheduled_push_test_recurring_confirm_message">Denne notifikation gentages hvert 5. minut, indtil du annullerer den. Der er ingen automatisk slutdato eller grænse for antal gentagelser.</string>
+    <string name="scheduled_push_test_recurring_confirm_action">Planlæg alligevel</string>
+    <string name="scheduled_push_test_empty">Ingen planlagte notifikationer</string>
+    <string name="scheduled_push_test_refresh">Opdater</string>
+    <string name="scheduled_push_test_reschedule">Omplanlæg +1m</string>
+    <string name="scheduled_push_test_cancel_confirm_title">Annuller denne notifikation?</string>
+    <string name="scheduled_push_test_cancel_confirm_message_one_shot">Denne planlagte notifikation bliver annulleret.</string>
+    <string name="scheduled_push_test_cancel_confirm_message_recurring">Denne notifikation gentages på ubestemt tid. Annullering er den eneste måde at stoppe den på.</string>
+    <string name="scheduled_push_test_cancel_confirm_action">Annuller notifikation</string>
     <string name="dev_menu_allow_ten_bit_video">Tillad 10-bit video</string>
     <string name="dev_menu_allow_ten_bit_video_description">Behold uploadede 10-bit videoer i 10-bit (High 10) i stedet for at nedkonvertere til 8-bit. Kun til test — resultatet kan muligvis ikke afspilles på alle enheder.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
@@ -1543,6 +1557,7 @@
     <string name="contactbook_error_email">Indtast en gyldig e-mailadresse</string>
     <string name="contactbook_error_phone">Brug internationalt format, f.eks. +4512345678</string>
     <string name="contactbook_error_odinid">Indtast et gyldigt Homebase-ID (f.eks. sam.homebase.id)</string>
+    <string name="contactbook_error_birthday">Brug formatet ÅÅÅÅ-MM-DD, f.eks. 1969-02-22</string>
 
     <string name="contactbook_settings_section">Kontakter</string>
     <string name="contactbook_settings_open">Åbn Kontakter</string>

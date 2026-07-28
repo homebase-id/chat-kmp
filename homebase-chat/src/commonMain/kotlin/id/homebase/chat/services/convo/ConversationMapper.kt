@@ -231,6 +231,7 @@ class ConversationMapper(
                         ?: UnixTimeUtc(0).toInstant(),
                     avatarModel = avatarModel,
                     admins = seededAdmins,
+                    draft = localAppData?.draft,
                     conversationState = conversationState,
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,

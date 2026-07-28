@@ -31,6 +31,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.auth.initials
 import id.homebase.core.avatars.AvatarOptions
@@ -56,6 +60,7 @@ import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
+import id.homebase.resources.contactbook_error_circle_action
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
 import id.homebase.resources.contactbook_error_clear_unsupported
@@ -90,6 +95,7 @@ fun ContactBookScreen(
     val errMessage = stringResource(MR.string.contactbook_error_message)
     val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
+    val errCircleAction = stringResource(MR.string.contactbook_error_circle_action)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -97,6 +103,7 @@ fun ContactBookScreen(
                 is ContactBookUiEvent.OpenConversation -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.OpenDetail -> { /* navigation handled in AppNavHost */ }
                 ContactBookUiEvent.OpenAddContact -> { /* navigation handled in AppNavHost */ }
+                is ContactBookUiEvent.OpenCircleMemberAdd -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
@@ -105,12 +112,27 @@ fun ContactBookScreen(
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
                         ContactBookError.ClearUnsupported -> errClearUnsupported
+                        ContactBookError.CircleActionFailed -> errCircleAction
                     }
                     snackbarHostState.showSnackbar(msg)
                 }
                 ContactBookUiEvent.CloseOnboarding -> { /* handled in AppNavHost */ }
             }
         }
+    }
+
+    // Returning here from the circle-member-add picker (or any other screen) needs to re-check
+    // an open circle sheet's pending badge explicitly — a pending-only add doesn't change any
+    // circle's real member list, so ConnectionService.circles' StateFlow conflates the
+    // assignment and never notifies the reactive collector in the ViewModel's init (#1096).
+    // Mirrors LocationScreen's resume-triggered refresh.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshOpenCircle()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val onContacts = uiState.selectedTab == ContactTab.CONTACTS
@@ -284,7 +306,17 @@ fun ContactBookScreen(
     }
 
     uiState.circleMembers?.let { members ->
-        CircleMembersSheet(state = members, onAction = viewModel::onAction)
+        CircleMembersSheet(
+            state = members,
+            onDismiss = { viewModel.onAction(ContactBookUiAction.CircleMembersDismiss) },
+            onMemberClick = { viewModel.onAction(ContactBookUiAction.ContactClicked(it)) },
+            onAddMemberClick = {
+                viewModel.onAction(ContactBookUiAction.CircleAddMemberClicked(members.circleId, members.circleName))
+            },
+            onRemoveMemberClick = {
+                viewModel.onAction(ContactBookUiAction.CircleRemoveMemberClicked(members.circleId, it))
+            },
+        )
     }
 
     // Compose-a-new-request sheet, opened by the FAB while the Requests pill is active.

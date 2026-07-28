@@ -58,6 +58,10 @@ import id.homebase.resources.cancel
 import id.homebase.resources.dev_menu_allow_ten_bit_video
 import id.homebase.resources.dev_menu_allow_ten_bit_video_description
 import id.homebase.resources.dev_menu_clear_data
+import id.homebase.resources.dev_menu_force_logout
+import id.homebase.resources.dev_menu_force_logout_confirm_action
+import id.homebase.resources.dev_menu_force_logout_confirm_message
+import id.homebase.resources.dev_menu_force_logout_confirm_title
 import id.homebase.resources.dev_menu_crash_confirm_action
 import id.homebase.resources.dev_menu_crash_confirm_message
 import id.homebase.resources.dev_menu_crash_confirm_title
@@ -78,6 +82,7 @@ import id.homebase.resources.dev_menu_section_sync
 import id.homebase.resources.dev_menu_section_testing
 import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
+import id.homebase.resources.dev_menu_test_scheduled_push
 import id.homebase.resources.dev_menu_test_temporal_read
 import id.homebase.resources.dev_menu_title
 import id.homebase.resources.dev_menu_trigger_test_crash
@@ -91,6 +96,7 @@ import org.jetbrains.compose.resources.stringResource
 fun DeveloperMenuScreen(
     viewModel: DeveloperMenuViewModel,
     onBackClick: () -> Unit,
+    onNavigateToScheduledPushTest: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -121,6 +127,7 @@ fun DeveloperMenuScreen(
         uiState = uiState,
         onAction = viewModel::onUiAction,
         onBackClick = onBackClick,
+        onNavigateToScheduledPushTest = onNavigateToScheduledPushTest,
     )
 }
 
@@ -131,9 +138,11 @@ fun DeveloperMenuUi(
     uiState: DeveloperMenuUiState,
     onAction: (DeveloperMenuUiAction) -> Unit,
     onBackClick: () -> Unit,
+    onNavigateToScheduledPushTest: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
     var showCrashConfirm by remember { mutableStateOf(false) }
+    var showForceLogoutConfirm by remember { mutableStateOf(false) }
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
 
@@ -157,6 +166,32 @@ fun DeveloperMenuUi(
             },
             dismissButton = {
                 TextButton(onClick = { showCrashConfirm = false }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showForceLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showForceLogoutConfirm = false },
+            title = { Text(stringResource(MR.string.dev_menu_force_logout_confirm_title)) },
+            text = { Text(stringResource(MR.string.dev_menu_force_logout_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showForceLogoutConfirm = false
+                        onAction(DeveloperMenuUiAction.ForceLogout)
+                    },
+                ) {
+                    Text(
+                        text = stringResource(MR.string.dev_menu_force_logout_confirm_action),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForceLogoutConfirm = false }) {
                     Text(stringResource(MR.string.cancel))
                 }
             },
@@ -232,6 +267,11 @@ fun DeveloperMenuUi(
                         showChevron = false,
                         onClick = { onAction(DeveloperMenuUiAction.ClearAllData) }
                     )
+                    HelpClickableRow(
+                        label = stringResource(MR.string.dev_menu_force_logout),
+                        showChevron = false,
+                        onClick = { showForceLogoutConfirm = true }
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -249,6 +289,11 @@ fun DeveloperMenuUi(
                         label = stringResource(MR.string.dev_menu_test_temporal_read),
                         showChevron = false,
                         onClick = { onAction(DeveloperMenuUiAction.TestTemporalLocationRead) }
+                    )
+                    HelpClickableRow(
+                        label = stringResource(MR.string.dev_menu_test_scheduled_push),
+                        showChevron = true,
+                        onClick = onNavigateToScheduledPushTest
                     )
                 }
             }

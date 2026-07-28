@@ -60,8 +60,9 @@ actual object FFmpegUtils {
     actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? {
         val bytes = readOkioBytes(inputPath) ?: return null
         val p = FFmpegBridge.probe(bytes) ?: return null
-        // mp4box probe doesn't expose bit depth / colour info; default to 8-bit SDR.
-        return VideoTrackInfo(p.codec, p.widthPx, p.heightPx, 8, false)
+        // mp4box probe doesn't expose bit depth / colour info — report null (undeterminable) so the
+        // planner fails closed and re-encodes rather than assuming 8-bit SDR (#959).
+        return VideoTrackInfo(p.codec, p.widthPx, p.heightPx, null, null)
     }
 
     /**

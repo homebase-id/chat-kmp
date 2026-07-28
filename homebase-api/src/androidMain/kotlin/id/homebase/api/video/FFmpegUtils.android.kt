@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.core.net.toUri
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.FFmpegKitConfig
+import com.arthenica.ffmpegkit.FFprobeKit
 import com.arthenica.ffmpegkit.FFmpegSession
 import com.arthenica.ffmpegkit.FFmpegSessionCompleteCallback
 import com.arthenica.ffmpegkit.ReturnCode
@@ -258,15 +259,55 @@ actual object FFmpegUtils {
         val videoMime: String?,
         val widthPx: Int,
         val heightPx: Int,
-        val bitDepth: Int,
-        val isHdr: Boolean,
+        /** Null when MediaExtractor didn't expose the profile/color keys — see [readBitDepth]. */
+        val bitDepth: Int?,
+        val isHdr: Boolean?,
     )
 
     actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
         if (!File(inputPath).exists()) return@withContext null
         val p = probeVideoTrack(inputPath)
         if (p.videoMime == null && p.widthPx == 0 && p.heightPx == 0) return@withContext null
-        VideoTrackInfo(p.videoMime, p.widthPx, p.heightPx, p.bitDepth, p.isHdr)
+
+        // MediaExtractor is fast but omits KEY_PROFILE / colour-transfer for many in-app camera
+        // captures, leaving bit depth / HDR undetermined (null). Rather than assume 8-bit SDR
+        // (the fail-open that shipped undecodable 10-bit High-10 clips, #959), resolve the nulls
+        // with an authoritative ffprobe read — so an in-budget 8-bit clip still passes through and
+        // a 10-bit one is caught. If ffprobe also can't tell, the value stays null and the planner
+        // fails closed (re-encodes) anyway.
+        var bitDepth = p.bitDepth
+        var isHdr = p.isHdr
+        if (bitDepth == null || isHdr == null) {
+            val tags = ffprobeColorTags(inputPath)
+            if (bitDepth == null) bitDepth = bitDepthFromPixFmt(tags?.pixFmt)
+            if (isHdr == null) isHdr = isHdrFromColorTags(tags?.colorTransfer, tags?.colorPrimaries)
+        }
+        VideoTrackInfo(p.videoMime, p.widthPx, p.heightPx, bitDepth, isHdr)
+    }
+
+    private data class ColorTags(
+        val pixFmt: String?,
+        val colorTransfer: String?,
+        val colorPrimaries: String?,
+    )
+
+    /**
+     * Authoritative colour-tag read via FFprobeKit's MediaInformation — the fallback when the fast
+     * MediaExtractor probe leaves bit depth / HDR undetermined (#959). Returns null on any failure;
+     * the caller then leaves the values null and the planner re-encodes to be safe.
+     */
+    private fun ffprobeColorTags(inputPath: String): ColorTags? = try {
+        val info = FFprobeKit.getMediaInformation(inputPath)?.mediaInformation
+        val stream = info?.streams?.firstOrNull { it.type == "video" }
+        if (stream == null) null
+        else ColorTags(
+            pixFmt = stream.getStringProperty("pix_fmt"),
+            colorTransfer = stream.getStringProperty("color_transfer"),
+            colorPrimaries = stream.getStringProperty("color_primaries"),
+        )
+    } catch (e: Exception) {
+        Log.w(TAG, "ffprobe colour-tag fallback failed for $inputPath", e)
+        null
     }
 
     private fun probeVideoTrack(inputPath: String): VideoTrackProbe {
@@ -275,8 +316,8 @@ actual object FFmpegUtils {
         var videoMime: String? = null
         var widthPx = 0
         var heightPx = 0
-        var bitDepth = 8
-        var isHdr = false
+        var bitDepth: Int? = null
+        var isHdr: Boolean? = null
 
         val extractor = android.media.MediaExtractor()
         try {
@@ -307,15 +348,17 @@ actual object FFmpegUtils {
     }
 
     /**
-     * Luma bit depth of the video track, inferred from the codec profile.
-     * Returns 8 when the profile is missing or a known 8-bit one. 10-bit
-     * profiles (H.264 High 10, HEVC Main 10, VP9 Profile 2, AV1 Main with
-     * 10-bit) must be re-encoded so the output can be pinned to 8-bit.
+     * Luma bit depth of the video track, inferred from the codec profile — or **null** when
+     * `KEY_PROFILE` is absent (MediaExtractor omits it for many in-app camera captures). Null must
+     * NOT be assumed 8-bit (that fail-open shipped 10-bit High-10 clips receivers can't decode,
+     * #959): the caller resolves null via an authoritative ffprobe read. A present profile yields 10
+     * for the known 10-bit profiles (H.264 High 10, HEVC Main 10, VP9 Profile 2/3), else 8.
      */
-    private fun readBitDepth(fmt: android.media.MediaFormat): Int {
-        val profile = if (fmt.containsKey(android.media.MediaFormat.KEY_PROFILE)) {
-            try { fmt.getInteger(android.media.MediaFormat.KEY_PROFILE) } catch (_: Exception) { -1 }
-        } else -1
+    private fun readBitDepth(fmt: android.media.MediaFormat): Int? {
+        if (!fmt.containsKey(android.media.MediaFormat.KEY_PROFILE)) return null
+        val profile = try {
+            fmt.getInteger(android.media.MediaFormat.KEY_PROFILE)
+        } catch (_: Exception) { return null }
         val tenBitProfiles = setOf(
             android.media.MediaCodecInfo.CodecProfileLevel.AVCProfileHigh10,
             android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10,
@@ -331,21 +374,22 @@ actual object FFmpegUtils {
 
     /**
      * HDR detection mirroring Signal's MediaCodecCompat.isHdrVideo (see
-     * [VideoThumbnailsMediaCodec]'s copy): a PQ/HLG colour-transfer, or static
-     * HDR10 / dynamic HDR10+ metadata on the track.
+     * [VideoThumbnailsMediaCodec]'s copy): a PQ/HLG colour-transfer, or static HDR10 / dynamic
+     * HDR10+ metadata on the track. Returns **null** when none of those keys are present at all
+     * (undeterminable — the caller resolves it via ffprobe rather than assuming SDR, #959).
      */
-    private fun readIsHdr(fmt: android.media.MediaFormat): Boolean {
-        val transfer = if (fmt.containsKey(android.media.MediaFormat.KEY_COLOR_TRANSFER)) {
-            try { fmt.getInteger(android.media.MediaFormat.KEY_COLOR_TRANSFER) } catch (_: Exception) { -1 }
-        } else -1
-        if (transfer == android.media.MediaFormat.COLOR_TRANSFER_ST2084 ||
-            transfer == android.media.MediaFormat.COLOR_TRANSFER_HLG
-        ) return true
-        if (fmt.containsKey(android.media.MediaFormat.KEY_HDR_STATIC_INFO)) return true
-        if (android.os.Build.VERSION.SDK_INT >= 29 &&
+    private fun readIsHdr(fmt: android.media.MediaFormat): Boolean? {
+        val hasTransfer = fmt.containsKey(android.media.MediaFormat.KEY_COLOR_TRANSFER)
+        val hasStatic = fmt.containsKey(android.media.MediaFormat.KEY_HDR_STATIC_INFO)
+        val hasPlus = android.os.Build.VERSION.SDK_INT >= 29 &&
             fmt.containsKey(android.media.MediaFormat.KEY_HDR10_PLUS_INFO)
-        ) return true
-        return false
+        if (!hasTransfer && !hasStatic && !hasPlus) return null
+        if (hasStatic || hasPlus) return true
+        val transfer = try {
+            fmt.getInteger(android.media.MediaFormat.KEY_COLOR_TRANSFER)
+        } catch (_: Exception) { return null }
+        return transfer == android.media.MediaFormat.COLOR_TRANSFER_ST2084 ||
+            transfer == android.media.MediaFormat.COLOR_TRANSFER_HLG
     }
 
     private fun readDim(format: android.media.MediaFormat, primary: String, display: String): Int {

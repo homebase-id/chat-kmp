@@ -97,6 +97,10 @@ import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
 import id.homebase.resources.location_emergency_contacts_section
+import id.homebase.resources.location_emergency_remove_cd
+import id.homebase.resources.location_emergency_remove_confirm_body
+import id.homebase.resources.location_emergency_remove_confirm_title
+import id.homebase.resources.location_emergency_status_pending
 import id.homebase.resources.location_locatable_broken_cd
 import id.homebase.resources.location_locatable_none
 import id.homebase.resources.location_locatable_section
@@ -106,6 +110,7 @@ import id.homebase.resources.location_locate_age_hours
 import id.homebase.resources.location_locate_no_data
 import id.homebase.resources.location_status_pending
 import id.homebase.resources.location_status_points_today
+import id.homebase.resources.remove
 import id.homebase.resources.stop_sharing
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -131,6 +136,8 @@ fun LocationDashboardContent(
     onManageEmergencyAccess: () -> Unit,
     onLocatableExpandedChange: (Boolean) -> Unit,
     onLocateContact: (ContactUiModel) -> Unit,
+    onWhoCanLocateMeExpandedChange: (Boolean) -> Unit,
+    onRemoveEmergencyContact: (ContactUiModel) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -328,11 +335,10 @@ fun LocationDashboardContent(
         // "Who you can locate" (contacts carrying our iCanLocate flag) and "Who can
         // locate you" (members of our emergency-location-access circle) sit as
         // subsections under one grouping header. The "+" (add emergency contacts)
-        // lives on the group header since it applies to this pairing as a whole.
-        DashboardSection(
-            title = stringResource(MR.string.location_emergency_contacts_section),
-            onManage = onManageEmergencyAccess,
-        ) {
+        // lives on the "Who can locate you" subsection specifically — that's the
+        // list it actually adds to — rather than the shared group header, which
+        // sat too far above it to read as belonging to that list (#1096).
+        DashboardSection(title = stringResource(MR.string.location_emergency_contacts_section)) {
             SubsectionLabel(text = stringResource(MR.string.location_locatable_section))
             Card(modifier = Modifier.fillMaxWidth()) {
                 PeopleListBody(
@@ -355,13 +361,55 @@ fun LocationDashboardContent(
                 )
             }
 
-            SubsectionLabel(text = stringResource(MR.string.location_emergency_access_section))
+            SubsectionLabel(
+                text = stringResource(MR.string.location_emergency_access_section),
+                onManage = onManageEmergencyAccess,
+            )
             Card(modifier = Modifier.fillMaxWidth()) {
+                var confirmRemove by remember { mutableStateOf<ContactUiModel?>(null) }
+                val pendingIds = remember(uiState.whoCanLocateMePending) {
+                    uiState.whoCanLocateMePending.map { it.odinId }.toSet()
+                }
                 PeopleListBody(
                     loaded = uiState.whoCanLocateMeLoaded,
-                    members = uiState.whoCanLocateMe,
+                    // distinctBy is a final guard, not the fix — LocationViewModel already keeps
+                    // these two lists mutually exclusive; this just makes the render site immune
+                    // to any future regression of that invariant (#1096).
+                    members = (uiState.whoCanLocateMe + uiState.whoCanLocateMePending)
+                        .distinctBy { it.odinId },
                     emptyText = stringResource(MR.string.location_emergency_access_none),
+                    onExpandedChange = onWhoCanLocateMeExpandedChange,
+                    rowTrailing = { member ->
+                        EmergencyContactTrailing(
+                            name = member.name,
+                            pending = pendingIds.contains(member.odinId),
+                            removing = uiState.removingEmergencyContacts.contains(member.odinId.domainName),
+                            onRemoveClick = { confirmRemove = member },
+                        )
+                    },
                 )
+                confirmRemove?.let { contact ->
+                    AlertDialog(
+                        onDismissRequest = { confirmRemove = null },
+                        title = { Text(stringResource(MR.string.location_emergency_remove_confirm_title)) },
+                        text = {
+                            Text(
+                                stringResource(MR.string.location_emergency_remove_confirm_body, contact.name)
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmRemove = null
+                                onRemoveEmergencyContact(contact)
+                            }) { Text(stringResource(MR.string.remove)) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmRemove = null }) {
+                                Text(stringResource(MR.string.cancel))
+                            }
+                        },
+                    )
+                }
             }
         }
 
@@ -479,16 +527,35 @@ private fun DashboardSection(
  * A lightweight subsection heading rendered inside a [DashboardSection]'s body — used to
  * label the two "who can locate" halves under the shared "Emergency contacts" header
  * without giving each the full titleMedium/divider weight of a top-level section. Mirrors
- * the "Sharing with" / "Sharing with you" labels in the live-sharing section.
+ * the "Sharing with" / "Sharing with you" labels in the live-sharing section. An optional
+ * [onManage] renders the same compact "+" affordance [DashboardSection] uses, for a subsection
+ * whose add action belongs next to its own heading rather than the group header above it.
  */
 @Composable
-private fun SubsectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp).semantics { heading() },
-    )
+private fun SubsectionLabel(text: String, onManage: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).semantics { heading() },
+        )
+        if (onManage != null) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = stringResource(MR.string.location_emergency_access_manage),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onManage)
+                    .padding(4.dp)
+                    .size(22.dp),
+            )
+        }
+    }
 }
 
 /**
@@ -800,6 +867,44 @@ private fun LocateStatusTrailing(status: LocateVerifyStatus?) {
                     style = MaterialTheme.typography.labelMedium,
                     color = if (locateAgeWarn(ageMs)) HomebaseTheme.extendedColors.warning
                             else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Trailing content for a "who can locate me" row: an optional "Pending" label (a sealed circle
+ * deposit that hasn't converted into a real grant yet — live-read on section expand, see
+ * [LocationUiState.whoCanLocateMePending]) plus a remove button (works for both a real grant
+ * and a still-pending one; revoke drops either).
+ */
+@Composable
+private fun EmergencyContactTrailing(
+    name: String,
+    pending: Boolean,
+    removing: Boolean,
+    onRemoveClick: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (pending && !removing) {
+            Text(
+                text = stringResource(MR.string.location_emergency_status_pending),
+                style = MaterialTheme.typography.labelMedium,
+                color = HomebaseTheme.extendedColors.warning,
+            )
+        }
+        if (removing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp).padding(4.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            IconButton(onClick = onRemoveClick) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(MR.string.location_emergency_remove_cd, name),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

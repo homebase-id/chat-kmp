@@ -448,6 +448,8 @@
     <string name="moments_audience_to_myself_only">To myself only</string>
     <string name="moments_audience_section_recent">Recent</string>
     <string name="moments_audience_section_groups">Groups</string>
+    <string name="moments_audience_section_circles">Circles</string>
+    <string name="moments_audience_view_circle_members">View circle members</string>
     <string name="moments_audience_section_contacts">Contacts</string>
     <string name="moments_audience_post">Post</string>
     <string name="moments_audience_save_privately">Save privately</string>
@@ -707,6 +709,7 @@
     <string name="chat_message_multiple_media">Media</string>
     <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
     <string name="chat_preview_sender_label">%1$s:</string>
+    <string name="chat_conversation_draft">Draft</string>
 
     <string name="chat_location_share">Location</string>
     <string name="chat_location_attachment">Location map</string>
@@ -931,6 +934,8 @@
     <string name="moment_video_watch_again">Watch again</string>
     <string name="moment_video_fill_screen">Fill screen</string>
     <string name="moment_video_fit_screen">Fit to screen</string>
+    <string name="video_error_generic">Unable to play this video on this device</string>
+    <string name="video_error_ten_bit">Unable to play 10-bit video on this device</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_pdf_preview">PDF preview</string>
@@ -957,6 +962,16 @@
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>
+
+    <!-- Pinned messages bar (#887) -->
+    <string name="chat_pin_message">Pin</string>
+    <string name="chat_unpin_message">Unpin</string>
+    <string name="chat_pinned_messages_title">Pinned messages</string>
+    <string name="chat_pinned_messages_empty">No pinned messages</string>
+    <string name="chat_pinned_bar_count">%1$d of %2$d</string>
+    <string name="chat_pinned_icon">Pinned</string>
+    <string name="chat_pinned_bar_cycle">Show next pinned message</string>
+    <string name="chat_pinned_bar_open_list">Show all pinned messages</string>
 
     <!-- Block / Report -->
     <string name="chat_message_block">Block</string>
@@ -1225,8 +1240,26 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
     <string name="dev_menu_clear_data">Clear All Data</string>
+    <string name="dev_menu_force_logout">Force Logout (local only)</string>
+    <string name="dev_menu_force_logout_confirm_title">Force logout?</string>
+    <string name="dev_menu_force_logout_confirm_message">Clears credentials and all local data without contacting the server. Use this when the normal logout fails. You will need to sign in again, and anything not yet synced will be lost.</string>
+    <string name="dev_menu_force_logout_confirm_action">Force logout</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
     <string name="dev_menu_test_temporal_read">Test temporal location read (Frodo)</string>
+    <string name="dev_menu_test_scheduled_push">Test scheduled push notifications</string>
+    <string name="scheduled_push_test_title">Scheduled Push Test</string>
+    <string name="scheduled_push_test_schedule_one_shot">Schedule one-shot (10s)</string>
+    <string name="scheduled_push_test_schedule_recurring">Schedule recurring (5 min)</string>
+    <string name="scheduled_push_test_recurring_confirm_title">Repeat forever?</string>
+    <string name="scheduled_push_test_recurring_confirm_message">This will repeat every 5 minutes until you cancel it. There is no automatic end date or occurrence limit.</string>
+    <string name="scheduled_push_test_recurring_confirm_action">Schedule anyway</string>
+    <string name="scheduled_push_test_empty">No scheduled notifications</string>
+    <string name="scheduled_push_test_refresh">Refresh</string>
+    <string name="scheduled_push_test_reschedule">Reschedule +1m</string>
+    <string name="scheduled_push_test_cancel_confirm_title">Cancel this notification?</string>
+    <string name="scheduled_push_test_cancel_confirm_message_one_shot">This scheduled notification will be cancelled.</string>
+    <string name="scheduled_push_test_cancel_confirm_message_recurring">This notification repeats indefinitely. Cancelling is the only way to stop it.</string>
+    <string name="scheduled_push_test_cancel_confirm_action">Cancel notification</string>
     <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
     <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
@@ -1357,6 +1390,17 @@
     <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
     <string name="location_emergency_access_none">No one can locate you yet. Tap + to add people.</string>
     <string name="location_emergency_access_more">+%1$d</string>
+    <string name="location_emergency_add_title">Add emergency contacts</string>
+    <string name="location_emergency_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
+    <string name="location_emergency_add_succeeded">Added</string>
+    <string name="location_emergency_add_already_member">Already added</string>
+    <string name="location_emergency_add_unvetted_reason">Not yet confirmed — can't be added yet</string>
+    <string name="location_emergency_add_failed">Failed</string>
+    <string name="location_emergency_status_pending">Pending</string>
+    <string name="location_emergency_remove_cd">Remove %1$s</string>
+    <string name="location_emergency_remove_confirm_title">Remove emergency contact?</string>
+    <string name="location_emergency_remove_confirm_body">%1$s will no longer be able to locate you in an emergency.</string>
+    <string name="location_emergency_action_failed">Something went wrong. Please try again.</string>
     <string name="location_device_this_device">This device</string>
     <string name="location_device_no_fix">No recent location</string>
     <string name="location_device_unnamed">Device %1$s</string>
@@ -1455,6 +1499,24 @@
     <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
+    <string name="contactbook_circle_members_count_with_pending">%1$d members, %2$d pending</string>
+    <string name="contactbook_circle_add_member">Add member</string>
+    <string name="circle_member_add_title">Add to %1$s</string>
+    <string name="circle_member_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
+    <string name="circle_member_add_unvetted_reason">Not yet confirmed — can't be added to a circle</string>
+    <string name="circle_member_add_succeeded">Added</string>
+    <string name="circle_member_add_already_member">Already added</string>
+    <string name="circle_member_add_drive_access_denied">This circle includes a drive Chat doesn't have access to, so it can't be added here.</string>
+    <string name="circle_member_add_generic_failed">Something went wrong. Please try again.</string>
+    <string name="circle_member_add_failed">Failed</string>
+    <string name="circle_member_pending">Pending</string>
+    <string name="circle_member_status_member">Status in this circle: Member</string>
+    <string name="circle_member_status_pending">Status in this circle: Pending</string>
+    <string name="circle_member_remove_cd">Remove member</string>
+    <string name="circle_member_remove_confirm_title">Remove circle member?</string>
+    <string name="circle_member_remove_confirm_body">%1$s will lose the access granted by %2$s.</string>
+    <string name="circle_drives_section_title">Drives this circle can access</string>
+    <string name="circle_drive_unknown">Unknown drive</string>
 
     <string name="contactbook_search_hint">Search</string>
     <string name="contactbook_filter_all">All</string>
@@ -1545,6 +1607,7 @@
     <string name="contactbook_error_email">Enter a valid email address</string>
     <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>
     <string name="contactbook_error_odinid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+    <string name="contactbook_error_birthday">Use the format YYYY-MM-DD, e.g. 1969-02-22</string>
 
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
@@ -1558,6 +1621,7 @@
     <string name="contactbook_error_photo">The contact was saved, but the photo couldn't be uploaded.</string>
     <string name="contactbook_error_message">Couldn't open the chat.</string>
     <string name="contactbook_error_clear_unsupported">Clearing a contact field isn't supported yet, so that field was kept.</string>
+    <string name="contactbook_error_circle_action">Something went wrong. Please try again.</string>
 
     <string name="contactbook_action_blocked">Contact blocked.</string>
     <string name="contactbook_action_unblocked">Contact unblocked.</string>

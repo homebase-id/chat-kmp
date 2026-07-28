@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -32,7 +33,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import id.homebase.resources.MR
+import id.homebase.resources.video_error_generic
+import id.homebase.resources.video_error_ten_bit
+import org.jetbrains.compose.resources.stringResource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -128,6 +134,11 @@ actual fun VideoPlayerSurface(
     // can detach it alongside the diagnostics listener.
     var firstFrameListener by remember(data) { mutableStateOf<Player.Listener?>(null) }
 
+    // Resolved once in composable scope (stringResource can't run inside the remembered
+    // listener) and captured by the diagnostics listener's onPlayerError below (#959).
+    val genericPlaybackError = stringResource(MR.string.video_error_generic)
+    val tenBitPlaybackError = stringResource(MR.string.video_error_ten_bit)
+
     // Persistent diagnostics listener — fires for the entire lifetime of the
     // player in this composition. The per-content-type listeners below remove
     // themselves after first frame (they exist to time first-paint), so without
@@ -140,6 +151,13 @@ actual fun VideoPlayerSurface(
                 Logger.e(tag = "VideoIO", throwable = error) {
                     "player error: fileId=${data.fileId} key=${data.payloadKey} code=${error.errorCodeName} message=${error.message}"
                 }
+                // Surface a visible message instead of a dead/black player (#959). A 10-bit source
+                // this device can't decode (e.g. a 10-bit HLG capture from a sender that shipped it
+                // un-downconverted) gets a specific message; everything else a generic one.
+                val format = (error as? ExoPlaybackException)?.rendererFormat
+                state = VpsState.Error(
+                    if (isTenBitFormat(format)) tenBitPlaybackError else genericPlaybackError
+                )
             }
             override fun onPlayerErrorChanged(error: PlaybackException?) {
                 if (error == null) {
@@ -513,6 +531,24 @@ private fun playbackStateName(state: Int): String = when (state) {
     Player.STATE_READY -> "READY"
     Player.STATE_ENDED -> "ENDED"
     else -> "UNKNOWN($state)"
+}
+
+/**
+ * Whether the renderer format that failed to decode is 10-bit — either the [ColorInfo] reports a
+ * 10-bit luma/chroma depth, or the codec string names a 10-bit profile (H.264 High 10 = `avc1.6e…`,
+ * HEVC Main 10 = `hev1.2…`/`hvc1.2…`). Drives the specific "Unable to play 10-bit video" message
+ * versus the generic one (#959).
+ */
+@OptIn(UnstableApi::class)
+private fun isTenBitFormat(format: Format?): Boolean {
+    if (format == null) return false
+    format.colorInfo?.let { color ->
+        if (color.lumaBitdepth == 10 || color.chromaBitdepth == 10) return true
+    }
+    val codecs = format.codecs?.lowercase() ?: return false
+    return codecs.startsWith("avc1.6e") ||
+        codecs.startsWith("hev1.2") ||
+        codecs.startsWith("hvc1.2")
 }
 
 @UnstableApi
