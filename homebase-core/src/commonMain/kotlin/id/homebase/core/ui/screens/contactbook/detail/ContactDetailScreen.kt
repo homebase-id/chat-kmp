@@ -24,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Block
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Delete
@@ -115,12 +114,9 @@ import id.homebase.resources.contactbook_detail_tab_about
 import id.homebase.resources.contactbook_detail_tab_activity
 import id.homebase.resources.contactbook_detail_tab_details
 import id.homebase.resources.contactbook_detail_unblock
-import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
-import id.homebase.resources.contactbook_detail_reject
-import id.homebase.resources.contactbook_detail_request_incoming
 import id.homebase.resources.contactbook_detail_request_outgoing
 import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_delete
@@ -267,7 +263,7 @@ fun ContactDetailScreen(
                     assignableCircles = uiState.assignableCircles,
                     onAccept = { selectedCircleIds ->
                         viewModel.onAction(
-                            ContactDetailAction.AcceptRequestWithCircles(selectedCircleIds)
+                            ContactDetailAction.AcceptRequestClicked(selectedCircleIds)
                         )
                     },
                     onReject = { viewModel.onAction(ContactDetailAction.RejectRequestClicked) },
@@ -544,7 +540,9 @@ private fun DetailHeader(
     val connected = status == ConnectionStatus.Connected
     val blocked = status == ConnectionStatus.Blocked
     val pending = status == ConnectionStatus.None
-    val requestIncoming = uiState.requestDirection == RequestDirection.INCOMING
+    // No incoming-request state here: a pending incoming request takes over the whole body with
+    // [PendingRequestProfile] (which owns Accept/Reject plus the circle picker), so this header
+    // only ever renders once that request is gone — accepted, rejected, or never there.
     val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
     // Has a Homebase identity but no active connection, pending request, or block.
     val canConnect = uiState.hasOdinId && !connected && !blocked && !pending &&
@@ -590,7 +588,7 @@ private fun DetailHeader(
         // belongs right next to the status.
         if (uiState.hasOdinId) {
             val statusColor = when {
-                connected || requestIncoming -> MaterialTheme.colorScheme.primary
+                connected -> MaterialTheme.colorScheme.primary
                 blocked -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
@@ -602,7 +600,6 @@ private fun DetailHeader(
                     text = stringResource(
                         when {
                             connected -> MR.string.contactbook_connected
-                            requestIncoming -> MR.string.contactbook_detail_request_incoming
                             requestOutgoing -> MR.string.contactbook_detail_request_outgoing
                             pending -> MR.string.contactbook_detail_pending
                             blocked -> MR.string.contactbook_detail_blocked
@@ -677,25 +674,6 @@ private fun DetailHeader(
                     Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(MR.string.contactbook_detail_connect))
-                }
-            }
-            requestIncoming -> {
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(
-                        onClick = { onAction(ContactDetailAction.AcceptRequestClicked) },
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                    ) {
-                        Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(MR.string.contactbook_detail_accept))
-                    }
-                    OutlinedButton(
-                        onClick = { onAction(ContactDetailAction.RejectRequestClicked) },
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                    ) {
-                        Text(stringResource(MR.string.contactbook_detail_reject))
-                    }
                 }
             }
             requestOutgoing -> {
