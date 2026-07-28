@@ -77,6 +77,7 @@ import id.homebase.resources.contactbook_edit_synced_from_profile
 import id.homebase.resources.contactbook_edit_surname
 import id.homebase.resources.contactbook_edit_title_edit
 import id.homebase.resources.contactbook_edit_title_new
+import id.homebase.resources.contactbook_error_birthday
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_odinid
 import id.homebase.resources.contactbook_error_phone
@@ -294,6 +295,8 @@ fun ContactEditSheet(
                 value = draft.birthday,
                 synced = if (isIdentity) synced?.birthday else null,
                 label = stringResource(MR.string.contactbook_edit_birthday),
+                isError = !draft.birthdayValid,
+                errorText = stringResource(MR.string.contactbook_error_birthday),
                 onReset = { draft = draft.copy(birthday = synced?.birthday.orEmpty()) },
             ) { draft = draft.copy(birthday = it) }
 
@@ -306,12 +309,13 @@ fun ContactEditSheet(
                     Text(stringResource(MR.string.contactbook_edit_cancel))
                 }
                 // Save requires at least one meaningful field AND every phone/email — primary and
-                // additional — to be well-formed (E.164 / valid email). Legacy bad data stays
-                // visible but blocks Save until corrected.
+                // additional — plus the birthday to be well-formed (E.164 / valid email /
+                // ISO date). Legacy bad data stays visible but blocks Save until corrected.
                 val hasContent = draft.givenName.isNotBlank() || draft.surname.isNotBlank() ||
                     draft.phone.isNotBlank() || draft.email.isNotBlank() || draft.odinId.isNotBlank() ||
                     addPhones.any { it.value.isNotBlank() } || addEmails.any { it.isNotBlank() }
-                val primaryValid = draft.phoneValid && draft.emailValid && draft.odinIdValid
+                val primaryValid = draft.phoneValid && draft.emailValid && draft.odinIdValid &&
+                    draft.birthdayValid
                 val additionsValid = addPhones.all { ContactFieldValidation.isValidPhone(it.value) } &&
                     addEmails.all { ContactFieldValidation.isValidEmail(it) }
                 Button(
