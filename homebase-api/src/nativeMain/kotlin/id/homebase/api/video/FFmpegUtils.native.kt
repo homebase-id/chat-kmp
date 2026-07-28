@@ -138,8 +138,9 @@ actual object FFmpegUtils {
         val widthPx: Int,
         val heightPx: Int,
         val rotation: Int,
-        val bitDepth: Int,
-        val isHdr: Boolean,
+        /** Null when the probe couldn't determine it — planner fails closed (#959). */
+        val bitDepth: Int?,
+        val isHdr: Boolean?,
     )
 
     /**
@@ -157,27 +158,18 @@ actual object FFmpegUtils {
     private fun probeVideoNative(inputPath: String): NativeVideoProbe? {
         val v = bridge.getMediaInformation(inputPath)?.streams?.firstOrNull { it.type == "video" }
         if (v != null && (v.width ?: 0) > 0 && (v.height ?: 0) > 0) {
-            val pixFmt = v.pixelFormat?.lowercase().orEmpty()
-            val transfer = v.colorTransfer?.lowercase().orEmpty()
-            val primaries = v.colorPrimaries?.lowercase().orEmpty()
             return NativeVideoProbe(
                 codec = v.codec,
                 widthPx = v.width ?: 0,
                 heightPx = v.height ?: 0,
                 rotation = v.rotation ?: 0,
-                bitDepth = bitDepthFromPixFmt(pixFmt),
-                isHdr = transfer == "smpte2084" || transfer == "arib-std-b67" ||
-                    primaries.startsWith("bt2020"),
+                // Shared, fail-closed parsing (#959): null when the tags are absent, so an
+                // undeterminable source re-encodes rather than passing through as assumed 8-bit.
+                bitDepth = bitDepthFromPixFmt(v.pixelFormat),
+                isHdr = isHdrFromColorTags(v.colorTransfer, v.colorPrimaries),
             )
         }
         return avProbeVideoTrack(inputPath)
-    }
-
-    private fun bitDepthFromPixFmt(pixFmt: String): Int = when {
-        pixFmt.isBlank() -> 8
-        "12" in pixFmt -> 12
-        "10" in pixFmt || pixFmt.startsWith("p010") -> 10
-        else -> 8
     }
 
     /** AVFoundation track probe — native iOS metadata for files ffprobe can't read. */
@@ -194,10 +186,10 @@ actual object FFmpegUtils {
             ((deg % 360) + 360) % 360
         }
         // codec=null on the AVFoundation path: these files are re-encoded regardless
-        // (HEVC -> H.264), so the already-optimal short-circuit must stay off, and the
-        // real output codec is filled in post-encode. bitDepth/HDR default to 8-bit SDR
-        // (the planner's safe yuv420p pin); 10-bit/HDR detection here is a follow-up.
-        return NativeVideoProbe(codec = null, widthPx = w, heightPx = h, rotation = rotation, bitDepth = 8, isHdr = false)
+        // (HEVC -> H.264), so the already-optimal short-circuit must stay off. bitDepth/HDR are
+        // left null (AVFoundation can't read pix_fmt) — harmless since null codec already forces
+        // a re-encode, and consistent with the fail-closed contract (#959).
+        return NativeVideoProbe(codec = null, widthPx = w, heightPx = h, rotation = rotation, bitDepth = null, isHdr = null)
     }
 
     @OptIn(ExperimentalForeignApi::class)
@@ -237,8 +229,10 @@ actual object FFmpegUtils {
         val heightPx = probe?.heightPx ?: 0
         val codecMime = probe?.codec  // short form, e.g. "h264" / "hevc"; null forces re-encode
         val rotation = probe?.rotation ?: 0
-        val bitDepth = probe?.bitDepth ?: 8
-        val isHdr = probe?.isHdr ?: false
+        // Keep null when the probe couldn't determine these — the planner fails closed and
+        // re-encodes rather than passing a possibly-10-bit source through untouched (#959).
+        val bitDepth = probe?.bitDepth
+        val isHdr = probe?.isHdr
 
         val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
         val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
@@ -263,7 +257,7 @@ actual object FFmpegUtils {
         // unreadable file), so the hardware encoder is never handed a degenerate command.
         val dimensionsUnknown = widthPx <= 0 || heightPx <= 0
         val encoders =
-            if ((allowTenBit && bitDepth > 8) || dimensionsUnknown) listOf("libx264")
+            if ((allowTenBit && (bitDepth ?: 0) > 8) || dimensionsUnknown) listOf("libx264")
             else listOf("h264_videotoolbox", "libx264")
         for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(
