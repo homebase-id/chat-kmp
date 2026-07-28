@@ -119,7 +119,8 @@ class ChatMessageStreamLoadRaceTest {
         assertTrue(
             fixture.stream.isMessageInWindow(conversationId, racingId),
             "a row committed while loadConversation was mid-fetch must end up in the window — " +
-                "the fetch's snapshot predates it and both reconcilers skip a windowless conversation",
+                "the fetch's snapshot predates it and both reconcilers skip a windowless conversation" +
+                " [DIAG pagingReads=${fixture.gate.readSqls.count(messagePageRead)}]",
         )
         fixture.close()
     }
@@ -224,7 +225,8 @@ class ChatMessageStreamLoadRaceTest {
                 conversationId,
                 duringFetchA.fileMetadata.appData.uniqueId!!,
             ),
-            "the re-read must still deliver the row that triggered it",
+            "the re-read must still deliver the row that triggered it" +
+                " [DIAG pagingReads=${fixture.gate.readSqls.count(messagePageRead)}]",
         )
         assertTrue(
             fixture.stream.isMessageInWindow(
