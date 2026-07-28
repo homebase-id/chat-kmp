@@ -14,8 +14,10 @@ import id.homebase.core.logging.StartupLogger
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.AppNavHost
+import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.theme.HomebaseTheme
 import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 
 /** Main application entry point. Sets up theme, and navigation. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,7 +39,19 @@ fun App(
         followsSystemTheme = prefState.theme == ThemeState.System,
     ) {
         AppNavHost(
-            viewModel = koinInject(),
+            // koinViewModel(), NOT koinInject(). AppViewModel is registered with
+            // viewModelOf(), which is a *factory* definition — koinInject() resolves
+            // it outside any ViewModelStore, so every Activity recreation minted a
+            // fresh AppViewModel whose onCleared() was never called. Each orphan kept
+            // its collectNotificationEvents() coroutine alive on
+            // NotificationService.navigationEvents, which is a single-consumer
+            // Channel.receiveAsFlow(): N live collectors round-robin the events, and
+            // an orphan that wins a turn forwards into its own channel that nothing
+            // reads. Result — notification taps and share deep links silently went
+            // nowhere (build 1788 log: three consecutive events "forwarded" by
+            // AppViewModel with no matching AppNavHost receipt, after four Activity
+            // onCreates in one process).
+            viewModel = koinViewModel<AppViewModel>(),
             navController = navController,
             youAuthFlowManager = youAuthFlowManager
         )

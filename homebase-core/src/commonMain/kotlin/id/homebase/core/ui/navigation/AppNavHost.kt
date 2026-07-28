@@ -435,6 +435,29 @@ fun AppNavHost(
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
 
+                is NotificationNavigationEvent.OpenConnectionRequest -> {
+                    val domain = event.odinId.lowercase()
+                    Logger.i(tag = "AppNavHost") { "OpenConnectionRequest received: $domain" }
+                    // Cold-start safety, as in OpenMoment below: a tap can land while the host is
+                    // still on Route.AppLoading, whose ChatList navigation pops (inclusive) —
+                    // anything pushed before that would go with it. Gate on ChatList being in the
+                    // stack (immediate when warm).
+                    navController.currentBackStack.firstContaining {
+                        it.destination.hasRoute(Route.ChatList::class)
+                    }
+                    // Push the contact book first so back-press from the request lands on the
+                    // contacts tab rather than dropping straight out to chat.
+                    openContactBook()
+                    navController.navigate(
+                        // Same synthetic key the contact book uses for an identity with no saved
+                        // contact record — a pending requester never has one.
+                        Route.ContactBookDetail(
+                            uniqueId = Md5.toGuidId(domain).toString(),
+                            odinId = domain,
+                        )
+                    )
+                }
+
                 is NotificationNavigationEvent.OpenMoment -> {
                     val momentId = Uuid.parseOrNull(event.momentId)
                     Logger.i(tag = "AppNavHost") {
@@ -1197,6 +1220,12 @@ fun AppNavHost(
                                     },
                                     onEditGroup = {
                                         navController.navigate(Route.GroupEdit(it))
+                                    },
+                                    // Same destination the 1:1 settings screen uses —
+                                    // ConversationMedia is keyed by conversationId only,
+                                    // so it needs no group-specific handling (#1157).
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
                                     },
                                 )
                             }

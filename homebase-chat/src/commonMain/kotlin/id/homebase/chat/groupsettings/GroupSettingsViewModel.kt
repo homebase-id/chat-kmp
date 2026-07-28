@@ -12,12 +12,15 @@ import id.homebase.api.client.drives.files.RecipientTransferHistoryEntry
 import id.homebase.api.client.drives.files.TransferStatus
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
+import id.homebase.chat.conversationsettings.ConversationSettingsViewModel
+import id.homebase.chat.conversationsettings.collectConversationOverview
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Back
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.Error
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowAddMembers
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowContactInfo
 import id.homebase.chat.groupsettings.GroupSettingsUiEvent.ShowEditGroup
+import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
@@ -25,10 +28,12 @@ import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.HealGroupResult
 import id.homebase.chat.services.convo.HealPhase
 import id.homebase.chat.services.convo.HealPlan
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -56,6 +61,7 @@ class GroupSettingsViewModel(
     private val credentialsManager: CredentialsManager,
     private val driveFileProvider: DriveFileProvider,
     private val peerDriveQueryProvider: PeerDriveQueryProvider,
+    private val chatMessageStream: ChatMessageStream,
 ) : ViewModel() {
 
     val route = savedStateHandle.toRoute<Route.GroupSettings>()
@@ -69,6 +75,7 @@ class GroupSettingsViewModel(
     private var lastPeerAuditKey: PeerAuditKey? = null
 
     init {
+        loadOverview()
         viewModelScope.launch {
             conversationStream.start()
             // conversationStream.conversations is a StateFlow over the WHOLE
@@ -88,6 +95,45 @@ class GroupSettingsViewModel(
                 .collect { conversation ->
                     loadData(conversation)
                 }
+        }
+    }
+
+    /**
+     * Loads the media/files/audio/dice/location overview of this group (#1157).
+     *
+     * Same contract as [id.homebase.chat.conversationsettings.ConversationSettingsViewModel.loadOverview]:
+     * runs independently of the conversation collector in [init] so the header and
+     * member list paint before the (heavier) message scan finishes, and a failure
+     * only clears the loading flag — the rest of the screen is unaffected.
+     *
+     * One-shot, not re-run on new messages: the strip is a snapshot of what's on this
+     * device when the screen opens, matching the 1:1 screen. Re-scanning
+     * [SUMMARY_MESSAGE_CAP] messages on every conversation re-emit would be far more
+     * expensive than the audit this VM already gates.
+     */
+    private fun loadOverview() {
+        viewModelScope.launch {
+            try {
+                // Parsed inside the try, not at call time: this VM otherwise never
+                // parses route.conversationId (it string-compares it), so hoisting the
+                // parse would turn a malformed id into a ViewModel-construction crash
+                // instead of an empty media strip.
+                val conversationId = Uuid.parse(route.conversationId)
+                val batch = chatMessageStream.fetchMessages(
+                    conversationId = conversationId,
+                    // Shared with the 1:1 screen deliberately — the two strips must
+                    // scan the same depth or "Recent media" means something different
+                    // depending on conversation kind.
+                    limit = ConversationSettingsViewModel.SUMMARY_MESSAGE_CAP,
+                )
+                val overview = withContext(Dispatchers.Default) {
+                    collectConversationOverview(batch)
+                }
+                _uiState.update { it.copy(overview = overview, isOverviewLoading = false) }
+            } catch (e: Exception) {
+                Logger.e("Failed to load group overview", e)
+                _uiState.update { it.copy(isOverviewLoading = false) }
+            }
         }
     }
 
