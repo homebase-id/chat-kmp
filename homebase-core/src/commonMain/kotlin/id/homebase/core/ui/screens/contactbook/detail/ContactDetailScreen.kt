@@ -140,6 +140,9 @@ fun ContactDetailScreen(
     viewModel: ContactDetailViewModel,
     connectRequestViewModel: ConnectRequestViewModel,
     onBack: () -> Unit,
+    // Separate from onBack: fired only when the contact was actually deleted, so the
+    // contact book can clear a search whose only match may just have disappeared (#876).
+    onDeleted: () -> Unit = onBack,
     onOpenConversation: (Uuid) -> Unit,
     onSeeAllMedia: (conversationId: String) -> Unit,
     onOpenContact: (uniqueId: String, odinId: String?) -> Unit,
@@ -169,6 +172,7 @@ fun ContactDetailScreen(
                 is ContactDetailEvent.OpenConversation -> onOpenConversation(event.conversationId)
                 is ContactDetailEvent.SeeAllMedia -> onSeeAllMedia(event.conversationId)
                 ContactDetailEvent.Back -> onBack()
+                ContactDetailEvent.DeletedAndBack -> onDeleted()
                 ContactDetailEvent.Error -> snackbarHostState.showSnackbar(errSave)
                 ContactDetailEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
                 ContactDetailEvent.DeleteError -> snackbarHostState.showSnackbar(errDelete)
