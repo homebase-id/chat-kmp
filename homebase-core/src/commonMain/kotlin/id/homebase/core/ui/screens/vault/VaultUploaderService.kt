@@ -395,11 +395,11 @@ class VaultUploaderService(
             val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }
             val iv = payloadDescriptor?.iv
             val keyHeader = if (iv != null) {
-                try {
-                    KeyHeader(Base64.decode(iv), file.keyHeader.aesKey)
-                } catch (_: Exception) {
-                    file.keyHeader
-                }
+                // The descriptor IV is authoritative: an update reuses the file AES key with a
+                // fresh IV, so file.keyHeader.iv is stale for the new payload. Do NOT fall back
+                // to it on a malformed descriptor IV — decrypting with the wrong IV silently
+                // returns corrupt bytes. Let the failure hit the outer catch → null (issue #927).
+                KeyHeader(Base64.decode(iv), file.keyHeader.aesKey)
             } else {
                 file.keyHeader
             }

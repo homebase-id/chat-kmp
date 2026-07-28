@@ -3,6 +3,7 @@ package id.homebase.api.client.liverelay
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.diagnostics.BgTrace
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
@@ -38,6 +39,9 @@ class LiveRelayProvider(
         Logger.i(tag = TAG) {
             "SEND ch=$channelKey n=${recipients.size} bytes=${blob.length} -> ${response.status}"
         }
+        // #1109 background wake-cause attribution: a location fix that produced an outbound live-share
+        // relay (vs a plain history point). Greppable alongside the other background wake causes.
+        BgTrace.log(BgTrace.wake("live-share-send", "ch=$channelKey -> ${response.status}"))
         return ok
     }
 

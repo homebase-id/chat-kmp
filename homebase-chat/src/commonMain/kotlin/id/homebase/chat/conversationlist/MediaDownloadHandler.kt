@@ -19,7 +19,10 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.extensionForMimeType
+import id.homebase.resources.MR
+import id.homebase.resources.contactbook_self_you
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -336,12 +339,25 @@ internal class MediaDownloadHandler(
                     contentType.startsWith("image/") -> {
                         Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
 
+                        // Header title = the sender's resolved display name (same as the
+                        // bubble), not the raw odinId. Append "(you)" when the sender is us.
+                        val authorDomain = action.message.originalAuthor?.domainName
+                        val isSelf = authorDomain != null &&
+                                authorDomain == uiState.value.ownerSession?.odinId?.domainName
+                        val title = if (isSelf) {
+                            TranslationUtil.getString(
+                                MR.string.contactbook_self_you,
+                                action.message.displayName,
+                            )
+                        } else {
+                            action.message.displayName
+                        }
+
                         messagesUiState.update {
                             it.copy(
                                 fullScreenOverlay = FullScreenOverlay.ViewMessageData(
                                     messageId = action.message.id,
-                                    title = action.message.originalAuthor?.domainName
-                                        ?: "null",
+                                    title = title,
                                     userDate = action.message.userDate,
                                     content = action.message.content,
                                     fileId = action.message.fileId,

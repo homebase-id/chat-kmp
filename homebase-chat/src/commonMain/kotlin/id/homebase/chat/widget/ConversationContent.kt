@@ -51,6 +51,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -104,11 +106,17 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.data.MessageUiModel
+import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
@@ -151,6 +159,7 @@ import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.util.programmaticBackspace
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
@@ -171,6 +180,10 @@ import id.homebase.resources.chat_message_block
 import id.homebase.resources.chat_message_block_confirm_body
 import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_message_forward_to
+import id.homebase.resources.chat_pinned_icon
+import id.homebase.resources.chat_pinned_messages_empty
+import id.homebase.resources.chat_pinned_messages_title
+import id.homebase.resources.chat_unpin_message
 import id.homebase.resources.chat_message_search_no_results
 import id.homebase.resources.chat_message_search_result_count
 import id.homebase.resources.chat_next_result
@@ -509,6 +522,14 @@ fun ConversationContent(
         computeBattleChainCap(conversation.conversation.participants.size)
     }
 
+    // Save the draft whenever this thread stops — navigating away, or the app going
+    // to background (where the OS may kill the process without warning). Makes the
+    // periodic save the only thing the draft actually depends on: nothing here has
+    // to fire for the draft to survive, it just narrows the window (#1122).
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        onUiAction(ConversationListUiAction.FlushDraft)
+    }
+
     @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
         if (uiState.isSearchActive) {
             onUiAction(ConversationListUiAction.SearchMessagesBackClicked)
@@ -518,7 +539,13 @@ fun ConversationContent(
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
-        onUiAction(ConversationListUiAction.CancelEditMessage)
+        // Only a back that's actually cancelling an in-progress edit should reset
+        // the composer — CancelEditMessage clears it. A back that's merely
+        // dismissing the keyboard must leave the typed text (and its draft) intact
+        // (#1122; previously it wiped whatever you were composing).
+        if (uiState.isEditingMessageId != null) {
+            onUiAction(ConversationListUiAction.CancelEditMessage)
+        }
     }
 
     val cameraLauncher = rememberCameraManager { file ->
@@ -532,6 +559,26 @@ fun ConversationContent(
             )
         }
     }
+
+    // iOS: the camera sits in a DropdownMenu (a Popup window) in MessageInputBar, and FileKit's
+    // camera picker can't be presented while that popup is tearing down — iOS dismisses the picker
+    // along with the popup ("Take Photo opens then closes instantly"). So hoist the launch out of
+    // the menu item: the item only closes the menu and flips this flag, and we present here after
+    // the popup's exit transition has finished. A single recomposition isn't enough (the popup is
+    // still animating out); the native video path is immune, which is why only photo broke.
+    var pendingCameraLaunch by remember { mutableStateOf(false) }
+    LaunchedEffect(pendingCameraLaunch) {
+        if (pendingCameraLaunch) {
+            // Closing the dropdown hands focus back to the input, which pops the keyboard up during
+            // the wait below; clear focus + hide it so the keyboard doesn't flash before the camera.
+            focusManager.clearFocus()
+            keyboardController?.hide()
+            delay(250) // let the DropdownMenu popup finish dismissing before FileKit presents
+            cameraLauncher.launch()
+            pendingCameraLaunch = false // reset AFTER launch — resetting first cancels this effect
+        }
+    }
+
     val videoRecorderLauncher = rememberVideoRecorderManager { file ->
         file?.let {
             onUiAction(
@@ -883,6 +930,12 @@ fun ConversationContent(
                     }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             ) {
+                PinnedMessagesBar(
+                    pinnedMessages = uiState.pinnedMessages,
+                    currentPinIndex = uiState.currentPinIndex,
+                    onUiAction = onUiAction,
+                )
+
                 if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
@@ -1483,7 +1536,7 @@ fun ConversationContent(
                             isRecordingActive = isRecordingActive,
                             isSendingMessage = uiState.isSendingMessage,
                             onSendMessage = {
-                                performSend(textFieldState.toMarkdown(), payloadRenderers)
+                                performSend(textFieldState.toMessageMarkdown(), payloadRenderers)
                             },
                             onCancelEdit = {
                                 onUiAction(ConversationListUiAction.CancelEditMessage)
@@ -1534,7 +1587,7 @@ fun ConversationContent(
                                     showAttachmentSheet = false
                                 },
                                 onAddAttachmentClick = { toggleAttachmentSheet() },
-                                onCameraClick = { cameraLauncher.launch() },
+                                onCameraClick = { pendingCameraLaunch = true },
                                 onVideoRecordClick = { videoRecorderLauncher.launch() },
                                 onRecordingStarted = {
                                     onUiAction(
@@ -1813,6 +1866,91 @@ fun ConversationContentSheets(
                     }
                 }
             }
+        }
+
+        is MessageListUiSheet.PinnedMessages -> {
+            PinnedMessagesSheet(
+                pinnedMessages = uiState.pinnedMessages,
+                onUiAction = onUiAction,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PinnedMessagesSheet(
+    pinnedMessages: ImmutableList<MessageUiModel>,
+    onUiAction: (ConversationListUiAction) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = { onUiAction(ConversationListUiAction.DismissSheet) },
+        sheetState = sheetState,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = stringResource(MR.string.chat_pinned_messages_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 12.dp),
+            )
+            if (pinnedMessages.isEmpty()) {
+                Text(
+                    text = stringResource(MR.string.chat_pinned_messages_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 24.dp),
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    items(pinnedMessages, key = { it.id }) { message ->
+                        val sender = message.displayName
+                            .ifBlank { message.originalAuthor?.domainName.orEmpty() }
+                        val body = message.pinnedPreviewBody().truncateToCodePoints(80)
+                        val previewText = if (sender.isBlank()) body else "$sender: $body"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onUiAction(ConversationListUiAction.DismissSheet)
+                                    onUiAction(ConversationListUiAction.ScrollToMessageId(message.id))
+                                }
+                                .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PushPin,
+                                contentDescription = stringResource(MR.string.chat_pinned_icon),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = previewText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { onUiAction(ConversationListUiAction.UnpinMessage(message.id)) },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = stringResource(MR.string.chat_unpin_message),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

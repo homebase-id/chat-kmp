@@ -24,6 +24,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
@@ -40,7 +41,7 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
- * #964 — chat-bubble layout regression suite.
+ * Chat-bubble layout regression suite.
  *
  * Renders [MessageBubbleRaw] on the JVM host renderer (`runComposeUiTest`, same as
  * [ConversationMessagePreviewTest] / [ReactionMenuTest]) across a matrix of
@@ -102,22 +103,51 @@ class BubbleLayoutInvariantTest {
         ),
     }
 
+    // The aspect-ratio dimension the single-image suite was missing. The layout sizes off
+    // these descriptor pixels (no decode needed), so covering ratios is just parameterising
+    // pixelWidth/pixelHeight. TALL_PORTRAIT is the reported ~1080x2400 phone capture.
+    private enum class Aspect(val w: Int, val h: Int) {
+        // A near-1D strip. Height-capped it resolves to ~20dp wide; with a caption the
+        // inline path used to clamp the text to that width → one character per line
+        // (reported bug). Guards the captioned min-width floor.
+        TALL_STRIP(150, 2400),
+        TALL_PORTRAIT(1080, 2400),
+        PORTRAIT(900, 1200),   // 3:4
+        SQUARE(1000, 1000),    // 1:1
+        LANDSCAPE(1200, 900),  // 4:3
+        PANORAMA(1920, 1080),  // 16:9
+    }
+
     private data class Case(
         val name: String,
         val sent: Boolean,
         val images: Int,
         val caption: Caption,
         val reply: Boolean = false,
+        val aspect: Aspect = Aspect.LANDSCAPE,
+        // A single non-media document payload (a .log) instead of images. Has no
+        // previewThumbnail/aspect and a non-image contentType, so it renders as the
+        // compact DocumentMediaItem file card — the #1103 regression dimension.
+        val document: Boolean = false,
     )
 
-    private fun imagePayload(i: Int) = PayloadDescriptor(
+    private fun imagePayload(i: Int, aspect: Aspect = Aspect.LANDSCAPE) = PayloadDescriptor(
         key = "chat_img$i",
         contentType = "image/jpeg",
         iv = Base64.encode(ByteArray(16)),
-        // Landscape 4:3 so a single image resolves to a real (non-zero) width.
         previewThumbnail = ThumbnailDescriptor(
-            pixelWidth = 1200, pixelHeight = 900, contentType = "image/jpeg", content = "",
+            pixelWidth = aspect.w, pixelHeight = aspect.h, contentType = "image/jpeg", content = "",
         ),
+    )
+
+    // A document attachment: no thumbnail, non-media contentType. Renders via
+    // DocumentMediaItem (icon + name + size), which hugs its content.
+    private fun documentPayload() = PayloadDescriptor(
+        key = "chat_file0",
+        contentType = "text/plain",
+        iv = Base64.encode(ByteArray(16)),
+        descriptorContent = "server.log",
+        bytesWritten = 3_300_000,
     )
 
     private fun Case.message(): MessageUiModel {
@@ -141,7 +171,11 @@ class BubbleLayoutInvariantTest {
             messageAppData = MessageAppData(replyPreview = reply),
             reactionPreview = null,
             previewThumbnail = null,
-            payloads = (0 until images).map { imagePayload(it) }.toPersistentList(),
+            payloads = if (document) {
+                listOf(documentPayload()).toPersistentList()
+            } else {
+                (0 until images).map { imagePayload(it, aspect) }.toPersistentList()
+            },
             keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
             versionTag = Uuid.random(),
             isPendingSend = false,
@@ -149,7 +183,7 @@ class BubbleLayoutInvariantTest {
         )
     }
 
-    private fun ComposeUiTest.render(case: Case) = setContent {
+    private fun ComposeUiTest.render(case: Case, authorName: String? = null) = setContent {
         Host {
             MessageBubbleRaw(
                 message = case.message(),
@@ -161,6 +195,7 @@ class BubbleLayoutInvariantTest {
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 downloadingFiles = emptySet(),
+                authorName = authorName,
             )
         }
     }
@@ -176,7 +211,7 @@ class BubbleLayoutInvariantTest {
     // ---- tests ------------------------------------------------------------
 
     /**
-     * THE fix (#964, full-bleed). For every 2/3/4-image gallery that sits above a
+     * Full-bleed galleries. For every 2/3/4-image gallery that sits above a
      * caption the images run EDGE-TO-EDGE to the bubble — no blue strip beside them —
      * while the caption below keeps its own 12dp inset (the messenger convention,
      * matching this app's media-only bubbles):
@@ -265,6 +300,72 @@ class BubbleLayoutInvariantTest {
     }
 
     /**
+     * A single image + caption, for every aspect ratio, must:
+     *  1. leave no bubble-background strip beside the image (media edges == bubble edges),
+     *  2. never collapse below Signal's 240dp captioned-image floor (char-per-line risk), and
+     *  3. not shrink a naturally-wide image (landscape / panorama) down to that floor.
+     *
+     * 240dp is a floor for narrow images, not a hard cap.
+     */
+    @Test
+    fun singleImageWithCaption_noGap_everyAspectRatio() = runComposeUiTest {
+        val captionedMinWidth = Dimens.MediaBubble.minWidthWithContent.value
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false))
+            for (aspect in Aspect.entries)
+                for (cap in listOf(Caption.SHORT, Caption.LONG, Caption.BLOCK)) {
+                    val case = Case(
+                        name = "1img/$aspect/$cap/${if (sent) "sent" else "recv"}",
+                        sent = sent, images = 1, caption = cap, aspect = aspect,
+                    )
+                    render(case)
+                    val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+                    val media = boundsOf(ChatBubbleTestTags.MEDIA)
+
+                    if (!approx(media.left.value, bubble.left.value))
+                        failures += "[${case.name}] left strip: media.left=${media.left.value} bubble.left=${bubble.left.value}"
+                    if (!approx(media.right.value, bubble.right.value))
+                        failures += "[${case.name}] right strip beside image: media.right=${media.right.value} bubble.right=${bubble.right.value}"
+                    val mediaWidth = media.right.value - media.left.value
+                    if (mediaWidth < captionedMinWidth - tol)
+                        failures += "[${case.name}] captioned image collapsed (char-per-line risk): media.width=$mediaWidth < $captionedMinWidth"
+                    // A naturally-wide image must keep its width, not shrink to the floor.
+                    if ((aspect == Aspect.LANDSCAPE || aspect == Aspect.PANORAMA) &&
+                        mediaWidth <= captionedMinWidth + tol
+                    )
+                        failures += "[${case.name}] wide image was shrunk to the 240dp floor: media.width=$mediaWidth"
+                }
+        assertTrue(
+            failures.isEmpty(),
+            "single-image no-gap invariant failed for these aspect ratios:\n" + failures.joinToString("\n"),
+        )
+    }
+
+    /**
+     * A group message with a wide sender name must not widen a captioned image's bubble past
+     * the image. The name ellipsizes to the media width (maxLines=1) so the bubble hugs the
+     * image; post-fix media.right == bubble.right.
+     */
+    @Test
+    fun singleImageWithCaption_wideAuthorName_noGap() = runComposeUiTest {
+        val longName = "Shelly Seifert Silberberg Von Habsburg Longname"
+        val failures = mutableListOf<String>()
+        for (aspect in listOf(Aspect.TALL_STRIP, Aspect.TALL_PORTRAIT, Aspect.PORTRAIT)) {
+            val case = Case(
+                name = "1img/$aspect/name", sent = false, images = 1,
+                caption = Caption.LONG, aspect = aspect,
+            )
+            render(case, authorName = longName)
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            val media = boundsOf(ChatBubbleTestTags.MEDIA)
+            if (!approx(media.right.value, bubble.right.value))
+                failures += "[${case.name}] wide sender name left a gap beside the image: " +
+                    "media.right=${media.right.value} bubble.right=${bubble.right.value}"
+        }
+        assertTrue(failures.isEmpty(), "wide-author-name gap failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
      * Regression guard: media-only bubbles (no caption, any image count) are UNCHANGED —
      * the media fills the whole bubble, no inset, no gap.
      */
@@ -282,6 +383,32 @@ class BubbleLayoutInvariantTest {
                 failures += "[${case.name}] media should fill bubble: media=[${media.left.value},${media.right.value}] bubble=[${bubble.left.value},${bubble.right.value}]"
         }
         assertTrue(failures.isEmpty(), "media-only invariant failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * #1103: a single document (a .log — no thumbnail, non-media contentType) must render as a
+     * compact file card that hugs its content, NOT stretched to a media-height box. The
+     * regression (#1028/#1032, commit f3bee10eb) forced a fill-width document to
+     * Dimens.MediaBubble.maxHeight (a tall grey void below the file row); the no-caption path
+     * also floored it to minHeight. After the fix a document gets NO media height at all, so
+     * the tagged media node is the ~72dp card (48dp icon + 12dp padding ×2) — well under the
+     * 100dp media floor. Covers no-caption, inline-caption, and block-caption paths.
+     */
+    @Test
+    fun singleDocument_compactCard_noMediaVoid() = runComposeUiTest {
+        val floor = Dimens.MediaBubble.minHeight.value
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false))
+            for (cap in listOf(Caption.NONE, Caption.SHORT, Caption.BLOCK)) {
+                render(Case("file/$cap/${if (sent) "sent" else "recv"}", sent, images = 0, caption = cap, document = true))
+                val media = boundsOf(ChatBubbleTestTags.MEDIA)
+                val h = media.bottom.value - media.top.value
+                // Strictly below the media floor proves the doc dropped BOTH the maxHeight fill
+                // (caption path) and the heightIn(min) floor (no-caption path) — i.e. no void.
+                if (h >= floor - tol)
+                    failures += "[file/$cap/${if (sent) "sent" else "recv"}] document got media height=$h (>= minHeight=$floor); expected a compact file card"
+            }
+        assertTrue(failures.isEmpty(), "document compact-card failures:\n" + failures.joinToString("\n"))
     }
 
     /**

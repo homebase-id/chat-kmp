@@ -8,6 +8,7 @@ import id.homebase.chat.data.MessageUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlin.uuid.Uuid
 
@@ -58,6 +59,21 @@ class PaginatedConversationState(
     val windows: StateFlow<Map<Uuid, MessageWindow>> = _windows.asStateFlow()
 
     /**
+     * Conversations whose initial load is in flight, each mapped to whether a
+     * concurrent write landed while that load ran.
+     *
+     * A conversation has no window until [setInitialWindow], so a DriveSync/WS
+     * write committing mid-fetch is invisible to the fetch's SQLite snapshot
+     * *and* skipped by both reconcilers — the stale window is then cached
+     * forever (#1135). Registering the load here gives those reconcilers
+     * something to flag; the loader re-reads once when it sees the flag.
+     *
+     * Same `MutableStateFlow` CAS discipline as [_windows] so the flag is safe
+     * against reconcilers running on other dispatchers.
+     */
+    private val _initialLoads = MutableStateFlow<Map<Uuid, Boolean>>(emptyMap())
+
+    /**
      * Drop every cached message window. Called on logout so the previous
      * identity's open-conversation messages don't survive in memory into the
      * next session; windows reload lazily via [setInitialWindow] when the user
@@ -65,7 +81,42 @@ class PaginatedConversationState(
      */
     fun reset() {
         _windows.value = emptyMap()
+        _initialLoads.value = emptyMap()
     }
+
+    /** Register [conversationId] as mid-initial-load. Pair with [endInitialLoad]. */
+    fun beginInitialLoad(conversationId: Uuid) {
+        _initialLoads.update { it + (conversationId to false) }
+    }
+
+    /**
+     * Record that a write landed for [conversationId] while its initial load is
+     * in flight. No-op when no load is in flight.
+     */
+    fun markInitialLoadDirty(conversationId: Uuid) {
+        _initialLoads.update { current ->
+            if (current.containsKey(conversationId)) current + (conversationId to true) else current
+        }
+    }
+
+    /**
+     * Flag every in-flight initial load. Used by the whole-drive post-sync
+     * refresh, which walks [windows] and so cannot see a conversation that
+     * doesn't have one yet.
+     */
+    fun markAllInitialLoadsDirty() {
+        _initialLoads.update { current ->
+            if (current.isEmpty()) current else current.mapValues { true }
+        }
+    }
+
+    /**
+     * Clear [conversationId]'s in-flight marker, returning true when a write
+     * landed while it was set — i.e. the caller's fetch may have missed rows
+     * and must re-read.
+     */
+    fun endInitialLoad(conversationId: Uuid): Boolean =
+        _initialLoads.getAndUpdate { it - conversationId }[conversationId] == true
 
     fun hasCachedMessages(conversationId: Uuid): Boolean =
         _windows.value.containsKey(conversationId)
@@ -73,6 +124,20 @@ class PaginatedConversationState(
     fun getWindow(conversationId: Uuid): MessageWindow? =
         _windows.value[conversationId]
 
+    /**
+     * @param merge keep any message the existing window holds that [messages]
+     *  doesn't ([messages] wins on id conflicts), instead of replacing it
+     *  wholesale. Set ONLY by the raced-load re-read: that second fetch takes
+     *  its own SQLite snapshot, so a write upserted into the (by then existing)
+     *  window while it ran would otherwise be replaced away and lost for good —
+     *  the exact #1135 failure, just one fetch later. Cursors always come from
+     *  [messages]: the survivors sit at the newest end, so the fresh page's
+     *  older-side cursor stays valid and any over-fetch is deduped by
+     *  [prependOlderMessages].
+     *
+     *  The union must happen inside this single atomic update — a caller-side
+     *  read-then-write would race exactly the same way.
+     */
     fun setInitialWindow(
         conversationId: Uuid,
         messages: List<MessageUiModel>,
@@ -80,10 +145,20 @@ class PaginatedConversationState(
         hasOlderMessages: Boolean = false,
         newerCursor: QueryBatchCursor? = null,
         hasNewerMessages: Boolean = false,
+        merge: Boolean = false,
     ) {
         _windows.update { current ->
+            val existing = if (merge) current[conversationId]?.messages.orEmpty() else emptyList()
+            val combined = if (existing.isEmpty()) {
+                messages
+            } else {
+                val byId = LinkedHashMap<Uuid, MessageUiModel>()
+                for (msg in existing) byId[msg.id] = msg
+                for (msg in messages) byId[msg.id] = msg
+                byId.values.toList()
+            }
             current + (conversationId to MessageWindow(
-                messages = messages.sortedBy { it.userDate },
+                messages = combined.sortedBy { it.userDate },
                 olderCursor = olderCursor,
                 newerCursor = newerCursor,
                 hasOlderMessages = hasOlderMessages,

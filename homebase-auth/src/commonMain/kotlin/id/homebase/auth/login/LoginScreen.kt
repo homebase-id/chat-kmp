@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -53,6 +54,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.util.cleanDomain
 import id.homebase.core.auth.BrowserLauncher
+import id.homebase.core.util.InAppBrowser
 import id.homebase.core.ui.assets.Homebase
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
@@ -135,8 +137,12 @@ fun LoginScreen(
             }
 
             is LoginUiEvent.OpenUrl -> {
+                // Sign-up is a plain web page, not an OAuth callback: no shared session or token
+                // hand-back, just a page the user must be able to get back out of. That's
+                // InAppBrowser, not the auth-callback launcher. Consume only after the open is
+                // issued, never before.
+                InAppBrowser.open(uiEvent.url)
                 viewModel.eventConsumed()
-                launchAuthBrowser(uiEvent.url)
             }
 
             is LoginUiEvent.OpenAuthUrl -> {
@@ -452,7 +458,15 @@ private fun LoginForm(
         mutableStateOf(TextFieldValue(homebaseId, selection = TextRange(homebaseId.length)))
     }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // Focus the ID field once on first entry — not on every re-entry/recomposition, which kept
+    // re-popping the keyboard (#1054).
+    var didFocus by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!didFocus) {
+            focusRequester.requestFocus()
+            didFocus = true
+        }
+    }
 
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
@@ -490,13 +504,13 @@ private fun LoginForm(
             placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
             focusRequester = focusRequester,
             imeAction = ImeAction.Done,
-            onImeAction = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
+            onImeAction = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)) },
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
+            onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)) },
             modifier = Modifier.fillMaxWidth().testTag(if (errorMessage != null) "try_again_button" else "login_button"),
         ) {
             if (errorMessage != null) Text(stringResource(MR.string.login_try_again_button)) else Text(stringResource(MR.string.login_sign_in_button))

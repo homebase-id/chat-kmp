@@ -6,8 +6,8 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /**
  * Regression coverage for the iPhone `.mov`-send crash fix. When FFmpegKit's bundled ffprobe
@@ -53,10 +53,11 @@ class FFmpegProbeFallbackNativeTest {
             )
             assertEquals(160, info.widthPx, "AVFoundation must read the real width from the .mov video track")
             assertEquals(90, info.heightPx, "AVFoundation must read the real height from the .mov video track")
-            // The AVFoundation fallback can't read pixel format, so it reports SDR 8-bit by
-            // design (documented in avProbeVideoTrack) — the safe default for encoder selection.
-            assertEquals(8, info.bitDepth, "AVFoundation fallback reports 8-bit by default")
-            assertFalse(info.isHdr, "AVFoundation fallback reports SDR by default")
+            // The AVFoundation fallback can't read pixel format, so it reports bit depth / HDR as
+            // null ("undeterminable") — the planner then fails closed and re-encodes rather than
+            // assuming 8-bit SDR (#959). (This path re-encodes regardless: codec is null too.)
+            assertNull(info.bitDepth, "AVFoundation fallback can't determine bit depth → null")
+            assertNull(info.isHdr, "AVFoundation fallback can't determine HDR → null")
         } finally {
             cleanupStagedSampleVideo(path)
         }

@@ -40,8 +40,11 @@ fun resolveReplyContentText(
     mediaFallbackLabel: String,
 ): String {
     val effectiveLabelText = if (hasThumbnail) null else contentLabelText
+    // trim(): a message body led by a newline lays out a blank first line, which
+    // maxLines=1 + TextOverflow.Ellipsis paints as a bare "…". The body renders
+    // clean via the markdown parser; the plain-text quote must trim to match.
     return effectiveLabelText
-        ?: replyText.ifEmpty { if (hasMedia) mediaFallbackLabel else "" }
+        ?: replyText.trim().ifEmpty { if (hasMedia) mediaFallbackLabel else "" }
 }
 
 /**

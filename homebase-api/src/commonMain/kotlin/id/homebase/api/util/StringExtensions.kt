@@ -103,14 +103,17 @@ fun String.codePointCount(): Int {
  * characters, and enforcing domain rules. Supports Unicode characters for IDNs (to be
  * Punycode-converted later) and handles common user input typos. It's intended to be called with
  * each character being input interactively (or pasted).
- * @param preserveTrailingDot If true, allows a single trailing dot (for interactive typing).
- * ```
- *                            If false, removes trailing dots (for final validation).
- * @return
- * ```
- * The cleaned domain string in lowercase.
+ * @param preserveTrailingDot If true, allows a single trailing dot (for interactive typing). If
+ *   false, removes trailing dots (for final validation).
+ * @param preserveTrailingDash If true, keeps a single trailing dash on the label being typed (so a
+ *   dash you just pressed isn't eaten mid-type). If false, strips it (for final validation). Mirrors
+ *   [preserveTrailingDot].
+ * @return The cleaned domain string in lowercase.
  */
-fun String.cleanDomain(preserveTrailingDot: Boolean = true): String {
+fun String.cleanDomain(
+    preserveTrailingDot: Boolean = true,
+    preserveTrailingDash: Boolean = true,
+): String {
     if (this.isEmpty()) {
         return ""
     }
@@ -162,12 +165,20 @@ fun String.cleanDomain(preserveTrailingDot: Boolean = true): String {
     // Step 4: Replace multiple consecutive periods with a single period
     cleanedString = cleanedString.replace(Regex("\\.{2,}"), ".")
 
-    // Step 5: Enforce per-label rules (no start/end with '-', no consecutive '-')
+    // Step 5: Enforce per-label rules (no start/end with '-', no consecutive '-'). A single
+    // trailing dash on the last label (the one being typed) is preserved when preserveTrailingDash
+    // is true, so a just-pressed '-' survives as-you-type — mirrors the trailing-dot handling below.
     val labels = cleanedString.split(".")
+    val lastIndex = labels.lastIndex
     val cleanedLabels =
-        labels.map { label ->
-            // Remove leading/trailing '-', replace consecutive '-'
-            label.replace(Regex("^-+|-+$"), "").replace(Regex("-{2,}"), "-")
+        labels.mapIndexed { index, label ->
+            // Always strip a leading '-' and collapse consecutive '-'.
+            var l = label.replace(Regex("^-+"), "").replace(Regex("-{2,}"), "-")
+            // Strip a trailing '-' except on the label being typed (last) when preserving.
+            if (!(preserveTrailingDash && index == lastIndex)) {
+                l = l.replace(Regex("-+$"), "")
+            }
+            l
         }
     cleanedString =
         cleanedLabels.filter { it.isNotEmpty() }.joinToString(".") // Remove empty labels

@@ -5,6 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.diagnostics.LastKnownServerIp
+import id.homebase.api.client.diagnostics.NetworkDiagnostics
+import id.homebase.api.client.diagnostics.ServerIpStore
+import id.homebase.api.client.diagnostics.runNetworkDiagnostics
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortOrder
@@ -13,6 +17,7 @@ import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
@@ -33,6 +38,8 @@ class DeveloperMenuViewModel(
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
+    private val serverIpStore: ServerIpStore,
+    private val youAuthFlowManager: YouAuthFlowManager,
 ) : ViewModel() {
 
     companion object {
@@ -48,6 +55,12 @@ class DeveloperMenuViewModel(
         DeveloperMenuUiState(allowTenBitVideo = userPreferences.allowTenBitVideo)
     )
     val uiState: StateFlow<DeveloperMenuUiState> = _uiState.asStateFlow()
+
+    init {
+        // Always surface the production-captured last-known-good IP when the panel opens, so it's
+        // visible without running the probe (confirms ServerIpCapture is working).
+        refreshLastKnownGoodIp()
+    }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
         when (action) {
@@ -67,8 +80,16 @@ class DeveloperMenuViewModel(
                 forceSyncAll()
             }
 
+            is DeveloperMenuUiAction.RunNetworkDiagnostics -> {
+                startNetworkDiagnostics()
+            }
+
             is DeveloperMenuUiAction.ClearAllData -> {
                 clearAllData()
+            }
+
+            is DeveloperMenuUiAction.ForceLogout -> {
+                forceLogout()
             }
 
             is DeveloperMenuUiAction.TriggerTestCrash -> {
@@ -178,6 +199,44 @@ class DeveloperMenuViewModel(
         }
     }
 
+    /**
+     * Run the layered DNS/TCP/TLS/HTTP-ping probe against the current owner server and show the
+     * per-stage result in the panel. Persists the live-resolved IP so a later run can fall back to
+     * it when DNS is broken (the airplane-wifi case this feature targets).
+     */
+    private fun startNetworkDiagnostics() {
+        if (_uiState.value.isRunningNetworkDiagnostic) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRunningNetworkDiagnostic = true, networkDiagnostics = null) }
+            try {
+                val host = credentialsManager.getActiveDomain()?.domainName
+                if (host == null) {
+                    sendEvent(DeveloperMenuUiEvent.Error("No active identity — log in first"))
+                    return@launch
+                }
+                // Read-only here: production code captures the last-known-good IP on every
+                // validated connect (ServerIpCapture); the panel just exercises the ladder.
+                val stored = serverIpStore.getLastKnownIp(host)
+                _uiState.update { it.copy(lastKnownGoodIp = stored) }
+                val result = runNetworkDiagnostics(host, stored?.ip)
+                _uiState.update { it.copy(networkDiagnostics = result) }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "NetDiag") { "Network diagnostics failed" }
+                sendEvent(DeveloperMenuUiEvent.Error("Network diagnostics failed: ${e.message}"))
+            } finally {
+                _uiState.update { it.copy(isRunningNetworkDiagnostic = false) }
+            }
+        }
+    }
+
+    private fun refreshLastKnownGoodIp() {
+        viewModelScope.launch {
+            val host = credentialsManager.getActiveDomain()?.domainName ?: return@launch
+            val stored = serverIpStore.getLastKnownIp(host)
+            _uiState.update { it.copy(lastKnownGoodIp = stored) }
+        }
+    }
+
     private fun forceSyncAll() {
         viewModelScope.launch {
             try {
@@ -215,6 +274,20 @@ class DeveloperMenuViewModel(
     }
 
     /**
+     * Unconditional local logout — the escape hatch for a wedged session (corrupted shared
+     * secret, stale auth token, unreadable DB) where the normal Settings logout can't complete.
+     * Skips the backend notify, which is precisely the call that needs the credentials we no
+     * longer trust, and clears local state regardless of what fails on the way. The nav graph
+     * tears down on the resulting Unauthenticated flip, so no event is sent afterwards.
+     */
+    private fun forceLogout() {
+        viewModelScope.launch {
+            Logger.w(tag = "DeveloperMenu") { "Force logout triggered" }
+            youAuthFlowManager.logout(force = true)
+        }
+    }
+
+    /**
      * Intentionally crash the app to verify crash reporting end-to-end. Throws
      * an uncaught exception on the calling (main) thread so it propagates through
      * the platform crash handlers we install at startup — Firebase's native
@@ -239,6 +312,9 @@ class DeveloperMenuViewModel(
 @Immutable
 data class DeveloperMenuUiState(
     val allowTenBitVideo: Boolean = false,
+    val isRunningNetworkDiagnostic: Boolean = false,
+    val lastKnownGoodIp: LastKnownServerIp? = null,
+    val networkDiagnostics: NetworkDiagnostics? = null,
     val uiEvent: DeveloperMenuUiEvent? = null,
 )
 
@@ -253,7 +329,9 @@ sealed interface DeveloperMenuUiAction {
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction
+    data object RunNetworkDiagnostics : DeveloperMenuUiAction
     data object ClearAllData : DeveloperMenuUiAction
+    data object ForceLogout : DeveloperMenuUiAction
     data object TriggerTestCrash : DeveloperMenuUiAction
     data object ForceReconnectWebSocket : DeveloperMenuUiAction
     data object ToggleAllowTenBitVideo : DeveloperMenuUiAction

@@ -227,14 +227,12 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // Chat and Contacts power messaging.
 // See ADDING_ADDON_APPS.md §"Mandatory vs Optional Drives" for the full model.
 //
-// Profile drive intentionally omitted: owner display name / avatar are loaded via
-// the public unauthenticated `https://{odinId}/pub/profile` endpoint
-// (PublicProfileProviderCached), not through the drive sync engine. Adding
-// profileLabeledDrive here would start additional HTTP polling on every login for
-// content nothing currently reads — wire it in only when a feature actually needs
-// the profile drive synced into the local SQLDelight index.
+// Profile drive is synced like Chat/Contacts so the owner's standard-profile attributes
+// (fileType=77) are indexed locally and available offline (#1105). Display name / avatar
+// continue to come from the public `https://{odinId}/pub/profile` endpoint
+// (PublicProfileProviderCached) — that's a separate, cache-backed path.
 val mandatorySyncDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive /*, profileLabeledDrive */)
+    listOf(chatLabeledDrive, contactLabeledDrive, profileLabeledDrive)
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(

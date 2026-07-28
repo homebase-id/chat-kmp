@@ -14,6 +14,8 @@
  */
 package id.homebase.core
 
+import androidx.compose.foundation.ComposeFoundationFlags
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.window.ComposeUIViewController
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
@@ -163,9 +165,15 @@ fun initializeApp() {
     Logger.i(tag = "TextRendering") { "initializeApp() total: ${startMark.elapsedNow().inWholeMilliseconds}ms" }
 }
 
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, ExperimentalFoundationApi::class)
 fun MainViewController(): UIViewController {
     initializeApp()
+    // iOS routes the text context menu through the native selection toolbar, which renders only
+    // built-in actions (Cut/Copy/Paste/…) and silently drops custom appendTextContextMenuComponents
+    // items — so the "Paste image" composer item (#1046) never shows. This opt-in switches iOS to
+    // the new Compose context-menu implementation (iOS support is complete in CMP 1.10.3), which
+    // does render custom items. iOS-only: Android/desktop already render them without the flag.
+    ComposeFoundationFlags.isNewContextMenuEnabled = true
     // Promote AuthCC out of headless mode — this is the iOS analogue of
     // Android's MainActivity.onCreate: it fires only when SwiftUI actually
     // presents the UI (ContentView.body builds ComposeView, which calls
