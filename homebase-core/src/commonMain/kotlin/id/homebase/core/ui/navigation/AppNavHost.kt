@@ -1221,6 +1221,12 @@ fun AppNavHost(
                                     onEditGroup = {
                                         navController.navigate(Route.GroupEdit(it))
                                     },
+                                    // Same destination the 1:1 settings screen uses —
+                                    // ConversationMedia is keyed by conversationId only,
+                                    // so it needs no group-specific handling (#1157).
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
+                                    },
                                 )
                             }
                         }
