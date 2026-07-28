@@ -54,5 +54,18 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- Launch screen: the app logo centred on a plain white/black background that follows
+	     the system appearance, so a cold start is branded instead of a blank white window.
+	     Declared here rather than via INFOPLIST_KEY_UILaunchScreen_* build settings —
+	     _Generation = YES emits an empty UILaunchScreen dict and ignores its siblings. -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UILaunchScreenBackgroundColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchLogo</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<false/>
+	</dict>
 </dict>
 </plist>
