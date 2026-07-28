@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
@@ -22,6 +23,10 @@ class SettingsViewModel(
     private val shareCacheStorage: ShareCacheStorage,
     private val userPreferences: UserPreferences,
 ) : ViewModel() {
+
+    private companion object {
+        const val TAG = "Settings"
+    }
 
     private val _uiState = MutableStateFlow(
         SettingsUiState(useNativeFeed = userPreferences.useNativeFeed),
@@ -71,9 +76,11 @@ class SettingsViewModel(
             }
 
             SettingsUiAction.ProfileInfoClicked -> {
-                uiState.value.ownerSession?.let {
-                    sendEvent(SettingsUiEvent.OpenUrl("https://${it.odinId.domainName}/owner/profile/standard-info"))
-                }
+                sendEvent(SettingsUiEvent.NavigateToProfileEdit)
+            }
+
+            SettingsUiAction.AvatarClicked -> {
+                sendEvent(SettingsUiEvent.NavigateToProfileAvatarEdit)
             }
 
             SettingsUiAction.SecuritySetupClicked -> {
@@ -114,9 +121,16 @@ class SettingsViewModel(
         _uiState.update { it.copy(isLoggingOut = true) }
 
         viewModelScope.launch {
-            LoggerConfig.purgeLogs()
-            notificationService.deleteToken()
-            shareCacheStorage.clearConversationCache()
+            // Pre-steps are best-effort: a failing log purge or cache clear must not stop the
+            // actual logout below. Before this guard, a throw here left isLoggingOut stuck true,
+            // which permanently deadened the logout button for the rest of the process.
+            runCatching { LoggerConfig.purgeLogs() }
+                .onFailure { Logger.e(throwable = it, tag = TAG) { "purgeLogs failed" } }
+            runCatching { notificationService.deleteToken() }
+                .onFailure { Logger.e(throwable = it, tag = TAG) { "deleteToken failed" } }
+            runCatching { shareCacheStorage.clearConversationCache() }
+                .onFailure { Logger.e(throwable = it, tag = TAG) { "clearConversationCache failed" } }
+
             youAuthFlowManager.logout()
             sendEvent(SettingsUiEvent.LoggedOut)
         }

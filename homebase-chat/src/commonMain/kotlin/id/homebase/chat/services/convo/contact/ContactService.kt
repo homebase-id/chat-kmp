@@ -49,7 +49,7 @@ class ContactService(
                         connection == null -> ContactConnectionState.NotConnected
                         connection.status == ConnectionStatus.Blocked -> ContactConnectionState.Blocked
                         connection.status == ConnectionStatus.Connected -> ContactConnectionState.Connected
-                        connection.status == ConnectionStatus.Pending -> ContactConnectionState.Pending
+                        connection.status == ConnectionStatus.None -> ContactConnectionState.Pending
                         else -> ContactConnectionState.Unknown
                     }
 
@@ -66,15 +66,11 @@ class ContactService(
         }
     }
 
-    fun resolveByOdinId(odinId: OdinId): ContactUiModel? {
-        return contactByOdinId.value[odinId] ?: ContactUiModel(
-            id = odinId.toHashId(),
-            odinId = odinId,
-            name = odinId.domainName,
-            avatarInitials = "",
-            avatarUrl = "",
-            connection = null,
-            connectionState = ContactConnectionState.NotConnected
-        )
-    }
+    /**
+     * Resolves the saved contact for [odinId], or an identity-only fallback (domain name,
+     * domain-derived initials, canonical public-image URL) when none exists — never null,
+     * never blank avatar fields.
+     */
+    fun resolveByOdinId(odinId: OdinId): ContactUiModel =
+        contactByOdinId.value[odinId] ?: ContactUiModel.fallbackFor(odinId)
 }

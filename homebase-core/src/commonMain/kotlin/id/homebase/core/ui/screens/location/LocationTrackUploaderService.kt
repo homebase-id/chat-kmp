@@ -22,6 +22,7 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.upload.PayloadBundle
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.deviceDisplayName
 import id.homebase.core.location.tracking.devicePlatform
@@ -38,9 +39,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -80,6 +83,17 @@ class LocationTrackUploaderService(
     private val powerSaveMode: () -> Boolean = { false },
     /** App in the foreground? Wired in DI to the coordinator. Defaults true (always upload). */
     private val isAppForeground: () -> Boolean = { true },
+    /**
+     * Kick an outbox drain that works even without the websocket — wired in DI to
+     * `OutboxSync.send(force = true)` (#987). Called after a flush that actually enqueued.
+     * Rationale: every background wake that produces points (push, Android PendingIntent
+     * batches into a cold process, iOS SLC relaunch) funnels through [flush], but in those
+     * wakes the WS never connects, so the normal enqueue kick declines offline and the
+     * hour-file would strand until the next foreground connect. When online this is
+     * equivalent to the normal kick. Cost when genuinely offline: one fast-failing POST
+     * per flush, bounded by the 60s rate-gate + normal backoff.
+     */
+    private val drainNow: suspend () -> Unit = {},
 ) {
     private val logger = Logger.withTag(TAG)
     private val driveId = locationLabeledDrive.drive.alias
@@ -89,6 +103,10 @@ class LocationTrackUploaderService(
     private var lastFlushAttemptMs = 0L
     private var observerStarted = false
     private var deviceProfileEnsured = false
+    // One in-flight "wait for the drive to mount, then re-flush" waiter at a time. Set under
+    // flushMutex, cleared by the waiter itself. A benign re-arm race (the waiter clears it just as
+    // a fresh skip sets it) at worst launches a second idempotent waiter — not worth a lock.
+    private var awaitingMount = false
 
     private val _lastFlushTime = MutableStateFlow<Long?>(null)
     val lastFlushTime: StateFlow<Long?> = _lastFlushTime.asStateFlow()
@@ -117,10 +135,23 @@ class LocationTrackUploaderService(
         deviceProfileEnsured = false
     }
 
-    /** Rate-gated flush — the entry point for tickers and background batch wakes. */
-    suspend fun flushIfDue() {
+    /**
+     * Rate-gated flush — the entry point for tickers and background batch wakes.
+     *
+     * [reason] is log-only (#988): a one-shot capture reason (e.g. PushReceived) promotes the
+     * skip-gate lines to Info so a dropped push-capture upload is diagnosable from the log,
+     * while the steady-state tracker/ticker path (null) keeps them at debug — this method runs
+     * on every persisted point batch, so unconditional Info would spam.
+     */
+    suspend fun flushIfDue(reason: GpsRequestReason? = null) {
         val now = nowMs()
-        if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) return
+        if (now - lastFlushAttemptMs < MIN_FLUSH_INTERVAL_MS) {
+            logSkip(reason) {
+                "flushIfDue(${reason ?: "periodic"}): rate-gated " +
+                    "(nextEligibleInMs=${MIN_FLUSH_INTERVAL_MS - (now - lastFlushAttemptMs)})"
+            }
+            return
+        }
         val powerSave = powerSaveMode()
         val foreground = isAppForeground()
         // Battery saver + backgrounded → defer uploads to save power; local capture still persists
@@ -134,23 +165,38 @@ class LocationTrackUploaderService(
             false
         }
         if (shouldDeferBackgroundFlush(powerSave, foreground, hasStaleBacklog)) {
-            logger.d { "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms un-uploaded backlog" }
+            logSkip(reason) {
+                "Flush deferred: battery saver on + backgrounded, no >${STALE_BACKLOG_MS}ms " +
+                    "un-uploaded backlog (reason=${reason ?: "periodic"})"
+            }
             return
         }
-        flush()
+        flush(reason)
     }
 
-    suspend fun flush() {
+    /** Info for one-shot (push) triggered flushes, debug for the steady-state path (#988). */
+    private inline fun logSkip(reason: GpsRequestReason?, crossinline message: () -> String) {
+        if (reason != null) logger.i { message() } else logger.d { message() }
+    }
+
+    suspend fun flush(reason: GpsRequestReason? = null) {
         flushMutex.withLock {
             val now = nowMs()
             lastFlushAttemptMs = now
             if (!optionalDriveActivation.isActivated(locationLabeledDrive)) {
-                logger.d { "Flush skipped: Location add-on not activated (drive not mounted)" }
+                logSkip(reason) { "Flush skipped: Location add-on not activated (drive not mounted) reason=${reason ?: "periodic"}" }
+                // iOS-only race: a cold background wake (SLC relaunch / emergency-locate push) routes
+                // its GPS fix ~300ms BEFORE the drive-mount pipeline finishes, so this flush loses to
+                // the mount and — with the foreground-only ticker stopped — nothing retries and the
+                // point strands until the next foreground session. (Android's process stays warm, so
+                // its drive is already mounted and it never hits this.) Re-flush the instant the drive
+                // mounts. Harmless on Android/foreground: isActivated is already true, so we never arm.
+                armFlushOnMount(reason)
                 return
             }
             if (credentialsManager.getActiveCredentials() == null) {
                 // Logged out / not yet logged in: points stay buffered.
-                logger.d { "Flush skipped: no active credentials — points stay buffered" }
+                logSkip(reason) { "Flush skipped: no active credentials — points stay buffered reason=${reason ?: "periodic"}" }
                 return
             }
             val hours = runCatching { buffer.selectPendingHours() }
@@ -172,25 +218,68 @@ class LocationTrackUploaderService(
                 // viewer devices (desktop/web) never reach this branch.
                 runCatching { ensureDeviceProfile() }
                     .onFailure { logger.e(it) { "ensureDeviceProfile failed" } }
-                logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize" }
+                logger.d { "Flush: ${hours.size} pending hour(s), ${finalizeHours.size} closed to finalize reason=${reason ?: "periodic"}" }
             }
+            val outcomes = ArrayList<HourFlushOutcome>(hours.size + finalizeHours.size)
             for (hourBucket in hours + finalizeHours) {
                 runCatching { flushHour(hourBucket * HOUR_MS) }
+                    .onSuccess { outcomes.add(it) }
                     .onFailure { logger.e(it) { "flushHour($hourBucket) failed" } }
+            }
+            if (shouldKickDrain(outcomes)) {
+                // Drain even without the websocket (#987): background wakes (push,
+                // PendingIntent batch, SLC relaunch) never connect the WS, so the normal
+                // enqueue kick declines offline and the row would strand until the next
+                // foreground connect. Equivalent to the normal kick when online.
+                // Refused hours kick too — see [shouldKickDrain].
+                runCatching { drainNow() }
+                    .onFailure { logger.w(it) { "drainNow failed after flush" } }
             }
             refreshPendingCount()
         }
     }
 
-    private suspend fun flushHour(hourStartMs: Long) {
+    /**
+     * Re-flush once the Location drive mounts, bounded by [MOUNT_WAIT_MS]. Closes the cold-wake
+     * race where a fix's flush ran before the mount pipeline finished (see the call site). The wait
+     * is a suspended coroutine on the app scope — it costs nothing while idle and is cancelled with
+     * the scope if the wake ends first (iOS suspends the process); the flush re-checks activation and
+     * credentials, so a spurious late mount can't upload for a logged-out identity.
+     */
+    private fun armFlushOnMount(reason: GpsRequestReason?) {
+        if (awaitingMount) return
+        awaitingMount = true
+        scope.launch {
+            try {
+                val mounted = withTimeoutOrNull(MOUNT_WAIT_MS) {
+                    optionalDriveActivation.isActivatedFlow(locationLabeledDrive).first { it }
+                }
+                if (mounted == true) {
+                    logger.i { "Location drive mounted — re-flushing buffered points reason=${reason ?: "periodic"}" }
+                    flush(reason)
+                }
+            } finally {
+                awaitingMount = false
+            }
+        }
+    }
+
+    private suspend fun flushHour(hourStartMs: Long): HourFlushOutcome {
         val points = buffer.selectByTimeRange(hourStartMs, hourStartMs + HOUR_MS)
-        if (points.isEmpty()) return
+        if (points.isEmpty()) return HourFlushOutcome.NoRows
 
         val uid = locationHourFileUid(deviceId.value, hourStartMs)
         val (headerJson, stored) = LocationTrackCodec.encodeHeader(deviceId.value, hourStartMs, points)
         val overflow = stored.size < points.size
 
-        val existing = findExistingFile(uid)
+        // Only treat the file as updatable when it carries a usable versionTag. A local index row
+        // can exist for an hour whose CREATE never landed server-side (offline): it has no
+        // versionTag until the server assigns one on a successful create. Updating such a file
+        // would send a null tag → 400 MissingVersionTag → outbox drop → re-flush into the same
+        // failing update forever (#1077). Nulling it here routes to create (coalesces via
+        // replace=true; self-heals to an update via DriveOutboxUploader.retryAsUpdate if it does
+        // exist server-side).
+        val existing = findExistingFile(uid)?.takeIf { isUsableVersionTag(it.fileMetadata.versionTag) }
         val enqueued = if (existing == null) {
             enqueueCreate(uid, hourStartMs, headerJson, if (overflow) points else null)
         } else {
@@ -213,6 +302,7 @@ class LocationTrackUploaderService(
                     "mode=${if (existing == null) "create" else "update"} — rows stay buffered, will retry"
             }
         }
+        return if (enqueued) HourFlushOutcome.Enqueued else HourFlushOutcome.Refused
     }
 
     /**
@@ -342,6 +432,7 @@ class LocationTrackUploaderService(
                     replace = true,
                     originalRecipientCount = 0,
                     seedCache = false,
+                    priority = LOCATION_UPLOAD_PRIORITY,
                 ),
                 scope = scope,
             )
@@ -387,6 +478,7 @@ class LocationTrackUploaderService(
                     bundle = bundle,
                     metadata = unencryptedMetadata,
                     replace = true,
+                    priority = LOCATION_UPLOAD_PRIORITY,
                 ),
                 scope = scope,
             )
@@ -474,7 +566,16 @@ class LocationTrackUploaderService(
     }
 
     private companion object {
+        /** Outbox priority for hour-files: 0 outranks chat/moments (1) — an emergency-locate
+         *  point must never queue behind a media upload during a short push wake (#987).
+         *  Outbox checkout is ORDER BY priority ASC. */
+        const val LOCATION_UPLOAD_PRIORITY = 0L
+
         const val MIN_FLUSH_INTERVAL_MS = 60_000L
+
+        /** Upper bound on the post-skip wait for the drive to mount (~300ms in practice). */
+        const val MOUNT_WAIT_MS = 15_000L
+
         const val RETENTION_MS = 7L * 24 * HOUR_MS
         const val DAY_MS = 24 * HOUR_MS
 
@@ -493,6 +594,40 @@ internal fun shouldDeferBackgroundFlush(
     appForeground: Boolean,
     hasStaleUnuploaded: Boolean,
 ): Boolean = powerSaveMode && !appForeground && !hasStaleUnuploaded
+
+/** Outcome of flushing one hour bucket — the input to [shouldKickDrain]. */
+internal enum class HourFlushOutcome {
+    /** Handed to the outbox (created or update-coalesced). */
+    Enqueued,
+
+    /** The outbox declined the enqueue (e.g. replaceEnqueue's WouldStrandCreate guard) —
+     *  a pending row already in the outbox blocks this hour; rows stay buffered. */
+    Refused,
+
+    /** No rows for the hour (raced away between the hour scan and the flush). */
+    NoRows,
+}
+
+/**
+ * Whether [LocationTrackUploaderService.flush] should kick the forced outbox drain (#987).
+ * Enqueued is the obvious case. Refused kicks too: a refusal means a pending row is ALREADY
+ * sitting in the outbox blocking this hour (e.g. an un-sent create that an update may not
+ * replace) — and that blocking row is exactly what a forced drain sends. On a background wake
+ * with no push (iOS SLC relaunch, Android PendingIntent cold start) nothing else kicks the
+ * outbox, so gating the drain on Enqueued alone strands the blocking row until the next
+ * foreground connect — the #1018 production pileup ("refusing to replace a pending
+ * UploadNewFile" every few minutes for 16h). Cost of the extra kick is the same bounded
+ * fast-failing attempt as the Enqueued case. Pure for unit testing.
+ */
+internal fun shouldKickDrain(outcomes: List<HourFlushOutcome>): Boolean =
+    outcomes.any { it == HourFlushOutcome.Enqueued || it == HourFlushOutcome.Refused }
+
+/**
+ * Whether [tag] can back a file *update*: present and not the all-zero placeholder. A local index
+ * row whose CREATE never landed server-side carries no versionTag; updating it sends a null tag →
+ * 400 MissingVersionTag → a permanent-drop/re-flush loop (#1077). Such a file is routed to create.
+ */
+internal fun isUsableVersionTag(tag: Uuid?): Boolean = tag != null && tag != Uuid.NIL
 
 /** What an outbox event means for the location point buffer. */
 internal enum class BufferAction {

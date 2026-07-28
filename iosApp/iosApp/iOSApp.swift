@@ -53,6 +53,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
   }
 
   private func registerNotificationCategories() {
+      // Reply-from-notification is disabled until the flow is hardened and pushes show real
+      // content (#1048 / #859): the send can silently fail, and replying blind to the
+      // content-less "You have a new message" push is nonsensical. Flip to re-enable; the
+      // action stays defined (dormant).
+      let replyFromNotificationEnabled = false
+
       let replyAction = UNTextInputNotificationAction(
           identifier: "REPLY_ACTION",
           title: "Reply",
@@ -66,11 +72,23 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
       )
       let messageCategory = UNNotificationCategory(
           identifier: "MESSAGE_CATEGORY",
-          actions: [replyAction, markReadAction],
+          actions: replyFromNotificationEnabled ? [replyAction, markReadAction] : [markReadAction],
           intentIdentifiers: [],
           options: []
       )
-      UNUserNotificationCenter.current().setNotificationCategories([messageCategory])
+      // Reply-only category for content-less pushes ("You have a new message"
+      // placeholder) — no Mark as Read when there's nothing to read (#983).
+      // The extension picks between the two categories. With reply disabled this
+      // carries no actions.
+      let messageNoContentCategory = UNNotificationCategory(
+          identifier: "MESSAGE_NO_CONTENT_CATEGORY",
+          actions: replyFromNotificationEnabled ? [replyAction] : [],
+          intentIdentifiers: [],
+          options: []
+      )
+      UNUserNotificationCenter.current().setNotificationCategories(
+          [messageCategory, messageNoContentCategory]
+      )
   }
 
   // Present notifications while the app is in the foreground
@@ -181,6 +199,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           guard let key = k as? String, key != "aps" else { continue }
           if let str = v as? String { data[key] = str }
       }
+      // Hop 1 of the push→capture chain (#988) — lands in homebase.log via the exported
+      // Kotlin bridge (Kermit is up: initializeApp ran in didFinishLaunching). appState
+      // raw values: 0=active, 1=inactive, 2=background. The delegate runs on the main
+      // thread, so reading applicationState here is legal.
+      PushChainLoggingKt.logPushChain(
+          hop: "received(ios)",
+          detail: "appState=\(application.applicationState.rawValue) hasAps=\(aps != nil) dataKeys=\(data.count)")
       let entry = NotificationEntry.companion.fromKoin()
       entry.onPushArrivedAsync(title: title, body: body, data: data) { success in
           completionHandler(success == true ? .newData : .failed)

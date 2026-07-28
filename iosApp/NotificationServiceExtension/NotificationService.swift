@@ -1,6 +1,7 @@
 import UserNotifications
 import Intents
 import FirebaseCore
+import os
 #if canImport(HomebaseNotifKit)
 import HomebaseNotifKit
 #endif
@@ -21,6 +22,14 @@ class NotificationService: UNNotificationServiceExtension {
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()
         }
+
+        // Push-chain breadcrumb (#988), Console.app-only by design: the NSE is a separate
+        // process — Kermit/homebase.log is not initialized here and two-process writes to
+        // the rolling log file are unsafe. The NSE only decorates the visible notification;
+        // the capture chain (onPushArrived → forceCapture → upload) runs in the main app's
+        // didReceiveRemoteNotification, whose hops DO land in homebase.log.
+        os_log("NSE didReceive: mutable-content push arrived (dataKeys=%d)",
+               (request.content.userInfo.count))
 
         self.contentHandler = contentHandler
         bestAttemptContent = request.content.mutableCopy() as? UNMutableNotificationContent
@@ -65,10 +74,13 @@ class NotificationService: UNNotificationServiceExtension {
         )
         content.sound = .default
 
-        // Group by conversation for chat notifications
+        // Group by conversation for chat notifications. Content-less pushes get the
+        // Reply-only category — no Mark as Read when there's nothing to read (#983).
         if isChatNotification(appId: appId) {
             content.threadIdentifier = typeId
-            content.categoryIdentifier = "MESSAGE_CATEGORY"
+            content.categoryIdentifier = hasRealContent(unEncryptedMessage)
+                ? "MESSAGE_CATEGORY"
+                : "MESSAGE_NO_CONTENT_CATEGORY"
         }
 
         // Fetch sender avatar and apply Communication style
@@ -234,6 +246,16 @@ class NotificationService: UNNotificationServiceExtension {
 
     private func isChatNotification(appId: String) -> Bool {
         [Self.chatAppId, Self.chatAppIdUuid, Self.mailAppId, Self.communityAppId].contains(appId)
+    }
+
+    /// Sender-side placeholder body for chat pushes — not real content. Keep in
+    /// sync with `CONTENTLESS_PLACEHOLDER` in the shared NotificationService.kt.
+    private static let contentlessPlaceholder = "You have a new message"
+
+    /// Mirrors the `hasContent` test in the shared NotificationService.kt.
+    private func hasRealContent(_ unEncryptedMessage: String?) -> Bool {
+        guard let message = unEncryptedMessage, !message.isEmpty else { return false }
+        return message != Self.contentlessPlaceholder
     }
 
     private func formatBody(

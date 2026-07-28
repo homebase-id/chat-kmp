@@ -12,12 +12,13 @@ import kotlin.uuid.Uuid
 enum class ContactTab { CONTACTS, CIRCLES }
 
 /**
- * People-list pill: everyone, or connections that haven't been explicitly confirmed yet
- * (auto-connected, introduced-but-not-confirmed, or a plain direct connection never confirmed).
+ * People-list pill: everyone, connections that haven't been explicitly confirmed yet
+ * (auto-connected, introduced-but-not-confirmed, or a plain direct connection never confirmed),
+ * or connections that have been explicitly confirmed (server-computed `vetted` flag).
  * Pending connection requests are no longer a pill — they surface as a section at the top of
  * the list instead (see [ContactBookUiState.requests]).
  */
-enum class ContactFilter { ALL, UNVETTED }
+enum class ContactFilter { ALL, UNVETTED, VETTED }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -42,10 +43,39 @@ data class PendingRequestEntry(
 /** Members of one circle, shown in a sheet/dialog. */
 @Immutable
 data class CircleMembersUi(
+    val circleId: String,
     val circleName: String,
+    /** Whether this circle's membership can be managed here — false for the system-managed
+     *  Confirmed/Auto-connected circles (see [id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID]
+     *  / [id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID]), which are computed by the vetting
+     *  flow rather than manually curated. */
+    val manageable: Boolean = true,
     val members: List<ContactBookEntry> = emptyList(),
     val isLoading: Boolean = true,
+    /**
+     * Contacts whose grant on this circle is still a sealed deposit rather than a real [members]
+     * entry — live-read via a per-contact `/connections/status` fan-out triggered when the sheet
+     * opens (there is no bulk "list pending" endpoint), never cached across app restarts.
+     */
+    val pendingMembers: List<ContactBookEntry> = emptyList(),
+    /** True while the open-triggered pending-status fan-out is in flight. */
+    val pendingChecking: Boolean = false,
+    /** uniqueIds currently being removed — drives a per-row spinner in place of the remove "X"
+     *  so a tap has visible feedback while the call is in flight. */
+    val removingMemberIds: Set<Uuid> = emptySet(),
+    /** Drives this circle grants access to — sourced synchronously from the circle definition
+     *  already loaded with [members], no extra network call. */
+    val drives: List<CircleDriveUi> = emptyList(),
+    /** Set when this sheet is opened "from one contact's perspective" (contact detail) — that
+     *  contact's own status in this circle, shown as a header line. Null when opened from the
+     *  Circles tab, where there's no single "viewer" contact. */
+    val viewerStatus: CircleMemberStatus? = null,
+    /** uniqueId of the [viewerStatus] contact — excluded from the rendered "who else is in this
+     *  circle" roster so the viewer's own row (already summarized in the header) isn't repeated. */
+    val viewerContactId: Uuid? = null,
 )
+
+enum class CircleMemberStatus { Member, Pending }
 
 /** A sheet/dialog shown over the contact list. (Detail is a full-screen route now.) */
 sealed interface ContactBookOverlay {
@@ -99,13 +129,13 @@ data class ContactBookUiState(
     val connectedOdinIds: Set<String> = emptySet(),
     /** Unvetted filter: connected but not confirmed (server-computed `vetted` flag is false). */
     val unvetted: List<ContactBookEntry> = emptyList(),
+    /** Vetted filter: connected AND confirmed (server-computed `vetted` flag is true). */
+    val vetted: List<ContactBookEntry> = emptyList(),
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
     /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
-    /** Lowercased contact-domain → introducer display name, for the "Introduced by" row line. */
-    val introducedByDomain: Map<String, String> = emptyMap(),
     /** Circles tab. */
     val circles: List<CircleWithMembers> = emptyList(),
     val circlesLoading: Boolean = false,
@@ -128,6 +158,13 @@ sealed interface ContactBookUiAction {
     data class TabSelected(val tab: ContactTab) : ContactBookUiAction
     data class CircleClicked(val circle: CircleWithMembers) : ContactBookUiAction
     data object CircleMembersDismiss : ContactBookUiAction
+    /** "Add member" tapped in the circle-members sheet — opens the picker for this circle. */
+    data class CircleAddMemberClicked(val circleId: String, val circleName: String) : ContactBookUiAction
+    /** Revoke [member]'s membership (real or still-pending) in the circle [circleId]. */
+    data class CircleRemoveMemberClicked(
+        val circleId: String,
+        val member: ContactBookEntry,
+    ) : ContactBookUiAction
     data class SearchChanged(val query: String) : ContactBookUiAction
     data class FilterChanged(val filter: ContactFilter) : ContactBookUiAction
     data class ContactClicked(val entry: ContactBookEntry) : ContactBookUiAction
@@ -157,6 +194,8 @@ sealed interface ContactBookUiEvent {
     data class OpenDetail(val uniqueId: String, val odinId: String?) : ContactBookUiEvent
     /** Open the full-screen Add Contact flow (lead-with-Homebase-ID). */
     data object OpenAddContact : ContactBookUiEvent
+    /** Open the generic circle-member picker for [circleId]/[circleName]. */
+    data class OpenCircleMemberAdd(val circleId: String, val circleName: String) : ContactBookUiEvent
     data class Error(val error: ContactBookError) : ContactBookUiEvent
     /** User skipped onboarding — pop back out of the contacts tab. */
     data object CloseOnboarding : ContactBookUiEvent
@@ -169,4 +208,5 @@ enum class ContactBookError {
     PhotoFailed,
     MessageFailed,
     ClearUnsupported,
+    CircleActionFailed,
 }

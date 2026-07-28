@@ -13,8 +13,10 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.crypto.Md5
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.collectConversationOverview
 import id.homebase.chat.services.ChatMessageStream
@@ -30,18 +32,24 @@ import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.contactbook.ContactOverrideStore
-import id.homebase.core.contactbook.clearICanLocate
+import id.homebase.core.contactbook.ReconcileAction
+import id.homebase.core.contactbook.reconcileAction
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
+import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
+import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
+import id.homebase.core.ui.screens.contactbook.resolveCircleDrives
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
 import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.withOverride
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +87,27 @@ class ContactDetailViewModel(
 
     /** (uniqueId, versionTag) we last fetched ext_data for, to avoid re-fetching unchanged. */
     private var extLoadedFor: Pair<Uuid, Uuid?>? = null
+
+    /** Live-read circle ids this contact has as a pending deposit — see [refreshPendingCircles]. */
+    private val _pendingCircleIds = MutableStateFlow<Set<String>>(emptySet())
+
+    /** domain we last fetched pending circles for, so the init collector only triggers a fresh
+     *  network read once per contact rather than on every combine emission. */
+    private var pendingCirclesLoadedFor: String? = null
+    private var pendingCirclesJob: Job? = null
+    private var circleDetailPendingJob: Job? = null
+
+    /** Bumped on every [refreshPendingCircles] call; a stale fan-out's tail checks its captured
+     *  generation before writing [_pendingCircleIds] so a slow call for a previous contact can't
+     *  land after a fresher one and overwrite it with the wrong domain's data — cancel() on the
+     *  superseded job is only cooperative, not immediate. */
+    private var pendingCirclesGeneration = 0
+
+    /** Latest circle-membership snapshot + contact list, cached from the init collector so
+     *  [onCircleClicked]/[refreshPendingCircles] can build the circle-detail dialog without
+     *  re-subscribing to the flows themselves. */
+    private var latestCirc: id.homebase.chat.services.convo.contact.CircleMembershipState? = null
+    private var latestContacts: List<ContactBookEntry> = emptyList()
 
     /**
      * Fetches the on-demand `ext_data` payload (Experience / Bio rich-text) once per contact version
@@ -145,10 +174,14 @@ class ContactDetailViewModel(
                     DetailBundle(contacts, conn, circ, incoming, outgoing)
                 },
                 overrideStore.overrides,
-            ) { bundle, overrides -> bundle to overrides }.collect { (bundle, overrides) ->
+                _pendingCircleIds,
+            ) { bundle, overrides, pendingCircleIds -> Triple(bundle, overrides, pendingCircleIds) }
+                .collect { (bundle, overrides, pendingCircleIds) ->
                 val contacts = bundle.contacts
                 val conn = bundle.conn
                 val circ = bundle.circ
+                latestCirc = circ
+                latestContacts = contacts
                 val synced = contacts.find { it.uniqueId.toString() == route.uniqueId }
                     ?: syntheticEntry()
                 syncedEntry = synced
@@ -163,10 +196,20 @@ class ContactDetailViewModel(
                 val entry = synced?.withOverride(overrides[synced.uniqueId])
                 val domain = entry?.odinId
                 val isSelf = selfDomain != null && domain?.equals(selfDomain, ignoreCase = true) == true
-                val status = domain?.let { d ->
-                    conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }
-                        ?.value?.status
+                val registration = domain?.let { d ->
+                    conn.map.entries.firstOrNull { it.key.domainName.equals(d, ignoreCase = true) }?.value
                 }
+                val status = registration?.status
+                // Resolved to a saved contact's name when we have one, else the raw introducer domain.
+                val introducedByName = registration
+                    ?.takeIf {
+                        it.connectionRequestOrigin == ConnectionRequestOrigin.Introduction &&
+                            it.introducerOdinId != null
+                    }
+                    ?.introducerOdinId?.domainName?.let { introducer ->
+                        contacts.firstOrNull { it.odinId.equals(introducer, ignoreCase = true) }
+                            ?.displayName ?: introducer
+                    }
                 val requestDirection = domain?.let { d ->
                     when {
                         bundle.incoming.any { it.senderOdinId.domainName.equals(d, ignoreCase = true) } ->
@@ -177,28 +220,39 @@ class ContactDetailViewModel(
                     }
                 }
                 // User-defined circles only — the Confirmed/Auto system circles are surfaced
-                // through the connection status, not as chips.
-                val circleNames = domain?.let { d ->
-                    circ.circlesFor(d)
-                        .filterNot { it.disabled }
-                        .filterNot {
-                            it.id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
-                                it.id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
-                        }
-                        .map { it.name }
-                        .filter { it.isNotBlank() }
-                        .distinct()
-                        .sorted()
-                }.orEmpty()
+                // through the connection status, not as chips. Real membership is reactive
+                // (circ.circlesFor); pending membership is a live-read snapshot (pendingCircleIds,
+                // refreshed by refreshPendingCircles) merged in here, since there's no bulk
+                // "list this contact's pending circles" endpoint to observe reactively.
+                fun isSystemCircle(id: String) = id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
+                    id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
+                val realCircles = domain?.let { d -> circ.circlesFor(d) }.orEmpty()
+                    .filterNot { it.disabled || isSystemCircle(it.id) }
+                val realIds = realCircles.map { it.id.lowercase() }.toSet()
+                val pendingCircles = pendingCircleIds
+                    .mapNotNull { pid -> circ.circles.map { it.circle }.firstOrNull { it.id.equals(pid, ignoreCase = true) } }
+                    .filterNot { it.disabled || isSystemCircle(it.id) || it.id.lowercase() in realIds }
+                val circleItems = (
+                    realCircles.map { ContactCircleUi(it.id, it.name, pending = false) } +
+                        pendingCircles.map { ContactCircleUi(it.id, it.name, pending = true) }
+                    )
+                    .filter { it.name.isNotBlank() }
+                    .distinctBy { it.id.lowercase() }
+                    .sortedBy { it.name.lowercase() }
                 _uiState.update {
                     it.copy(
                         entry = entry,
                         connectionStatus = status,
-                        circles = circleNames,
+                        circles = circleItems,
                         isLoading = false,
                         isSelf = isSelf,
                         requestDirection = requestDirection,
+                        introducedByName = introducedByName,
                     )
+                }
+                if (domain != null && pendingCirclesLoadedFor != domain) {
+                    pendingCirclesLoadedFor = domain
+                    refreshPendingCircles()
                 }
             }
         }
@@ -217,6 +271,152 @@ class ContactDetailViewModel(
             source = ContactBookSource.CONNECTION,
         )
     }
+
+    // region Circles
+
+    /**
+     * Live re-check of this contact's pending circles — always re-derives from the server
+     * (never relies on [connectionService].circles re-emitting, which StateFlow silently skips
+     * when a pending-only change doesn't alter the real member list; see ContactBookViewModel's
+     * refreshOpenCircle for the same lesson, #1096). Called once per contact from the init
+     * collector, and again on screen resume via [id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen]'s
+     * lifecycle observer. Also re-checks the open circle-detail dialog's own "who else" pending
+     * roster, if one is open.
+     */
+    fun refreshPendingCircles() {
+        val domain = odinId
+        if (domain != null) {
+            pendingCirclesJob?.cancel()
+            val generation = ++pendingCirclesGeneration
+            pendingCirclesJob = viewModelScope.launch {
+                val pending = try {
+                    connectionService.findPendingCircles(OdinId(domain))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(e, TAG) { "findPendingCircles failed for $domain" }
+                    emptyList()
+                }
+                if (generation == pendingCirclesGeneration) {
+                    _pendingCircleIds.value = pending.map { it.toHexString() }.toSet()
+                }
+            }
+        }
+        val open = _uiState.value.circleDetail ?: return
+        val match = latestCirc?.circles?.firstOrNull { it.circle.id.equals(open.circleId, ignoreCase = true) }
+            ?: return
+        checkCircleDetailPending(match)
+    }
+
+    /** Opens the circle-detail dialog for [circleId] — real members synchronously (already
+     *  bundled with the loaded circle list), then an async pending-roster fan-out. Always
+     *  view-only from this screen (manageable = false): circle membership is managed from the
+     *  Circles tab, not from a contact's page. */
+    fun onCircleClicked(circleId: String) {
+        val circ = latestCirc ?: return
+        val match = circ.circles.firstOrNull { it.circle.id.equals(circleId, ignoreCase = true) } ?: return
+        val domain = odinId
+        val memberDomains = match.members.map { it.domainName }.toSet()
+        val members = resolveCircleContactEntries(memberDomains, latestContacts).sortedBy { it.sortKey }
+        val isRealMember = domain != null && memberDomains.any { it.equals(domain, ignoreCase = true) }
+        val viewerEntry = domain?.let { d -> latestContacts.firstOrNull { it.odinId.equals(d, ignoreCase = true) } }
+            ?: syncedEntry
+        _uiState.update {
+            it.copy(
+                circleDetail = CircleMembersUi(
+                    circleId = match.circle.id,
+                    circleName = match.circle.name,
+                    manageable = false,
+                    members = members,
+                    isLoading = false,
+                    pendingChecking = true,
+                    drives = resolveCircleDrives(match.circle),
+                    viewerStatus = if (isRealMember) CircleMemberStatus.Member else CircleMemberStatus.Pending,
+                    viewerContactId = viewerEntry?.uniqueId,
+                ),
+            )
+        }
+        checkCircleDetailPending(match)
+    }
+
+    private fun checkCircleDetailPending(circle: id.homebase.api.client.connections.CircleWithMembers) {
+        circleDetailPendingJob?.cancel()
+        val domain = odinId
+        circleDetailPendingJob = viewModelScope.launch {
+            val circleId = try {
+                Uuid.parseHex(circle.circle.id)
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "bad circle id ${circle.circle.id}" }
+                _uiState.update { it.copy(circleDetail = it.circleDetail?.copy(pendingChecking = false)) }
+                return@launch
+            }
+            val pending = try {
+                connectionService.findPendingMembers(circleId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "findPendingMembers failed for ${circle.circle.id}" }
+                emptyList()
+            }
+            val pendingEntries = resolveCircleContactEntries(
+                pending.map { it.domainName }.toSet(),
+                latestContacts,
+            ).sortedBy { it.sortKey }
+            // The viewer's own status was frozen at dialog-open time (onCircleClicked) — recompute
+            // it from this fresh read so a pending grant that converts to real membership (or vice
+            // versa) between opens is reflected instead of showing a stale "Pending"/"Member" label.
+            val isRealMember = domain != null && circle.members.any { it.domainName.equals(domain, ignoreCase = true) }
+            val isPendingMember = domain != null && pending.any { it.domainName.equals(domain, ignoreCase = true) }
+            // Re-excludes against the CURRENT members at update time, not the snapshot this
+            // fan-out started from — cancel() on the superseded job is cooperative, so a stale
+            // fan-out already past its last suspension point can still land its update after a
+            // fresher one already promoted someone from pending to real, putting them in both
+            // lists at once and crashing CircleMembersSheet's keyed LazyColumn.
+            _uiState.update {
+                val current = it.circleDetail
+                if (current?.circleId == circle.circle.id) {
+                    val deduped = pendingEntries.filterNot { p -> current.members.any { m -> m.uniqueId == p.uniqueId } }
+                    it.copy(
+                        circleDetail = current.copy(
+                            pendingMembers = deduped,
+                            pendingChecking = false,
+                            viewerStatus = when {
+                                isRealMember -> CircleMemberStatus.Member
+                                isPendingMember -> CircleMemberStatus.Pending
+                                else -> current.viewerStatus
+                            },
+                        ),
+                    )
+                } else it
+            }
+        }
+    }
+
+    fun onCircleDetailDismiss() {
+        _uiState.update { it.copy(circleDetail = null) }
+    }
+
+    private fun resolveCircleContactEntries(
+        domains: Set<String>,
+        contacts: List<ContactBookEntry>,
+    ): List<ContactBookEntry> {
+        val byOdin = contacts.filter { !it.odinId.isNullOrBlank() }.associateBy { it.odinId!!.lowercase() }
+        return domains.map { domain -> byOdin[domain.lowercase()] ?: syntheticCircleContactEntry(domain) }
+    }
+
+    private fun syntheticCircleContactEntry(domain: String): ContactBookEntry {
+        val uid = Md5.toGuidId(domain.lowercase())
+        return ContactBookEntry(
+            uniqueId = uid,
+            fileId = uid,
+            versionTag = null,
+            odinId = domain,
+            displayName = domain,
+            source = ContactBookSource.CONNECTION,
+        )
+    }
+
+    // endregion
 
     /** Loads media + groups-in-common ONLY when a 1:1 conversation already exists. */
     private fun loadConversationOverview() {
@@ -276,6 +476,11 @@ class ContactDetailViewModel(
             is ContactDetailAction.OpenGroup ->
                 _events.tryEmit(ContactDetailEvent.OpenConversation(action.conversationId))
             ContactDetailAction.BackClicked -> _events.tryEmit(ContactDetailEvent.Back)
+            is ContactDetailAction.CircleClicked -> onCircleClicked(action.circleId)
+            ContactDetailAction.CircleDetailDismiss -> onCircleDetailDismiss()
+            is ContactDetailAction.CircleMemberClicked -> _events.tryEmit(
+                ContactDetailEvent.OpenOtherContact(action.entry.uniqueId.toString(), action.entry.odinId)
+            )
         }
     }
 
@@ -337,18 +542,17 @@ class ContactDetailViewModel(
             // drive has no files yet — render "no data", not the epoch.
             val newest = status.newestFileModified.takeIf { it.milliseconds > 0 }
             _uiState.update { it.copy(locateNewestDataAt = newest) }
-            if (entry != null && versionTag != null && !entry.iCanLocate) {
+            if (entry != null && versionTag != null &&
+                reconcileAction(status.hasAccess, entry.iCanLocate) == ReconcileAction.Set
+            ) {
                 runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
                     .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
             }
         } else {
+            // Never clear the flag here (issue #961): hasAccess=false is not a trustworthy
+            // revocation — only the peer's explicit revocation message clears iCanLocate
+            // (EmergencyContactReceiveService.onRevoked). See reconcileAction.
             _uiState.update { it.copy(locateNewestDataAt = null) }
-            // A successful verify without a temporal grant is authoritative: clear a stale flag,
-            // mirroring EmergencyContactReconciler. Skip the write when the flag isn't set.
-            if (entry != null && versionTag != null && entry.iCanLocate) {
-                runCatching { contactRepository.clearICanLocate(entry.uniqueId, versionTag) }
-                    .onFailure { Logger.w(it, TAG) { "clearICanLocate failed for ${peer.domainName}" } }
-            }
         }
     }
 

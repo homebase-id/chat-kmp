@@ -84,6 +84,7 @@ kotlin {
             api(project(":homebase-api"))
             api(project(":homebase-notifshared"))
 
+            implementation(libs.atomicfu)
             implementation(libs.jetbrains.compose.runtime)
             implementation(libs.jetbrains.compose.foundation)
             implementation(libs.jetbrains.compose.resources)

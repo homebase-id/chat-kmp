@@ -1,10 +1,10 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -27,7 +27,8 @@ import org.jetbrains.compose.resources.stringResource
  * guards against accidental data loss (#891): when the user swipes the sheet
  * down, taps the scrim, presses back, or taps the close button **while there's
  * unsaved content**, it asks "Discard changes?" instead of throwing the draft
- * away. An empty composer dismisses immediately, with no prompt.
+ * away — keeping the sheet (and the draft) if the user cancels. An empty
+ * composer dismisses immediately, with no prompt.
  *
  * [content] reports whether it currently holds unsaved content through the
  * `reportUnsaved` callback, and routes its own close button through
@@ -47,21 +48,9 @@ internal fun GuardedComposerSheet(
     var hasUnsaved by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
 
-    // confirmValueChange rejects a swipe/scrim drag toward Hidden mid-gesture —
-    // the sheet snaps back (no flash to a half-dismissed state) and we pop the
-    // confirm dialog. onDismissRequest covers the predictive-back path, which
-    // does not always route through confirmValueChange.
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true,
-        confirmValueChange = { target ->
-            if (target == SheetValue.Hidden && hasUnsaved) {
-                showDiscardConfirm = true
-                false
-            } else {
-                true
-            }
-        },
-    )
+    // No confirmValueChange veto — rejecting Hidden mid-fling oscillates the
+    // sheet forever (#997); the unsaved guard lives in onDismissRequest instead.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val requestClose: () -> Unit = {
         if (hasUnsaved) showDiscardConfirm = true
@@ -71,25 +60,31 @@ internal fun GuardedComposerSheet(
     ModalBottomSheet(
         onDismissRequest = { if (hasUnsaved) showDiscardConfirm = true else onDismiss() },
         sheetState = sheetState,
+        // Zero insets: the defaults pad inside the draggable surface, so sheet
+        // height tracks sheet position and the anchors oscillate on fling (#997).
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
         content(sheetState, requestClose) { hasUnsaved = it }
     }
 
     if (showDiscardConfirm) {
+        // A swipe/scrim/back dismissal already settled Hidden — bring the sheet back.
+        val keepEditing: () -> Unit = {
+            showDiscardConfirm = false
+            scope.launch { sheetState.show() }
+        }
         AlertDialog(
-            onDismissRequest = { showDiscardConfirm = false },
+            onDismissRequest = keepEditing,
             title = { Text(stringResource(MR.string.composer_discard_title)) },
             text = { Text(stringResource(MR.string.composer_discard_message)) },
             confirmButton = {
-                // Discard: drop the sheet outright (the host removes it from
-                // composition) — no animated hide() to fight confirmValueChange.
                 TextButton(onClick = {
                     showDiscardConfirm = false
                     onDismiss()
                 }) { Text(stringResource(MR.string.composer_discard_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDiscardConfirm = false }) {
+                TextButton(onClick = keepEditing) {
                     Text(stringResource(MR.string.composer_discard_keep))
                 }
             },

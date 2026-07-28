@@ -13,19 +13,30 @@ import kotlin.uuid.Uuid
  * in-memory conversation list.
  *
  * Returns `null` when the message doesn't require a UI change (the
- * targeted conversation isn't in the list, or the message's
- * `userDate` is not strictly newer than the conversation's current
- * `latestMessageTimestamp`). Returns the new list otherwise.
+ * targeted conversation isn't in the list, or a re-emit of the current
+ * last message left every denormalised field unchanged). Returns the
+ * new list otherwise.
  *
- * The strict `>` (rather than `>=`) check is the guard against
- * reaction-driven re-emits. When someone reacts to a message, the
- * server pushes the modified message file (with the new
- * `reactionPreview` baked into the header) over the WS. That
- * re-emit has the SAME `userDate` as the original message
- * (`userDate` is the message's authored time — reactions don't
- * change it), so a `>=` check would incorrectly bump unread every
- * time anyone reacts. Strict `>` rejects re-emits and only accepts
- * messages with a newer `userDate` than the conversation has seen.
+ * Three cases on the message's `userDate` vs the conversation's current
+ * `latestMessageTimestamp`:
+ *
+ *  - **newer (`>`)** — a genuinely new last message. Advance the
+ *    timestamp, refresh the preview, and bump unread (non-self,
+ *    non-edit, non-status).
+ *  - **equal (`==`)** — a re-emit of the *current* last message
+ *    (soft-delete, delivery-status change, or reaction fan-out; a
+ *    reaction re-emit carries the original `userDate` because reactions
+ *    don't change authored time). Refresh the preview so a deletion
+ *    flips `lastMessageIsDeleted` and clears the stale text (#1023), but
+ *    **never** bump unread or advance the timestamp. A reaction echo
+ *    doesn't touch any conversation-level field, so it stays a no-op and
+ *    returns null.
+ *  - **older (`<`)** — not the last message; leave the preview and
+ *    unread untouched.
+ *
+ * The old code used a single strict `>` guard, which correctly rejected
+ * reaction echoes but also swallowed the same-`userDate` soft-delete
+ * re-emit, freezing the list preview on the pre-deletion text (#1023).
  *
  * Why this is its own function: the equivalent logic used to
  * delegate to [ConversationStream.updateConversation], which
@@ -70,39 +81,80 @@ internal fun applyIncomingMessageBump(
     val increment =
         if (!m.isEdited && !m.isAuthoredBy(activeDomain) && !m.isStatusMessage) 1 else 0
 
+    // Denormalised last-message preview fields, recomputed from `m`. Shared by
+    // the "new message" and "same-userDate re-emit" branches so the preview is
+    // identical whether a message first arrives or is later re-pushed
+    // (deletion / delivery-status / reaction).
+    fun ConversationUiModel.withPreviewOf() = copy(
+        lastMessage = m.content.truncateToCodePoints(40),
+        lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
+        lastMessageIsPendingSend = m.isPendingSend,
+        lastMessageIsDeleted = m.isDeleted,
+        lastMessageFirstPayload = m.payloads?.firstOrNull(),
+        lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
+        lastMessageContent = m.messageContent,
+        lastMessageIsFromActiveUser = m.isFromActiveUser(activeDomain),
+        lastMessageSender = m.originalAuthor,
+    )
+
     var didChange = false
     val updated = items.map { existing ->
         if (existing.id != targetConversationId) return@map existing
-        // Strict > so reaction-driven re-emits (which carry the same
-        // userDate as the original message) don't bump unread.
-        if (sqlUserDate <= existing.latestMessageTimestamp) return@map existing
-        didChange = true
-        val next = existing.copy(
-            unreadCount = existing.unreadCount + increment,
-            latestMessageTimestamp = sqlUserDate,
-            lastMessage = m.content.truncateToCodePoints(40),
-            lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
-            lastMessageIsDeleted = m.isDeleted,
-            lastMessageFirstPayload = m.payloads?.firstOrNull(),
-            lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
-            lastMessageContent = m.messageContent,
-            lastMessageIsFromActiveUser = m.isFromActiveUser(activeDomain),
-            lastMessageSender = m.originalAuthor,
-        )
-        // Diagnostic for the asymmetric-badge investigation (plan
-        // snazzy-frolicking-crown). Fires only when the strict-> check
-        // passes, so reaction re-emits stay silent. Pairs with the
-        // UnreadDiag lines in ConversationStream.enrichUnreadLocked
-        // and is what lets us distinguish hypotheses H1 (lastRead
-        // saturated) vs H2 (SQL excluded the row) on a real capture.
-        Logger.d(tag = "UnreadDiag") {
-            "bump convo=$targetConversationId sqlUserDateMs=${sqlUserDate.toEpochMilliseconds()} " +
-                "originalAuthor=${m.originalAuthor?.domainName ?: "null"} " +
-                "isAuthoredBy(self)=${m.isAuthoredBy(activeDomain)} " +
-                "isEdited=${m.isEdited} isStatusMessage=${m.isStatusMessage} " +
-                "increment=$increment unreadCount=${next.unreadCount}"
+
+        when {
+            // Strictly newer → a genuinely new last message. Advance the
+            // timestamp, refresh the preview and bump unread (for non-self,
+            // non-edit, non-status arrivals).
+            sqlUserDate > existing.latestMessageTimestamp -> {
+                didChange = true
+                val next = existing
+                    .copy(
+                        unreadCount = existing.unreadCount + increment,
+                        latestMessageTimestamp = sqlUserDate,
+                    )
+                    .withPreviewOf()
+                // Diagnostic for the asymmetric-badge investigation (plan
+                // snazzy-frolicking-crown). Fires only on a real bump, so
+                // re-emits stay silent. Pairs with the UnreadDiag lines in
+                // ConversationStream.enrichUnreadLocked and is what lets us
+                // distinguish hypotheses H1 (lastRead saturated) vs H2 (SQL
+                // excluded the row) on a real capture.
+                Logger.d(tag = "UnreadDiag") {
+                    "bump convo=$targetConversationId sqlUserDateMs=${sqlUserDate.toEpochMilliseconds()} " +
+                        "originalAuthor=${m.originalAuthor?.domainName ?: "null"} " +
+                        "isAuthoredBy(self)=${m.isAuthoredBy(activeDomain)} " +
+                        "isEdited=${m.isEdited} isStatusMessage=${m.isStatusMessage} " +
+                        "increment=$increment unreadCount=${next.unreadCount}"
+                }
+                next
+            }
+
+            // Same userDate as the current last message → a re-emit of THAT
+            // message (soft-delete, delivery-status change, or reaction
+            // fan-out — reactions don't advance userDate). Refresh the preview
+            // so a deletion flips lastMessageIsDeleted and clears the stale
+            // text (#1023), but never bump unread or advance the timestamp:
+            // that's exactly what the old strict `>` guard protected against
+            // for reaction echoes. A reaction echo carries an unchanged
+            // preview (reactionPreview isn't a conversation field), so it
+            // stays a no-op here and still returns null.
+            //
+            // ponytail: keyed on userDate equality, not message id — the
+            // conversation model doesn't denormalise the last message's id.
+            // Two distinct messages sharing the same millisecond would let an
+            // older re-emit overwrite the preview; astronomically rare in one
+            // thread and self-heals on the next message / cold-load. Add a
+            // lastMessageId field if it ever bites.
+            sqlUserDate == existing.latestMessageTimestamp -> {
+                val next = existing.withPreviewOf()
+                if (next != existing) didChange = true
+                next
+            }
+
+            // Older than the last message → not the last message; leave the
+            // preview and unread untouched.
+            else -> existing
         }
-        next
     }
     return if (didChange) updated else null
 }

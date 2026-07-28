@@ -17,6 +17,7 @@
     <string name="share">Del</string>
     <string name="ok">Ok</string>
     <string name="cancel">Annullér</string>
+    <string name="close">Luk</string>
     <string name="replying_to">Svar til %1$s</string>
     <string name="cancel_reply">Annullér svar</string>
     <string name="backspace">Backspace</string>
@@ -33,13 +34,62 @@
     <string name="details">Detaljer</string>
     <string name="you">Dig</string>
     <string name="recipients">Modtagere</string>
-    <string name="sent">Sendt</string>
-    <string name="connect">Forbind</string>
+    <string name="read_by">Læst af</string>
+    <string name="delivered_to">Leveret til</string>
+    <string name="sending_to">Sender til</string>
+    <string name="uploaded">Uploadet</string>
+    <string name="failed">Mislykkedes</string>
+    <string name="unknown_status">Andet</string>
     <string name="updated">Opdateret</string>
+    <string name="reactions">Reaktioner</string>
+    <string name="sent">Sendt</string>
+    <string name="label_sent">App sendte: %1$s</string>
+    <string name="label_received">Modtaget: %1$s</string>
+    <string name="msg_status_sending">Sender…</string>
+    <string name="msg_status_sent">Sendt: %1$s</string>
+    <string name="msg_status_failed_to_send">Kunne ikke sendes</string>
+    <string name="msg_status_delivery_details_unavailable">Leveringsdetaljer kunne ikke indlæses</string>
+    <string name="action_retry">Prøv igen</string>
+    <string name="msg_retry_media_unavailable">Vedhæftningen er ikke længere tilgængelig — den kan ikke sendes igen</string>
+    <string name="msg_retry_failed">Kunne ikke prøve igen — tjek din forbindelse</string>
+    <string name="msg_still_in_outbox">Sender stadig — næste forsøg %1$s</string>
+    <string name="msg_next_attempt_minutes">om ca. %1$d min.</string>
+    <string name="msg_next_attempt_countdown">om %1$s</string>
+    <string name="msg_next_attempt_shortly">om lidt</string>
+    <string name="msg_send_attempt">Forsøg %1$d af %2$d</string>
+    <string name="msg_waiting_on_earlier_message">Venter på, at en tidligere besked bliver sendt først</string>
+    <string name="msg_stuck_reason">Kunne ikke sende: %1$s</string>
+    <string name="msg_outbox_checked_out_stuck">Fastlåst — uploaden blev ikke færdig og er stadig tjekket ud</string>
+    <string name="msg_outbox_entry_lingering">En afventende udbakkepost findes stadig for denne besked</string>
+    <string name="msg_waiting_for_connection">Venter på forbindelse</string>
+    <string name="action_try_now">Prøv nu</string>
+    <string name="label_edited">Redigeret: %1$s</string>
+    <string name="label_size">Størrelse: %1$s</string>
+    <string name="label_message_id">ID: %1$s</string>
+    <string name="copy_message_id">Kopiér besked-ID</string>
+    <string name="error_server_not_responding">Serveren svarer ikke</string>
+    <string name="error_access_denied">Adgang nægtet</string>
+    <string name="error_too_many_attempts">For mange forsøg</string>
+    <string name="error_delivery_failed">Levering mislykkedes</string>
+    <string name="connect">Forbind</string>
+    <string name="chat_auto_connect_connected">Forbundet</string>
+    <string name="auto_connect_pending_manual_approval">Anmodning sendt. %1$s skal godkende.</string>
+    <string name="auto_connect_blocked">Kan ikke forbinde med %1$s.</string>
+    <string name="auto_connect_outgoing_request_exists">Du har allerede sendt en anmodning til %1$s.</string>
+    <string name="auto_connect_duplicate_introductory_request">En anmodning til %1$s er allerede i gang.</string>
+    <string name="auto_connect_recipient_unreachable">Kunne ikke nå %1$s. Prøv igen senere.</string>
+    <string name="auto_connect_recipient_rejected">%1$s tager ikke imod forbindelser lige nu.</string>
+    <string name="auto_connect_recipient_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet endnu.</string>
+    <string name="auto_connect_recipient_requires_upgrade">%1$s's server skal opdateres, før du kan forbinde.</string>
+    <string name="auto_connect_invalid_request">Ugyldig anmodning.</string>
+    <string name="auto_connect_invalid_request_with_detail">Ugyldig anmodning: %1$s.</string>
+    <string name="auto_connect_failed_generic">Noget gik galt. Prøv igen.</string>
+    <string name="not_connected">Ikke forbundet</string>
     <string name="loading">Indlæser...</string>
-    <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
+    <string name="database_upgrade_snackbar">Databasen er opgraderet — gendanner dine data…</string>
     <string name="show_more">Vis mere</string>
     <string name="chat_message_read_more">Læs mere</string>
+    <string name="action_cannot_be_undone">Denne handling kan ikke fortrydes.</string>
     <string name="slide_to_cancel">&lt; Træk for at annullere</string>
     <string name="someone">Nogen</string>
     <string name="leave">Forlad</string>
@@ -58,35 +108,6 @@
     <string name="not_available">Ikke tilgængelig</string>
     <string name="error">Fejl</string>
     <string name="audio_waveform">Lydbølgeform</string>
-    <string name="read_by">Læst af</string>
-    <string name="delivered_to">Leveret til</string>
-    <string name="sending_to">Sender til</string>
-    <string name="uploaded">Uploadet</string>
-    <string name="failed">Mislykkedes</string>
-    <string name="unknown_status">Andet</string>
-    <string name="reactions">Reaktioner</string>
-    <string name="label_sent">App sendte: %1$s</string>
-    <string name="label_received">Modtaget: %1$s</string>
-    <string name="msg_status_sending">Sender…</string>
-    <string name="msg_status_sent">Sendt: %1$s</string>
-    <string name="msg_status_failed_to_send">Kunne ikke sendes</string>
-    <string name="msg_status_delivery_details_unavailable">Leveringsdetaljer kunne ikke indlæses</string>
-    <string name="action_retry">Prøv igen</string>
-    <string name="msg_retry_media_unavailable">Vedhæftningen er ikke længere tilgængelig — den kan ikke sendes igen</string>
-    <string name="msg_retry_failed">Kunne ikke prøve igen — tjek din forbindelse</string>
-    <string name="msg_still_in_outbox">Sender stadig — næste forsøg %1$s</string>
-    <string name="msg_next_attempt_minutes">om ca. %1$d min.</string>
-    <string name="msg_next_attempt_shortly">om lidt</string>
-    <string name="action_try_now">Prøv nu</string>
-    <string name="label_edited">Redigeret: %1$s</string>
-    <string name="label_size">Størrelse: %1$s</string>
-    <string name="label_message_id">ID: %1$s</string>
-    <string name="copy_message_id">Kopiér besked-ID</string>
-    <string name="error_server_not_responding">Serveren svarer ikke</string>
-    <string name="error_access_denied">Adgang nægtet</string>
-    <string name="error_too_many_attempts">For mange forsøg</string>
-    <string name="error_delivery_failed">Levering mislykkedes</string>
-    <string name="not_connected">Ikke forbundet</string>
     <string name="update">Opdater</string>
     <string name="update_not_supported">Opdateringscheck understøttes ikke på denne version</string>
     <string name="update_available">Opdatering tilgængelig</string>
@@ -103,12 +124,19 @@
     <string name="number_of_records">%1$s poster</string>
     <string name="emoji_all">Alle・</string>
 
+    <!-- Pending upgrade -->
+    <string name="pending_upgrade_snackbar_message">Din identitet kræver en dataopgradering</string>
+    <string name="pending_upgrade_snackbar_action">Opgradér</string>
+    <string name="pending_upgrade_title">Dataopgradering påkrævet</string>
+    <string name="pending_upgrade_message">Din identitet har en afventende opgradering. Besøg din ejer konsol for at køre den automatiske opgraderingsproces.</string>
+    <string name="pending_upgrade_confirm">Opgradér nu</string>
+    <string name="upgrade_running_message">Opgraderer din identitet…</string>
+
     <!-- Avatars -->
     <string name="avatar_owner">Ejer avatar</string>
     <string name="avatar_conversation">Samtale avatar</string>
     <string name="avatar_default">Standard avatar</string>
     <string name="avatar_public">Offentlig avatar</string>
-    <string name="avatar_person">%1$s avatar</string>
 
     <!-- Language options -->
     <string name="language">Sprog</string>
@@ -139,7 +167,7 @@
     <string name="day_saturday">Lørdag</string>
     <string name="day_sunday">Søndag</string>
 
-    <!-- App version info -->
+    <!-- App version info (used in Home and Settings screens) -->
     <string name="app_version">Version %1$s</string>
     <string name="app_build">Build %1$s</string>
 
@@ -155,9 +183,20 @@
     <string name="login_successful">Login lykkedes</string>
     <string name="login_progress_sync">Synkroniserer drev %1$s</string>
     <string name="login_progress_sync_count">Poster %1$s / %2$s synkroniseret</string>
+    <string name="login_error_invalid_id">Indtast et gyldigt Homebase-ID</string>
+    <string name="login_error_unreachable">Kunne ikke nå %1$s — tjek din forbindelse og prøv igen.</string>
+    <string name="login_error_not_homebase">%1$s ligner ikke en Homebase-identitet.</string>
+    <string name="login_error_tls">Kunne ikke oprette en sikker forbindelse til %1$s. En VPN, adblocker eller antivirus kan opsnappe HTTPS — prøv at slå det fra, og prøv igen. Tryk på "Vis fejldetaljer" for den præcise fejl.</string>
+    <string name="login_error_details_show">Vis fejldetaljer</string>
+    <string name="login_error_details_hide">Skjul fejldetaljer</string>
+    <string name="login_error_details_copy">Kopiér</string>
+    <string name="login_error_generic">Login mislykkedes</string>
+    <string name="login_popup_blocked">Din browser blokerede loginvinduet.</string>
+    <string name="login_continue_button">Fortsæt til login</string>
 
     <!-- Settings screen -->
     <string name="settings_appearance">Udseende</string>
+    <string name="settings_haptic_feedback">Haptisk feedback</string>
     <string name="settings_connections">Forbindelser</string>
     <string name="connections_already_sent_title">Anmodning allerede sendt</string>
     <string name="connections_already_sent_text">En forbindelsesanmodning til %1$s findes allerede. Åbn ejer konsollen for at se eller administrere den.</string>
@@ -179,27 +218,95 @@
     <string name="connections_empty_outgoing_title">Ingen udgående anmodninger</string>
     <string name="connections_empty_outgoing_subtitle">Tryk på + knappen for at sende en forbindelsesanmodning.</string>
     <string name="connections_send_request">Send anmodning</string>
-
-    <!-- Auto-connect status messages -->
-    <string name="auto_connect_blocked">Kan ikke forbinde med %1$s.</string>
-    <string name="auto_connect_duplicate_introductory_request">En anmodning til %1$s er allerede i gang.</string>
-    <string name="auto_connect_failed_generic">Noget gik galt. Prøv igen.</string>
-    <string name="auto_connect_invalid_request">Ugyldig anmodning.</string>
-    <string name="auto_connect_invalid_request_with_detail">Ugyldig anmodning: %1$s.</string>
-    <string name="auto_connect_outgoing_request_exists">Du har allerede sendt en anmodning til %1$s.</string>
-    <string name="auto_connect_pending_manual_approval">Anmodning sendt. %1$s skal godkende.</string>
-    <string name="auto_connect_recipient_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet endnu.</string>
-    <string name="auto_connect_recipient_rejected">%1$s tager ikke imod forbindelser lige nu.</string>
-    <string name="auto_connect_recipient_requires_upgrade">%1$s's server skal opdateres, før du kan forbinde.</string>
-    <string name="auto_connect_recipient_unreachable">Kunne ikke nå %1$s. Prøv igen senere.</string>
     <string name="settings_notifications">Notifikationer</string>
     <string name="settings_profile_info">Profiloplysninger</string>
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_help">Hjælp</string>
+    <string name="settings_storage">Lagerplads</string>
     <string name="settings_logout">Log ud</string>
     <string name="settings_logout_in_progress">Rydder denne enheds krypterede cache</string>
-    <string name="settings_storage">Lagerplads</string>
     <string name="settings_delete_account">Slet min konto</string>
+
+    <!-- Storage screen -->
+    <string name="storage_caches_header">Caches</string>
+    <string name="storage_drives_header">Drev</string>
+    <string name="storage_cache_profiles">Offentlige profiler</string>
+    <string name="storage_cache_profile_images">Profilbilleder</string>
+    <string name="storage_cache_payloads">Mediedata</string>
+    <string name="storage_cache_thumbnails">Miniaturebilleder</string>
+    <string name="storage_cache_hls_chunks">Videostream-cache</string>
+    <string name="storage_cache_unknown">Andet</string>
+    <string name="storage_cache_size_format">%1$s / %2$s</string>
+    <string name="storage_drive_count_format">%1$d elementer</string>
+    <string name="storage_total_cache_format">I alt: %1$s</string>
+    <string name="storage_clear_caches">Ryd caches</string>
+    <string name="storage_caches_cleared">Caches ryddet</string>
+    <string name="storage_caches_none">Ingen caches</string>
+    <string name="storage_drives_none">Ingen drev</string>
+    <string name="storage_cache_coil_memory">Billeder i hukommelsen</string>
+    <string name="storage_cache_ram_badge">RAM</string>
+    <string name="storage_cache_unavailable">Ikke tilgængelig</string>
+    <string name="storage_cache_unhealthy_title">Nogle caches kunne ikke åbnes</string>
+    <string name="storage_cache_unhealthy_body">En eller flere caches på disken kunne ikke initialiseres. Tryk på \"Ryd caches\" for at nulstille dem — cachelagrede data vil gå tabt, men ingen primære data påvirkes.</string>
+    <string name="storage_other_header">Andet</string>
+    <string name="storage_database">Database</string>
+    <string name="storage_other_cache_files">Andre cachelagrede filer</string>
+
+    <!-- Defragmenter -->
+    <string name="storage_defragment_button">Defragmentér</string>
+    <string name="defragmenter_title_format">Defragmenterer %1$s…</string>
+    <string name="defragmenter_drive_label_all">Alle drev</string>
+    <string name="defragmenter_close">Luk</string>
+    <string name="defragmenter_analyze">Analysér</string>
+    <string name="defragmenter_start">Start defragmentering</string>
+    <string name="defragmenter_pause">Pause</string>
+    <string name="defragmenter_resume">Genoptag</string>
+    <string name="defragmenter_cancel">Annullér</string>
+    <string name="defragmenter_stat_moves">Flyttede blokke: %1$d</string>
+    <string name="defragmenter_stat_gaps">Resterende huller: %1$d</string>
+    <string name="defragmenter_stat_total">Blokke i alt: %1$d</string>
+    <string name="defragmenter_stat_elapsed">Forløbet: %1$s</string>
+    <string name="defragmenter_stat_eta">Estimeret: %1$s</string>
+    <string name="defragmenter_status_idle">Klar til analyse</string>
+    <string name="defragmenter_status_analyzing">Analyserer drev… %1$d af %2$d</string>
+    <string name="defragmenter_status_ready">Analyse fuldført — klar til defragmentering</string>
+    <string name="defragmenter_status_running">Defragmenterer</string>
+    <string name="defragmenter_status_paused">Sat på pause</string>
+    <string name="defragmenter_status_repairing">Reparerer lokalt indeks…</string>
+    <string name="defragmenter_status_vacuuming">Optimerer database…</string>
+    <string name="defragmenter_status_complete">Defragmentering fuldført</string>
+    <string name="defragmenter_status_cancelled">Annulleret</string>
+    <string name="defragmenter_grid_description">Defragmenterer %1$s. %2$d procent færdig.</string>
+
+    <!-- Defragmenter — bad-block review dialog -->
+    <string name="defragmenter_review_button">Gennemgå %1$d defekt(e) blok(ke)…</string>
+    <string name="defragmenter_review_dialog_title">Defekt blok (%1$d af %2$d)</string>
+    <string name="defragmenter_review_kind_header">Header</string>
+    <string name="defragmenter_review_kind_message_content">Beskedindhold</string>
+    <string name="defragmenter_review_label_drive">Drev: %1$s</string>
+    <string name="defragmenter_review_label_file">Fil: %1$s</string>
+    <string name="defragmenter_review_label_filetype">Filtype: %1$s</string>
+    <string name="defragmenter_review_label_conversation">Samtale: %1$s</string>
+    <string name="defragmenter_review_label_author">Oprindelig forfatter: %1$s</string>
+    <string name="defragmenter_review_label_sender">Afsender: %1$s</string>
+    <string name="defragmenter_review_label_created">Oprettet (ms): %1$s</string>
+    <string name="defragmenter_review_label_unique">Unik id: %1$s</string>
+    <string name="defragmenter_review_decode_error">Afkodningsfejl: %1$s</string>
+    <string name="defragmenter_review_raw_json">Råt indhold (første 4000 tegn):</string>
+    <string name="defragmenter_review_button_delete">Slet</string>
+    <string name="defragmenter_review_button_skip">Spring over</string>
+    <string name="defragmenter_review_button_close">Luk</string>
+
+    <!-- Help screen -->
+    <string name="help_support_center">Supportcenter</string>
+    <string name="help_contact_us">Kontakt os</string>
+    <string name="help_submit_debug_log">Indsend fejllog</string>
+    <string name="help_enable_error_collection">Tillad automatisk fejlindsamling</string>
+    <string name="help_debug_log_description">Logs kan hjælpe Homebase med at løse problemer og nedbrud.</string>
+    <string name="help_version">Version</string>
+    <string name="help_ffmpeg_version">FFmpeg</string>
+    <string name="help_terms_privacy">Vilkår og privatlivspolitik</string>
+    <string name="help_copyright">Copyright © 2024–2026 Homebase</string>
     <string name="settings_delete_account_dialog_title">Slet din konto?</string>
     <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
     <string name="settings_open_owner_console">Åben ejer konsol</string>
@@ -244,15 +351,111 @@
     <string name="permissions_missing_body">%1$s-appen mangler tilladelser. Uden de nødvendige tilladelser vil funktionaliteten af %1$s være begrænset.</string>
     <string name="permissions_extend">Udvid tilladelser</string>
 
-    <!-- Help screen -->
-    <string name="help_support_center">Supportcenter</string>
-    <string name="help_contact_us">Kontakt os</string>
-    <string name="help_submit_debug_log">Indsend fejllog</string>
-    <string name="help_enable_error_collection">Tillad automatisk fejlindsamling</string>
-    <string name="help_debug_log_description">Logs kan hjælpe Homebase med at løse problemer og nedbrud.</string>
-    <string name="help_version">Version</string>
-    <string name="help_terms_privacy">Vilkår og privatlivspolitik</string>
-    <string name="help_copyright">Copyright © 2024–2026 Homebase</string>
+    <!-- Moments add-on -->
+    <string name="moments_label">Moments</string>
+    <string name="moments_home_subtitle">Fotos, klip og noter der er værd at gemme</string>
+    <string name="moments_onboarding_title">Øjeblikke der er værd at huske</string>
+    <string name="moments_onboarding_body_1">Moments er dit private rum til de fotos, klip og noter, du vil have tæt på.</string>
+    <string name="moments_onboarding_body_2">Sæt det op for at montere Moments-drevet på denne enhed og begynd at gemme minder.</string>
+    <string name="moments_onboarding_setup">Sæt det op</string>
+    <string name="moments_onboarding_dismiss">Ikke nu</string>
+    <string name="moments_welcome">Øjeblikke der er værd at huske</string>
+    <string name="moments_settings_section">Moments</string>
+    <string name="moments_settings_open">Åbn Moments</string>
+    <string name="moments_settings_show_icon">Vis Moments-ikonet i bundbjælken</string>
+    <string name="moments_create_action">Opret et nyt øjeblik</string>
+    <string name="moments_post_open">Åbn øjeblik</string>
+    <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
+    <string name="moments_push_new_comment">Kommenterede på et øjeblik, du er en del af</string>
+    <string name="moments_view_menu">Skift visning</string>
+    <string name="moments_view_timeline">Tidslinje</string>
+    <string name="moments_view_album">Album</string>
+    <string name="moments_view_reels">Reels</string>
+    <string name="moments_album_zoom_day">Dag</string>
+    <string name="moments_album_zoom_month">Måned</string>
+    <string name="moments_album_zoom_year">År</string>
+    <string name="moments_album_zoom_label">Zoomniveau</string>
+    <string name="moments_album_text_only_label">Tekstøjeblik</string>
+    <string name="moments_album_extra_count">+%1$d</string>
+    <string name="moments_reaction_like">Synes godt om</string>
+    <string name="moments_detail_no_description">Ingen beskrivelse tilføjet</string>
+    <string name="moments_detail_edit_description">Redigér beskrivelse</string>
+    <string name="moments_detail_description_hint">Tilføj en beskrivelse</string>
+    <string name="moments_detail_description_save">Gem</string>
+    <string name="moments_detail_metadata_captured">Optaget</string>
+    <string name="moments_detail_metadata_device">Enhed</string>
+    <string name="moments_detail_comments_section">Kommentarer</string>
+    <string name="moments_detail_no_comments">Ingen kommentarer endnu</string>
+    <string name="moments_detail_add_comment_hint">Tilføj en kommentar</string>
+    <string name="moments_detail_send_comment">Send kommentar</string>
+    <string name="moments_detail_comment_you">Dig</string>
+    <string name="moments_detail_comment_edit">Redigér</string>
+    <string name="moments_detail_comment_save">Gem</string>
+    <string name="moments_detail_comment_cancel">Annullér</string>
+    <string name="moments_detail_menu_more">Flere muligheder</string>
+    <string name="moments_detail_menu_delete">Slet</string>
+    <string name="moments_detail_menu_save_current">Gem nuværende</string>
+    <string name="moments_detail_menu_share">Del</string>
+    <string name="moments_detail_menu_info">Info</string>
+    <string name="moments_detail_menu_add_people">Tilføj personer</string>
+    <string name="moments_add_people_title">Tilføj personer</string>
+    <string name="moments_add_people_confirm">Tilføj</string>
+    <string name="moments_add_people_already_shared">Allerede delt</string>
+    <string name="moments_add_people_added">Delt med %1$d flere</string>
+    <string name="moments_add_people_failed">Kunne ikke tilføje personer. Prøv igen.</string>
+    <string name="moments_add_people_still_posting">Øjeblikket er stadig ved at blive delt — prøv igen om lidt.</string>
+    <string name="moments_detail_delete_dialog_title">Slet dette øjeblik?</string>
+    <string name="moments_detail_comment_delete">Slet</string>
+    <string name="moments_detail_delete_comment_dialog_title">Slet denne kommentar?</string>
+    <string name="moments_detail_shared_with">Delt med</string>
+    <string name="moments_detail_shared_with_conversation_fallback">Samtale</string>
+    <string name="moments_detail_shared_with_more">+%1$d</string>
+    <string name="moments_detail_shared_with_show">Vis modtagere</string>
+    <string name="moments_detail_shared_with_hide">Skjul modtagere</string>
+    <string name="moments_detail_shared_with_private">Privat</string>
+    <string name="moments_detail_shared_with_just_you">Kun dig</string>
+    <string name="moments_detail_reactions_see_who">Se hvem der reagerede</string>
+    <string name="moments_detail_reactions_sheet_empty">Ingen reaktioner endnu</string>
+    <string name="moments_detail_reactions_filter_all">Alle %1$d</string>
+    <string name="moments_feed_indicator_private">Privat øjeblik</string>
+    <string name="moments_create_title">Send til</string>
+    <string name="moments_create_search_hint">Søg i kontakter og grupper</string>
+    <string name="moments_create_section_recent">Seneste</string>
+    <string name="moments_create_section_quick">Hurtige valg</string>
+    <string name="moments_create_section_groups">Grupper</string>
+    <string name="moments_create_section_contacts">Kontakter</string>
+    <string name="moments_create_new_group">Ny gruppe</string>
+    <string name="moments_create_one_off">Engangs</string>
+    <string name="moments_create_continue">Næste</string>
+    <string name="moments_create_chat_group_label">Chatgruppe</string>
+    <string name="moments_create_selected_count">%1$d valgt</string>
+    <string name="moments_compose_title">Nyt øjeblik</string>
+    <string name="moments_compose_add_media">Tilføj foto eller video</string>
+    <string name="moments_compose_empty_hero">Tryk for at tilføje et foto eller en video</string>
+    <string name="moments_compose_remove_media">Fjern</string>
+    <string name="moments_compose_description_hint">Tilføj en beskrivelse</string>
+    <string name="moments_compose_comments_enabled">Tillad reaktioner og kommentarer</string>
+    <string name="moments_compose_continue">Næste</string>
+    <string name="moments_chip_add_location">Tilføj placering</string>
+    <string name="moments_chip_location_included">Placering</string>
+    <string name="cd_moment_photo_info_chip">Fotoinfo</string>
+    <string name="cd_moment_toggle_include_location">Slå medtagelse af dette fotos placering til eller fra</string>
+    <string name="moments_chip_pick_date">Vælg en dato</string>
+    <string name="moments_chip_use_photo_date">Brug fotodato</string>
+    <string name="cd_moment_date_chip">Øjeblikkets dato</string>
+    <string name="moments_audience_title">Send til</string>
+    <string name="moments_audience_to_myself_only">Kun til mig selv</string>
+    <string name="moments_audience_section_recent">Seneste</string>
+    <string name="moments_audience_section_groups">Grupper</string>
+    <string name="moments_audience_section_contacts">Kontakter</string>
+    <string name="moments_audience_post">Del</string>
+    <string name="moments_audience_save_privately">Gem privat</string>
+    <string name="moments_audience_create_group">Opret ny gruppe</string>
+    <string name="moments_audience_post_failed">Kunne ikke dele øjeblikket. Prøv igen.</string>
+    <string name="moments_create_group_title">Ny gruppe</string>
+    <string name="moments_create_group_name_hint">Gruppenavn</string>
+    <string name="moments_create_group_section_members">Medlemmer</string>
+    <string name="moments_create_group_create">Opret</string>
 
     <!-- System messages -->
     <string name="system_conversation_title_updated">%1$s opdaterede samtalens titel</string>
@@ -283,9 +486,19 @@
     <string name="system_group_conversation_member_declined_rejoin_you">Du afslog at genindtræde i samtalen</string>
     <string name="system_group_heal_requested">%1$s anmodede om en gruppereparation</string>
     <string name="system_group_heal_requested_you">Du anmodede om en gruppereparation</string>
-    <string name="system_group_heal_local_cleanup_admin">Fjernede defekt lokal kopi (admins) som del af reparation</string>
+    <string name="system_emergency_contact_designated">%1$s tilføjede dig som nødkontakt</string>
+    <string name="system_emergency_contact_designated_you">Du tilføjede %1$s som nødkontakt</string>
+    <string name="system_emergency_contact_designated_you_unknown">Du tilføjede en nødkontakt</string>
+    <string name="system_emergency_contact_revoked">%1$s fjernede dig som nødkontakt</string>
+    <string name="system_emergency_contact_revoked_you">Du fjernede %1$s som nødkontakt</string>
+    <string name="system_emergency_contact_revoked_you_unknown">Du fjernede en nødkontakt</string>
+    <string name="system_emergency_locate_requested">%1$s aktiverede nødfunktionen og anmodede om dine placeringsdata: %2$s</string>
+    <string name="system_emergency_locate_requested_unknown">%1$s aktiverede nødfunktionen og anmodede om dine placeringsdata</string>
+    <string name="system_emergency_locate_requested_you">Du anmodede om nødplaceringsdata fra %1$s: %2$s</string>
+    <string name="system_emergency_locate_requested_you_unknown">Du anmodede om nødplaceringsdata fra %1$s</string>
     <string name="system_group_heal_local_cleanup_both">Fjernede defekte lokale kopier (gruppe + admins) som del af reparation</string>
     <string name="system_group_heal_local_cleanup_main">Fjernede defekt lokal kopi (gruppe) som del af reparation</string>
+    <string name="system_group_heal_local_cleanup_admin">Fjernede defekt lokal kopi (admins) som del af reparation</string>
 
     <!-- Conversation list -->
     <string name="chat_filter_by_unread_button">Filtrér ulæste</string>
@@ -316,11 +529,11 @@
     <string name="chat_new_conversation">Ny samtale</string>
     <string name="chat_new_conversation_search_placeholder">Søg kontakter</string>
     <string name="chat_new_conversation_new_group">Ny gruppe</string>
-    <string name="chat_new_conversation_connection_request">Ny forbindelsesanmodning</string>
+    <string name="chat_new_conversation_new_contact">Ny kontakt</string>
     <string name="chat_no_contacts_found">Ingen kontakter fundet</string>
+    <string name="chat_group_select_members">Vælg medlemmer</string>
 
     <!-- Group -->
-    <string name="chat_group_select_members">Vælg medlemmer</string>
     <string name="chat_group_name_screen_title">Navngiv gruppe</string>
     <string name="chat_group_name_placeholder">Gruppenavn (påkrævet)</string>
     <string name="chat_group_remove_member">Fjern %1$s fra denne gruppe?</string>
@@ -351,7 +564,9 @@
     <string name="chat_introduce_preflight_body">Nogle modtagere får muligvis ikke en introduktion:</string>
     <string name="chat_introduce_preflight_send_anyway">Send alligevel</string>
     <string name="chat_introduce_preflight_skip_and_send">Spring disse over og send til resten</string>
+    <!-- Bullet-prefixed line in the preflight dialog body. %1$s is a per-status reason. -->
     <string name="chat_introduce_preflight_bullet">• %1$s</string>
+    <!-- Per-status reasons. %1$s is the recipient's display name. -->
     <string name="chat_introduce_preflight_reason_ready">%1$s er klar.</string>
     <string name="chat_introduce_preflight_reason_not_connected">Du er ikke forbundet med %1$s.</string>
     <string name="chat_introduce_preflight_reason_not_configured">%1$s's identitet er ikke konfigureret endnu.</string>
@@ -374,19 +589,6 @@
     <string name="chat_group_rejoin_pending_description">Du er blevet tilføjet til denne gruppe igen</string>
     <string name="chat_group_rejoin_accept">Genindtræd</string>
     <string name="chat_group_rejoin_decline">Afvis</string>
-    <string name="chat_group_heal">Reparér gruppe</string>
-    <string name="chat_group_heal_completed">Genfordeler gruppefiler…</string>
-    <string name="chat_group_heal_completed_nothing">Intet at genfordele (du oprettede ikke gruppefilerne).</string>
-    <string name="chat_group_heal_already_in_sync">Gruppen er allerede synkroniseret hos alle</string>
-    <string name="chat_group_heal_checking_peers">Tjekker modtagere…</string>
-    <string name="chat_group_heal_progress_title">Reparerer gruppe</string>
-    <string name="chat_group_heal_progress_subtitle_running">Arbejder gennem den per-modtager plan…</string>
-    <string name="chat_group_heal_progress_subtitle_finished">Færdig. Du kan lukke denne dialog.</string>
-    <string name="chat_group_heal_progress_sending_group_file">Sender gruppefil til %1$s</string>
-    <string name="chat_group_heal_progress_sending_admin_file">Sender adminfil til %1$s</string>
-    <string name="chat_group_heal_progress_asking_cleanup_group_file">Beder %1$s om at rydde op i deres gruppefil</string>
-    <string name="chat_group_heal_progress_asking_cleanup_admin_file">Beder %1$s om at rydde op i deres adminfil</string>
-    <string name="chat_group_heal_progress_still_queued">Stadig i kø til %1$s (serveren prøver igen)</string>
     <string name="chat_group_main_peer_missing">Gruppefil: ikke hos modtager</string>
     <string name="chat_group_main_peer_mine">Gruppefil: hos modtager (din)</string>
     <string name="chat_group_main_peer_other_author">Gruppefil: hos modtager (tredjepart)</string>
@@ -400,8 +602,37 @@
     <string name="chat_group_member_sync_status">Synkroniseringsstatus</string>
     <string name="chat_group_summary_all_ok">Alt synkroniseret</string>
     <string name="chat_group_summary_problem">Synkroniseringsproblem — tryk for detaljer</string>
+    <string name="chat_group_heal">Reparér gruppe</string>
+    <string name="chat_group_heal_completed">Genfordeler gruppefiler…</string>
+    <string name="chat_group_heal_completed_nothing">Intet at genfordele (du oprettede ikke gruppefilerne).</string>
+    <string name="chat_group_heal_already_in_sync">Gruppen er allerede synkroniseret hos alle</string>
+    <string name="chat_group_heal_checking_peers">Tjekker modtagere…</string>
+    <string name="chat_group_heal_progress_title">Reparerer gruppe</string>
+    <string name="chat_group_heal_progress_subtitle_running">Arbejder gennem den per-modtager plan…</string>
+    <string name="chat_group_heal_progress_subtitle_finished">Færdig. Du kan lukke denne dialog.</string>
+    <string name="chat_group_heal_progress_sending_group_file">Sender gruppefil til %1$s</string>
+    <string name="chat_group_heal_progress_sending_admin_file">Sender adminfil til %1$s</string>
+    <string name="chat_group_heal_progress_asking_cleanup_group_file">Beder %1$s om at rydde op i deres gruppefil</string>
+    <string name="chat_group_heal_progress_asking_cleanup_admin_file">Beder %1$s om at rydde op i deres adminfil</string>
+    <string name="chat_group_heal_progress_still_queued">Stadig i kø til %1$s (serveren prøver igen)</string>
 
-    <!-- 1:1 connection state banner -->
+    <!-- Group-info file health diagnostic (footer at the bottom of group settings).
+         Each row reports the local-DB or own-server state of one of the two group
+         files (main + admin). Long-press the block to copy a support blob with
+         full UUIDs to the clipboard. -->
+    <string name="chat_group_files_diagnostic_title">Gruppefiler</string>
+    <string name="chat_group_files_diagnostic_db_group_label">DB-gruppe:</string>
+    <string name="chat_group_files_diagnostic_db_admin_label">DB-admin:</string>
+    <string name="chat_group_files_diagnostic_server_group_label">Server-gruppe:</string>
+    <string name="chat_group_files_diagnostic_server_admin_label">Server-admin:</string>
+    <!-- Args: 1=8-char uniqueId, 2=8-char versionTag, 3=originalAuthor domain -->
+    <string name="chat_group_files_diagnostic_present">findes · uid %1$s · v %2$s · forfatter %3$s</string>
+    <!-- Arg: 1=8-char uniqueId -->
+    <string name="chat_group_files_diagnostic_placeholder">pladsholder · uid %1$s</string>
+    <!-- Arg: 1=8-char uniqueId (the value the row would carry if it were present) -->
+    <string name="chat_group_files_diagnostic_absent">mangler · uid %1$s forventet</string>
+
+    <!-- 1:1 connection state banner (shown in place of the message composer) -->
     <string name="chat_not_connected_description">Du er ikke forbundet.</string>
     <string name="chat_not_connected_outgoing_description">Venter på, at de accepterer din forbindelsesanmodning.</string>
     <string name="chat_not_connected_incoming_description">De vil gerne forbinde med dig.</string>
@@ -424,6 +655,7 @@
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
+    <string name="chat_new_messages">Nye beskeder</string>
     <string name="chat_connection_invited">Inviteret</string>
     <string name="chat_connection_wants_to_connect">Vil forbinde</string>
     <string name="chat_connection_invitation_sent">Invitation sendt — venter på at de accepterer</string>
@@ -432,8 +664,6 @@
     <string name="chat_note_to_self">Note til selv</string>
     <string name="chat_group_introduce_everyone">Introducer alle</string>
     <string name="chat_group_introduce_everyone_status">Indtroduktioner er blevet afsendt</string>
-    <string name="chat_attach_file_failed">Kunne ikke vedhæfte fil(er): %s</string>
-    <string name="chat_auto_connect_connected">Forbundet</string>
 
     <!-- Audio recording -->
     <string name="chat_message_audio_recording_help">Tryk og hold for at optage en lydbesked, slip for sende</string>
@@ -452,6 +682,14 @@
     <string name="chat_message_delete_for_me">Slet for mig</string>
     <string name="chat_message_options">Besked menu</string>
     <string name="chat_message_attachment_options">Vedhæftelses menu</string>
+    <string name="chat_attach_file_failed">Kunne ikke vedhæfte fil(er): %s</string>
+    <string name="chat_message_camera">Kamera</string>
+    <string name="chat_message_take_photo">Tag billede</string>
+    <string name="chat_message_record_video">Optag video</string>
+    <string name="share_picker_next">Næste</string>
+    <string name="share_picker_send">Send</string>
+    <string name="share_picker_new_moment">Nyt øjeblik</string>
+    <string name="share_picker_new_moment_subtitle">Del til dine Moments</string>
     <string name="chat_message_emoji_options">Emoji menu</string>
     <string name="chat_message_edited">Redigeret</string>
     <string name="chat_message_deleted">Denne besked blev slettet</string>
@@ -463,31 +701,72 @@
     <string name="chat_message_video">Video</string>
     <string name="chat_message_audio">Lyd</string>
     <string name="chat_message_file">Fil</string>
+    <string name="chat_message_location">Placering</string>
     <string name="chat_message_multiple_media">Medier</string>
     <string name="chat_preview_sender_prefix">%1$s: %2$s</string>
+    <string name="chat_preview_sender_label">%1$s:</string>
 
-    <!-- Stickers (gemte klistermærker) -->
-    <string name="chat_sticker_share">Klistermærker</string>
-    <string name="chat_save_sticker">Gem klistermærke</string>
-    <string name="chat_sticker_saved">Klistermærke gemt</string>
-    <string name="chat_sticker_save_failed">Kunne ikke gemme klistermærke</string>
-    <string name="chat_sticker_send_failed">Kunne ikke sende klistermærke</string>
-    <string name="chat_sticker_import">Importér klistermærke</string>
-    <string name="chat_stickers_empty">Ingen gemte klistermærker endnu</string>
-    <string name="chat_sticker_remove">Fjern klistermærke</string>
-    <string name="chat_sticker_remove_confirm">Fjern dette klistermærke fra dit bibliotek?</string>
-    <string name="chat_sticker_removed">Klistermærke fjernet</string>
-    <string name="chat_sticker_remove_failed">Kunne ikke fjerne klistermærke</string>
-    <string name="chat_sticker_tray_title">Mine klistermærker</string>
-    <string name="cd_sticker_thumbnail">Gemt klistermærke</string>
-    <string name="cd_import_sticker">Importér et klistermærke</string>
-    <string name="chat_sticker_choose_title">Opret klistermærke</string>
-    <string name="chat_sticker_variant_cutout">Udklip</string>
-    <string name="chat_sticker_variant_original">Original</string>
-    <string name="cd_sticker_variant_cutout">Udklips-version</string>
-    <string name="cd_sticker_variant_original">Original foto-version</string>
-    <string name="cd_tab_emoji">Emoji</string>
-    <string name="cd_tab_stickers">Klistermærker</string>
+    <string name="chat_location_share">Placering</string>
+    <string name="chat_location_attachment">Placeringskort</string>
+    <string name="chat_location_permission_denied">Placeringstilladelse afvist. Aktivér den i Indstillinger for at dele din placering.</string>
+    <string name="chat_location_unavailable">Kunne ikke hente din placering. Prøv igen udendørs eller tjek, at Placering er aktiveret.</string>
+    <string name="chat_location_map_preview_unavailable">Forhåndsvisning af kort ikke tilgængelig — sender kun koordinater.</string>
+    <string name="chat_image_unavailable">Billedet kunne ikke indlæses</string>
+
+    <!-- Event attachment -->
+    <string name="chat_event_share">Begivenhed</string>
+    <string name="chat_event_create_title">Ny begivenhed</string>
+    <string name="chat_event_field_title">Titel</string>
+    <string name="chat_event_field_description">Beskrivelse</string>
+    <string name="chat_event_field_starts">Starter</string>
+    <string name="chat_event_field_ends">Slutter</string>
+    <string name="chat_event_field_timezone">Tidszone</string>
+    <string name="chat_event_field_location">Sted</string>
+    <string name="chat_event_field_meeting_url">Møde-URL</string>
+    <string name="chat_event_use_current_location">Brug nuværende placering</string>
+    <string name="chat_event_open_in_maps">Åbn i kort</string>
+    <string name="chat_event_join_meeting">Deltag i møde</string>
+    <string name="chat_event_copy_meeting_url">Kopiér møde-URL</string>
+    <string name="chat_event_add_to_google_calendar">Føj til Google Kalender</string>
+    <string name="chat_event_download_ics">Download kalenderfil (.ics)</string>
+    <string name="chat_event_rsvp_yes">Deltager</string>
+    <string name="chat_event_rsvp_no">Kan ikke komme</string>
+    <string name="chat_event_rsvp_maybe">Måske</string>
+    <string name="chat_event_starting_soon">Starter om %1$s</string>
+    <string name="chat_event_live_now">Live nu</string>
+    <string name="chat_event_past">Tidligere begivenhed</string>
+    <string name="chat_event_rsvp_summary">%1$s deltager · %2$s nej · %3$s måske</string>
+    <string name="chat_event_unparseable">Kan ikke vise denne begivenhed. Opdatér venligst appen.</string>
+    <string name="chat_event_send">Send begivenhed</string>
+    <string name="chat_event_scheduled_in_zone">Planlagt: %1$s %2$s</string>
+    <string name="chat_event_error_end_before_start">Sluttidspunktet skal være efter starttidspunktet</string>
+    <string name="chat_event_duration_hours_minutes">%1$dt %2$dm</string>
+    <string name="chat_event_duration_hours">%1$dt</string>
+    <string name="chat_event_duration_minutes">%1$dm</string>
+    <string name="chat_event_ends_at">Slutter %1$s</string>
+    <string name="chat_event_duration_title">Varighed</string>
+    <string name="chat_event_duration_custom_end">Angiv slutdato og -tidspunkt</string>
+    <string name="chat_event_title_hint">Tilføj titel</string>
+    <string name="chat_event_location_hint">Tilføj sted</string>
+    <string name="chat_event_meeting_url_hint">Tilføj mødelink</string>
+    <string name="chat_event_description_hint">Tilføj beskrivelse</string>
+    <string name="chat_event_add_photo">Tilføj foto</string>
+    <string name="chat_event_remove_photo">Fjern foto</string>
+    <string name="chat_event_cover_photo">Begivenhedsfoto</string>
+    <string name="chat_event_organized_by">Arrangeret af</string>
+    <string name="chat_event_tz_picker_title">Tidszone</string>
+    <string name="chat_event_tz_picker_search">Søg efter by eller zone</string>
+    <string name="chat_event_tz_suggested">Foreslået</string>
+    <string name="chat_event_tz_region_africa">Afrika</string>
+    <string name="chat_event_tz_region_americas">Amerika</string>
+    <string name="chat_event_tz_region_antarctica">Antarktis</string>
+    <string name="chat_event_tz_region_arctic">Arktis</string>
+    <string name="chat_event_tz_region_asia">Asien</string>
+    <string name="chat_event_tz_region_atlantic">Atlanten</string>
+    <string name="chat_event_tz_region_australia">Australien</string>
+    <string name="chat_event_tz_region_europe">Europa</string>
+    <string name="chat_event_tz_region_indian">Det Indiske Ocean</string>
+    <string name="chat_event_tz_region_pacific">Stillehavet</string>
 
     <!-- Dice attachment -->
     <string name="chat_dice_share">Terninger</string>
@@ -524,6 +803,113 @@
     <string name="chat_dice_mode_oe_label">1d100OE (åbent)</string>
     <string name="chat_dice_mode_oe_hint">2d10 læses som procent. 96+ ruller op igen, 04- ruller ned igen.</string>
 
+    <!-- Stickers (saved "My Stickers" tray) -->
+    <string name="chat_sticker_share">Klistermærker</string>
+    <string name="chat_save_sticker">Gem klistermærke</string>
+    <string name="chat_sticker_saved">Klistermærke gemt</string>
+    <string name="chat_sticker_save_failed">Kunne ikke gemme klistermærke</string>
+    <string name="chat_sticker_send_failed">Kunne ikke sende klistermærke</string>
+    <string name="chat_sticker_import">Importér klistermærke</string>
+    <string name="chat_stickers_empty">Ingen gemte klistermærker endnu</string>
+    <string name="chat_sticker_remove">Fjern klistermærke</string>
+    <string name="chat_sticker_remove_confirm">Fjern dette klistermærke fra dit bibliotek?</string>
+    <string name="chat_sticker_removed">Klistermærke fjernet</string>
+    <string name="chat_sticker_remove_failed">Kunne ikke fjerne klistermærke</string>
+    <string name="chat_sticker_tray_title">Mine klistermærker</string>
+    <string name="cd_sticker_thumbnail">Gemt klistermærke</string>
+    <string name="cd_import_sticker">Importér et klistermærke</string>
+    <string name="chat_sticker_choose_title">Opret klistermærke</string>
+    <string name="chat_sticker_variant_cutout">Udklip</string>
+    <string name="chat_sticker_variant_original">Original</string>
+    <string name="cd_sticker_variant_cutout">Udklips-version</string>
+    <string name="cd_sticker_variant_original">Original foto-version</string>
+    <string name="cd_tab_emoji">Emoji</string>
+    <string name="cd_tab_stickers">Klistermærker</string>
+    <!-- Sticker-tap bottom sheet (tap a sticker message) -->
+    <string name="chat_sticker_options_title">Klistermærke</string>
+    <string name="chat_sticker_add_to_library">Føj til mine klistermærker</string>
+    <string name="chat_sticker_remove_from_library">Fjern fra mine klistermærker</string>
+    <string name="chat_sticker_save_to_device">Gem på enheden</string>
+    <string name="cd_sticker_options_add">Føj til mine klistermærker</string>
+    <string name="cd_sticker_options_remove">Fjern fra mine klistermærker</string>
+    <string name="cd_sticker_options_save">Gem på enheden</string>
+
+    <!-- Groodle (group-scheduling poll) -->
+    <string name="chat_groodle_share">Groodle</string>
+    <string name="chat_groodle_composer_title">Ny Groodle</string>
+    <string name="chat_groodle_unparseable">Kan ikke vise denne Groodle. Opdatér venligst appen.</string>
+    <string name="chat_groodle_field_title">Titel</string>
+    <string name="chat_groodle_field_description">Beskrivelse (valgfri)</string>
+    <string name="chat_groodle_field_timezone">Tidszone</string>
+    <string name="chat_groodle_allow_maybe">Tillad “Måske”</string>
+    <string name="chat_groodle_deadline">Afstemningsfrist</string>
+    <string name="chat_groodle_deadline_24h">24 timer</string>
+    <string name="chat_groodle_deadline_48h">48 timer</string>
+    <string name="chat_groodle_deadline_week">1 uge</string>
+    <string name="chat_groodle_deadline_none">Ingen frist</string>
+    <string name="chat_groodle_add_time">Tilføj et tidspunkt</string>
+    <string name="chat_groodle_add_another_time">Tilføj endnu et tidspunkt</string>
+    <string name="chat_groodle_set_time">Vælg tidspunkt</string>
+    <string name="chat_groodle_duration">Varighed</string>
+    <string name="chat_groodle_duration_minutes">%1$d min</string>
+    <string name="chat_groodle_duration_decrease">Reducér varighed</string>
+    <string name="chat_groodle_duration_increase">Forøg varighed</string>
+    <string name="chat_groodle_remove_option">Fjern mulighed</string>
+    <string name="chat_groodle_option_count">%1$d muligheder</string>
+    <string name="chat_groodle_option_count_one">1 mulighed</string>
+    <string name="chat_groodle_max_options">Op til %1$d muligheder.</string>
+    <string name="chat_groodle_closes_in">Afstemningen lukker %1$s</string>
+    <string name="chat_groodle_closed">Afstemningen er lukket</string>
+    <string name="chat_groodle_you_voted">Du har stemt</string>
+    <string name="chat_groodle_tap_to_vote">Tryk for at stemme</string>
+    <string name="chat_groodle_vote_yes">Ja</string>
+    <string name="chat_groodle_vote_no">Nej</string>
+    <string name="chat_groodle_vote_maybe">Måske</string>
+    <string name="chat_groodle_winner">Fører</string>
+    <string name="chat_groodle_tally">%1$d ja · %2$d måske · %3$d nej</string>
+    <string name="chat_groodle_scheduled_in_zone">Planlagt: %1$s %2$s</string>
+    <string name="chat_groodle_err_times_missing">Vælg et tidspunkt for hver mulighed.</string>
+    <string name="chat_groodle_err_duplicate">To muligheder har samme dato og tidspunkt.</string>
+    <string name="chat_groodle_send">Send Groodle</string>
+
+    <!-- Shared by the Groodle/Event/Poll composer discard-confirmation guard. -->
+    <string name="composer_discard_title">Kassér ændringer?</string>
+    <string name="composer_discard_message">Dine indtastninger går tabt, hvis du forlader nu.</string>
+    <string name="composer_discard_confirm">Kassér</string>
+    <string name="composer_discard_keep">Fortsæt redigering</string>
+
+    <!-- Poll composer -->
+    <string name="chat_poll_share">Afstemning</string>
+    <string name="chat_poll_question_hint">Stil et spørgsmål</string>
+    <string name="chat_poll_option_hint">Mulighed %1$d</string>
+    <string name="chat_poll_add_option">Tilføj mulighed</string>
+    <string name="chat_poll_remove_option">Fjern mulighed</string>
+    <string name="chat_poll_reorder_option">Omarrangér mulighed</string>
+    <string name="chat_poll_allow_multiple">Tillad flere stemmer</string>
+
+    <!-- Poll bubble -->
+    <string name="chat_poll_subtitle_single">Afstemning · Vælg én</string>
+    <string name="chat_poll_subtitle_multiple">Afstemning · Vælg en eller flere</string>
+    <string name="chat_poll_subtitle_closed">Afstemning · Endeligt resultat</string>
+    <string name="chat_poll_no_votes">Ingen stemmer</string>
+    <string name="chat_poll_view_votes">Vis stemmer</string>
+    <string name="chat_poll_view_results">Vis resultater</string>
+    <string name="chat_poll_one_vote">1 stemme</string>
+    <string name="chat_poll_vote_count">%1$d stemmer</string>
+    <string name="chat_poll_unparseable">Kan ikke vise denne afstemning. Opdatér venligst appen.</string>
+
+    <!-- Poll detail dialog -->
+    <string name="chat_poll_details_title">Afstemningsdetaljer</string>
+    <string name="chat_poll_question_section">Spørgsmål</string>
+    <string name="chat_poll_you">Dig</string>
+    <string name="chat_poll_end">Afslut afstemning</string>
+    <string name="chat_poll_end_failed">Kunne ikke afslutte afstemningen. Prøv igen.</string>
+    <string name="chat_poll_ended_self">Du afsluttede afstemningen: "%1$s"</string>
+    <string name="chat_poll_ended_other">%1$s afsluttede afstemningen: "%2$s"</string>
+
+    <string name="chat_unknown_message_type">Ukendt beskedtype — opdatér venligst appen.</string>
+    <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
+
     <string name="chat_message_attachment_gallery">Galleri</string>
     <string name="chat_message_attachment_file">Fil</string>
     <string name="chat_message_attachment_contact">Kontakt</string>
@@ -534,22 +920,22 @@
     <string name="chat_message_add_gallery_image">Fjern billede</string>
     <string name="chat_message_remove_gallery_image">Tilføj billede</string>
     <string name="chat_message_hide_keyboard">Skjul tastatur</string>
-    <string name="chat_message_discard_draft">Kassér kladde?</string>
-
-    <string name="chat_message_forward_to">Videresend til</string>
     <string name="chat_message_image_attachment">Billedvedhæftning</string>
     <string name="chat_message_video_thumbnail">Videoeksempel</string>
     <string name="chat_message_play_video">Afspil video</string>
+    <string name="moment_video_mute">Slå videolyd fra</string>
+    <string name="moment_video_unmute">Slå videolyd til</string>
+    <string name="moment_video_pause">Sæt video på pause</string>
+    <string name="moment_video_watch_again">Se igen</string>
+    <string name="moment_video_fill_screen">Fyld skærmen</string>
+    <string name="moment_video_fit_screen">Tilpas til skærmen</string>
     <string name="chat_message_download_file">Download fil</string>
     <string name="chat_message_file_type_icon">Filtypeikon</string>
-    <string name="chat_message_camera">Kamera</string>
-    <string name="chat_message_take_photo">Tag billede</string>
-    <string name="chat_message_record_video">Optag video</string>
+    <string name="chat_message_pdf_preview">PDF-forhåndsvisning</string>
     <string name="chat_message_microphone">Mikrofon</string>
     <string name="chat_message_emoji">Emoji</string>
-    <string name="chat_message_location">Placering</string>
 
-    <!-- Markdown-værktøjslinje (tilgængelighedsetiketter) og link-dialog -->
+    <!-- Markdown composer toolbar (accessibility labels) and link dialog -->
     <string name="chat_markdown_heading">Overskrift</string>
     <string name="chat_markdown_blockquote">Citat</string>
     <string name="chat_markdown_inline_code">Indlejret kode</string>
@@ -562,6 +948,14 @@
     <string name="chat_markdown_link_dialog_insert">Indsæt</string>
     <string name="chat_markdown_link_dialog_cancel">Annullér</string>
 
+    <string name="chat_reactions_title">Reaktioner</string>
+    <string name="chat_reactions_all">Alle</string>
+    <string name="chat_reactions_tap_to_remove">Tryk for at fjerne</string>
+    <string name="chat_reactions_limit_reached">Du kan ikke tilføje flere emojis. Fjern én, før du tilføjer en ny.</string>
+    <string name="chat_message_discard_draft">Kassér kladde?</string>
+
+    <string name="chat_message_forward_to">Videresend til</string>
+
     <!-- Block / Report -->
     <string name="chat_message_block">Blokér</string>
     <string name="chat_message_report">Rapportér</string>
@@ -569,6 +963,10 @@
     <string name="chat_message_block_confirm_body">Er du sikker på, at du vil blokere denne bruger? Du vil ikke længere modtage beskeder fra dem.</string>
     <string name="chat_message_report_confirm_title">Rapportér indhold?</string>
     <string name="chat_message_report_confirm_body">Er du sikker på, at du vil rapportere dette indhold?</string>
+
+    <!-- Emoji -->
+    <string name="emoji_search_placeholder">Søg efter emoji</string>
+    <string name="emoji_none_found">Ingen emojis fundet</string>
 
     <!-- Upload progress -->
     <string name="upload_preparing">Forbereder\u2026</string>
@@ -579,11 +977,180 @@
     <string name="upload_uploading">Uploader\u2026</string>
     <string name="upload_finalizing">Afslutter\u2026</string>
     <string name="upload_done">Færdig</string>
+    <string name="upload_retrying">Prøver igen…</string>
+    <string name="upload_failed">Upload mislykkedes</string>
+    <string name="upload_failed_sheet_title">Upload mislykkedes</string>
+    <string name="upload_failed_sheet_body">Dette øjeblik kunne ikke uploades. Modtagerne har ikke modtaget det.</string>
+    <string name="upload_failed_action_delete">Slet øjeblik</string>
+    <string name="upload_failed_action_dismiss">Luk</string>
 
-    <!-- Emoji -->
-    <string name="emoji_search_placeholder">Søg efter emoji</string>
-    <string name="emoji_none_found">Ingen emojis fundet</string>
+    <!-- Vault -->
+    <string name="vault_label">Vault</string>
+    <string name="vault_home_subtitle">Dit sikre dokumentarkiv</string>
+    <string name="vault_onboarding_title">Din personlige dokumentboks</string>
+    <string name="vault_onboarding_body_1">Her kan du sikkert opbevare billeder af dine pas, kørekort, certifikater, kreditkort og andre vigtige dokumenter.</string>
+    <string name="vault_onboarding_body_2">Dine dokumenter er zero-knowledge-krypteret på din personlige private Homebase-cloudserver. De er derudover beskyttet af din enheds biometri.</string>
+    <string name="vault_onboarding_setup">Sæt det op</string>
+    <string name="vault_onboarding_dismiss">Gem det væk</string>
+    <string name="vault_permission_dialog_title">Udvid tilladelser</string>
+    <string name="vault_permission_dialog_text">For at sætte din Vault op skal vi udvide tilladelserne til sikker lagring og cloud-synkronisering.</string>
+    <string name="vault_permission_extend">Udvid</string>
+    <string name="vault_permission_cancel">Annullér</string>
+    <string name="vault_welcome">Velkommen til din Vault</string>
+    <string name="vault_settings_section">Vault</string>
+    <string name="vault_settings_open">Åbn Vault</string>
+    <string name="vault_settings_show_icon">Vis Vault-ikonet i bundbjælken</string>
+    <string name="vault_settings_biometrics">Biometrisk beskyttelse</string>
+    <string name="vault_biometric_prompt_title">Lås Vault op</string>
+    <string name="vault_biometric_prompt_subtitle">Godkend for at få adgang til dine dokumenter</string>
+    <string name="vault_empty_title">Din Vault er tom</string>
+    <string name="vault_empty_subtitle">Opbevar dine private filer sikkert.\nTryk på + for at tilføje din første fil.</string>
+    <string name="vault_empty_add_prompt">Tryk på + for at tilføje en sektion</string>
+    <string name="vault_empty_add_section">Tilføj sektion</string>
+    <string name="vault_upload_preparing">Forbereder…</string>
+    <string name="vault_upload_failed">Upload mislykkedes</string>
+    <string name="vault_upload_retry">Prøv igen</string>
+    <string name="vault_delete_confirm_title">Slet fil?</string>
+    <string name="vault_delete_confirm_message">“%1$s” slettes permanent.</string>
+    <string name="vault_delete_confirm_action">Slet</string>
+    <string name="vault_rename_title">Omdøb</string>
+    <string name="vault_rename_action">Omdøb</string>
+    <string name="vault_share">Del</string>
+    <string name="vault_toggle_view_mode">Skift visningstilstand</string>
+    <string name="vault_settings">Indstillinger</string>
+    <string name="vault_add_file">Tilføj fil</string>
+    <string name="vault_more_options">Flere muligheder</string>
+    <string name="vault_add_note">Tilføj note</string>
+    <string name="vault_note_title_placeholder">Titel</string>
+    <string name="vault_note_body_placeholder">Begynd at skrive…</string>
+    <string name="vault_note_title_required">Titel er påkrævet</string>
+    <string name="vault_note_save">Gem</string>
+    <string name="vault_note_loading">Indlæser note…</string>
+    <string name="vault_note_save_failed">Kunne ikke gemme noten</string>
+    <string name="vault_note_load_failed">Kunne ikke indlæse noten</string>
+    <string name="vault_note_load_failed_preview">Kunne ikke indlæse noteforhåndsvisningen</string>
+    <string name="vault_note_edit">Redigér note</string>
+    <string name="vault_note_share">Del note</string>
+    <string name="vault_note_delete">Slet note</string>
+    <string name="vault_note_delete_confirm_title">Slet note?</string>
+    <string name="vault_note_delete_confirm_message">“%1$s” slettes permanent.</string>
+    <string name="vault_note_delete_failed">Kunne ikke slette noten</string>
+    <string name="vault_note_close">Luk</string>
+    <string name="vault_note_discard_title">Kassér ændringer?</string>
+    <string name="vault_note_discard_message">Du har ugemte ændringer, som går tabt.</string>
+    <string name="vault_note_discard_action">Kassér</string>
 
+    <!-- Vault Sections -->
+    <string name="vault_section_passports">Pas</string>
+    <string name="vault_section_drivers_licenses">Kørekort</string>
+    <string name="vault_section_health_cards">Sundhedskort</string>
+    <string name="vault_section_birth_certificates">Fødselsattester</string>
+    <string name="vault_section_credit_cards">Kreditkort</string>
+
+    <string name="vault_section_menu">Sektionsmuligheder</string>
+    <string name="vault_section_move_up">Flyt op</string>
+    <string name="vault_section_move_down">Flyt ned</string>
+    <string name="vault_section_rename">Omdøb sektion</string>
+    <string name="vault_section_delete">Slet sektion</string>
+    <string name="vault_section_delete_confirm_title">Slet %1$s?</string>
+    <string name="vault_section_delete_confirm_message">Alle poster i denne sektion slettes permanent.</string>
+
+    <string name="vault_new_section_title">Ny sektion</string>
+    <string name="vault_new_section_field_label">Titel</string>
+    <string name="vault_new_section_add">Tilføj</string>
+    <string name="vault_new_section_name_exists">Der findes allerede en sektion med dette navn</string>
+
+    <string name="vault_entry_add">Tilføj</string>
+    <string name="vault_entry_new_title">Ny post</string>
+    <string name="vault_entry_name_label">Navn</string>
+    <string name="vault_entry_move_to_section">Flyt til sektion...</string>
+    <string name="vault_entry_delete">Slet post</string>
+    <string name="vault_entry_delete_confirm">Slet %1$s? Denne post og alle dens billeder slettes permanent.</string>
+
+    <string name="vault_image_add">Tilføj billede</string>
+    <string name="vault_add_entry">Tilføj post</string>
+    <string name="vault_image_take_photo">Tag foto</string>
+    <string name="vault_image_choose_gallery">Vælg fra galleri</string>
+    <string name="vault_choose_file">Vælg fil</string>
+    <string name="vault_image_replace">Erstat</string>
+    <string name="vault_image_delete">Slet billede</string>
+
+    <string name="vault_section_empty_hint">Tryk på + for at tilføje den første under %1$s</string>
+
+    <!-- Vault Gallery -->
+    <string name="vault_gallery_page_counter">%1$d / %2$d</string>
+    <string name="vault_gallery_add_page">Tilføj side</string>
+    <string name="vault_gallery_delete_page">Slet side</string>
+    <string name="vault_gallery_delete_page_confirm">Slet denne side? Dette kan ikke fortrydes.</string>
+    <string name="vault_gallery_delete_last_page_confirm">Dette er den sidste side. Sletter du den, fjernes hele posten.</string>
+    <string name="vault_gallery_share_page">Del denne side</string>
+    <string name="vault_gallery_save_page">Gem på enheden</string>
+    <string name="vault_gallery_delete_file">Slet fil</string>
+    <string name="vault_gallery_delete_all">Slet alle</string>
+
+    <!-- Vault image editor -->
+    <string name="vault_edit_picture">Redigér billede</string>
+    <string name="vault_edit_crop">Beskær</string>
+    <string name="vault_edit_draw">Tegn</string>
+    <string name="vault_editor_name_hint">Etiket (valgfri)</string>
+    <string name="vault_editor_add">Tilføj</string>
+    <string name="vault_error_edit_page">Kunne ikke gemme det redigerede billede.</string>
+    <string name="vault_error_open_editor">Kunne ikke åbne billededitoren.</string>
+
+    <!-- Vault Move to section -->
+    <string name="vault_move_to_section">Flyt til sektion…</string>
+    <string name="vault_move_to_section_target">Flyt til %1$s</string>
+    <string name="vault_move_to_section_failed">Kunne ikke flytte filen. Prøv igen.</string>
+
+    <!-- Vault Notes -->
+    <string name="vault_notes_label">Noter</string>
+    <string name="vault_notes_placeholder">Tilføj noter om denne post…</string>
+    <string name="vault_label_placeholder">Tilføj etiket</string>
+    <string name="vault_notes_save">Gem</string>
+    <string name="vault_notes_cancel">Annullér</string>
+
+    <!-- Vault Detail Panel -->
+    <string name="vault_detail_current_page">Nuværende side</string>
+    <string name="vault_detail_entry_summary">Postoversigt</string>
+    <string name="vault_detail_type">Type</string>
+    <string name="vault_detail_size">Størrelse</string>
+    <string name="vault_detail_modified">Ændret</string>
+    <string name="vault_detail_pages">Sider</string>
+    <string name="vault_detail_total_size">Samlet størrelse</string>
+    <string name="vault_detail_created">Oprettet</string>
+
+    <!-- Vault Locked Screen -->
+    <string name="vault_locked_title">Vault er låst</string>
+    <string name="vault_locked_subtitle">Godkend for at få adgang til dine dokumenter</string>
+    <string name="vault_locked_unlock">Lås op</string>
+
+    <!-- Vault Errors -->
+    <string name="vault_error_create_section">Kunne ikke oprette sektionen</string>
+    <string name="vault_error_rename_section">Kunne ikke omdøbe sektionen</string>
+    <string name="vault_error_delete_section">Kunne ikke slette sektionen</string>
+    <string name="vault_error_upload">Kunne ikke uploade %1$s</string>
+    <string name="vault_error_download">Kunne ikke downloade filen til deling</string>
+    <string name="vault_error_rename_file">Kunne ikke omdøbe %1$s</string>
+    <string name="vault_error_delete_file">Kunne ikke slette %1$s</string>
+    <string name="vault_error_append_pages">Kunne ikke tilføje sider</string>
+    <string name="vault_error_delete_page">Kunne ikke slette siden</string>
+    <string name="vault_error_save_notes">Kunne ikke gemme noterne</string>
+    <string name="vault_error_update_label">Kunne ikke opdatere etiketten for %1$s</string>
+    <string name="vault_error_download_page">Kunne ikke downloade siden til deling</string>
+    <string name="vault_error_outbox_upload">Upload mislykkedes</string>
+    <string name="vault_error_image_unavailable">Billedet kunne ikke indlæses</string>
+    <string name="vault_pdf_badge">PDF</string>
+    <string name="vault_pdf_preview_error">Kan ikke forhåndsvise PDF</string>
+    <string name="vault_pdf_not_supported">PDF-forhåndsvisning understøttes ikke på web</string>
+    <string name="vault_pdf_page_content_description">PDF-side %1$d af %2$d</string>
+    <string name="vault_text_preview_error">Kan ikke forhåndsvise filen</string>
+    <string name="vault_text_truncated">Filen er stor — viser den første 1 MB</string>
+
+    <string name="feed_error_title">Kunne ikke indlæse feed</string>
+    <string name="feed_error_retry">Prøv igen</string>
+    <string name="feed_loading">Indlæser feed…</string>
+    <string name="pending_attachment_one">1 vedhæftning</string>
+    <string name="pending_attachment_many">%1$d vedhæftninger</string>
     <string name="crop">Beskær</string>
     <string name="draw">Tegn</string>
     <string name="chat_remove_background">Fjern baggrund</string>
@@ -595,106 +1162,505 @@
     <string name="trim_end_handle">Beskær slut</string>
     <string name="trim_position">Afspilningsposition</string>
 
-    <!-- Storage screen -->
-    <string name="storage_caches_header">Caches</string>
-    <string name="storage_caches_none">Ingen caches</string>
-    <string name="storage_clear_caches">Ryd caches</string>
-    <string name="storage_caches_cleared">Caches ryddet</string>
-    <string name="storage_total_cache_format">I alt: %1$s</string>
-    <string name="storage_drives_header">Drev</string>
-    <string name="storage_drives_none">Ingen drev</string>
-    <string name="storage_drive_count_format">%1$d elementer</string>
-    <string name="storage_other_header">Andet</string>
-    <string name="storage_database">Database</string>
-    <string name="storage_defragment_button">Defragmentér</string>
-    <string name="storage_cache_payloads">Mediedata</string>
-    <string name="storage_cache_thumbnails">Miniaturebilleder</string>
-    <string name="storage_cache_profile_images">Profilbilleder</string>
-    <string name="storage_cache_profiles">Offentlige profiler</string>
-    <string name="storage_cache_coil_memory">Billeder i hukommelsen</string>
-    <string name="storage_cache_ram_badge">RAM</string>
-    <string name="storage_cache_unknown">Andet</string>
-    <string name="storage_cache_size_format">%1$s / %2$s</string>
-    <string name="storage_cache_unavailable">Ikke tilgængelig</string>
-    <string name="storage_cache_unhealthy_title">Nogle caches kunne ikke åbnes</string>
-    <string name="storage_cache_unhealthy_body">En eller flere caches på disken kunne ikke initialiseres. Tryk på \"Ryd caches\" for at nulstille dem — cachelagrede data vil gå tabt, men ingen primære data påvirkes.</string>
+    <!-- Delivery status -->
+    <string name="message_sending">Sender</string>
+    <string name="message_read">Læst</string>
+    <string name="message_delivered">Leveret</string>
+    <string name="message_sent">Sendt</string>
+    <string name="message_send_failed">Kunne ikke sendes</string>
 
-    <!-- Defragmenter -->
-    <string name="defragmenter_title_format">Defragmenterer %1$s…</string>
-    <string name="defragmenter_drive_label_all">Alle drev</string>
-    <string name="defragmenter_grid_description">Defragmenterer %1$s. %2$d procent færdig.</string>
-    <string name="defragmenter_status_idle">Klar til analyse</string>
-    <string name="defragmenter_status_analyzing">Analyserer drev… %1$d af %2$d</string>
-    <string name="defragmenter_status_ready">Analyse fuldført — klar til defragmentering</string>
-    <string name="defragmenter_status_running">Defragmenterer</string>
-    <string name="defragmenter_status_paused">Sat på pause</string>
-    <string name="defragmenter_status_repairing">Reparerer lokalt indeks…</string>
-    <string name="defragmenter_status_vacuuming">Optimerer database…</string>
-    <string name="defragmenter_status_complete">Defragmentering fuldført</string>
-    <string name="defragmenter_status_cancelled">Annulleret</string>
-    <string name="defragmenter_stat_total">Blokke i alt: %1$d</string>
-    <string name="defragmenter_stat_gaps">Resterende huller: %1$d</string>
-    <string name="defragmenter_stat_moves">Flyttede blokke: %1$d</string>
-    <string name="defragmenter_stat_elapsed">Forløbet: %1$s</string>
-    <string name="defragmenter_stat_eta">Estimeret: %1$s</string>
-    <string name="defragmenter_analyze">Analysér</string>
-    <string name="defragmenter_start">Start defragmentering</string>
-    <string name="defragmenter_pause">Pause</string>
-    <string name="defragmenter_resume">Genoptag</string>
-    <string name="defragmenter_cancel">Annullér</string>
-    <string name="defragmenter_close">Luk</string>
+    <!-- Accessibility: content descriptions -->
+    <string name="cd_play_video">Afspil video</string>
+    <string name="cd_pause_video">Sæt video på pause</string>
+    <string name="cd_file_attachment">Vedhæftet fil</string>
+    <string name="cd_image_attachment">Vedhæftet billede</string>
+    <string name="cd_video_thumbnail">Videominiature</string>
+    <string name="cd_video_frame">Videobillede</string>
+    <string name="cd_gallery_thumbnail">Galleriminiature</string>
+    <string name="cd_send_to">Send til %1$s</string>
+    <string name="cd_upload_complete">Upload fuldført</string>
+    <string name="cd_upload_failed">Upload mislykkedes</string>
+    <string name="cd_location_pin">Placering</string>
+    <string name="cd_link_preview_image">Linkforhåndsvisningsbillede</string>
+    <string name="cd_reply_thumbnail">Svarminiature</string>
+    <string name="cd_selected">Valgt</string>
+    <string name="cd_not_selected">Ikke valgt</string>
+    <string name="cd_open_externally">Åbn eksternt</string>
+    <string name="cd_navigate_forward">Navigér frem</string>
+    <string name="cd_connection_succeeded">Forbindelse oprettet</string>
+    <string name="cd_video_scrubber_frame">Videoskrubberbillede</string>
+    <string name="video_web_large_playback_unsupported">Store videoer kan endnu ikke afspilles i browseren</string>
 
-    <!-- Defragmenter — bad-block review dialog -->
-    <string name="defragmenter_review_button">Gennemgå %1$d defekt(e) blok(ke)…</string>
-    <string name="defragmenter_review_dialog_title">Defekt blok (%1$d af %2$d)</string>
-    <string name="defragmenter_review_kind_header">Header</string>
-    <string name="defragmenter_review_kind_message_content">Beskedindhold</string>
-    <string name="defragmenter_review_label_drive">Drev: %1$s</string>
-    <string name="defragmenter_review_label_file">Fil: %1$s</string>
-    <string name="defragmenter_review_label_filetype">Filtype: %1$s</string>
-    <string name="defragmenter_review_label_unique">Unik id: %1$s</string>
-    <string name="defragmenter_review_label_created">Oprettet (ms): %1$s</string>
-    <string name="defragmenter_review_label_sender">Afsender: %1$s</string>
-    <string name="defragmenter_review_label_author">Oprindelig forfatter: %1$s</string>
-    <string name="defragmenter_review_label_conversation">Samtale: %1$s</string>
-    <string name="defragmenter_review_decode_error">Afkodningsfejl: %1$s</string>
-    <string name="defragmenter_review_raw_json">Råt indhold (første 4000 tegn):</string>
-    <string name="defragmenter_review_button_skip">Spring over</string>
-    <string name="defragmenter_review_button_delete">Slet</string>
-    <string name="defragmenter_review_button_close">Luk</string>
+    <!-- Settings section headers -->
+    <string name="settings_section_general">Generelt</string>
+    <string name="settings_section_danger_zone">Farezone</string>
 
-    <!-- Location attachments -->
-    <string name="chat_location_attachment">Placeringskort</string>
-    <string name="chat_location_share">Placering</string>
-    <string name="chat_location_unavailable">Kunne ikke hente din placering. Prøv igen udendørs eller tjek, at Placering er aktiveret.</string>
-    <string name="chat_location_permission_denied">Placeringstilladelse afvist. Aktivér den i Indstillinger for at dele din placering.</string>
-    <string name="chat_location_map_preview_unavailable">Forhåndsvisning af kort ikke tilgængelig — sender kun koordinater.</string>
-    <string name="chat_image_unavailable">Billedet kunne ikke indlæses</string>
+    <!-- Audio player -->
+    <string name="audio_pause">Pause</string>
+    <string name="audio_play">Afspil</string>
 
-    <!-- Reactions -->
-    <string name="chat_reactions_title">Reaktioner</string>
-    <string name="chat_reactions_all">Alle</string>
+    <!-- Bottom navigation -->
+    <string name="nav_chats">Chats</string>
+    <string name="nav_feed">Feed</string>
+    <string name="nav_moments">Moments</string>
+    <string name="nav_home">Hjem</string>
 
-    <!-- Share picker -->
-    <string name="share_picker_next">Næste</string>
-    <string name="share_picker_send">Send</string>
+    <!-- Developer menu -->
+    <string name="dev_menu_title">Udviklermenu</string>
+    <string name="dev_menu_section_misc">Diverse info</string>
+    <string name="dev_menu_section_sync">Synkronisering &amp; forbindelse</string>
+    <string name="dev_menu_section_database">Database &amp; lagerplads</string>
+    <string name="dev_menu_section_testing">Testværktøjer</string>
+    <string name="dev_menu_section_video">Video</string>
+    <string name="dev_menu_section_network">Netværksstatus</string>
+    <string name="dev_menu_run_network_diagnostics">Kør netværksdiagnostik</string>
+    <string name="dev_menu_network_copy">Kopiér diagnostik</string>
+    <string name="dev_menu_network_captive_portal">Sandsynligvis en captive portal — en wifi-loginside opfanger forespørgsler.</string>
+    <string name="dev_menu_network_rung_system_dns">System-DNS</string>
+    <string name="dev_menu_network_rung_doh">DNS-over-HTTPS (1.1.1.1)</string>
+    <string name="dev_menu_network_rung_last_ip">Sidst kendte IP</string>
+    <string name="dev_menu_network_last_good_ip">Sidst kendte gode IP: %1$s</string>
+    <string name="dev_menu_network_last_good_ip_none">ingen registreret endnu</string>
+    <string name="dev_menu_force_sync">Gennemtving fuld synkronisering</string>
+    <string name="dev_menu_clear_data">Ryd alle data</string>
+    <string name="dev_menu_test_notification">Test rig notifikation</string>
+    <string name="dev_menu_test_temporal_read">Test tidsbestemt placeringslæsning (Frodo)</string>
+    <string name="dev_menu_test_scheduled_push">Test planlagte push-notifikationer</string>
+    <string name="scheduled_push_test_title">Test af planlagt push</string>
+    <string name="scheduled_push_test_schedule_one_shot">Planlæg engangsnotifikation (10s)</string>
+    <string name="scheduled_push_test_schedule_recurring">Planlæg gentagende (5 min)</string>
+    <string name="scheduled_push_test_recurring_confirm_title">Gentag for evigt?</string>
+    <string name="scheduled_push_test_recurring_confirm_message">Denne notifikation gentages hvert 5. minut, indtil du annullerer den. Der er ingen automatisk slutdato eller grænse for antal gentagelser.</string>
+    <string name="scheduled_push_test_recurring_confirm_action">Planlæg alligevel</string>
+    <string name="scheduled_push_test_empty">Ingen planlagte notifikationer</string>
+    <string name="scheduled_push_test_refresh">Opdater</string>
+    <string name="scheduled_push_test_reschedule">Omplanlæg +1m</string>
+    <string name="scheduled_push_test_cancel_confirm_title">Annuller denne notifikation?</string>
+    <string name="scheduled_push_test_cancel_confirm_message_one_shot">Denne planlagte notifikation bliver annulleret.</string>
+    <string name="scheduled_push_test_cancel_confirm_message_recurring">Denne notifikation gentages på ubestemt tid. Annullering er den eneste måde at stoppe den på.</string>
+    <string name="scheduled_push_test_cancel_confirm_action">Annuller notifikation</string>
+    <string name="dev_menu_allow_ten_bit_video">Tillad 10-bit video</string>
+    <string name="dev_menu_allow_ten_bit_video_description">Behold uploadede 10-bit videoer i 10-bit (High 10) i stedet for at nedkonvertere til 8-bit. Kun til test — resultatet kan muligvis ikke afspilles på alle enheder.</string>
+    <string name="dev_menu_section_crashlytics">Crashlytics</string>
+    <string name="dev_menu_trigger_test_crash">Udløs testnedbrud</string>
+    <string name="dev_menu_trigger_test_crash_description">Får bevidst appen til at gå ned med det samme for at teste nedbrudsrapportering. Appen lukker øjeblikkeligt — åbn den igen bagefter, så nedbrudsrapporten kan uploades til Crashlytics.</string>
+    <string name="dev_menu_crash_confirm_title">Få appen til at gå ned?</string>
+    <string name="dev_menu_crash_confirm_message">Dette får bevidst appen til at gå ned med det samme for at teste Crashlytics. Du skal åbne appen igen bagefter.</string>
+    <string name="dev_menu_crash_confirm_action">Gå ned nu</string>
 
-    <!-- Pending attachments -->
-    <string name="pending_attachment_one">1 vedhæftning</string>
-    <string name="pending_attachment_many">%1$d vedhæftninger</string>
+    <!-- Video debug info overlay (long-press the MP4/HLS tag) -->
+    <string name="video_info_title">Videoinfo</string>
+    <string name="video_info_container">Container: %1$s</string>
+    <string name="video_info_codec">Codec: %1$s</string>
+    <string name="video_info_resolution">Opløsning: %1$s</string>
+    <string name="video_info_bit_depth">Bitdybde: %1$s</string>
+    <string name="video_info_hdr">HDR: %1$s</string>
+    <string name="video_info_bitrate">Bitrate: %1$s</string>
+    <string name="video_info_duration">Varighed: %1$s</string>
+    <string name="video_info_size">Størrelse: %1$s</string>
+    <string name="video_info_unknown">—</string>
+    <string name="video_info_yes">Ja</string>
+    <string name="video_info_no">Nej</string>
 
-    <!-- Feed screen -->
-    <string name="feed_error_title">Kunne ikke indlæse feed</string>
-    <string name="feed_error_retry">Prøv igen</string>
-    <string name="feed_loading">Indlæser feed…</string>
+    <!-- Image info overlay (shown from the moment overflow "Info" menu item) -->
+    <string name="image_info_title">Billedinfo</string>
+    <string name="image_info_type">Type: %1$s</string>
+    <string name="image_info_dimensions">Dimensioner: %1$s (ca.)</string>
+    <string name="image_info_date">Dato: %1$s</string>
 
-    <!-- Moments push notifications -->
-    <string name="moments_push_new_post">Et øjeblik er blevet delt med dig…</string>
-    <string name="moments_push_new_comment">Kommenterede på et øjeblik, du er en del af</string>
+    <!-- Defragmenter issue labels -->
+    <string name="defragmenter_issue_legacy_user_date">Ældre userDate=0</string>
+    <string name="defragmenter_issue_soft_delete_drift">Soft-delete-afvigelse</string>
+    <string name="defragmenter_issue_bad_header">Defekte headerblokke</string>
+    <string name="defragmenter_issue_unmappable_convo">Samtale kan ikke knyttes</string>
+    <string name="defragmenter_issue_orphan_messages">Forældreløse beskeder</string>
+    <string name="defragmenter_issue_bad_message">Defekte beskedblokke</string>
 
-    <!-- Vault Move to section -->
-    <string name="vault_move_to_section">Flyt til sektion…</string>
-    <string name="vault_move_to_section_target">Flyt til %1$s</string>
-    <string name="vault_move_to_section_failed">Kunne ikke flytte filen. Prøv igen.</string>
+    <!-- Storage warnings -->
+    <string name="storage_orphan_coil_title">Forældreløs Coil-diskcache fundet</string>
+    <string name="storage_orphan_coil_body">%1$s i cache/coil3_disk_cache. Coils standard-diskcache bør være slået fra — denne mappe betyder, at noget går uden om Homebase-cachelaget. Tryk på \"Ryd caches\" for at slette den.</string>
+
+    <!-- Contact info / chat overview -->
+    <string name="contact_info_recent_media">Seneste medier</string>
+    <string name="conversation_chatting_since">Har chattet siden %1$s</string>
+
+    <!-- Conversation media album + groups in common -->
+    <string name="conversation_media_see_all">Se alle</string>
+    <string name="conversation_groups_in_common">Fælles chatgrupper</string>
+    <string name="conversation_media_album_title">Delte medier</string>
+    <string name="conversation_media_empty">Intet her endnu</string>
+    <string name="conversation_media_tab_media">Medier</string>
+    <string name="conversation_media_tab_files">Filer</string>
+    <string name="conversation_media_tab_audio">Lyd</string>
+    <string name="conversation_media_tab_dice">Terningkast</string>
+    <string name="conversation_media_tab_locations">Placeringer</string>
+    <string name="conversation_media_go_to_message">Gå til besked</string>
+    <string name="conversation_jump_message_unavailable">Den besked er ikke længere tilgængelig</string>
+
+    <!-- Error states -->
+    <string name="error_no_group_loaded">Ingen gruppe kunne indlæses</string>
+    <string name="error_no_contact_loaded">Ingen kontakt kunne indlæses</string>
+
+    <!-- File save snackbar -->
+    <string name="file_saved_to">Gemt i %1$s</string>
+    <string name="file_save_failed">Kunne ikke gemme: %1$s</string>
+    <string name="file_share_failed">Kunne ikke dele: %1$s</string>
+    <string name="error_unknown">Ukendt fejl</string>
+
+    <!-- Location add-on -->
+    <string name="location_label">Lokation</string>
+    <string name="location_dashboard_title">Lokations-dashboard</string>
+    <string name="location_settings_title">Lokationsindstillinger</string>
+    <string name="location_home_subtitle">Din private lokationshistorik</string>
+    <string name="location_onboarding_title">Dine steder, kun dine</string>
+    <string name="location_onboarding_body_1">Lokation fører en privat, krypteret historik over, hvor du har været — gemt på dit eget drev og kun synlig for dig.</string>
+    <string name="location_onboarding_body_2">Sæt det op for at montere Lokations-drevet på denne enhed. Du bestemmer, hvornår sporing er slået til.</string>
+    <string name="location_onboarding_setup">Sæt det op</string>
+    <string name="location_onboarding_dismiss">Ikke nu</string>
+    <string name="location_settings_section">Lokation</string>
+    <string name="location_settings_show_icon">Vis Lokations-ikonet i bundbjælken</string>
+    <string name="location_map_section">Kort</string>
+    <string name="location_map_none">Intet kort</string>
+    <string name="location_map_osm">Open maps</string>
+    <string name="location_tracking_switch">Spor min placering</string>
+    <string name="location_tracking_unavailable">Sporing er ikke tilgængelig på denne enhed. Aktivér det på din telefon for at optage lokationshistorik.</string>
+    <string name="location_perm_section">Tilladelser</string>
+    <string name="location_perm_while_in_use">Placering mens appen bruges</string>
+    <string name="location_perm_always">Tillad altid</string>
+    <string name="location_perm_granted">Givet</string>
+    <string name="location_perm_grant">Giv</string>
+    <string name="location_perm_open_settings">Åbn indstillinger</string>
+    <string name="location_perm_always_hint">Kræves for at optage din placering, når appen er i baggrunden eller lukket.</string>
+    <string name="location_perm_always_settings_hint">Android spørger ikke igen — tryk på Åbn indstillinger, og vælg derefter "Tillad altid" for Placering.</string>
+    <string name="location_status_section">Status</string>
+    <string name="location_status_last_fix">Seneste position</string>
+    <string name="location_status_points_today">Punkter i dag</string>
+    <string name="location_status_pending">Venter på upload</string>
+    <string name="location_status_last_flush">Seneste upload</string>
+    <string name="location_status_never">Aldrig</string>
+    <string name="location_menu_more">Flere muligheder</string>
+    <string name="location_menu_find_device">Find enhed</string>
+    <string name="location_menu_setup">Indstillinger</string>
+    <string name="location_menu_dashboard">Dashboard</string>
+    <string name="location_dashboard_history_section">Lokationshistorik</string>
+    <string name="location_devices_section">Find min enhed</string>
+    <string name="location_locatable_section">Hvem du kan lokalisere</string>
+    <string name="location_locatable_none">Du kan ikke lokalisere nogen endnu. Personer vises her, når de tilføjer dig til deres nødkreds.</string>
+    <string name="location_locate_age_hours">%1$dt</string>
+    <string name="location_locate_age_days">%1$dd</string>
+    <string name="location_locatable_broken_cd">Ikke længere forbundet</string>
+    <string name="location_locate_no_data">ingen data</string>
+    <string name="location_locatable_unreachable_cd">Kan ikke nå deres server</string>
+    <string name="location_locate_panel_title">Anmodning om nødlokation</string>
+    <string name="location_locate_panel_explainer">Du er ved at aktivere en nødfunktion for %1$s, og du vil modtage deres placeringsdata. %1$s bliver gjort opmærksom på, at du har sendt denne anmodning — misbruger du den, må du forvente at blive fjernet som nødkontakt.</string>
+    <string name="location_locate_reason_hint">Beskriv, hvorfor du har brug for at hente nødplaceringsdataene.</string>
+    <string name="location_locate_window_label">Hvor langt tilbage</string>
+    <string name="location_locate_last_point">Deres seneste datapunkt er %1$s gammelt</string>
+    <string name="location_locate_last_point_none">De har ingen datapunkter endnu</string>
+    <string name="location_locate_window_hours">Seneste %1$d timer</string>
+    <string name="location_locate_window_days">Seneste %1$d dage</string>
+    <string name="location_locate_ambush_label">Baghold</string>
+    <string name="location_locate_ambush_explainer">Hvis du tror, at personen kan blive holdt som gidsel, så markér dette felt for at forsinke notifikationen til personen i 24 timer.</string>
+    <string name="location_locate_confirm">Anmod om placeringsdata</string>
+    <string name="location_locate_fetch_failed">Kunne ikke hente deres placeringsdata. Meddelelsen om anmodningen blev stadig sendt.</string>
+    <string name="location_emergency_contacts_section">Nødkontakter</string>
+    <string name="location_emergency_access_section">Hvem kan lokalisere dig</string>
+    <string name="location_emergency_access_manage">Tilføj nødkontakter</string>
+    <string name="location_emergency_access_missing">Ingen nødlokationsadgangskreds endnu. Tryk på + for at oprette en i din ejer konsol.</string>
+    <string name="location_emergency_access_none">Ingen kan lokalisere dig endnu. Tryk på + for at tilføje personer.</string>
+    <string name="location_emergency_access_more">+%1$d</string>
+    <string name="location_device_this_device">Denne enhed</string>
+    <string name="location_device_no_fix">Ingen nylig placering</string>
+    <string name="location_device_unnamed">Enhed %1$s</string>
+    <string name="location_find_title">Find enhed</string>
+    <string name="location_find_last_seen">Sidst set %1$s</string>
+    <string name="location_find_battery">🔋 %1$s</string>
+    <string name="location_find_no_location">Ingen kendt placering for denne enhed</string>
+    <string name="location_find_freshness">Positionen er fra enhedens seneste upload og denne enheds seneste synkronisering.</string>
+    <string name="location_find_refresh">Opdater</string>
+    <string name="location_dashboard_perm_banner">Placeringstilladelsen kræver opmærksomhed — tryk for at rette</string>
+    <string name="location_dashboard_empty_today">Ingen placeringer optaget endnu i dag</string>
+    <string name="location_consent_title">Din private lokationshistorik</string>
+    <string name="location_consent_text">Din app vil indsamle placeringsdata — og, mens sporing er aktiv, dit skridttal og batteriniveau — for at optage din private lokationshistorik og gemme den på dit private Homebase Lokations-drev, også når denne app er lukket eller ikke i brug. Din historik er end-to-end-krypteret til dit personlige drev; ingen andre end dig, ikke engang din cloud-operatør, kan læse den.</string>
+    <string name="location_consent_agree">Acceptér</string>
+    <string name="location_consent_decline">Nej tak</string>
+    <string name="location_history_title">Historik</string>
+    <string name="location_history_you">(dig)</string>
+    <string name="live_location_title">Live-placering</string>
+    <string name="live_location_empty">Ingen deler deres live-placering lige nu.</string>
+    <string name="live_location_enable_gps_title">Vis din placering?</string>
+    <string name="live_location_enable_gps_text">Tillad adgang til placering, så din position vises på kortet sammen med de personer, der deler med dig.</string>
+    <string name="live_location_enable_gps_confirm">Tillad</string>
+    <string name="live_location_enable_gps_dismiss">Ikke nu</string>
+    <string name="live_location_marker_cd">Live-placering for %1$s</string>
+    <string name="live_location_you">Dig</string>
+    <string name="live_location_age_minutes">%1$dm</string>
+    <string name="location_sharing_indicator_cd">Live-placering aktiv</string>
+    <string name="location_dashboard_live_section">Deling af live-placering</string>
+    <string name="location_dashboard_live_open">Åbn live-kort</string>
+    <string name="location_dashboard_live_empty">Der er ingen live-placeringsdata i øjeblikket.</string>
+    <string name="location_maps_off_title">Kort er slået fra</string>
+    <string name="location_maps_off_cta">Slå kort til</string>
+    <string name="location_dashboard_sharing_with">Du deler med</string>
+    <string name="location_dashboard_sharing_with_you">Deler med dig</string>
+    <string name="location_dashboard_sharing_show">Vis listen</string>
+    <string name="location_dashboard_sharing_hide">Skjul listen</string>
+    <string name="location_dashboard_share_until">indtil %1$s</string>
+    <string name="location_dashboard_share_until_stopped">indtil den stoppes</string>
+    <string name="location_dashboard_stop_one_cd">Stop deling med %1$s</string>
+    <string name="location_dashboard_stop_everyone">Stop deling med alle</string>
+    <string name="location_dashboard_stop_confirm_title">Stop al deling?</string>
+    <string name="location_dashboard_stop_confirm_body">Dette afslutter alle live-placeringsdelinger, du har startet.</string>
+    <string name="share_live_location">Del live-placering</string>
+    <string name="live_share_back">Del din live-placering</string>
+    <string name="live_share_duration_prompt">Del live-placering i</string>
+    <string name="stop_sharing">Stop deling</string>
+    <string name="live_share_active">Live-placering · %1$s tilbage</string>
+    <string name="live_share_active_indefinite">Live-placering · indtil den stoppes</string>
+    <string name="live_share_ended">Live-deling afsluttet</string>
+    <string name="live_share_15m">15 minutter</string>
+    <string name="live_share_30m">30 minutter</string>
+    <string name="live_share_1h">1 time</string>
+    <string name="live_share_2h">2 timer</string>
+    <string name="live_share_4h">4 timer</string>
+    <string name="live_share_indefinite">Indtil du slår det fra</string>
+    <string name="share_location_title">Del placering</string>
+    <string name="share_location_recenter_cd">Centrér på din nuværende placering</string>
+    <string name="share_location_resolving">Finder adresse…</string>
+    <string name="share_location_comment_hint">Tilføj en kommentar</string>
+    <string name="share_location_live_banner">Del live-placering</string>
+    <string name="share_location_send_cd">Send placering</string>
+    <string name="live_share_enable_location_title">Slå placering til for at dele</string>
+    <string name="live_share_enable_location_body">For at dele din live-placering skal du først sætte placering op på denne enhed, så den kan sende din position.</string>
+    <string name="live_share_enable_location_cta">Sæt placering op</string>
+    <string name="location_history_empty">Ingen placeringer optaget denne dag</string>
+    <string name="location_history_enable_tracking">Slå placeringssporing til</string>
+    <string name="location_history_map_disclosure">Kortfliser hentes fra OpenStreetMap — det viste område bliver synligt for deres servere.</string>
+    <string name="location_history_previous_day">Forrige dag</string>
+    <string name="location_history_next_day">Næste dag</string>
+    <string name="location_history_pick_date">Vælg en dato</string>
+    <string name="location_history_delete_day">Slet historik for denne dag</string>
+    <string name="location_history_delete_title">Slet denne dag?</string>
+    <string name="location_history_delete_text">Dette fjerner permanent al lokationshistorik optaget for denne dag. Dette kan ikke fortrydes.</string>
+    <string name="location_history_distance">%1$s km</string>
+    <string name="location_history_points">%1$d punkter</string>
+    <string name="location_history_devices">%1$d enheder</string>
+    <string name="location_history_span">%1$s – %2$s</string>
+
+    <!-- Contact Book (contact manager add-on) -->
+    <string name="contactbook_label">Kontakter</string>
+    <string name="contactbook_home_subtitle">Administrér din adressebog</string>
+    <string name="contactbook_self_you">%1$s (dig)</string>
+    <string name="contactbook_onboarding_title">Dine kontakter, samlet ét sted</string>
+    <string name="contactbook_onboarding_body_1">Hav dine kontakter på din private Homebase-cloud, og nå de personer, du chatter med. Importér fra din telefon, eller tilføj kontakter manuelt.</string>
+    <string name="contactbook_onboarding_body_2">Dine kontakter er krypteret på din personlige Homebase-server og synkroniseres på tværs af dine enheder.</string>
+    <string name="contactbook_onboarding_setup">Kom i gang</string>
+    <string name="contactbook_onboarding_dismiss">Måske senere</string>
+
+    <string name="contactbook_tab_contacts">Kontakter</string>
+    <string name="contactbook_tab_circles">Kredse</string>
+    <string name="contactbook_connected">Forbundet</string>
+    <string name="contactbook_vetted">Godkendt</string>
+    <string name="contactbook_unvetted_empty">Ingen ikke-godkendte forbindelser.</string>
+    <string name="contactbook_vetted_empty">Ingen godkendte forbindelser.</string>
+    <string name="contactbook_circles_empty">Du har ingen kredse endnu.</string>
+    <string name="contactbook_circle_unvetted">Ikke godkendt</string>
+    <string name="contactbook_circle_members_empty">Denne kreds har ingen medlemmer.</string>
+    <string name="contactbook_circle_members_count">%1$d medlemmer</string>
+
+    <string name="contactbook_search_hint">Søg</string>
+    <string name="contactbook_filter_all">Alle</string>
+    <string name="contactbook_requests_header">Forbindelsesanmodninger</string>
+    <string name="contactbook_no_results">Ingen kontakter matcher din søgning</string>
+
+    <string name="contactbook_action_add">Tilføj kontakt</string>
+    <string name="contactbook_action_settings">Kontaktindstillinger</string>
+
+    <string name="contactbook_empty_title">Ingen kontakter endnu</string>
+    <string name="contactbook_empty_body">Tilføj en kontakt manuelt.</string>
+    <string name="contactbook_empty_new">Tilføj en kontakt</string>
+
+    <string name="contactbook_detail_message">Besked</string>
+    <string name="contactbook_detail_sync">Synkronisér</string>
+    <string name="contactbook_detail_edit">Redigér</string>
+    <string name="contactbook_detail_delete">Slet</string>
+    <string name="contactbook_detail_block">Blokér</string>
+    <string name="contactbook_detail_unblock">Fjern blokering</string>
+    <string name="contactbook_detail_disconnect">Afbryd forbindelse</string>
+    <string name="contactbook_detail_connect">Send forbindelsesanmodning</string>
+    <string name="contactbook_detail_not_connected">Ikke forbundet</string>
+    <string name="contactbook_detail_pending">Forbindelsesanmodning afventer</string>
+    <string name="contactbook_detail_request_incoming">Vil gerne forbindes med dig</string>
+    <string name="contactbook_detail_request_outgoing">Forbindelsesanmodning sendt</string>
+    <string name="contactbook_detail_accept">Acceptér</string>
+    <string name="contactbook_detail_reject">Afvis</string>
+    <string name="contactbook_detail_cancel_request">Annullér anmodning</string>
+    <string name="contactbook_detail_blocked">Blokeret</string>
+    <string name="contactbook_detail_recent_media">Seneste medier</string>
+    <string name="contactbook_detail_no_recent_media">Ingen seneste medier endnu</string>
+    <string name="contactbook_detail_contact_details">Kontaktoplysninger</string>
+    <string name="contactbook_detail_emergency_badge">Nødkontakt</string>
+    <string name="contactbook_detail_location_data_as_of">Placeringsdata pr. %1$s</string>
+    <string name="contactbook_detail_bio">Bio</string>
+    <string name="contactbook_detail_experience">Erfaring</string>
+    <string name="contactbook_detail_tab_details">Detaljer</string>
+    <string name="contactbook_detail_tab_about">Om</string>
+    <string name="contactbook_detail_tab_activity">Aktivitet</string>
+    <string name="contactbook_detail_name">Navn</string>
+    <string name="contactbook_detail_about_empty">Der er intet her endnu. Bio, erfaring og sociale links vises, når denne person deler dem.</string>
+    <string name="contactbook_detail_activity_empty">Ingen delt aktivitet endnu. Medier og andet, I deler i jeres samtale, vises her.</string>
+    <string name="contactbook_detail_manage">Administrér kontakt</string>
+    <string name="contactbook_detail_social">Socialt</string>
+    <string name="contactbook_detail_location">Placering</string>
+    <string name="contactbook_detail_circles">Kredse</string>
+    <string name="contactbook_detail_circles_empty">Ikke i nogen af dine kredse endnu.</string>
+    <string name="contactbook_detail_circles_connect">Forbind med denne person for at tilføje dem til dine kredse.</string>
+    <string name="contactbook_detail_groups_empty">Ingen fælles chatgrupper.</string>
+    <string name="contactbook_detail_groups_connect">Forbind med denne person for at se de chatgrupper, I har til fælles.</string>
+    <string name="contactbook_detail_none">Ingen</string>
+    <string name="contactbook_detail_more">Mere</string>
+    <string name="contactbook_detail_less">Mindre</string>
+    <string name="contactbook_detail_block_title">Blokér denne kontakt?</string>
+    <string name="contactbook_detail_block_message">De vil ikke kunne kontakte dig, og de får ikke besked. Du kan fjerne blokeringen senere for at gendanne forbindelsen.</string>
+    <string name="contactbook_detail_disconnect_title">Afbryd forbindelsen?</string>
+    <string name="contactbook_detail_disconnect_message">Dette fjerner permanent jeres forbindelse og den adgang, den gav. De får ikke besked. For at forbinde igen skal du sende en ny forbindelsesanmodning.</string>
+    <string name="contactbook_detail_delete_title">Slet kontakt?</string>
+    <string name="contactbook_detail_delete_message">Dette fjerner kontakten fra din adressebog.</string>
+    <string name="contactbook_detail_delete_message_connected">Dette fjerner kontakten fra din adressebog og afbryder jeres forbindelse, hvilket fjerner den adgang, den gav. De får ikke besked. For at forbinde igen skal du sende en ny forbindelsesanmodning.</string>
+    <string name="contactbook_detail_danger_zone">Farezone</string>
+
+    <string name="contactbook_edit_title_new">Ny kontakt</string>
+    <string name="contactbook_edit_title_edit">Redigér kontakt</string>
+    <string name="contactbook_edit_given_name">Fornavn</string>
+    <string name="contactbook_edit_surname">Efternavn</string>
+    <string name="contactbook_edit_odinid">Homebase-ID</string>
+    <string name="contactbook_edit_odinid_locked">Homebase-ID kan ikke ændres for en forbundet kontakt.</string>
+    <string name="contactbook_edit_synced_banner">Synkroniseret fra deres Homebase-profil. Ændringer, du foretager, gemmes kun for dig og ændrer ikke deres profil.</string>
+    <string name="contactbook_edit_synced_from_profile">Fra deres Homebase-profil</string>
+    <string name="contactbook_edit_overrides">Tilsidesætter deres profilværdi (%1$s) · kun du ser dette</string>
+    <string name="contactbook_edit_override_added">Kun du ser dette</string>
+    <string name="contactbook_edit_reset">Nulstil til profilværdi</string>
+    <string name="contactbook_detail_override_synced">Deres profil: %1$s</string>
+    <string name="contactbook_detail_override_none">ikke angivet i deres profil</string>
+    <string name="contactbook_edit_phone">Telefon</string>
+    <string name="contactbook_edit_add_phone">Tilføj telefonnummer</string>
+    <string name="contactbook_edit_add_email">Tilføj e-mailadresse</string>
+    <string name="contactbook_edit_remove">Fjern</string>
+    <string name="contactbook_country_search">Søg efter lande</string>
+    <string name="contactbook_edit_email">E-mail</string>
+    <string name="contactbook_edit_city">By</string>
+    <string name="contactbook_edit_country">Land</string>
+    <string name="contactbook_edit_birthday">Fødselsdag</string>
+    <string name="contactbook_edit_change_photo">Tilføj foto</string>
+    <string name="contactbook_edit_save">Gem</string>
+    <string name="contactbook_edit_cancel">Annullér</string>
+    <string name="contactbook_error_email">Indtast en gyldig e-mailadresse</string>
+    <string name="contactbook_error_phone">Brug internationalt format, f.eks. +4512345678</string>
+    <string name="contactbook_error_odinid">Indtast et gyldigt Homebase-ID (f.eks. sam.homebase.id)</string>
+
+    <string name="contactbook_settings_section">Kontakter</string>
+    <string name="contactbook_settings_open">Åbn Kontakter</string>
+    <string name="contactbook_settings_show_icon">Vis Kontakter-ikonet i bundbjælken</string>
+
+    <string name="contactbook_error_save">Kunne ikke gemme kontakten.</string>
+    <string name="contactbook_error_forbidden">Kunne ikke gemme — denne app har ikke tilladelse til at administrere dine kontakter. Giv adgang igen ved at udvide tilladelserne i ejer konsollen, og prøv derefter igen.</string>
+    <string name="contactbook_error_connection_forbidden">Kunne ikke opdatere denne forbindelse — denne app har ikke tilladelse til at administrere dine forbindelser. Giv adgang igen ved at udvide tilladelserne i ejer konsollen, og prøv derefter igen.</string>
+    <string name="contactbook_error_delete">Kunne ikke slette kontakten.</string>
+    <string name="contactbook_error_delete_forbidden">Kunne ikke slette — denne app har ikke tilladelse til at administrere dine kontakter. Giv adgang igen ved at udvide tilladelserne i ejer konsollen, og prøv derefter igen.</string>
+    <string name="contactbook_error_photo">Kontakten blev gemt, men fotoet kunne ikke uploades.</string>
+    <string name="contactbook_error_message">Kunne ikke åbne chatten.</string>
+    <string name="contactbook_error_clear_unsupported">Rydning af et kontaktfelt understøttes ikke endnu, så feltet blev bevaret.</string>
+
+    <string name="contactbook_action_blocked">Kontakt blokeret.</string>
+    <string name="contactbook_action_unblocked">Blokering af kontakt fjernet.</string>
+    <string name="contactbook_action_disconnected">Forbindelsen er afbrudt.</string>
+    <string name="contactbook_action_sync_started">Synkroniserer denne kontakt fra deres profil…</string>
+    <string name="contactbook_action_request_accepted">Forbindelsesanmodning accepteret.</string>
+    <string name="contactbook_action_request_rejected">Forbindelsesanmodning afvist.</string>
+    <string name="contactbook_action_request_cancelled">Forbindelsesanmodning annulleret.</string>
+    <string name="contactbook_action_request_withdrawn">Denne anmodning blev trukket tilbage af afsenderen.</string>
+
+    <string name="add_contact_title">Tilføj kontakt</string>
+    <string name="add_contact_odinid_label">Homebase-ID</string>
+    <string name="add_contact_odinid_hint">navn.homebase.id</string>
+    <string name="add_contact_lead_help">Indtast deres Homebase-ID, så slår vi deres profil op.</string>
+    <string name="add_contact_resolving">Slår identitet op…</string>
+    <string name="add_contact_invalid">Indtast et gyldigt Homebase-ID (f.eks. sam.homebase.id)</string>
+    <string name="add_contact_not_found">Vi kunne ikke finde det Homebase-ID. Du kan stadig tilføje dem som kontakt.</string>
+    <string name="add_contact_identity_found">Fandt %1$s</string>
+    <string name="add_contact_manual_link">Kender du ikke deres Homebase-ID? Tilføj manuelt</string>
+    <string name="add_contact_byid_link">Har du deres Homebase-ID? Slå dem op</string>
+    <string name="add_contact_details_optional">Detaljer (valgfrit)</string>
+    <string name="add_contact_photo_from_profile">Foto fra deres Homebase-profil</string>
+    <string name="add_contact_send_request">Send forbindelsesanmodning</string>
+    <string name="add_contact_send_request_help">Ikke forbundet endnu. Send en anmodning, så I kan skrive til hinanden.</string>
+    <string name="add_contact_already_connected">I er allerede forbundet</string>
+    <string name="add_contact_save_as_new">Gem som ny kontakt</string>
+    <string name="add_contact_already_saved">Allerede i dine kontakter</string>
+    <string name="add_contact_blocked">Du har blokeret denne person</string>
+
+    <string name="storage_diagnostics_header">Diagnostik (dev)</string>
+    <string name="storage_diagnostics_force_native_crash">Fremtving native nedbrud (test)</string>
+    <string name="storage_diagnostics_force_runtime_crash">Fremtving app-nedbrud (test)</string>
+
+    <!-- Profile editor -->
+    <string name="profile_edit_title">Redigér profil</string>
+    <string name="profile_edit_load_failed">Kunne ikke indlæse din profil.</string>
+    <string name="profile_edit_retry">Prøv igen</string>
+    <string name="profile_edit_error_forbidden">Denne app har ikke tilladelse til at redigere din profil. Giv adgang igen ved at udvide tilladelserne i ejer konsollen, og prøv derefter igen.</string>
+    <string name="profile_edit_error_save">Kunne ikke gemme din profil. Prøv igen.</string>
+    <string name="profile_edit_given_name">Fornavn</string>
+    <string name="profile_edit_surname">Efternavn</string>
+    <string name="profile_edit_additional_name">Mellemnavn</string>
+    <string name="profile_edit_nickname">Kaldenavn</string>
+    <string name="profile_edit_status">Status</string>
+    <string name="profile_edit_birthday">Fødselsdag</string>
+    <string name="profile_edit_birthday_hint">ÅÅÅÅ-MM-DD</string>
+    <string name="profile_edit_email">E-mail</string>
+    <string name="profile_edit_email_label">E-mailetiket</string>
+    <string name="profile_edit_email_label_hint">f.eks. Privat, Arbejde</string>
+    <string name="profile_edit_phone">Telefon</string>
+    <string name="profile_edit_phone_label">Telefonetiket</string>
+    <string name="profile_edit_phone_label_hint">f.eks. Mobil, Hjem, Arbejde</string>
+    <string name="profile_edit_address_label">Adresseetiket</string>
+    <string name="profile_edit_address_label_hint">f.eks. Hjem, Arbejde</string>
+    <string name="profile_edit_address1">Adresselinje 1</string>
+    <string name="profile_edit_address2">Adresselinje 2</string>
+    <string name="profile_edit_postcode">Postnummer</string>
+    <string name="profile_edit_city">By</string>
+    <string name="profile_edit_country">Land</string>
+    <string name="profile_edit_twitter">Twitter</string>
+    <string name="profile_edit_facebook">Facebook</string>
+    <string name="profile_edit_instagram">Instagram</string>
+    <string name="profile_edit_tiktok">TikTok</string>
+    <string name="profile_edit_linkedin">LinkedIn</string>
+
+    <string name="profile_edit_visibility_public">Offentlig</string>
+    <string name="profile_edit_visibility_connected">Godkendt</string>
+    <string name="profile_edit_public_hint">Synlig for alle, også personer du ikke er forbundet med.</string>
+    <string name="profile_edit_connected_fallback_hint">Lad feltet stå tomt for i stedet at vise godkendte kontakter din offentlige værdi.</string>
+    <string name="profile_edit_preview_enter">Forhåndsvisning</string>
+    <string name="profile_edit_preview_exit">Tilbage til redigering</string>
+    <string name="profile_edit_preview_section_public">Offentlig</string>
+    <string name="profile_edit_preview_section_public_desc">Synlig for alle, også personer du ikke er forbundet med.</string>
+    <string name="profile_edit_preview_section_vetted">Godkendt</string>
+    <string name="profile_edit_preview_section_vetted_desc">Yderligere attributter, der er synlige for dine godkendte (bekræftede) forbindelser.</string>
+    <string name="profile_edit_preview_empty">Intet er synligt på dette niveau endnu.</string>
+    <string name="profile_edit_field_not_set">Ikke angivet</string>
+    <string name="profile_edit_add_attribute">Tilføj attribut</string>
+    <string name="profile_edit_add_attribute_title">Tilføj et felt</string>
+
+    <!-- Avatar editor -->
+    <string name="profile_avatar_edit_title">Skift foto</string>
+    <string name="cd_profile_avatar_change_photo">Skift foto</string>
+    <string name="profile_avatar_edit_acl_anonymous">Offentligt foto</string>
+    <string name="profile_avatar_edit_acl_connected">Foto til godkendte</string>
+    <string name="profile_avatar_edit_anonymous_desc">Synligt for alle, også personer du ikke er forbundet med.</string>
+    <string name="profile_avatar_edit_connected_desc">Kun synligt for godkendte kontakter — kan være et andet foto end dit offentlige.</string>
+    <string name="profile_avatar_edit_upload">Gem</string>
+    <string name="profile_avatar_edit_remove">Fjern</string>
+    <string name="profile_avatar_edit_error_upload">Kunne ikke uploade dit foto. Prøv igen.</string>
+    <string name="profile_avatar_edit_error_too_large">Fotoet er for stort — vælg venligst et mindre.</string>
+    <string name="profile_avatar_edit_error_delete">Kunne ikke fjerne dit foto. Prøv igen.</string>
 
 </resources>

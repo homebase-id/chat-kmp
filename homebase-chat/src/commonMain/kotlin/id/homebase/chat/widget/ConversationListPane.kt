@@ -172,6 +172,7 @@ fun ConversationListPane(
                                                     }),
                                                 animatedVisibilityScope = this@AnimatedVisibility,
                                                 sharedTransitionScope = null,
+                                                cacheBustKey = session.profileImageLastModified,
                                             )
                                         }
 
@@ -221,6 +222,14 @@ fun ConversationListPane(
                         }
                     }, actions = {
                         if (!uiState.isSearchActive) {
+                            // One pin, either direction (#1012): I'm sharing with anyone OR anyone
+                            // is sharing with me. Tapping opens the live map.
+                            LiveShareIndicator(
+                                untilMs = uiState.liveSharePinAnyUntilMs,
+                                onClick = {
+                                    onUiAction(ConversationListUiAction.OpenLiveLocationMap)
+                                },
+                            )
                             IconButton(
                                 onClick = {
                                     onUiAction(

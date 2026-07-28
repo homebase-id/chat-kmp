@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Pins [LocationService.requestLatestGps] / [LocationService.forceCaptureIfTracking]: the
@@ -37,6 +38,9 @@ import kotlin.test.assertNull
 class LocationServiceTest {
 
     private val now = 1_000_000L
+
+    /** Reasons observed by the fixture's persistAsHistory (cleared per runServiceTest). */
+    private val persistReasons = mutableListOf<GpsRequestReason?>()
 
     private fun point(t: Long, lon: Double = 13.0) =
         RawLocationPoint(t = t, lat = 52.0, lon = lon, acc = 10.0, src = "gps", fg = true)
@@ -101,13 +105,17 @@ class LocationServiceTest {
             readDispatcher = dispatcher,
         )
         try {
+            persistReasons.clear()
             val preferences = LocationPreferences(db)
             if (allowHistory) preferences.setAllowLocationHistory(true)
             val store = LocationPointStore(db, NoSensors())
             val router = LocationFixRouter(
                 store = store,
                 allowHistory = { preferences.allowLocationHistory.value },
-                persistAsHistory = { store.persistHistory(it) },
+                persistAsHistory = { points, reason ->
+                    persistReasons += reason
+                    store.persistHistory(points)
+                },
                 relayLatest = { },
             )
             val coordinator = LocationTrackingCoordinator(preferences, tracker, this)
@@ -357,6 +365,98 @@ class LocationServiceTest {
             assertIs<GpsFixResult.Success>(result)
             assertEquals(1, oneShot.freshCalls)
             assertEquals(990_000, store.lastPoint.value?.t) // routed + persisted (history on)
+            // #988: the capture reason threads all the way through router → persist,
+            // so the uploader's hop lines carry PushReceived.
+            assertEquals(listOf<GpsRequestReason?>(GpsRequestReason.PushReceived), persistReasons)
+        }
+    }
+
+    // ── captureGateExplanation (#988): the skipped-capture log breakdown ──
+
+    @Test
+    fun captureGateExplanationNamesTheClosedCondition() {
+        val oneShot = FakeOneShot()
+        runServiceTest(permission = true, oneShot = oneShot, tracker = UnavailableTracker) { service, _, _ ->
+            service.forceCaptureIfTracking(GpsRequestReason.PushReceived) // exercise the skip path
+        }
+        // Direct coordinator assertions (pure string; no service needed).
+        runTest {
+            val db = DatabaseManager(
+                { JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) },
+                dispatcher = StandardTestDispatcher(testScheduler),
+                readDispatcher = StandardTestDispatcher(testScheduler),
+            )
+            try {
+                val preferences = LocationPreferences(db)
+                val closed = LocationTrackingCoordinator(preferences, UnavailableTracker, this)
+                    .captureGateExplanation()
+                assertTrue("trackerAvailable=false" in closed, closed)
+                assertTrue("allowHistory=false" in closed, closed)
+
+                preferences.setAllowLocationHistory(true)
+                val open = LocationTrackingCoordinator(preferences, AvailableTracker, this)
+                    .captureGateExplanation()
+                assertTrue("allowHistory=true" in open, open)
+                assertTrue("trackerAvailable=true" in open, open)
+            } finally {
+                db.close()
+            }
+        }
+    }
+
+    // ── lastKnownCoordinates (#966): the any-age cached-coordinate primitive ──
+
+    @Test
+    fun lastKnownCoordinatesServesWarmMemoryWithoutTouchingProviders() {
+        val oneShot = FakeOneShot(cached = point(t = now - 500L))
+        runServiceTest(permission = true, oneShot = oneShot) { service, store, _ ->
+            store.publishLastKnown(point(t = now - 3_600_000)) // an hour old — still served
+            val result = service.lastKnownCoordinates()
+            assertEquals(now - 3_600_000, result?.t)
+            assertEquals(0, oneShot.lastKnownCalls) // memory short-circuits
+            assertEquals(0, oneShot.freshCalls)
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesColdStartServesOsFixAtAnyAgeAndHydratesStore() {
+        val osFix = point(t = now - 7_200_000, lon = 9.0) // 2h old — a map seed doesn't care
+        val oneShot = FakeOneShot(cached = osFix)
+        runServiceTest(permission = true, oneShot = oneShot) { service, store, _ ->
+            val result = service.lastKnownCoordinates()
+            assertEquals(osFix, result)
+            assertEquals(0, oneShot.freshCalls) // never powers the radio
+            assertEquals(osFix, store.lastPoint.value) // hydrated for every other consumer
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesPrefersNewestOfPersistedAndOsFix() {
+        val osFix = point(t = now - 10_000, lon = 9.0)
+        val oneShot = FakeOneShot(cached = osFix)
+        runServiceTest(permission = true, oneShot = oneShot, allowHistory = true) { service, store, _ ->
+            store.persistHistory(listOf(point(t = now - 60_000, lon = 8.0))) // older persisted row
+            assertEquals(osFix, service.lastKnownCoordinates())
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesWithoutPermissionUsesPersistedHistoryOnly() {
+        val oneShot = FakeOneShot(cached = point(t = now, lon = 9.0))
+        runServiceTest(permission = false, oneShot = oneShot, allowHistory = true) { service, store, _ ->
+            store.persistHistory(listOf(point(t = now - 60_000, lon = 8.0)))
+            val result = service.lastKnownCoordinates()
+            assertEquals(8.0, result?.lon)
+            assertEquals(0, oneShot.lastKnownCalls) // OS cache not consulted without permission
+        }
+    }
+
+    @Test
+    fun lastKnownCoordinatesReturnsNullWhenNoSourceHasEverSeenAPosition() {
+        val oneShot = FakeOneShot(cached = null)
+        runServiceTest(permission = true, oneShot = oneShot) { service, _, _ ->
+            assertNull(service.lastKnownCoordinates())
+            assertEquals(0, oneShot.freshCalls)
         }
     }
 }

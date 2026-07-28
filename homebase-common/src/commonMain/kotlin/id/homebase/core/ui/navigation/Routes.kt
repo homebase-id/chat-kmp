@@ -23,6 +23,14 @@ sealed class Route {
     data object Settings : Route()
 
     @Serializable
+    @SerialName("profile-edit")
+    data object ProfileEdit : Route()
+
+    @Serializable
+    @SerialName("profile-avatar-edit")
+    data object ProfileAvatarEdit : Route()
+
+    @Serializable
     @SerialName("create-conversation")
     data object CreateConversation : Route()
 
@@ -88,6 +96,10 @@ sealed class Route {
     data object DeveloperMenu : Route()
 
     @Serializable
+    @SerialName("dev-scheduled-push-test")
+    data object DevScheduledPushTest : Route()
+
+    @Serializable
     @SerialName("storage-settings")
     data object StorageSettings : Route()
 
@@ -125,6 +137,12 @@ sealed class Route {
     @Serializable
     @SerialName("contactbook-detail")
     data class ContactBookDetail(val uniqueId: String, val odinId: String? = null) : Route()
+
+    /** Generic "add contact to circle" picker — reachable from any circle in the Contact
+     *  Book's Circles tab, not just emergency location access. */
+    @Serializable
+    @SerialName("contactbook-circle-member-add")
+    data class CircleMemberAdd(val circleId: String, val circleName: String) : Route()
 
     @Serializable
     @SerialName("contactbook-add")
@@ -205,6 +223,12 @@ sealed class Route {
     @SerialName("location-history")
     data object LocationHistory : Route()
 
+    /** Read-only history viewer for a contact's emergency-retrieved location data
+     *  (memory-only store; see EmergencyLocateStore). */
+    @Serializable
+    @SerialName("location-peer-history")
+    data class LocationPeerHistory(val peerDomain: String, val peerName: String) : Route()
+
     @Serializable
     @SerialName("location-live")
     data object LocationLive : Route()
@@ -214,8 +238,18 @@ sealed class Route {
     data class LocationFindDevice(val deviceId: String? = null) : Route()
 
     @Serializable
+    @SerialName("location-share")
+    data class LocationShare(val conversationId: String) : Route()
+
+    /** In-app picker to grant emergency-location-access circle membership to one or more
+     *  contacts — replaces the old owner-console browser deep link. */
+    @Serializable
+    @SerialName("location-emergency-contact-add")
+    data object LocationEmergencyContactAdd : Route()
+
+    @Serializable
     @SerialName("crop")
-    data class Crop(val requestId: String) : Route()
+    data class Crop(val requestId: String, val lockedAspect: String? = null) : Route()
 
     @Serializable
     @SerialName("draw")

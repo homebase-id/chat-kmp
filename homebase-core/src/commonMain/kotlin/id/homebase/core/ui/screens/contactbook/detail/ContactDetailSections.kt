@@ -70,8 +70,10 @@ import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.contacts.ContactExperience
 import id.homebase.api.client.contacts.ContactSocialNetwork
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.circle_member_pending
 import id.homebase.resources.contactbook_detail_bio
 import id.homebase.resources.contactbook_detail_social
 import id.homebase.resources.contactbook_detail_circles
@@ -93,6 +95,7 @@ import id.homebase.resources.contactbook_detail_more
 import id.homebase.resources.contactbook_detail_none
 import id.homebase.resources.contactbook_detail_no_recent_media
 import id.homebase.resources.contactbook_detail_recent_media
+import id.homebase.resources.connections_introduced_by
 import id.homebase.resources.conversation_groups_in_common
 import id.homebase.resources.conversation_media_see_all
 import org.jetbrains.compose.resources.stringResource
@@ -191,12 +194,13 @@ fun GroupsInCommonSection(
 }
 
 /**
- * User-defined circles this contact belongs to, as chips. Always shows the header; falls
- * back to an empty state, or a "must be connected" hint when [isConnected] is false.
+ * User-defined circles this contact belongs to (real or pending), as tappable chips — tap opens
+ * the circle-detail dialog. Always shows the header; falls back to an empty state, or a "must be
+ * connected" hint when [isConnected] is false.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun CirclesSection(circles: List<String>, isConnected: Boolean) {
+fun CirclesSection(circles: List<ContactCircleUi>, isConnected: Boolean, onCircleClicked: (String) -> Unit) {
     Spacer(modifier = Modifier.height(20.dp))
     Text(
         text = stringResource(MR.string.contactbook_detail_circles),
@@ -210,7 +214,7 @@ fun CirclesSection(circles: List<String>, isConnected: Boolean) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            circles.forEach { name -> CircleChip(name) }
+            circles.forEach { circle -> CircleChip(circle, onClick = { onCircleClicked(circle.id) }) }
         }
 
         !isConnected -> SectionHint(stringResource(MR.string.contactbook_detail_circles_connect))
@@ -218,19 +222,29 @@ fun CirclesSection(circles: List<String>, isConnected: Boolean) {
     }
 }
 
-/** Non-interactive pill showing a circle name (these are display tags, not actions). */
+/** Tappable pill showing a circle name, with a "Pending" mark when this contact's grant on it
+ *  is still a sealed deposit rather than a real membership. */
 @Composable
-private fun CircleChip(name: String) {
+private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier.clickable(onClick = onClick),
     ) {
-        Text(
-            text = name,
-            style = MaterialTheme.typography.labelLarge,
+        Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-        )
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(text = circle.name, style = MaterialTheme.typography.labelLarge)
+            if (circle.pending) {
+                Text(
+                    text = stringResource(MR.string.circle_member_pending),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = HomebaseTheme.extendedColors.warning,
+                )
+            }
+        }
     }
 }
 
@@ -251,6 +265,19 @@ fun TabEmptyMessage(text: String) {
             textAlign = TextAlign.Center,
         )
     }
+}
+
+/** "Introduced by X" line shown above the contact details, when the connection originated
+ *  from an introduction. */
+@Composable
+fun IntroducedBySection(introducedByName: String) {
+    Text(
+        text = stringResource(MR.string.connections_introduced_by, introducedByName),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    Spacer(modifier = Modifier.height(12.dp))
 }
 
 /** Muted single-line hint used by sections for their empty / not-connected states. */

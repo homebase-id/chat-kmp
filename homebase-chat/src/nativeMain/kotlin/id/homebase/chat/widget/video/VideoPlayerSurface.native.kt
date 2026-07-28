@@ -97,6 +97,7 @@ import platform.Foundation.NSUUID
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.create
 import platform.Foundation.writeToURL
+import platform.UIKit.UIApplication
 import platform.darwin.NSObjectProtocol
 import kotlin.time.measureTimedValue
 
@@ -131,12 +132,19 @@ actual fun VideoPlayerSurface(
     paused: Boolean,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
+    val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val playerPool = koinInject<AVPlayerPool>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
     var tempDir by remember(data) { mutableStateOf<NSURL?>(null) }
+    // Streamed-to-file MP4 temp (hbvid_res_*, #845) — deleted on dispose; the
+    // startup sweep is the backstop.
+    var tempFilePath by remember(data) { mutableStateOf<String?>(null) }
     val notificationObservers = remember(data) { mutableListOf<NSObjectProtocol>() }
+    // Natural end-of-clip flag: at end AVPlayer stays state=Playing with
+    // paused=false, so the keep-awake below needs this to release on finish.
+    var ended by remember(data) { mutableStateOf(false) }
 
     DisposableEffect(data) {
         onDispose {
@@ -163,6 +171,7 @@ actual fun VideoPlayerSurface(
             }
             notificationObservers.clear()
             tempDir?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
+            tempFilePath?.let { NSFileManager.defaultManager.removeItemAtPath(it, null) }
         }
     }
 
@@ -219,6 +228,7 @@ actual fun VideoPlayerSurface(
     // on > 0 so the initial composition doesn't fire a spurious seek.
     LaunchedEffect(replayToken) {
         if (replayToken > 0) {
+            ended = false
             (state as? VpsState.Playing)?.player?.let { player ->
                 player.seekToTime(CMTimeMakeWithSeconds(0.0, 600))
                 player.play()
@@ -226,11 +236,21 @@ actual fun VideoPlayerSurface(
         }
     }
 
+    // Keep the screen awake only while this player is actively playing. Because
+    // idleTimerDisabled is app-global, the onDispose ALWAYS clears it — so a
+    // paused/ended/dismissed player can never leave it pinned. The DisposableEffect
+    // body and onDispose both run on the composition (main) thread.
+    val keepAwake = state is VpsState.Playing && !paused && !ended
+    DisposableEffect(keepAwake) {
+        UIApplication.sharedApplication.idleTimerDisabled = keepAwake
+        onDispose { UIApplication.sharedApplication.idleTimerDisabled = false }
+    }
+
     LaunchedEffect(data) {
         onProgress(0f)
         withContext(Dispatchers.Main) {
             try {
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
                         // preload, so StateFlow's initial value and every subsequent emit lands.
@@ -274,7 +294,7 @@ actual fun VideoPlayerSurface(
                         kickAssetMetadataLoad(asset, fileId = data.fileId.toString())
                         val playerItem = AVPlayerItem(asset = asset)
                         attachHlsDiagnostics(playerItem, notificationObservers)
-                        observeEndOfPlayback(playerItem, notificationObservers, onEnded)
+                        observeEndOfPlayback(playerItem, notificationObservers) { ended = true; onEnded() }
                         val player = if (useInlineOptimizations) {
                             playerPool.acquire().also {
                                 it.replaceCurrentItemWithPlayerItem(playerItem)
@@ -304,24 +324,14 @@ actual fun VideoPlayerSurface(
                         state = VpsState.Playing(player = player, timeObserver = timeObserver, sessionId = sessionId)
                         onProgress(1f)
                     }
-                    is VideoContent.Mp4 -> {
+                    is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
+                    is VideoContent.Mp4File -> {
                         onProgress(0.5f)
-                        val preloadedPath = videoPreloader.awaitPreloadedFile(data.fileId, data.payloadKey)
-                        val mp4Url = if (preloadedPath != null) {
-                            Logger.d(tag = "VideoIO") { "mp4 using preloaded file" }
-                            NSURL.fileURLWithPath(preloadedPath)
-                        } else {
-                            val dir = NSURL.fileURLWithPath(NSTemporaryDirectory())
-                                .URLByAppendingPathComponent("hbvid_${NSUUID().UUIDString()}")!!
-                            NSFileManager.defaultManager.createDirectoryAtURL(dir, true, null, null)
-                            tempDir = dir
-                            val url = dir.URLByAppendingPathComponent("video.mp4")!!
-                            val (_, writeElapsed) = measureTimedValue {
-                                content.bytes.toNSData().writeToURL(url, atomically = true)
-                            }
-                            Logger.d(tag = "VideoIO") { "mp4 temp-file write: ${content.bytes.size} bytes in $writeElapsed" }
-                            url
-                        }
+                        // Already streamed to a disposable hbvid_res_* temp by the
+                        // resolver (#845) — no whole-payload RAM buffer, no second
+                        // temp-file write. Deleted on dispose (see tempFilePath).
+                        tempFilePath = content.filePath
+                        val mp4Url = NSURL.fileURLWithPath(content.filePath)
                         onProgress(0.8f)
                         val player = if (useInlineOptimizations) {
                             val item = AVPlayerItem(uRL = mp4Url)
@@ -332,7 +342,7 @@ actual fun VideoPlayerSurface(
                             AVPlayer(uRL = mp4Url)
                         }
                         player.currentItem?.let { item ->
-                            observeEndOfPlayback(item, notificationObservers, onEnded)
+                            observeEndOfPlayback(item, notificationObservers) { ended = true; onEnded() }
                         }
                         if (useInlineOptimizations) {
                             // Same `.readyToPlay` gate as the HLS path —

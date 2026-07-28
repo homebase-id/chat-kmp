@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -58,6 +59,7 @@ import id.homebase.api.common.OdinId
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.chat.widget.MediaItem
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
@@ -230,11 +232,19 @@ private fun EventDetailContent(
 
             if (descriptor.description.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    text = descriptor.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                // Route through ChatMarkdown so URLs in the description autolink
+                // (tappable, opened via LocalUriHandler) exactly like a chat text
+                // bubble — the event description bypassed that entirely and was
+                // inert plain text (#1117). SelectionContainer adds copy-by-drag on
+                // top; unlike the meeting-URL ActionRow this block is not inside a
+                // clickable Surface, so nothing eats the selection gesture.
+                SelectionContainer {
+                    ChatMarkdown(
+                        content = descriptor.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -446,7 +456,7 @@ private fun OrganizerRow(
     organizedByLabel: String,
     contactService: ContactService,
 ) {
-    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val resolvedName = contactService.resolveByOdinId(odinId).name
     val avatarOptions = AvatarOptions(size = 32.dp)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -492,7 +502,7 @@ private fun ReactorRow(
     contactService: ContactService,
 ) {
     // Same resolution path as MessageInfoViewModel.
-    val resolvedName = contactService.resolveByOdinId(odinId)?.name ?: odinId.domainName
+    val resolvedName = contactService.resolveByOdinId(odinId).name
     val avatarOptions = AvatarOptions(size = 32.dp)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),

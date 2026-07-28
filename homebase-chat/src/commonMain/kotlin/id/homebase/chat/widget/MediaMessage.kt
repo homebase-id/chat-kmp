@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,12 +19,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
@@ -48,6 +52,29 @@ import id.homebase.resources.upload_uploading
 import kotlinx.collections.immutable.ImmutableMap
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+
+/**
+ * True when a single payload renders as a compact [DocumentMediaItem] file card (icon + name +
+ * size + download) rather than a visual media tile — so it must hug its content instead of being
+ * stretched to a media-height box, which leaves the card floating atop a grey void (#1103).
+ *
+ * Mirrors [MediaItem]'s routing: link-preview and location payloads have their own cards (false);
+ * image, video, HLS and audio are media (false); everything else that routes to DocumentMediaItem
+ * (pdf, zip, rar, apk, and the text and application MIME families) is a document (true). Keep in
+ * sync with the content-type branches in [MediaItem] if a new document type is added there.
+ */
+internal fun PayloadDescriptor.rendersAsDocumentCard(): Boolean {
+    if (key == ChatProtocol.PAYLOAD_KEY_LINKS || key == ChatProtocol.PAYLOAD_KEY_LOCATION) return false
+    val ct = contentType ?: return false
+    if (ct.startsWith("image/") || ct.startsWith("video/") || ct.startsWith("audio/")) return false
+    if (ct == "application/vnd.apple.mpegurl") return false // HLS video, not a document
+    return ct == "application/pdf" ||
+        ct == "application/zip" ||
+        ct == "application/x-rar-compressed" ||
+        ct == "application/vnd.android.package-archive" ||
+        ct.startsWith("text/") ||
+        ct.startsWith("application/")
+}
 
 /**
  * Media message component that decides between single item or gallery view.
@@ -88,6 +115,13 @@ fun MediaMessage(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     uploadStatus: UploadStatus? = null,
+    /** Forwarded to [MediaGallery] so a 2+-image album stretches to the bubble width in the
+     *  caption path instead of leaving a gap. No effect on single media. */
+    fillWidth: Boolean = false,
+    /** True when this message also carries a text caption, so a narrow single image is floored
+     *  to Signal's 240dp width — the caption can't collapse to char-per-line and the image can't
+     *  leave a gap. No effect on stickers, link-preview cards, or galleries. */
+    hasCaption: Boolean = false,
 ) {
     if (payloads.isEmpty()) return
 
@@ -109,7 +143,7 @@ fun MediaMessage(
         payloads.size == 1 && payloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
     }
 
-    Box(modifier = Modifier.animateContentSize()) {
+    Box(modifier = Modifier.testTag(ChatBubbleTestTags.MEDIA).animateContentSize()) {
         when (payloads.size) {
             1 -> {
                 // Stickers drop the opaque surface fill so transparent pixels show the
@@ -119,6 +153,45 @@ fun MediaMessage(
                 } else {
                     modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 }
+                // A captioned image must not resolve to a width that leaves a gap beside it, or —
+                // in the inline path, which clamps the caption to the media width — collapses the
+                // caption to one char per line. The block-caption path fills and crops to the
+                // bubble width; the inline path floors a narrow image to 240dp. Landscape/panorama
+                // keep their natural width; stickers and link-preview cards keep intrinsic sizing.
+                val fillsBubble = fillWidth && !isSticker && !isLinkPreview
+                val aspect = remember(payloads) {
+                    (payloads[0].thumbnails?.lastOrNull() ?: payloads[0].previewThumbnail)?.let { t ->
+                        val w = t.pixelWidth
+                        val h = t.pixelHeight
+                        if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h else null
+                    }
+                }
+                // Height binds at the cap, so natural width is maxHeight * aspect — floor it only when < 240dp.
+                val narrowCaptioned = hasCaption && !fillWidth && !isSticker && !isLinkPreview &&
+                    aspect != null &&
+                    Dimens.MediaBubble.maxHeight.value * aspect <
+                    Dimens.MediaBubble.minWidthWithContent.value
+                // A document renders as a compact file card, not a media tile. It must hug its
+                // content — no media height (neither the maxHeight fill nor the minHeight floor),
+                // or the card floats atop a grey void (#1103).
+                val isDocument = remember(payloads) { payloads[0].rendersAsDocumentCard() }
+                val sizedModifier = when {
+                    isDocument ->
+                        widthModifier
+                    fillsBubble ->
+                        widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
+                    narrowCaptioned ->
+                        widthModifier.size(
+                            width = Dimens.MediaBubble.minWidthWithContent,
+                            height = (Dimens.MediaBubble.minWidthWithContent.value / aspect).dp
+                                .coerceIn(Dimens.MediaBubble.minHeight, Dimens.MediaBubble.maxHeight),
+                        )
+                    else ->
+                        widthModifier.heightIn(
+                            min = Dimens.MediaBubble.minHeight,
+                            max = Dimens.MediaBubble.maxHeight,
+                        )
+                }
                 MediaItem(
                     payload = payloads[0],
                     fileId = fileId,
@@ -127,12 +200,9 @@ fun MediaMessage(
                         ?: payloads[0].previewThumbnail?.toEmbeddedThumb(),
                     decryptedFiles = decryptedFiles,
                     keyHeader = keyHeader,
-                    modifier = widthModifier.heightIn(
-                        min = Dimens.MediaBubble.minHeight,
-                        max = Dimens.MediaBubble.maxHeight
-                    ),
+                    modifier = sizedModifier,
                     imageSize = ImageSize.THUMB_MEDIUM,
-                    preserveAspectRatio = preserveAspectRatio,
+                    preserveAspectRatio = if (fillsBubble || narrowCaptioned) false else preserveAspectRatio,
                     isSticker = isSticker,
                     onClick = { onMediaClick?.invoke(payloads[0]) },
                     onLongPress = { offset -> onMediaLongPress?.invoke(payloads[0], offset) },
@@ -169,17 +239,34 @@ fun MediaMessage(
                     messageId = messageId,
                     downloadingFiles = downloadingFiles,
                     isUploading = uploadStatus != null,
+                    fillWidth = fillWidth,
                 )
             }
         }
 
-        if (uploadStatus != null && !isLinkPreview) {
+        if (uploadStatus != null && uploadStatus.showsMediaOverlay(LocalUploadConnected.current) && !isLinkPreview) {
             UploadProgressOverlay(
                 status = uploadStatus,
                 modifier = Modifier.matchParentSize(),
             )
         }
     }
+}
+
+internal val LocalUploadConnected = compositionLocalOf { true }
+
+// The dark scrim + big spinner is for real work: local prep (thumbnail/resize/compress/
+// encrypt = Preparing), video transcode (Processing), the active transfer (Uploading — %
+// then Finalizing), and the brief completion tick (Completed). "Sending" is the durably-
+// queued handoff waiting for the network: shown while online, but hidden offline — there
+// it never progresses (airplane mode) and would spin forever, so the bottom-right outbox
+// indicator represents it instead (#948).
+internal fun UploadStatus.showsMediaOverlay(isConnected: Boolean): Boolean = when (this) {
+    UploadStatus.Sending -> isConnected
+    UploadStatus.Preparing,
+    is UploadStatus.Processing,
+    is UploadStatus.Uploading,
+    UploadStatus.Completed -> true
 }
 
 @Composable

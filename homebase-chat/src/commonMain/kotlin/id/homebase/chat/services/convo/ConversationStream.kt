@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -395,7 +396,7 @@ class ConversationStream(
                 ?.let { return it }
         }
 
-        return contactService.resolveByOdinId(author)?.name ?: author.domainName
+        return contactService.resolveByOdinId(author).name
     }
 
     private suspend fun dispatchGroupHealRequests(messageFiles: List<HomebaseFile>) {
@@ -589,6 +590,7 @@ class ConversationStream(
                         lastRead = UnixTimeUtc(0).toInstant(),
                         avatarModel = placeholderAvatar,
                         lastMessageDeliveryStatus = m.messageAppData.deliveryStatus,
+                        lastMessageIsPendingSend = m.isPendingSend,
                         lastMessageIsDeleted = m.isDeleted,
                         lastMessageFirstPayload = m.payloads?.firstOrNull(),
                         lastMessageHasMultiplePayloads = (m.payloads?.size ?: 0) > 1,
@@ -1493,12 +1495,25 @@ class ConversationStream(
     ): List<OdinId> {
 
         val domain = credentialsManager.requireActiveDomain()
-        val base = recipientOverride
-            ?: getConversationById(conversationId)?.participants
-            ?: return listOf()
-        val recipients =
-            (base + additionalRecipients).filter { it != domain }.distinct()
-        return recipients
+        fun compute(): List<OdinId>? {
+            val base = recipientOverride
+                ?: getConversationById(conversationId)?.participants
+                ?: return null
+            return (base + additionalRecipients).filter { it != domain }.distinct()
+        }
+
+        val first = compute()
+        if (recipientOverride == null &&
+            conversationId != ChatProtocol.ConversationWithYourselfId &&
+            first.isNullOrEmpty()
+        ) {
+            // The in-memory row may be a placeholder/Invalid map (participants=[]) or
+            // missing entirely (e.g. an archived 1:1 opened via Contacts) while the DB
+            // conversation file maps fine — re-map it into memory and try once more (#934).
+            loadConversation(conversationId)
+            return compute() ?: emptyList()
+        }
+        return first ?: emptyList()
     }
 
     private suspend fun updateShareCache(
@@ -1515,7 +1530,7 @@ class ConversationStream(
                     .firstOrNull { it != activeDomain }
 
                 val avatarUrl = if (!convo.isGroupConversation && otherParticipant != null) {
-                    "https://${otherParticipant.domainName}/pub/image"
+                    otherParticipant.publicImageUrl()
                 } else null
 
                 // Resolve contact name using the same contact map pattern as ConversationEnricher
@@ -1537,7 +1552,12 @@ class ConversationStream(
             }
             _shareableConversations.value = shareable
             val momentsActivated = optionalDriveActivation.isActivated(momentsLabeledDrive)
-            shareCacheWriter.updateCache(shareable, domain, momentsActivated)
+            shareCacheWriter.updateCache(
+                shareable,
+                domain,
+                momentsActivated,
+                ownerDisplayName = ownerSessionRepository.user.value?.displayName,
+            )
 
             // Pre-cache group avatar images for the iOS share extension
             for (convo in conversations) {

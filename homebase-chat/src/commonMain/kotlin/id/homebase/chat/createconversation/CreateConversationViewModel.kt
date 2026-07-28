@@ -10,10 +10,14 @@ import id.homebase.api.client.auth.initials
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.convo.matchesSelfQuery
+import id.homebase.chat.services.convo.selfDisplayLabel
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +34,7 @@ class CreateConversationViewModel(
     private val connectionService: ConnectionService,
     private val driveSyncManager: DriveSyncManager,
     private val ownerSessionRepository: OwnerSessionRepository,
+    private val conversationStream: ConversationStream,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -45,8 +50,10 @@ class CreateConversationViewModel(
                 contactService.contacts,
                 snapshotFlow { searchTextState.text.toString() },
                 ownerSessionRepository.user,
-            ) { contacts, query, self ->
-                filterAndGroup(contacts, query, self)
+                conversationStream.conversations,
+            ) { contacts, query, self, conversations ->
+                val groups = conversations.items.filter { it.isGroupConversation }
+                filterAndGroup(contacts, groups, query, self)
             }
                 .catch {
                     sendEvent(
@@ -73,6 +80,11 @@ class CreateConversationViewModel(
                             ChatProtocol.ConversationWithYourselfId
                         )
                     )
+                }
+            }
+            is CreateConversationUiAction.ExistingConversationClicked -> {
+                _uiState.update {
+                    it.copy(uiEvent = CreateConversationUiEvent.LoadConversation(action.conversationId))
                 }
             }
             is CreateConversationUiAction.ContactClicked -> {
@@ -136,6 +148,7 @@ class CreateConversationViewModel(
  */
 internal fun filterAndGroup(
     contacts: List<ContactUiModel>,
+    groupConversations: List<ConversationUiModel>,
     query: String,
     self: OwnerSession?,
 ): List<CreateConversationListItem> {
@@ -178,16 +191,39 @@ internal fun filterAndGroup(
         ContactGroup(initial = initial, contacts = groupContacts)
     }.sortedBy { it.initial }
     result.add(CreateConversationListItem.Contacts(groups))
+
+    // Existing group conversations, matchable by group name or by a member's
+    // contact name (a group's title often doesn't contain any member's name).
+    // Listed after contacts so the picker leads with individuals.
+    val contactNameByOdinId = contacts.associate { it.odinId to it.name }
+    val matchedGroups = if (query.isEmpty()) {
+        groupConversations
+    } else {
+        groupConversations.filter { group ->
+            group.getDisplayName().contains(query, ignoreCase = true) ||
+                group.participants.any { p ->
+                    contactNameByOdinId[p]?.contains(query, ignoreCase = true) == true
+                }
+        }
+    }
+    val groupRows = matchedGroups
+        .distinctBy { it.id }
+        .sortedBy { it.getDisplayName().lowercase() }
+        .map {
+            CreateConversationListItem.GroupRow(
+                id = it.id,
+                avatarModel = it.avatarModel,
+                name = it.getDisplayName(),
+            )
+        }
+    if (groupRows.isNotEmpty()) {
+        result.add(CreateConversationListItem.Groups(groupRows))
+    }
     return result
 }
 
 /** True when [query] hits the signed-in user's own display name or handle (case-insensitive). */
-internal fun OwnerSession?.matchesQuery(query: String): Boolean {
-    if (this == null || query.isBlank()) return false
-    return displayName?.contains(query, ignoreCase = true) == true ||
-        odinId.toString().contains(query, ignoreCase = true)
-}
+internal fun OwnerSession?.matchesQuery(query: String): Boolean = matchesSelfQuery(query)
 
 /** Display label for the signed-in user: their name, or their handle when the name isn't loaded. */
-internal fun OwnerSession.displayLabel(): String =
-    displayName?.ifBlank { null } ?: odinId.domainName
+internal fun OwnerSession.displayLabel(): String = selfDisplayLabel()

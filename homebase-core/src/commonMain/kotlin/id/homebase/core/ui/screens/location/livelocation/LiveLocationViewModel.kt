@@ -2,15 +2,16 @@ package id.homebase.core.ui.screens.location.livelocation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.LocationService
 import id.homebase.core.location.tracking.DemandReason
 import id.homebase.core.location.tracking.LocationPointStore
-import id.homebase.core.util.initials
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,9 +25,11 @@ import kotlin.time.Clock
 
 /**
  * Drives the live-location map: turns the in-memory [LiveLocationReceiveStore] into a list of
- * [LiveMarker]s (others + an optional "you"), filtering out positions older than [LIVE_STALE_MS] and
- * resolving each sender's avatar. Recomputes on every store emission and on a 30 s ticker (so dots
- * age-label and drop even with no new packets).
+ * [LiveMarker]s (others + an optional "you"), resolving each sender's avatar. Every received point
+ * is shown — the server is the source of truth for what's worth displaying (it won't flush an
+ * evicted point), so the client doesn't second-guess it with a staleness cutoff (#1072); freshness
+ * is conveyed by the [LiveMarker.ageMs] label instead. Recomputes on every store emission and on a
+ * 30 s ticker (so age labels stay current even with no new packets).
  */
 class LiveLocationViewModel(
     private val receiveStore: LiveLocationReceiveStore,
@@ -37,6 +40,8 @@ class LiveLocationViewModel(
     private val locationService: LocationService,
     private val nowMs: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) : ViewModel() {
+
+    private val logger = Logger.withTag("LiveRelay")
 
     private val ownOdinId = MutableStateFlow<OdinId?>(null)
 
@@ -75,16 +80,19 @@ class LiveLocationViewModel(
         combine(receiveStore.positions, ownOdinId, pointStore.lastPoint, ticker) { positions, ownId, myFix, _ ->
             val now = nowMs()
             val others = positions.values
-                .filter { now - it.receivedAtMs <= LIVE_STALE_MS }
                 .map { lp ->
                     val contact = contactService.resolveByOdinId(lp.senderOdinId)
+                    // Every received sender is shown; log its age so upstream sparsity (peer stopped
+                    // transmitting) is visible in the log even though the point is no longer dropped.
+                    logger.i {
+                        "map sender=${lp.senderOdinId.domainName} ageMs=${now - lp.receivedAtMs} -> SHOW"
+                    }
                     LiveMarker(
                         key = lp.senderOdinId.domainName,
                         lat = lp.point.lat,
                         lon = lp.point.lon,
-                        avatarUrl = contact?.avatarUrl?.ifEmpty { null },
-                        initials = contact?.avatarInitials?.ifEmpty { null }
-                            ?: lp.senderOdinId.domainName.initials(),
+                        odinId = lp.senderOdinId,
+                        initials = contact.avatarInitials,
                         ageMs = now - lp.receivedAtMs,
                     )
                 }
@@ -128,9 +136,8 @@ class LiveLocationViewModel(
             key = "self",
             lat = lat,
             lon = lon,
-            avatarUrl = contact?.avatarUrl?.ifEmpty { null },
-            initials = contact?.avatarInitials?.ifEmpty { null }
-                ?: ownId?.domainName?.initials().orEmpty(),
+            odinId = ownId,
+            initials = contact?.avatarInitials.orEmpty(),
             ageMs = if (fixTimeMs != null) now - fixTimeMs else 0L,
             isSelf = true,
         )

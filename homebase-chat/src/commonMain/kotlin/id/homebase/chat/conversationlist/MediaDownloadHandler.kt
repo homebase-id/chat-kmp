@@ -19,7 +19,10 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.config.chatTargetDrive
+import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.extensionForMimeType
+import id.homebase.resources.MR
+import id.homebase.resources.contactbook_self_you
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -65,22 +68,22 @@ internal class MediaDownloadHandler(
                         "encrypted payload requires key header"
                     )
                 )
-                val bytes = chatMessageActionService.getPayloadBytes(
+                val extension = payload.contentType?.let { extensionForMimeType(it) }
+                    ?: payload.contentType?.substringAfter("/")
+                    ?: "bin"
+                // Cleartext copy of an end-to-end-encrypted Homebase payload —
+                // STREAM-decrypted straight into the share_outbound subdir (#845:
+                // bounded RAM for any payload size, LRU untouched; the old
+                // getPayloadBytes path buffered ~2× the payload in RAM). The
+                // subdir keeps the sweep story: reaped as a single unit on
+                // cold start + foreground, bounding its on-disk lifetime.
+                val tempPath = chatMessageActionService.streamPayloadToShareOutbound(
                     message.fileId,
                     action.payloadKey,
-                    KeyHeader(payloadIv, message.keyHeader.aesKey)
+                    KeyHeader(payloadIv, message.keyHeader.aesKey),
+                    ".$extension",
                 )
-                if (bytes != null) {
-                    val extension = payload.contentType?.let { extensionForMimeType(it) }
-                        ?: payload.contentType?.substringAfter("/")
-                        ?: "bin"
-                    // Cleartext copy of an end-to-end-encrypted Homebase
-                    // payload — sequestered into the share_outbound subdir so
-                    // the cold-start + foreground sweepers can reap it as a
-                    // single unit, bounding its on-disk lifetime.
-                    val tempPath = fileOperationsProvider.writeBytesToShareOutboundFile(
-                        bytes, ".$extension"
-                    )
+                if (tempPath != null) {
                     sendEvent(ShareFile(tempPath))
                 } else {
                     sendEvent(
@@ -336,12 +339,25 @@ internal class MediaDownloadHandler(
                     contentType.startsWith("image/") -> {
                         Logger.d("Image clicked: ${action.message.id}:${action.payloadKey}")
 
+                        // Header title = the sender's resolved display name (same as the
+                        // bubble), not the raw odinId. Append "(you)" when the sender is us.
+                        val authorDomain = action.message.originalAuthor?.domainName
+                        val isSelf = authorDomain != null &&
+                                authorDomain == uiState.value.ownerSession?.odinId?.domainName
+                        val title = if (isSelf) {
+                            TranslationUtil.getString(
+                                MR.string.contactbook_self_you,
+                                action.message.displayName,
+                            )
+                        } else {
+                            action.message.displayName
+                        }
+
                         messagesUiState.update {
                             it.copy(
                                 fullScreenOverlay = FullScreenOverlay.ViewMessageData(
                                     messageId = action.message.id,
-                                    title = action.message.originalAuthor?.domainName
-                                        ?: "null",
+                                    title = title,
                                     userDate = action.message.userDate,
                                     content = action.message.content,
                                     fileId = action.message.fileId,

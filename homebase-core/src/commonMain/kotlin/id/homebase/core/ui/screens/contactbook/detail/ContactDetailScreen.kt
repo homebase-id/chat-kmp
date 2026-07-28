@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +64,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
@@ -70,6 +74,7 @@ import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
+import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
@@ -137,6 +142,7 @@ fun ContactDetailScreen(
     onBack: () -> Unit,
     onOpenConversation: (Uuid) -> Unit,
     onSeeAllMedia: (conversationId: String) -> Unit,
+    onOpenContact: (uniqueId: String, odinId: String?) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -181,8 +187,22 @@ fun ContactDetailScreen(
                 ContactDetailEvent.RequestRejected -> snackbarHostState.showSnackbar(msgRequestRejected)
                 ContactDetailEvent.RequestCancelled -> snackbarHostState.showSnackbar(msgRequestCancelled)
                 ContactDetailEvent.RequestWithdrawn -> snackbarHostState.showSnackbar(msgRequestWithdrawn)
+                is ContactDetailEvent.OpenOtherContact -> onOpenContact(event.uniqueId, event.odinId)
             }
         }
+    }
+
+    // Returning here (e.g. from another contact's detail opened via the circle-detail dialog)
+    // needs to re-check pending circles explicitly — same StateFlow-conflation gap as the
+    // Contact Book's circle sheet: a pending-only change doesn't alter real membership, so
+    // ConnectionService.circles never re-emits and the reactive path alone can't catch it (#1096).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshPendingCircles()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -281,6 +301,7 @@ fun ContactDetailScreen(
                             Spacer(modifier = Modifier.height(if (tabs.size > 1) 12.dp else 20.dp))
                             when (current) {
                                 ContactDetailTab.DETAILS -> {
+                                    uiState.introducedByName?.let { IntroducedBySection(it) }
                                     ContactFieldsSection(
                                         entry = entry,
                                         expanded = detailsExpanded,
@@ -298,6 +319,9 @@ fun ContactDetailScreen(
                                         CirclesSection(
                                             circles = uiState.circles,
                                             isConnected = uiState.isConnected,
+                                            onCircleClicked = {
+                                                viewModel.onAction(ContactDetailAction.CircleClicked(it))
+                                            },
                                         )
                                     }
                                 }
@@ -387,6 +411,16 @@ fun ContactDetailScreen(
             },
             onDismiss = { viewModel.onAction(ContactDetailAction.CloseEdit) },
             odinIdLocked = uiState.isConnected,
+        )
+    }
+
+    uiState.circleDetail?.let { detail ->
+        CircleMembersSheet(
+            state = detail,
+            onDismiss = { viewModel.onAction(ContactDetailAction.CircleDetailDismiss) },
+            onMemberClick = { viewModel.onAction(ContactDetailAction.CircleMemberClicked(it)) },
+            onAddMemberClick = {},
+            onRemoveMemberClick = {},
         )
     }
 
@@ -483,7 +517,7 @@ private fun DetailHeader(
     val status = uiState.connectionStatus
     val connected = status == ConnectionStatus.Connected
     val blocked = status == ConnectionStatus.Blocked
-    val pending = status == ConnectionStatus.Pending
+    val pending = status == ConnectionStatus.None
     val requestIncoming = uiState.requestDirection == RequestDirection.INCOMING
     val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
     // Has a Homebase identity but no active connection, pending request, or block.

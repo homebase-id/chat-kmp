@@ -46,15 +46,7 @@ actual class RichNotificationDisplayer actual constructor() {
 
         // Use MessagingStyle for chat/community conversations
         if (data.conversationId != null) {
-            val style = NotificationCompat.MessagingStyle(person)
-                .addMessage(data.body, data.timestamp, person)
-
-            if (data.isGroupConversation && data.groupTitle != null) {
-                style.isGroupConversation = true
-                style.conversationTitle = data.groupTitle
-            }
-
-            builder.setStyle(style)
+            builder.setStyle(buildMessagingStyle(context, data, person))
             builder.setGroup(data.conversationId)
             builder.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         } else {
@@ -77,11 +69,14 @@ actual class RichNotificationDisplayer actual constructor() {
         // Set badge count on the notification (used by launcher badge integrations)
         builder.setNumber(BadgeManager.badgeCount)
 
-        // Lock screen privacy: show generic content
+        // Lock screen: mirror the already content-level-filtered title/body so the lock screen
+        // reflects the user's notification content setting (#859). NotificationService sets these
+        // per the level — "Homebase"/"New notification" for no_name_or_content, sender + real
+        // message for name_content_actions — so no separate redaction is needed here.
         val publicBuilder = NotificationCompat.Builder(context, data.channelId)
             .setSmallIcon(icon)
-            .setContentTitle("Homebase")
-            .setContentText("New notification")
+            .setContentTitle(data.title)
+            .setContentText(data.body)
             .setAutoCancel(true)
         builder.setPublicVersion(publicBuilder.build())
 
@@ -97,6 +92,49 @@ actual class RichNotificationDisplayer actual constructor() {
         if (data.conversationId != null) {
             postSummaryNotification(context, nm, data)
         }
+    }
+
+    /**
+     * Builds the conversation's MessagingStyle. When real content is shown
+     * ([RichNotificationData.showsRealContent] — the name_content_actions level), seed from the
+     * conversation's currently-showing notification so its recent messages keep displaying and the
+     * new one stacks on top. Android stores the messages in the live notification for us, so this
+     * survives a cold-process push with no in-memory buffer. History is capped at
+     * [MAX_STACKED_MESSAGES]. At redacted levels [base] is null, so it degrades to the prior
+     * single-message behaviour (the collapsed "$N new messages" body from NotificationService).
+     */
+    private fun buildMessagingStyle(
+        context: Context,
+        data: RichNotificationData,
+        person: Person,
+    ): NotificationCompat.MessagingStyle {
+        val base = if (data.showsRealContent) {
+            extractActiveMessagingStyle(context, data.notificationId)
+        } else {
+            null
+        }
+
+        val style = NotificationCompat.MessagingStyle(base?.user ?: person)
+        val history = base?.messages.orEmpty() +
+                NotificationCompat.MessagingStyle.Message(data.body, data.timestamp, person)
+        history.takeLast(MAX_STACKED_MESSAGES).forEach { style.addMessage(it) }
+
+        if (data.isGroupConversation && data.groupTitle != null) {
+            style.isGroupConversation = true
+            style.conversationTitle = data.groupTitle
+        }
+        return style
+    }
+
+    /** The MessagingStyle of the conversation's currently-showing notification, or null if none. */
+    private fun extractActiveMessagingStyle(
+        context: Context,
+        notificationId: Int,
+    ): NotificationCompat.MessagingStyle? {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val existing = nm.activeNotifications.firstOrNull { it.id == notificationId } ?: return null
+        return NotificationCompat.MessagingStyle
+            .extractMessagingStyleFromNotification(existing.notification)
     }
 
     private fun buildPerson(name: String, key: String, imageBytes: ByteArray?): Person {
@@ -174,31 +212,38 @@ actual class RichNotificationDisplayer actual constructor() {
     ) {
         val conversationId = data.conversationId ?: return
 
-        // Direct Reply action
-        val remoteInput = RemoteInput.Builder(EXTRA_REPLY_TEXT)
-            .setLabel("Reply")
-            .build()
+        // Direct Reply action — dormant until REPLY_FROM_NOTIFICATION_ENABLED (#1048).
+        if (REPLY_FROM_NOTIFICATION_ENABLED) {
+            val remoteInput = RemoteInput.Builder(EXTRA_REPLY_TEXT)
+                .setLabel("Reply")
+                .build()
 
-        val replyIntent = Intent(ACTION_REPLY).apply {
-            setPackage(context.packageName)
-            putExtra(EXTRA_CONVERSATION_ID, conversationId)
-            putExtra(EXTRA_NOTIFICATION_ID, data.notificationId)
+            val replyIntent = Intent(ACTION_REPLY).apply {
+                setPackage(context.packageName)
+                putExtra(EXTRA_CONVERSATION_ID, conversationId)
+                putExtra(EXTRA_NOTIFICATION_ID, data.notificationId)
+            }
+            val replyPendingIntent = PendingIntent.getBroadcast(
+                context,
+                conversationId.hashCode(),
+                replyIntent,
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val replyAction = NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_send, "Reply", replyPendingIntent
+            )
+                .addRemoteInput(remoteInput)
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+                .setShowsUserInterface(false)
+                .build()
+
+            builder.addAction(replyAction)
         }
-        val replyPendingIntent = PendingIntent.getBroadcast(
-            context,
-            conversationId.hashCode(),
-            replyIntent,
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val replyAction = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_send, "Reply", replyPendingIntent
-        )
-            .addRemoteInput(remoteInput)
-            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
-            .setShowsUserInterface(false)
-            .build()
 
-        // Mark as Read action
+        // Mark as Read only when the notification carries real content (#983) —
+        // you can't sensibly mark-as-read a "You have a new message" placeholder.
+        if (!data.hasContent) return
+
         val readIntent = Intent(ACTION_MARK_READ).apply {
             setPackage(context.packageName)
             putExtra(EXTRA_CONVERSATION_ID, conversationId)
@@ -217,11 +262,21 @@ actual class RichNotificationDisplayer actual constructor() {
             .setShowsUserInterface(false)
             .build()
 
-        builder.addAction(replyAction)
         builder.addAction(readAction)
     }
 
     companion object {
+        /**
+         * Reply-from-notification is disabled until the flow is hardened (#1048): the send can
+         * silently fail from a cold/headless BroadcastReceiver wake, and replying blind to the
+         * content-less "You have a new message" push (#859) is nonsensical. Flip to `true` to
+         * re-enable once those land. The receiver ([NotificationReplyReceiver]) is kept dormant.
+         */
+        const val REPLY_FROM_NOTIFICATION_ENABLED = false
+
+        /** Recent messages kept in a conversation's stacked notification (Android shows ~7). */
+        private const val MAX_STACKED_MESSAGES = 6
+
         const val ACTION_REPLY = "id.homebase.feed.NOTIFICATION_REPLY"
         const val ACTION_MARK_READ = "id.homebase.feed.NOTIFICATION_MARK_READ"
         const val EXTRA_CONVERSATION_ID = "conversation_id"

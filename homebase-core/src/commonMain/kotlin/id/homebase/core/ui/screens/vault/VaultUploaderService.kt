@@ -5,6 +5,8 @@ package id.homebase.core.ui.screens.vault
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.ExportDestination
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -46,6 +48,7 @@ class VaultUploaderService(
     private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadDownloadService: PayloadDownloadService,
     private val localAttachmentStore: LocalAttachmentContextStore,
     private val vaultService: VaultService,
 ) {
@@ -392,27 +395,29 @@ class VaultUploaderService(
             val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }
             val iv = payloadDescriptor?.iv
             val keyHeader = if (iv != null) {
-                try {
-                    KeyHeader(Base64.decode(iv), file.keyHeader.aesKey)
-                } catch (_: Exception) {
-                    file.keyHeader
-                }
+                // The descriptor IV is authoritative: an update reuses the file AES key with a
+                // fresh IV, so file.keyHeader.iv is stale for the new payload. Do NOT fall back
+                // to it on a malformed descriptor IV — decrypting with the wrong IV silently
+                // returns corrupt bytes. Let the failure hit the outer catch → null (issue #927).
+                KeyHeader(Base64.decode(iv), file.keyHeader.aesKey)
             } else {
                 file.keyHeader
             }
-
-            val bytes = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = file.driveId,
-                fileId = file.fileId,
-                key = payloadKey,
-                keyHeader = keyHeader,
-            )?.bytes ?: return null
 
             val ct = payloadDescriptor?.contentType ?: file.contentType
             val extension = ct.substringAfter("/", "bin").let {
                 if (it == "jpeg") "jpg" else it
             }
-            fileOperationsProvider.writeBytesToTempFile(bytes, "share_", ".$extension")
+            // Stream-decrypt into a disposable upload-temp file (#845) — bounded RAM
+            // for any payload size; the old byte path buffered the whole payload
+            // (~2×) in memory. Same dir + sweep lifecycle as writeBytesToTempFile.
+            payloadDownloadService.exportToTemp(
+                driveId = file.driveId,
+                fileId = file.fileId,
+                key = payloadKey,
+                keyHeader = keyHeader,
+                destination = ExportDestination.UploadTemp("share_", ".$extension"),
+            )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to download payload $payloadKey from ${file.fileId}" }
             null

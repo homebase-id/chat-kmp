@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.upload.DriveUploadProvider
@@ -245,6 +246,7 @@ class ChatMessageActionServiceTestFixture(
             reactionProvider = reactionProvider,
             credentialsManager = credentialsManager,
             fileProvider = fileProvider,
+            payloadDownloadService = PayloadDownloadService(fileProvider, NoopFileOperationsProvider()),
             dbm = dbm,
             outboxSync = outboxSync,
             optimisticWriter = optimisticWriter,
@@ -288,6 +290,9 @@ class ChatMessageActionServiceTestFixture(
         conversationId: Uuid,
         senderDomain: String,
         userDateMs: Long,
+        /** DriveMainIndex.userDate. Diverges from [userDateMs] when the display
+         *  value was clamped down to the server-stamped transitCreated. */
+        sqlUserDateMs: Long = userDateMs,
         alreadyRead: Boolean = false,
         isDeleted: Boolean = false,
         isPendingSend: Boolean = false,
@@ -301,6 +306,7 @@ class ChatMessageActionServiceTestFixture(
             conversationId = conversationId,
             content = "",
             userDate = Instant.fromEpochMilliseconds(userDateMs),
+            sqlUserDate = Instant.fromEpochMilliseconds(sqlUserDateMs),
             modified = null,
             created = Instant.fromEpochMilliseconds(userDateMs),
             originalAuthor = OdinId(senderDomain),
@@ -548,7 +554,7 @@ class ChatMessageActionServiceTestFixture(
  * Each instance gets its own unique cache subdirectory so multiple test classes'
  * Coil DiskCache instances don't contend on the same on-disk journal.
  */
-private class NoopFileOperationsProvider : FileOperationsProvider {
+internal class NoopFileOperationsProvider : FileOperationsProvider {
     private val uniqueCacheDir: String =
         java.nio.file.Files.createTempDirectory("hb-chat-test-cache").toString()
     private fun nope(): Nothing =

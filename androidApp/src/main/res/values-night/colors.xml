@@ -12,4 +12,6 @@
     <color name="crash_on_surface">#E2E1E5</color>
     <color name="crash_surface_variant">#303133</color>
     <color name="crash_on_surface_variant">#BEBFC5</color>
+
+    <color name="splash_background">#000000</color>
 </resources>

@@ -21,7 +21,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.resources.MR
-import id.homebase.resources.connections_introduced_by
 import id.homebase.resources.contactbook_connected
 import id.homebase.resources.contactbook_self_you
 import org.jetbrains.compose.resources.stringResource
@@ -31,15 +30,17 @@ fun ContactBookRow(
     entry: ContactBookEntry,
     onClick: () -> Unit,
     connected: Boolean = false,
-    /** When non-null, the contact was connected via this introducer (display name). */
-    introducedBy: String? = null,
+    /** When non-null, the row renders dimmed, is unclickable, and this text replaces the normal
+     *  subtitle line — e.g. explaining why an otherwise-visible contact can't be picked here. */
+    disabledReason: String? = null,
     /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val disabled = disabledReason != null
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = !disabled, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -54,26 +55,17 @@ fun ContactBookRow(
             Text(
                 text = name,
                 style = MaterialTheme.typography.bodyLarge,
+                color = if (disabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            val subtitle = entry.subtitle
+            val subtitle = disabledReason ?: entry.subtitle
             if (subtitle != null) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (introducedBy != null) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = stringResource(MR.string.connections_introduced_by, introducedBy),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

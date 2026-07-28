@@ -47,6 +47,10 @@ fun formatPhoneForDisplay(e164: String): String {
     if (country.dialCode == "1" && national.length == 10) {
         return "+1 (${national.substring(0, 3)}) ${national.substring(3, 6)}-${national.substring(6)}"
     }
+    // Denmark: flat 8-digit plan (no area codes), conventionally grouped in pairs.
+    if (country.dialCode == "45" && national.length == 8) {
+        return "+45 ${national.chunked(2).joinToString(" ")}"
+    }
     return "+${country.dialCode} ${groupNationalDigits(national)}"
 }
 

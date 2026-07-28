@@ -43,6 +43,7 @@ fun MessageItem(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    ownLiveShareUntilMs: Long? = null,
 ) {
     val odinId: OdinId? = try {
         OdinId(currentOdinId)
@@ -60,14 +61,18 @@ fun MessageItem(
     // Live-location controls for the location bubble (ignored by non-location media). State (LIVE/
     // ENDED) is read from the message descriptor in the bubble; this only carries side + actions.
     val sentByYou = message.isAuthoredBy(odinId)
-    val liveLocationControls = remember(message.id, sentByYou) {
+    val liveLocationControls = remember(message.id, sentByYou, ownLiveShareUntilMs) {
         LiveLocationBubbleControls(
             sentByYou = sentByYou,
             onStart = { durationMs ->
                 onUiAction(ConversationListUiAction.StartLiveLocationShare(message.id, durationMs))
             },
             onStop = { onUiAction(ConversationListUiAction.StopLiveLocationShare(message.id)) },
+            onStartShareBack = { durationMs ->
+                onUiAction(ConversationListUiAction.ShareLiveLocationBack(message.id, durationMs))
+            },
             onOpenMap = { onUiAction(ConversationListUiAction.OpenLiveLocationMap) },
+            ownShareUntilMs = ownLiveShareUntilMs,
         )
     }
 
@@ -91,6 +96,8 @@ fun MessageItem(
         if (policy.allowShare) remember(message.id) { { onUiAction(ConversationListUiAction.ShareMessage(message)) } } else null
     val onDelete =
         remember(message.id) { { onUiAction(ConversationListUiAction.DeleteMessage(message.id)) } }
+    val onTogglePin =
+        remember(message.id) { { onUiAction(ConversationListUiAction.TogglePinMessage(message.id)) } }
     val onShowReactions =
         if (policy.allowReactionDetails) remember(message.id) { { onUiAction(ConversationListUiAction.ShowReactionDetails(messageId = message.id)) } } else null
     val onDecryptFile =
@@ -170,6 +177,7 @@ fun MessageItem(
                 onEdit = onEdit,
                 onShare = onShare,
                 onDelete = onDelete,
+                onTogglePin = onTogglePin,
                 onMediaClick = onMediaClick,
                 onClickMessageId = onClickMessageId,
                 onRequestDecryptedFile = onDecryptFile,
@@ -225,6 +233,7 @@ fun MessageItem(
                 onBattle = onBattle,
                 onForward = onForward,
                 onDelete = onDelete,
+                onTogglePin = onTogglePin,
                 onMarkAsRead = onMarkAsRead,
                 onAddReaction = onAddReaction,
                 onShowReactions = onShowReactions,

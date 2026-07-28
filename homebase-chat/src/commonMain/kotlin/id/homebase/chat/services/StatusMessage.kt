@@ -47,4 +47,31 @@ enum class StatusMessage() {
      *  emergency circle. Renders "X removed you as an emergency contact" AND drives a receive-side
      *  side-effect that clears the recipient's can-locate flag for the SENDER (core `clearICanLocate`). */
     EmergencyContactRevoked,
+
+    /** Visible-only twin of [EmergencyContactDesignated], sent immediately after it in the same
+     *  conversation. [EmergencyContactDesignated] itself never reaches the receiver's chat history —
+     *  [id.homebase.core.contactbook.EmergencyContactReceiveService] soft-deletes it on receipt so a
+     *  re-delivery can't re-apply a stale designation. This twin carries no side-effect and is never
+     *  matched by [id.homebase.chat.services.convo.ConversationStream]'s designation dispatcher, so it
+     *  is never consumed — it renders the normal "X added you as an emergency contact" status line and
+     *  stays in history like any other status message. */
+    EmergencyContactDesignatedNotice,
+
+    /** Visible-only twin of [EmergencyContactRevoked] — see [EmergencyContactDesignatedNotice]. */
+    EmergencyContactRevokedNotice,
+
+    /** Sent by an emergency contact (the message's `originalAuthor`) when they activate the
+     *  emergency locate function against the recipient and retrieve their location history.
+     *  Carries [StatusMessageData.emergencyLocateExplanation] (the requester's justification),
+     *  [StatusMessageData.emergencyLocateWindowHours], and optionally
+     *  [StatusMessageData.emergencyLocateEmbargoUntilMs] — the "Ambush" flag: while
+     *  `now < embargoUntilMs` the RECIPIENT's client does not render this message
+     *  (MessageMapper returns null), so a captor inspecting the victim's phone sees nothing
+     *  for 24h. Render-only on receive — no side-effect handler.
+     *
+     *  Note: the recipient's server independently fires TemporalDriveAccessedNotification the
+     *  moment the requester reads the drive (odin-core, 1h-throttled, no justification text) —
+     *  the embargo cannot suppress that. A deferred-alert option on the server temporal API is
+     *  a possible future extension. */
+    EmergencyLocateRequested,
 }

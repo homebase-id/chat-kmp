@@ -3,6 +3,7 @@ package id.homebase.chat.createconversation
 import androidx.compose.runtime.Immutable
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.avatars.ConversationAvatarModel
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.persistentListOf
 import kotlin.uuid.Uuid
@@ -17,6 +18,16 @@ data class CreateConversationUiState(
 sealed interface CreateConversationListItem {
     data class Contacts(val contactGroups: List<ContactGroup>) : CreateConversationListItem
     data object NewGroup : CreateConversationListItem
+
+    /** Existing group conversations, selectable to open the group directly. */
+    data class Groups(val groups: List<GroupRow>) : CreateConversationListItem
+
+    @Immutable
+    data class GroupRow(
+        val id: Uuid,
+        val avatarModel: ConversationAvatarModel,
+        val name: String,
+    )
 
     /**
      * [self] is non-null only when surfaced by a self-name search → render as a contact row with the

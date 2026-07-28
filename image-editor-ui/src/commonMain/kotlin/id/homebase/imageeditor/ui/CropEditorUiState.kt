@@ -26,6 +26,8 @@ data class CropEditorUiState(
     val aspectMode: AspectMode = AspectMode.Free,
     /** True when thumb-drag preserves the current crop's aspect ratio. */
     val cropAspectLocked: Boolean = false,
+    /** True when the caller pre-locked the aspect (e.g. a square avatar crop) — hides the chip row/lock toggle. */
+    val aspectSwitcherHidden: Boolean = false,
     val freeRotationDegrees: Float = 0f,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,

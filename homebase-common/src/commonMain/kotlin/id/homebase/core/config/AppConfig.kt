@@ -174,6 +174,10 @@ val appPermissions: List<AppPermissionType> =
         AppPermissionType.ReceiveDataFromOtherIdentitiesOnMyBehalf,
         AppPermissionType.SendPushNotifications,
         AppPermissionType.SendIntroductions,
+        // Required to write the owner's standard-profile attributes (in-app profile editor);
+        // without it PUT /api/v2/profile/attributes returns 403. Paired with the ProfileDrive
+        // Read grant below, which lets the editor read current values to prefill the form.
+        AppPermissionType.ManageProfile,
     )
 
 // Target drive access requests (general — excludes feed drive)
@@ -198,8 +202,18 @@ val targetDriveAccessRequest: List<TargetDriveAccessRequest> =
             description = " ",
             permissions = listOf(DrivePermission.Read, DrivePermission.Write)
         ),
-
-        )
+        // Read-only grant on the ProfileDrive so the in-app profile editor can read the owner's
+        // current standard-profile attributes (id + versionTag + values) to prefill the form.
+        // Writes don't need drive Write here — they go through the ManageProfile-gated
+        // /api/v2/profile/attributes endpoint, not a direct drive upload.
+        TargetDriveAccessRequest(
+            alias = profileLabeledDrive.drive.alias.toString(),
+            type = profileLabeledDrive.drive.type.toString(),
+            name = "Profile Drive",
+            description = "Drive which contains your profile information",
+            permissions = listOf(DrivePermission.Read)
+        ),
+    )
 
 val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     TargetDriveAccessRequest(
@@ -215,19 +229,18 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // Chat and Contacts power messaging.
 // See ADDING_ADDON_APPS.md §"Mandatory vs Optional Drives" for the full model.
 //
-// Profile drive intentionally omitted: owner display name / avatar are loaded via
-// the public unauthenticated `https://{odinId}/pub/profile` endpoint
-// (PublicProfileProviderCached), not through the drive sync engine. Adding
-// profileLabeledDrive here would start additional HTTP polling on every login for
-// content nothing currently reads — wire it in only when a feature actually needs
-// the profile drive synced into the local SQLDelight index.
+// Profile drive is synced like Chat/Contacts so the owner's standard-profile attributes
+// (fileType=77) are indexed locally and available offline (#1105). Display name / avatar
+// continue to come from the public `https://{odinId}/pub/profile` endpoint
+// (PublicProfileProviderCached) — that's a separate, cache-backed path.
 // Feed + public-channel drives are mandatory (like Chat) per the native-feed Task 0
 // decision: once mounted, the sync engine drains the transit inbox for free so followed
 // posts land in the local index and FeedTimelineService can stream them.
 val mandatorySyncDrives: List<LabeledDrive> =
     listOf(
         chatLabeledDrive,
-        contactLabeledDrive, /*, profileLabeledDrive */
+        contactLabeledDrive,
+        profileLabeledDrive,
         feedLabeledDrive,
         publicChannelLabeledDrive,
     )

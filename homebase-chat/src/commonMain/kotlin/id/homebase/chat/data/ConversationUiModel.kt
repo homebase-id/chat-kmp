@@ -34,6 +34,7 @@ data class ConversationUiModel(
     val dirty: Boolean = false,
     val avatarModel: ConversationAvatarModel,
     val lastMessageDeliveryStatus: Int? = null,
+    val lastMessageIsPendingSend: Boolean = false,
     val lastMessageIsDeleted: Boolean = false,
     val lastMessageFirstPayload: PayloadDescriptor? = null,
     val lastMessageHasMultiplePayloads: Boolean = false,
@@ -45,6 +46,12 @@ data class ConversationUiModel(
     val lastMessageContent: MessageContent? = null,
     val lastMessageIsFromActiveUser: Boolean = false,
     val lastMessageSender: OdinId? = null,
+    /**
+     * Unsent composer draft for this conversation (markdown), surfaced as a
+     * "Draft:" preview in the list row when non-blank. Owner-private, synced
+     * across the user's own devices; null when there is no draft. #1122.
+     */
+    val draft: String? = null,
     val admins: Set<OdinId>,
     val conversationState: ConversationState = ConversationState.Active,
     val isGroup: Boolean = false,
@@ -144,10 +151,25 @@ data class ConversationUiModel(
 
     companion object {
         /**
-         * Patches the conversation's last-message fields if [msg] is at least
-         * as recent as the current [latestMessageTimestamp].
+         * Patches the conversation's last-message fields from [msg].
          *
-         * The "recency" comparison is driven by [latestTimestampOverrideMs]
+         * The preview is applied **unconditionally**; only the
+         * [latestMessageTimestamp] sort key is protected against regression.
+         * The single production caller is
+         * [id.homebase.chat.services.convo.ConversationMapper.applyLastMessage]
+         * on the cold-load / post-sync enrichment path, where the
+         * `selectAllConversationPlusLastMessage` row IS the authority for "what
+         * is the last message" and the row being patched always still carries
+         * `mapToBasic`'s `" "` placeholder. That query excludes status messages
+         * (`dataType = 202`) while `applyIncomingMessageBump` advances the sort
+         * key for them, so the persisted `localAppData.latestMessageTimestamp`
+         * seed can legitimately be *newer* than the newest real message — under
+         * the old `candidate >= latestMessageTimestamp` guard the preview lost
+         * that comparison and the row rendered "No messages yet" next to a
+         * correct timestamp (#1148). Live arrivals keep their own recency guard
+         * in [id.homebase.chat.services.convo.applyIncomingMessageBump].
+         *
+         * The candidate timestamp is driven by [latestTimestampOverrideMs]
          * when the caller knows the SQL-side userDate (e.g. from
          * `selectAllConversationPlusLastMessage`'s `msgUserDate` projection,
          * or from `HomebaseFile.sqlUserDateMs()` for files just written to
@@ -170,20 +192,18 @@ data class ConversationUiModel(
             val candidate = latestTimestampOverrideMs
                 ?.let { Instant.fromEpochMilliseconds(it) }
                 ?: msg.userDate
-            if (candidate >= latestMessageTimestamp) {
-                return this.copy(
-                    lastMessage = msg.content.truncateToCodePoints(40),
-                    latestMessageTimestamp = candidate,
-                    lastMessageDeliveryStatus = msg.messageAppData.deliveryStatus,
-                    lastMessageIsDeleted = msg.isDeleted,
-                    lastMessageFirstPayload = msg.payloads?.firstOrNull(),
-                    lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1,
-                    lastMessageContent = msg.messageContent,
-                    lastMessageIsFromActiveUser = msg.isFromActiveUser(activeUserDomain),
-                    lastMessageSender = msg.originalAuthor,
-                )
-            }
-            return this
+            return this.copy(
+                lastMessage = msg.content.truncateToCodePoints(40),
+                latestMessageTimestamp = maxOf(candidate, latestMessageTimestamp),
+                lastMessageDeliveryStatus = msg.messageAppData.deliveryStatus,
+                lastMessageIsPendingSend = msg.isPendingSend,
+                lastMessageIsDeleted = msg.isDeleted,
+                lastMessageFirstPayload = msg.payloads?.firstOrNull(),
+                lastMessageHasMultiplePayloads = (msg.payloads?.size ?: 0) > 1,
+                lastMessageContent = msg.messageContent,
+                lastMessageIsFromActiveUser = msg.isFromActiveUser(activeUserDomain),
+                lastMessageSender = msg.originalAuthor,
+            )
         }
     }
 }

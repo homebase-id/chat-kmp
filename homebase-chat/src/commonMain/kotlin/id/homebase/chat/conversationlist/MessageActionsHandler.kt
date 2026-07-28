@@ -13,6 +13,8 @@ import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
 import id.homebase.chat.data.MessageUiModel
+import id.homebase.chat.groodle.GroodleVote
+import id.homebase.chat.poll.PollVote
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
@@ -30,6 +32,7 @@ import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.builder.LocationPreviewPayloadBuilder
+import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.chat.services.renderer.LocationPreviewRenderer
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.toCombinedPayloadBundle
@@ -39,8 +42,11 @@ import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
+import id.homebase.core.share.hasSendableContent
+import id.homebase.core.share.resolveMessageBody
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.resolveContentType
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_forwarded
@@ -59,6 +65,23 @@ import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 private const val TAG = "ConversationListViewModel"
+
+/**
+ * Whether the composer should send, given the SERIALIZED markdown body it would actually send
+ * ([RichTextState.toMarkdown]) and the staged renderers. Gating on the serialized body — not the
+ * editor's `annotatedString` — is the fix for #1104: a typed/pasted URL can momentarily serialize
+ * to blank while the annotated text is still non-blank, and the old split (gate on `annotatedString`,
+ * send `toMarkdown()`) let that blank slip through as an empty message on both sides. A link preview
+ * is auto-detected from a typed URL and doesn't by itself justify a send; any other renderer
+ * (location, contact, …) is user-initiated and does.
+ */
+internal fun shouldSendComposerMessage(
+    markdownBody: String,
+    payloadRenderers: List<PayloadRenderer>,
+): Boolean {
+    val hasUserInitiatedAttachment = payloadRenderers.any { it !is LinkPreviewRenderer }
+    return markdownBody.isNotBlank() || hasUserInitiatedAttachment
+}
 
 /**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
@@ -101,16 +124,13 @@ internal class MessageActionsHandler(
     internal var pendingMessageId: Uuid? = null
 
     fun handleSendMessage(action: ConversationListUiAction.SendMessage) {
-        val hasMessage = !messageInputTextState.annotatedString.isBlank()
-        // User-initiated attachments (location, contact, etc.) enable send even with no
-        // text. Link previews don't — they're auto-detected from typed URLs and only
-        // ride along when there's a text message to send.
-        val hasUserInitiatedAttachment = action.payloadRenderers.any {
-            it !is id.homebase.chat.services.renderer.LinkPreviewRenderer
-        }
-        if (hasMessage || hasUserInitiatedAttachment) {
+        // Send the NORMALIZED serialized body. toMessageMarkdown() strips richeditor's `<br>`
+        // empty-paragraph artifacts (a stray blank line round-trips to `"\n<br>"`, a link with an
+        // empty line above it to `"\n<br>\n<url>"`). Gating on annotatedString, or sending raw
+        // toMarkdown() which keeps the `<br>`, sent a blank/`<br>` message on both sides (#1104).
+        val content = messageInputTextState.toMessageMarkdown()
+        if (shouldSendComposerMessage(content, action.payloadRenderers)) {
             messagesUiState.update { it.copy(isSendingMessage = true) }
-            val content = messageInputTextState.toMarkdown().trimEnd()
             val replyTo = messagesUiState.value.replyToMessage
             if (replyTo != null) {
                 replyToMessage(
@@ -172,7 +192,8 @@ internal class MessageActionsHandler(
             editMessage(
                 messageId = messageId,
                 versionTag = messagesUiState.value.isEditingVersionTag ?: Uuid.NIL,
-                content = messageInputTextState.toMarkdown().trimEnd(),
+                // Normalize like the send path so an edit can't reintroduce a `<br>` artifact (#1104).
+                content = messageInputTextState.toMessageMarkdown(),
             )
         }
     }
@@ -185,6 +206,16 @@ internal class MessageActionsHandler(
                 isEditingVersionTag = null
             )
         }
+    }
+
+    /**
+     * Blank the composer after a successful send AND clear this conversation's
+     * persisted draft (#1122), so a sent message never leaves a stale synced
+     * draft behind on this or another device.
+     */
+    private fun clearComposerDraft(conversationId: Uuid) {
+        messageInputTextState.clear()
+        scope.launch { conversationService.clearLocalDraft(conversationId) }
     }
 
     fun handleDeleteMessage(action: ConversationListUiAction.DeleteMessage) {
@@ -424,6 +455,11 @@ internal class MessageActionsHandler(
                     }
                     userPreferences.preferredUserReactions = promoted.take(6)
                 }
+
+                // Auto-unpin (#887): a vote IS a reaction, so once the user has
+                // answered an auto-pinned Poll/Groodle, drop it from their pinned
+                // bar (synced). Best-effort, after the toggle's optimistic write.
+                maybeUnpinAnsweredVote(action.messageId)
             } catch (e: Exception) {
                 messagesUiState.update { it.copy(messageReactions = previousReactions) }
                 sendEvent(
@@ -433,6 +469,27 @@ internal class MessageActionsHandler(
                 )
             }
         }
+    }
+
+    /**
+     * If [messageId] is an auto-pinned Poll/Groodle the current user has now
+     * answered (any option/slot), unpin it (synced). Reads the post-toggle message
+     * so the just-cast vote is included. Answered = ownVotes/myVotes non-empty.
+     */
+    private suspend fun maybeUnpinAnsweredVote(messageId: Uuid) {
+        val message = chatMessageStream.getMessage(messageId) ?: return
+        if (!message.isPinned) return
+        if (message.isManuallyPinned) return // a deliberate pin is sticky, even once answered
+        val answered = when (val content = message.messageContent) {
+            is MessageContent.Poll -> content.descriptor?.let {
+                PollVote.ownVotes(message.ownReactions, it.options.size).isNotEmpty()
+            } ?: false
+            is MessageContent.Groodle -> content.descriptor?.let {
+                GroodleVote.myVotes(message.ownReactions, it.slots.size, it.allowMaybe).isNotEmpty()
+            } ?: false
+            else -> false
+        }
+        if (answered) chatMessageActionService.unpinMessage(messageId)
     }
 
     fun handleSendFile(action: ConversationListUiAction.SendFile) {
@@ -824,7 +881,7 @@ internal class MessageActionsHandler(
             // NOTE: do NOT revoke the videos' blob: URLs here — they're now the ffmpeg compress
             // INPUT and are consumed by the async upload (revoked in writeFileFromUrl once written
             // into MEMFS). Unattach/dismiss still revoke for never-sent attachments.
-            messageInputTextState.clear()
+            clearComposerDraft(conversationId)
 
             scope.launch {
                 try {
@@ -921,11 +978,24 @@ internal class MessageActionsHandler(
         if (descriptor.targetConversationId != conversationId.toString()) return
 
         Logger.i(tag = "ConversationListViewModel") {
-            "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}"
+            "Processing shared content: type=${descriptor.contentType}, files=${descriptor.fileNames.size}, " +
+                "textLen=${descriptor.text?.length}, hasUrl=${!descriptor.url.isNullOrBlank()}"
         }
 
         try {
-            val text = descriptor.text ?: descriptor.url ?: ""
+            val text = descriptor.resolveMessageBody()
+
+            // Never send an empty message: a share that resolves to nothing is a failed
+            // extraction, and silently sending a blank bubble loses the user's content
+            // without telling them (#1097). Policy lives in hasSendableContent() so it
+            // is locked by SharedContentDescriptorTest rather than only by this branch.
+            if (!descriptor.hasSendableContent()) {
+                Logger.w(tag = "ConversationListViewModel") {
+                    "Shared content resolved to nothing (type=${descriptor.contentType}) — not sending"
+                }
+                sendEvent(ShowErrorMessage("Couldn't read the shared content — please try sharing again."))
+                return
+            }
 
             if (descriptor.fileNames.isEmpty()) {
                 // Text/URL only
@@ -1034,6 +1104,10 @@ internal class MessageActionsHandler(
                 registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
+                // Arm the own-send follow before the send: this path adds no placeholder,
+                // so the consuming effect waits for this id to land in the list (#995).
+                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
+
                 // Location is a typed kind (= Event): the coordinate descriptor rides in the header
                 // (appData), the map PNG stays a chat_loc payload. Sending it through the typed path
                 // is what lets a live-share toggle edit the descriptor via updateMessage().
@@ -1062,7 +1136,7 @@ internal class MessageActionsHandler(
                         dataType = payloadRenderers.toMessageDataType(),
                     )
                 }
-                messageInputTextState.clear()
+                clearComposerDraft(conversationId)
                 jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "addMessage: complete message=$newMessageId" }
             } catch (e: Exception) {
@@ -1102,7 +1176,9 @@ internal class MessageActionsHandler(
     private fun MessageUiModel.toReplyPreview() = ReplyPreview(
         replyUniqueId = id,
         authorOdinId = originalAuthor?.domainName ?: "null",
-        message = content.truncateToCodePoints(80),
+        // trim before truncate: leading newlines would otherwise render as a bare
+        // "…" in the quote and eat into the 80-codepoint budget.
+        message = content.trim().truncateToCodePoints(80),
         previewThumbnail = previewThumbnail,
         context = (messageContent as? MessageContent.Event)?.descriptor
             ?.let { ReplyContext.event(it.startUtcMs) },
@@ -1123,6 +1199,10 @@ internal class MessageActionsHandler(
                 registerLocalPreviewContexts(newMessageId, payloadBundle)
                 Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
 
+                // Arm the own-send follow before the send: this path adds no placeholder,
+                // so the consuming effect waits for this id to land in the list (#995).
+                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
+
                 chatMessageSenderService.replyToMessage(
                     messageUniqueId = newMessageId,
                     conversationId = conversationId,
@@ -1132,7 +1212,7 @@ internal class MessageActionsHandler(
                     payloadBundle = payloadBundle,
                     dataType = payloadRenderers.toMessageDataType(),
                 )
-                messageInputTextState.clear()
+                clearComposerDraft(conversationId)
                 messagesUiState.update { it.copy(replyToMessage = null) }
                 jumpToLatestAfterOwnSend(conversationId)
                 Logger.d(tag = TAG) { "replyToMessage: complete message=$newMessageId" }
@@ -1154,8 +1234,7 @@ internal class MessageActionsHandler(
             try {
                 val rawReactions = chatMessageActionService.getReactions(messageId)
                 val reactions = rawReactions.map { reaction ->
-                    val displayName = contactService.resolveByOdinId(reaction.odinId)?.name
-                        ?: reaction.odinId.domainName
+                    val displayName = contactService.resolveByOdinId(reaction.odinId).name
                     ReactionDisplayItem(
                         odinId = reaction.odinId.domainName,
                         displayName = displayName,

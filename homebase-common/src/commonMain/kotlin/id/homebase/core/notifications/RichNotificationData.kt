@@ -24,6 +24,18 @@ data class RichNotificationData(
     val groupTitle: String? = null,
     /** When true, the notification should not play a sound (chime cooldown active). */
     val silent: Boolean = false,
+    /**
+     * True only when [body] is a real (decrypted) message — not the sender-side
+     * "You have a new message" placeholder or a NotificationBodyFormer fallback.
+     * Gates the Mark-as-Read action (#983); set once notification decryption lands (#859).
+     */
+    val hasContent: Boolean = false,
+    /**
+     * True only at the `name_content_actions` content level, where real message text is shown.
+     * Tells the Android displayer to stack the conversation's recent messages (MessagingStyle
+     * history) instead of collapsing to a "$N new messages" count. Redacted levels keep the count.
+     */
+    val showsRealContent: Boolean = false,
 )
 
 /** Extension to generate a stable notification ID from the conversation ID or a random one. */

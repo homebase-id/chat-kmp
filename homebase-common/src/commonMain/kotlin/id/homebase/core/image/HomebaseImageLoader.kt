@@ -2,6 +2,7 @@ package id.homebase.core.image
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.NotFoundException
+import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
@@ -245,6 +246,16 @@ class HomebaseImageLoader(
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: PayloadTooLargeException) {
+                // Above the render limit (#845): the full-res upgrade is refused
+                // deterministically — retrying can't shrink the payload. Returning
+                // null keeps the already-rendered thumbnail on screen instead of
+                // OOM-ing on a huge image.
+                Logger.w(tag = TAG) {
+                    "full payload too large to render (${e.sizeBytes} > ${e.limitBytes}) — " +
+                        "keeping thumbnail for ${data.fileId}/${data.payloadKey}"
+                }
+                return@withRetry null
             } catch (e: Exception) {
                 throw RuntimeException(
                     buildImageLoadFailureMessage(

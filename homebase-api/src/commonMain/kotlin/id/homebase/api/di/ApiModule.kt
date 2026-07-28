@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.HttpClientProvider
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.diagnostics.ServerIpCapture
+import id.homebase.api.client.diagnostics.ServerIpStore
 import id.homebase.api.client.connections.ConnectionIntroductionProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
@@ -17,6 +19,7 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileOperationsProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -27,12 +30,15 @@ import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.notifications.PushNotificationApi
+import id.homebase.api.client.notifications.ScheduledPushNotificationProvider
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.client.peer.PeerNotificationProvider
 import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
+import id.homebase.api.client.profile.ProfileProvider
+import id.homebase.api.client.profile.ProfileRepository
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
@@ -77,6 +83,10 @@ val apiModule = module {
     singleOf(::VideoPreloadService)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
+    // Last-known-good owner-server IP: the store + the production-capture bridge (its init arms
+    // the global registry the Android OkHttp EventListener forwards to).
+    singleOf(::ServerIpStore)
+    single { ServerIpCapture(get(), get(), get()) }
     singleOf(::PublicIdentityRepository)
     singleOf(::DriveFileHttpProvider)
     singleOf(::DriveFileProviderCached)
@@ -93,6 +103,7 @@ val apiModule = module {
     factoryOf(::DriveUploadProvider)
 
     factoryOf(::DriveFileProvider)
+    factoryOf(::PayloadDownloadService)
     factory<VideoPrefetchDriveAccess> { get<DriveFileProvider>() }
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
@@ -138,12 +149,18 @@ val apiModule = module {
     }
     singleOf(::ContactsProvider)
     singleOf(::ContactRepository)
+    // Owner profile-attribute editor: write client + read/orchestration (queries the ProfileDrive
+    // on demand; the drive is not in mandatorySyncDrives). Needs the ManageProfile permission +
+    // ProfileDrive Read grant from AppConfig.
+    factoryOf(::ProfileProvider)
+    factoryOf(::ProfileRepository)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
     factoryOf(::PublicProfileProvider)
 
     factoryOf(::SecurityContextProvider)
     factoryOf(::PushNotificationApi)
+    factoryOf(::ScheduledPushNotificationProvider)
     singleOf(::LinkPreviewProvider)
     singleOf(::LocationPreviewProvider)
 

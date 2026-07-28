@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,9 @@ import kotlin.math.roundToInt
  * @param resetViewportOn when this key changes the user's pan/zoom is dropped and the view re-fits to
  *   [bbox]. History passes its `traces` (new day re-fits); the live map passes `Unit` (preserve
  *   pan/zoom across store updates).
+ * @param cameraState optional hoisted camera ([rememberMapCameraState]) for callers that need to
+ *   observe the view center or move it programmatically (share-location screen). Null = the map
+ *   keeps a private camera; behavior is unchanged.
  */
 @Composable
 fun TiledMapView(
@@ -55,12 +59,16 @@ fun TiledMapView(
     resetViewportOn: Any? = Unit,
     onDrawOverlay: (DrawScope.(project: (Double, Double) -> Offset) -> Unit)? = null,
     markerContent: (@Composable (project: (Double, Double) -> Offset, ready: Boolean) -> Unit)? = null,
+    cameraState: MapCameraState? = null,
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    // User pan/zoom override; null = fit the bbox. Reset when resetViewportOn changes.
-    var userViewport by remember(resetViewportOn) { mutableStateOf<MapViewport?>(null) }
+    val camera = cameraState ?: remember { MapCameraState() }
+    // Drop the user pan/zoom override (re-fit to bbox) whenever the reset key changes — same
+    // semantics the pre-camera `remember(resetViewportOn) { mutableStateOf(null) }` had.
+    remember(resetViewportOn, camera) { camera.viewport = null }
 
-    val viewport = userViewport ?: fitViewport(bbox, canvasSize)
+    val viewport = camera.viewport ?: fitViewport(bbox, canvasSize)
+    SideEffect { camera.effective = viewport }
 
     // ── Tile layer state ──
     val tileBitmaps = remember { mutableStateMapOf<MapTileKey, ImageBitmap>() }
@@ -83,9 +91,9 @@ fun TiledMapView(
     }
 
     val gestureModifier = if (!interactive) Modifier else {
-        Modifier.pointerInput(resetViewportOn) {
+        Modifier.pointerInput(resetViewportOn, camera) {
             detectTransformGestures { centroid, pan, zoom, _ ->
-                val current = userViewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
+                val current = camera.viewport ?: fitViewport(bbox, canvasSize) ?: return@detectTransformGestures
                 val newUnitsPerPx = (current.unitsPerPx / zoom)
                     .coerceIn(MIN_UNITS_PER_PX, MAX_UNITS_PER_PX)
                 // Keep the gesture centroid anchored while zooming, then pan.
@@ -93,7 +101,7 @@ fun TiledMapView(
                 val cy = centroid.y - size.height / 2f
                 val anchoredX = current.centerX + cx * (current.unitsPerPx - newUnitsPerPx)
                 val anchoredY = current.centerY + cy * (current.unitsPerPx - newUnitsPerPx)
-                userViewport = MapViewport(
+                camera.viewport = MapViewport(
                     centerX = anchoredX - pan.x * newUnitsPerPx,
                     centerY = anchoredY - pan.y * newUnitsPerPx,
                     unitsPerPx = newUnitsPerPx,

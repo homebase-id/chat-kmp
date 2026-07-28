@@ -211,6 +211,44 @@ class ChatMessageSenderService(
         dataType = id.homebase.chat.services.content.MessageContentParser.dataTypeFor(content),
     )
 
+    private data class ResolvedRecipients(val recipients: List<OdinId>, val isLocalOnly: Boolean)
+
+    /**
+     * Local-only is an explicit decision, never an inference from an empty lookup (#934):
+     *  1. recipientOverride != null        -> caller forced the set (heal's emptyList() = intentional local-only)
+     *  2. id == ConversationWithYourselfId -> note-to-self
+     *  3. participants non-empty, all self -> legacy self-1:1
+     * Anything else resolving to zero recipients (even after the stream's DB re-hydration
+     * inside getRecipients) is a corrupt/placeholder conversation: throw instead of
+     * uploading with allowDistribution=false — a real 1:1 must never be silently
+     * misclassified as note-to-self and left undelivered.
+     */
+    private suspend fun resolveRecipients(
+        conversationId: Uuid,
+        additionalRecipients: List<OdinId> = emptyList(),
+        recipientOverride: List<OdinId>? = null,
+    ): ResolvedRecipients {
+        val recipients = conversationStream.getRecipients(
+            conversationId = conversationId,
+            additionalRecipients = additionalRecipients,
+            recipientOverride = recipientOverride,
+        )
+        if (recipients.isNotEmpty()) return ResolvedRecipients(recipients, isLocalOnly = false)
+        if (recipientOverride != null) return ResolvedRecipients(recipients, isLocalOnly = true)
+        if (conversationId == ChatProtocol.ConversationWithYourselfId) {
+            return ResolvedRecipients(recipients, isLocalOnly = true)
+        }
+        // Re-read AFTER getRecipients — its hydration may have replaced the in-memory row.
+        val participants = conversationStream.getConversationById(conversationId)?.participants
+        if (!participants.isNullOrEmpty()) {
+            return ResolvedRecipients(recipients, isLocalOnly = true) // all-self legacy 1:1
+        }
+        error(
+            "No recipients resolved for conversation $conversationId (participants missing) — " +
+                "refusing local-only send"
+        )
+    }
+
     private suspend fun sendMessageInternal(
         messageUniqueId: Uuid,
         conversationId: Uuid,
@@ -237,12 +275,11 @@ class ChatMessageSenderService(
         }
 
         val keyHeader = KeyHeader.newRandom16()
-        val recipients = conversationStream.getRecipients(
+        val (recipients, isLocalOnly) = resolveRecipients(
             conversationId = conversationId,
             additionalRecipients = additionalRecipients,
             recipientOverride = recipientOverride,
         )
-        val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
 
         val effectiveNotificationText = if (recipients.size > 1) {
             val groupName = conversation.name
@@ -382,13 +419,22 @@ class ChatMessageSenderService(
             error("VersionTag mismatch")
         }
 
+        // An edit must not move userDate: MessageUiModel.userDate is clamped for
+        // display (minOf(rawUserDate, authorSpecificDate) in MessageMapper), so
+        // re-stamping from it can lower appData.userDate below the SQL
+        // DriveMainIndex.userDate — the conversation-list preview refresh guards
+        // then reject the edit and the overview blanks (#900). Read the original
+        // value off the header file; `modified` already reflects the edit time.
+        val originalUserDateMs = chatMessageStream.getMessageFile(messageId)
+            ?.fileMetadata?.appData?.userDate
+            ?: msg.userDate.toEpochMilliseconds()
+
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
             aesKey = msg.keyHeader.aesKey
         )
 
-        val recipients = conversationStream.getRecipients(msg.conversationId)
-        val isLocalOnly = recipients.isEmpty() // self-conversation: no distribution
+        val (recipients, isLocalOnly) = resolveRecipients(msg.conversationId)
 
         // If the original create is still queued (never reached the server),
         // editing must keep it a *create*. Downgrading to an UpdateFile would
@@ -423,7 +469,7 @@ class ChatMessageSenderService(
                     groupId = msg.conversationId,
                     fileType = ChatProtocol.MessageFileType,
                     dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
-                    userDate = msg.userDate.toEpochMilliseconds(),
+                    userDate = originalUserDateMs,
                     content = createBuilt?.headerContent ?: content,
                     previewThumbnail = msg.previewThumbnail
                 )
@@ -489,7 +535,7 @@ class ChatMessageSenderService(
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 dataType = msg.messageContent?.let { MessageContentParser.dataTypeFor(it) } ?: 0,
-                userDate = msg.userDate.toEpochMilliseconds(),
+                userDate = originalUserDateMs,
                 content = headerContent,
                 previewThumbnail = msg.previewThumbnail
             )
@@ -641,8 +687,12 @@ class ChatMessageSenderService(
             fileOperationsProvider = fileOperationsProvider,
         )
 
-        val recipients = conversationStream.getRecipients(msg.conversationId)
-        val isLocalOnly = recipients.isEmpty()
+        val (recipients, isLocalOnly) = try {
+            resolveRecipients(msg.conversationId)
+        } catch (e: IllegalStateException) {
+            Logger.e(throwable = e, tag = TAG) { "resendMessage: recipient resolution failed uniqueId=$messageId" }
+            return ResendOutcome.Failed(e)
+        }
 
         val enqueueOutcome = try {
             when (recoverability) {
@@ -696,7 +746,10 @@ class ChatMessageSenderService(
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 dataType = file.fileMetadata.appData.dataType ?: 0,
-                userDate = msg.userDate.toEpochMilliseconds(),
+                // Keep the original un-clamped userDate on retry (#900) —
+                // msg.userDate is the clamped display value.
+                userDate = file.fileMetadata.appData.userDate
+                    ?: msg.userDate.toEpochMilliseconds(),
                 content = built.headerContent,
                 previewThumbnail = msg.previewThumbnail,
             ),
@@ -755,7 +808,10 @@ class ChatMessageSenderService(
                 groupId = msg.conversationId,
                 fileType = ChatProtocol.MessageFileType,
                 dataType = file.fileMetadata.appData.dataType ?: 0,
-                userDate = msg.userDate.toEpochMilliseconds(),
+                // Keep the original un-clamped userDate on retry (#900) —
+                // msg.userDate is the clamped display value.
+                userDate = file.fileMetadata.appData.userDate
+                    ?: msg.userDate.toEpochMilliseconds(),
                 content = built.headerContent,
                 previewThumbnail = msg.previewThumbnail,
             ),

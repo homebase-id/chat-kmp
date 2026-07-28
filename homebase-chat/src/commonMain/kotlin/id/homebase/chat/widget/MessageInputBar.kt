@@ -76,6 +76,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -116,6 +117,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
+import id.homebase.chat.conversationlist.shouldSendComposerMessage
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
@@ -123,10 +125,13 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
+import id.homebase.core.clipboard.pasteImageContextMenuItem
+import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
@@ -136,6 +141,7 @@ import id.homebase.resources.chat_message_emoji
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
+import id.homebase.resources.chat_message_paste_image
 import id.homebase.resources.chat_message_processing
 import id.homebase.resources.chat_message_record_video
 import id.homebase.resources.chat_markdown_blockquote
@@ -156,6 +162,7 @@ import id.homebase.resources.collapse
 import id.homebase.resources.expand
 import id.homebase.resources.slide_to_cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
@@ -262,14 +269,15 @@ fun MessageInputBar(
     }
 
     fun sendMessage() {
-        val hasText = textFieldState.annotatedString.isNotBlank()
-        // Link previews alone shouldn't enable send (a bare URL with no text was never sendable
-        // in the original shape). User-initiated kinds (location, contact, etc.) WILL enable
-        // send because they're not LinkPreviewRenderer.
-        val hasUserInitiatedAttachment = payloadRenderers.any { it !is LinkPreviewRenderer }
-        if (!isSendingMessage && (hasText || hasUserInitiatedAttachment)) {
+        // Gate on the NORMALIZED serialized body — the exact value that gets sent.
+        // toMessageMarkdown() strips richeditor's `<br>` empty-paragraph artifacts, so a stray
+        // blank line (which serializes to a non-blank `"\n<br>"`) no longer slips past the gate as
+        // a blank/`<br>` message (#1104). shouldSendComposerMessage encodes the "link previews
+        // alone don't send" policy (user-initiated kinds like location DO).
+        val markdown = textFieldState.toMessageMarkdown()
+        if (!isSendingMessage && shouldSendComposerMessage(markdown, payloadRenderers)) {
             haptics.perform(HapticEvent.Confirm)
-            onSendMessage(textFieldState.toMarkdown(), payloadRenderers)
+            onSendMessage(markdown, payloadRenderers)
             // Don't clear here — the ViewModel clears after the send is queued,
             // so the text stays in the edit box if the send fails.
         }
@@ -374,6 +382,7 @@ fun MessageTextFieldExpanded(
     sendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
+    val pasteScope = rememberCoroutineScope()
     Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
@@ -399,10 +408,23 @@ fun MessageTextFieldExpanded(
         } else {
             Modifier
         }
+        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
         RichTextEditor(
             state = state,
             modifier = Modifier.fillMaxWidth()
                 .then(pasteModifier)
+                .then(
+                    if (onPasteImage != null)
+                        Modifier.pasteImageContextMenuItem(
+                            label = pasteImageLabel,
+                            enabled = true,
+                        ) {
+                            pasteScope.launch {
+                                readClipboardImage()?.let { onPasteImage.invoke(it) }
+                            }
+                        }
+                    else Modifier
+                )
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
                     if (focusState.isFocused) {
@@ -418,12 +440,16 @@ fun MessageTextFieldExpanded(
                             (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
                     ) {
                         when {
-                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                            // Shift+Enter inserts a newline; every other Enter/NumPadEnter
+                            // (incl. Cmd/Ctrl+Enter) sends. Match NumPadEnter too — macOS can
+                            // report Return as NumPadEnter, so Key.Enter alone never fired (#1043).
+                            (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                keyEvent.isShiftPressed -> {
                                 state.addTextAfterSelection("\n")
                                 true
                             }
 
-                            keyEvent.key == Key.Enter -> {
+                            keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
                                 sendMessage()
                                 true
                             }
@@ -542,6 +568,7 @@ fun MessageTextFieldCompact(
     onSendMessage: () -> Unit,
     onCancelEdit: () -> Unit,
 ) {
+    val pasteScope = rememberCoroutineScope()
     // Send button is shown when there's text OR a user-initiated attachment (not link previews,
     // which are auto-detected from typed URLs and don't on their own indicate intent to send).
     val showSendButton = state.annotatedString.isNotBlank() ||
@@ -626,7 +653,6 @@ fun MessageTextFieldCompact(
         ) {
             Column {
                 if (isDesktopOrWeb()) {
-                    Spacer(modifier = Modifier.height(8.dp))
                     RichTextEditorButtons(
                         modifier = Modifier.fillMaxWidth(),
                         state = state,
@@ -671,11 +697,24 @@ fun MessageTextFieldCompact(
                         } else {
                             Modifier
                         }
+                        val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
                         RichTextEditor(
                             state = state,
                             modifier = Modifier
                                 .weight(1f)
                                 .then(pasteModifier)
+                                .then(
+                                    if (onPasteImage != null)
+                                        Modifier.pasteImageContextMenuItem(
+                                            label = pasteImageLabel,
+                                            enabled = true,
+                                        ) {
+                                            pasteScope.launch {
+                                                readClipboardImage()?.let { onPasteImage.invoke(it) }
+                                            }
+                                        }
+                                    else Modifier
+                                )
                                 .focusRequester(focusRequester)
                                 .onFocusChanged { focusState ->
                                     isKeyboardFocused = focusState.isFocused
@@ -692,12 +731,17 @@ fun MessageTextFieldCompact(
                                             (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
                                     ) {
                                         when {
-                                            keyEvent.key == Key.Enter && keyEvent.isShiftPressed -> {
+                                            // Shift+Enter inserts a newline; every other
+                                            // Enter/NumPadEnter (incl. Cmd/Ctrl+Enter) sends.
+                                            // Match NumPadEnter too — macOS can report Return as
+                                            // NumPadEnter, so Key.Enter alone never fired (#1043).
+                                            (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                                keyEvent.isShiftPressed -> {
                                                 state.addTextAfterSelection("\n")
                                                 true
                                             }
 
-                                            keyEvent.key == Key.Enter -> {
+                                            keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
                                                 onSendMessage()
                                                 true
                                             }

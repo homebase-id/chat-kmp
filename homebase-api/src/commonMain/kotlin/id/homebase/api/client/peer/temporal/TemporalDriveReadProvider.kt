@@ -2,6 +2,7 @@ package id.homebase.api.client.peer.temporal
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
@@ -161,7 +162,11 @@ class TemporalDriveReadProvider(
         val url = apiUrl(creds.domain, path)
         Logger.i(tag = TAG) { "temporalGetPayload: GET peer=${peer.domainName} drive=$driveId file=$fileId key=$payloadKey" }
 
-        val response = requestBytes {
+        // Full reads are size-guarded (#845) — location payloads are tiny, so this is
+        // pure defense; range reads stay uncapped (bounded by their chunkLength).
+        val response = requestBytes(
+            maxBytes = if (chunkStart == null) PayloadSizePolicy.RENDER_LIMIT_BYTES else null
+        ) {
             httpClient.get(url) { bearerAuth(creds.accessToken) }
         }
         if (response.status == 404) {

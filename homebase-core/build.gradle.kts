@@ -48,6 +48,23 @@ kotlin {
             linkerOpts("-lz", "-lbz2", "-liconv")
 
             freeCompilerArgs += listOf("-Xbinary=bundleId=id.homebase.core")
+            // CI-only escape hatch for the release-link OOM (build-mobile-release-prod.yml
+            // sets the property). DevirtualizationAnalysis is the K/N LTO phase whose
+            // call-graph condensation holds ~5.1 GB live during
+            // linkReleaseFrameworkIosArm64 (MAT dominator analysis of run 27407420160's
+            // heap dump) — far beyond the 7 GB macos-15 runner. Disabling it is a
+            // supported configuration: the compiler runs the same phase with
+            // disable = !optimize (TopLevelPhases.kt), DevirtualizationPhase then finds no
+            // devirtualizedCallSite annotations and no-ops, DCE falls back to
+            // "conservatively assume the worst" for virtual calls (sound, keeps more
+            // code), and EscapeAnalysis — which for a framework already refuses to unfold
+            // non-devirtualized call sites — degrades to pessimistic lifetimes.
+            // Trade-off: a somewhat larger, slower binary; local/dev builds are unaffected.
+            if (buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE &&
+                providers.gradleProperty("homebase.native.disableDevirtualization").orNull == "true"
+            ) {
+                freeCompilerArgs += "-Xdisable-phases=DevirtualizationAnalysis"
+            }
             // Export homebase-api to make FFmpegKitBridge accessible from Swift
             export(project(":homebase-api"))
             export(project(":homebase-common"))

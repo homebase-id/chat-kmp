@@ -32,10 +32,18 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.content.MessageContentParser
+import id.homebase.chat.services.livelocation.ShareBackResult
+import id.homebase.chat.services.livelocation.conversationLiveSharePinUntilMs
+import id.homebase.chat.services.livelocation.globalLiveSharePinUntilMs
+import id.homebase.chat.services.livelocation.liveShareCoverageUntilMs
+import id.homebase.chat.services.livelocation.shareLiveLocationBack
+import id.homebase.core.location.GpsRequestReason
+import id.homebase.core.location.liveShareEndTimeMs
 import id.homebase.chat.services.convo.ConversationEnricher
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.EnrichedConversationUiModel
+import id.homebase.chat.services.convo.matchesConversationQuery
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
@@ -44,6 +52,7 @@ import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.auth.toConnectionStatus
+import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AppConfig
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.config.stickerLabeledDrive
@@ -53,12 +62,16 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.applyDefaultStyling
+import id.homebase.core.util.applyMarkDownContent
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.chat_introduce_preflight_in_progress
+import id.homebase.resources.chat_location_unavailable
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.conversation_jump_message_unavailable
+import id.homebase.resources.live_share_ended
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -74,6 +87,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -85,6 +99,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 import kotlin.time.TimeSource
 import kotlin.time.Clock
+import kotlin.time.measureTimedValue
 import kotlin.uuid.Uuid
 
 private data class ConnectionStatusContext(
@@ -147,7 +162,9 @@ class ConversationListViewModel(
     private val stickerService: id.homebase.chat.services.sticker.StickerService,
     private val stickerPermissionViewModel: ExtendPermissionViewModel,
     private val liveLocationShareService: id.homebase.chat.services.livelocation.LiveLocationShareService,
+    private val liveLocationReceiveStore: id.homebase.chat.services.livelocation.LiveLocationReceiveStore,
     private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
+    private val locationService: id.homebase.core.location.LocationService,
 ) : ViewModel() {
 
     companion object {
@@ -157,6 +174,10 @@ class ConversationListViewModel(
         // before the watchdog logs it as stuck. Generous so a slow-but-legitimate DB
         // read isn't flagged; the point is to catch a load that never completes/fails.
         private const val SPINNER_WATCHDOG_MS = 8_000L
+
+        // How long the composer must sit idle before its draft is persisted (#1122).
+        // Long enough that composing-then-sending normally writes nothing at all.
+        private const val DRAFT_IDLE_MS = 2_000L
     }
 
     private val enricher = ConversationEnricher()
@@ -346,6 +367,55 @@ class ConversationListViewModel(
             }
         }
 
+        // Track live-share state against the open conversation and globally. FULL coverage
+        // hides the bubbles' "share live location" offers (starting a share that's already
+        // running is confusing, and a second tap would create a duplicate live message — #966
+        // follow-up). ANY coverage + the global value drive the purple sharing pins in the
+        // conversation and chat-list top bars (#816). The same pins also light for INCOMING shares
+        // (someone sharing with ME), derived from live-relay freshness over the receive store's
+        // positions (#1012). No ticker here: the pin/bubble composables derive visibility from
+        // `now < untilMs` with their own exact-deadline tickers.
+        viewModelScope.launch {
+            combine(
+                ActiveConversation.conversation,
+                liveLocationShareService.recipients,
+                liveLocationReceiveStore.positions,
+            ) { conversationId, roster, positions -> Triple(conversationId, roster, positions) }
+                .collectLatest { (conversationId, roster, positions) ->
+                    val nowMs = Clock.System.now().toEpochMilliseconds()
+                    _uiState.update {
+                        it.copy(liveSharePinAnyUntilMs = globalLiveSharePinUntilMs(roster, positions, nowMs))
+                    }
+                    var fullUntilMs: Long? = null
+                    var pinUntilMs: Long? = null
+                    conversationId?.let { id ->
+                        // positions re-emits per relay packet during an incoming stream, so this
+                        // re-resolves per packet. Normally an in-memory lookup; the placeholder-row
+                        // fallback (#934) hits the DB — the slow-path log below is the evidence
+                        // gate for whether per-conversation caching is ever worth it (#1012 review).
+                        val (recipients, took) = measureTimedValue {
+                            runCatching {
+                                conversationStream.getRecipients(id, emptyList(), null)
+                            }.getOrDefault(emptyList())
+                        }
+                        if (took.inWholeMilliseconds >= 5) {
+                            Logger.i(tag = "LiveRelay") {
+                                "pin getRecipients slow conv=$id took=${took.inWholeMilliseconds}ms " +
+                                    "(re-runs per relay packet — cache if this recurs)"
+                            }
+                        }
+                        fullUntilMs = liveShareCoverageUntilMs(roster, recipients.map { it.domainName }, nowMs)
+                        pinUntilMs = conversationLiveSharePinUntilMs(roster, positions, recipients, nowMs)
+                    }
+                    _messagesUiState.update {
+                        it.copy(
+                            ownLiveShareUntilMs = fullUntilMs,
+                            liveSharePinInConversationUntilMs = pinUntilMs,
+                        )
+                    }
+                }
+        }
+
         // Post-create preflight collector. CreateConversationGroupViewModel emits the
         // newly-created conversation id to the bus; we run a best-effort introduction
         // preflight and, if any recipient is non-Ready, surface the
@@ -518,8 +588,43 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            // TODO - restore any draft message stored for conversation here
-            messageInputTextState.setMarkdown("")
+            // Per-conversation composer draft (#1122). One collector owns the whole
+            // lifecycle: on the active conversation changing it persists the
+            // outgoing thread's draft and restores the incoming one; while a
+            // conversation is open it debounce-saves edits to that thread's
+            // owner-private, cross-device-synced `localAppData` draft. collectLatest
+            // cancels the inner edit-watcher when the active conversation changes.
+            var previous: Uuid? = null
+            ActiveConversation.conversation.collectLatest { current ->
+                // Leaving `previous`: capture whatever is in the composer now (still
+                // its text — the restore of `current` below hasn't run yet). Skip
+                // while an edit is in progress: edit mode hijacks the same composer,
+                // and its text is not the conversation's draft.
+                previous?.let { flushDraft(it) }
+                previous = current
+                if (current == null) {
+                    messageInputTextState.clear()
+                    return@collectLatest
+                }
+                // Entering `current`: restore its saved draft (byte-faithful).
+                val draft = conversationService.readDraft(current)
+                messageInputTextState.applyMarkDownContent(draft ?: "")
+                // Persist edits to THIS conversation. debounce, deliberately not a
+                // periodic sample: every save is a DB read-modify-write plus an
+                // outbox push to the server, and a draft only has value if the
+                // message is *abandoned*. Someone who types straight through and
+                // hits send wants zero draft writes — a sample would bill them one
+                // network call every DRAFT_IDLE_MS for a draft that's deleted
+                // seconds later. A pause is the abandonment signal, so debounce is
+                // the operator that matches what a draft is for. The
+                // typed-continuously-then-killed case is covered by the ON_STOP
+                // flush (FlushDraft), not by ticking. drop(1) skips the
+                // just-restored value so it can't echo straight back out.
+                snapshotFlow { messageInputTextState.annotatedString }
+                    .drop(1)
+                    .debounce(DRAFT_IDLE_MS)
+                    .collect { flushDraft(current) }
+            }
         }
 
         viewModelScope.launch {
@@ -588,6 +693,11 @@ class ConversationListViewModel(
             eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemProgress }
                 .collect { event ->
                     event as BackendEvent.OutboxEvent.ItemProgress
+                    // A header-only update (editing a caption) still streams a
+                    // multipart body, so it reports byte progress — but no media is
+                    // moving. Reacting to it scrimmed the photo and parked it on
+                    // "Finalizing…" for the whole round-trip (#1155).
+                    if (!event.isCreate) return@collect
                     _messagesUiState.update { state ->
                         state.copy(
                             uploadProgress = (state.uploadProgress + (event.uniqueId to UploadStatus.Uploading(
@@ -623,6 +733,10 @@ class ConversationListViewModel(
             eventBus.events.filter { it is BackendEvent.OutboxEvent.ItemCompleted }
                 .collect { event ->
                     event as BackendEvent.OutboxEvent.ItemCompleted
+                    // Completed is the tail of a progression already on screen, never
+                    // its start. Without this an edit — which shows no progress at all
+                    // now — would still flash the scrim for 800ms on completion (#1155).
+                    if (_messagesUiState.value.uploadProgress[event.uniqueId] == null) return@collect
                     viewModelScope.launch {
                         _messagesUiState.update { state ->
                             state.copy(
@@ -658,7 +772,10 @@ class ConversationListViewModel(
         viewModelScope.launch {
             authConnectionCoordinator.connectionState
                 .collectLatest { state ->
-                    _uiState.update { it.copy(connectionStatus = state.toConnectionStatus()) }
+                    val status = state.toConnectionStatus()
+                    _uiState.update { it.copy(connectionStatus = status) }
+                    // Drives the media upload overlay's online-only "Sending" spinner (#948).
+                    _messagesUiState.update { it.copy(isConnected = status == AppConnectionStatus.Connected) }
                 }
         }
 
@@ -836,8 +953,29 @@ class ConversationListViewModel(
         _uiState.update { it.copy(uiDialog = null) }
     }
 
+    /**
+     * Persist whatever is in the composer right now as [conversationId]'s draft
+     * (#1122). No-op while an edit is in progress: edit mode hijacks the same
+     * composer, and its text is not the conversation's draft.
+     */
+    private suspend fun flushDraft(conversationId: Uuid) {
+        if (_messagesUiState.value.isEditingMessageId != null) return
+        conversationService.updateLocalDraft(conversationId, messageInputTextState.toMessageMarkdown())
+    }
+
     fun onAction(action: ConversationListUiAction) {
         when (action) {
+            // Belt-and-braces draft save (#1122): the thread's lifecycle owner is
+            // stopping — the user navigated away, or the app went to background and
+            // the OS may kill the process before anything else runs. Keyed off the
+            // live ActiveConversation, so it's a no-op once the thread has already
+            // been left (the collector saved and cleared the composer by then).
+            is ConversationListUiAction.FlushDraft -> {
+                ActiveConversation.conversation.value?.let {
+                    viewModelScope.launch { flushDraft(it) }
+                }
+            }
+
             is ConversationListUiAction.ConversationClicked -> {
                 // User explicitly picked a conversation — drop any pending
                 // notification tap so a late-arriving sync can't yank them
@@ -863,6 +1001,10 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateToLiveLocationMap)
             }
 
+            is ConversationListUiAction.OpenShareLocation -> {
+                sendEvent(ConversationListUiEvent.NavigateToShareLocation(action.conversationId.toString()))
+            }
+
             is ConversationListUiAction.OpenLocationSetup -> {
                 sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
             }
@@ -880,7 +1022,7 @@ class ConversationListViewModel(
                     _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
                     return@launch
                 }
-                val untilMs = Clock.System.now().toEpochMilliseconds() + action.durationMs
+                val untilMs = liveShareEndTimeMs(Clock.System.now().toEpochMilliseconds(), action.durationMs)
                 val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
                 val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
                 updateLocationLiveShare(action.messageId, untilMs) // synced declaration → bubbles flip LIVE
@@ -895,6 +1037,40 @@ class ConversationListViewModel(
                 val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
                 if (untilMs != null) liveLocationShareService.stop(recipients, untilMs)
                 updateLocationLiveShare(action.messageId, Clock.System.now().toEpochMilliseconds())
+            }
+
+            // Share back from someone ELSE's location bubble (#966). Their message is never
+            // touched (liveShareUntilMs is only ever written on the sharer's own message) —
+            // shareLiveLocationBack sends a NEW lightweight live message of our own and starts
+            // the relay; see its doc for the mirror-the-sender's-window semantics.
+            is ConversationListUiAction.ShareLiveLocationBack -> viewModelScope.launch {
+                if (!liveShareReadiness.isReady()) {
+                    _uiState.update { it.copy(uiDialog = ConversationListUiDialog.EnableLocationForShare) }
+                    return@launch
+                }
+                val msg = chatMessageStream.getMessage(action.messageId) ?: return@launch
+                val recipients = conversationStream.getRecipients(msg.conversationId, emptyList(), null)
+                val result = shareLiveLocationBack(
+                    durationMs = action.durationMs,
+                    senderLiveShareUntilMs =
+                        (msg.messageContent as? MessageContent.Location)?.descriptor?.liveShareUntilMs,
+                    nowMs = Clock.System.now().toEpochMilliseconds(),
+                    getFix = { locationService.requestLatestGps(GpsRequestReason.LiveMap) },
+                    send = { descriptor ->
+                        chatMessageSenderService.sendNewTypedMessage(
+                            messageUniqueId = Uuid.random(),
+                            conversationId = msg.conversationId,
+                            content = MessageContent.Location(descriptor),
+                            previousMessageUniqueId = null,
+                        )
+                    },
+                    startRelay = { untilMs -> liveLocationShareService.start(recipients, untilMs) },
+                )
+                when (result) {
+                    ShareBackResult.Expired -> sendEvent(ShowInfoMessage(MR.string.live_share_ended))
+                    ShareBackResult.NoFix -> sendEvent(ShowInfoMessage(MR.string.chat_location_unavailable))
+                    ShareBackResult.Sent -> Unit
+                }
             }
 
             is ConversationListUiAction.SearchBackClicked -> {
@@ -952,7 +1128,9 @@ class ConversationListViewModel(
                 _messagesUiState.update {
                     it.copy(
                         messages = persistentListOf(),
-                        isLoadingMessages = false
+                        isLoadingMessages = false,
+                        pinnedMessages = persistentListOf(),
+                        currentPinIndex = 0,
                     )
                 }
             }
@@ -1097,6 +1275,31 @@ class ConversationListViewModel(
             is ConversationListUiAction.ShowReactionDetails -> messageActionsHandler.handleShowReactionDetails(action)
 
             is ConversationListUiAction.HideReactionDetails -> messageActionsHandler.handleHideReactionDetails()
+
+            // region Pinned messages bar (#887)
+            is ConversationListUiAction.CyclePinnedBar -> {
+                val pinned = _messagesUiState.value.pinnedMessages
+                if (pinned.isNotEmpty()) {
+                    val nextIndex = (_messagesUiState.value.currentPinIndex + 1) % pinned.size
+                    _messagesUiState.update { it.copy(currentPinIndex = nextIndex) }
+                    onAction(ConversationListUiAction.ScrollToMessageId(pinned[nextIndex].id))
+                }
+            }
+
+            is ConversationListUiAction.ShowPinnedMessagesSheet ->
+                _messagesUiState.update { it.copy(uiSheet = MessageListUiSheet.PinnedMessages) }
+
+            is ConversationListUiAction.TogglePinMessage -> viewModelScope.launch {
+                // delete-style: allowed for every kind, independent of ActionPolicy.
+                val isPinned = chatMessageStream.getMessage(action.messageId)?.isPinned ?: false
+                if (isPinned) chatMessageActionService.unpinMessage(action.messageId, dismiss = true)
+                else chatMessageActionService.pinMessage(action.messageId, manual = true)
+            }
+
+            is ConversationListUiAction.UnpinMessage -> viewModelScope.launch {
+                chatMessageActionService.unpinMessage(action.messageId, dismiss = true)
+            }
+            // endregion
 
             is ConversationListUiAction.ShowContactInfo -> conversationLifecycleHandler.handleShowContactInfo(action)
 
@@ -1294,7 +1497,7 @@ class ConversationListViewModel(
                     val result = mutableListOf<ConversationListContentModel>()
 
                     val conversations = conversationsPool.filter { conversation ->
-                        conversation.getDisplayName().contains(searchQuery, ignoreCase = true)
+                        conversation.matchesConversationQuery(searchQuery)
                     }.toPersistentList()
                     if (conversations.isNotEmpty()) {
                         result.add(
@@ -1336,6 +1539,37 @@ class ConversationListViewModel(
             }
         }
     }
+    /**
+     * #887: one-shot prune of time-expired auto-pins for [conversationId] on open.
+     * Ended events (now past endUtcMs, or startUtcMs + 1h when open-ended) and stale
+     * live-location shares (now ≥ liveShareUntilMs) leave the pinned bar. The unpin
+     * SYNCS (endUtcMs is absolute UTC, so every device agrees) — the pin clears on the
+     * user's other devices too and the server stops carrying a stale pin. It is NOT a
+     * dismissal: the message stays auto-pin-eligible if it somehow becomes live again.
+     * A manually-pinned message ([MessageUiModel.isManuallyPinned]) is skipped — a
+     * deliberate pin is sticky, even past the event's end.
+     */
+    private fun unpinExpiredPins(conversationId: Uuid) {
+        viewModelScope.launch {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val pinned = chatMessageStream.getPinnedMessages(conversationId)
+            for (msg in pinned) {
+                if (msg.isManuallyPinned) continue
+                val expired = when (val content = msg.messageContent) {
+                    is MessageContent.Event -> content.descriptor?.let {
+                        now > (it.endUtcMs ?: (it.startUtcMs + 3_600_000L))
+                    } ?: false
+                    is MessageContent.Location -> {
+                        val until = content.descriptor?.liveShareUntilMs
+                        until != null && now >= until
+                    }
+                    else -> false
+                }
+                if (expired) chatMessageActionService.unpinMessage(msg.id)
+            }
+        }
+    }
+
     private fun loadMessagesForConversation(
         conversationId: Uuid,
         messageIdForScroll: Uuid?,
@@ -1366,6 +1600,7 @@ class ConversationListViewModel(
             if (convo != null && convo.unreadCount > 0) {
                 frozenUnreadBoundary[conversationId] = convo.lastRead
             }
+            unpinExpiredPins(conversationId)
         }
 
         // Always mark loading here, even when hasCachedMessages == true.
@@ -1395,6 +1630,10 @@ class ConversationListViewModel(
                 scrollPosition = null,
                 isLoadingMessages = true,
                 replyToMessage = null,
+                // Drop the previous conversation's pinned bar on a real switch so it
+                // doesn't flash stale pins before the new conversation's collector emits.
+                pinnedMessages = if (isNewSelection) persistentListOf() else it.pinnedMessages,
+                currentPinIndex = if (isNewSelection) 0 else it.currentPinIndex,
             )
         }
 
@@ -1431,6 +1670,19 @@ class ConversationListViewModel(
                     }
                 }
             }
+            launch {
+                chatMessageStream.observePinnedMessages(conversationId).collect { pinned ->
+                    val list = pinned.toPersistentList()
+                    _messagesUiState.update { state ->
+                        state.copy(
+                            pinnedMessages = list,
+                            currentPinIndex = if (list.isEmpty()) 0
+                            else state.currentPinIndex.coerceIn(0, list.size - 1),
+                        )
+                    }
+                }
+            }
+
             try {
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
