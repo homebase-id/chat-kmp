@@ -448,6 +448,8 @@
     <string name="moments_audience_to_myself_only">To myself only</string>
     <string name="moments_audience_section_recent">Recent</string>
     <string name="moments_audience_section_groups">Groups</string>
+    <string name="moments_audience_section_circles">Circles</string>
+    <string name="moments_audience_view_circle_members">View circle members</string>
     <string name="moments_audience_section_contacts">Contacts</string>
     <string name="moments_audience_post">Post</string>
     <string name="moments_audience_save_privately">Save privately</string>
@@ -958,6 +960,16 @@
     <string name="chat_message_discard_draft">Discard draft?</string>
 
     <string name="chat_message_forward_to">Forward to</string>
+
+    <!-- Pinned messages bar (#887) -->
+    <string name="chat_pin_message">Pin</string>
+    <string name="chat_unpin_message">Unpin</string>
+    <string name="chat_pinned_messages_title">Pinned messages</string>
+    <string name="chat_pinned_messages_empty">No pinned messages</string>
+    <string name="chat_pinned_bar_count">%1$d of %2$d</string>
+    <string name="chat_pinned_icon">Pinned</string>
+    <string name="chat_pinned_bar_cycle">Show next pinned message</string>
+    <string name="chat_pinned_bar_open_list">Show all pinned messages</string>
 
     <!-- Block / Report -->
     <string name="chat_message_block">Block</string>

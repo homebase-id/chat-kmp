@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
@@ -42,6 +43,9 @@ class MainActivity : AppCompatActivity() {
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must run before super.onCreate — swaps Theme.Homebase.Splash for the real app
+        // theme (postSplashScreenTheme) once the window exists.
+        installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
