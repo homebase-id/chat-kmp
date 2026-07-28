@@ -24,4 +24,18 @@
     <style name="Theme.Homebase.Crash" parent="Theme.Homebase.Crash.Base">
         <item name="android:windowLightStatusBar">true</item>
     </style>
+
+    <!-- Launch theme for MainActivity. core-splashscreen backports the API 31 splash to
+         minSdk, so one theme covers every device: the branded logo centred on a plain
+         white/black system-theme background, then postSplashScreenTheme swaps in the real
+         app theme at installSplashScreen(). -->
+    <style name="Theme.Homebase.Splash.Base" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.Material3.DayNight.NoActionBar</item>
+    </style>
+
+    <style name="Theme.Homebase.Splash" parent="Theme.Homebase.Splash.Base">
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>
