@@ -78,6 +78,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_detail_location
 import id.homebase.resources.contactbook_detail_name
+import id.homebase.resources.contactbook_error_birthday
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_phone
 import id.homebase.resources.menu_back
@@ -477,6 +478,7 @@ private fun ProfileFieldsSection(
                 displayValue = birthdayDisplay,
                 editingRows = editingRows,
                 onAction = onAction,
+                isValidForSave = { et -> isAttributeValid(ProfileAttributeTypes.BIRTHDAY) { vf(et, it) } },
             ) { editTier ->
                 AttributeFields(ProfileAttributeTypes.BIRTHDAY, { vf(editTier, it) }) { field, v ->
                     onAction(ProfileEditAction.FieldChanged(field, editTier, v))
@@ -898,11 +900,14 @@ private fun AddAttributeDialog(
     )
 }
 
-/** Whether [type]'s current draft is well-formed enough to save — only Email/Phone constrain
- *  format; every other attribute type accepts anything (including blank, which just no-ops). */
+/** Whether [type]'s current draft is well-formed enough to save — only Email/Phone/Birthday
+ *  constrain format; every other attribute type accepts anything (including blank, which just
+ *  no-ops). */
 private fun isAttributeValid(type: String, value: (ProfileField) -> String): Boolean = when (type) {
     ProfileAttributeTypes.EMAIL -> ContactFieldValidation.isValidEmail(value(ProfileField.EMAIL))
     ProfileAttributeTypes.PHONE -> ContactFieldValidation.isValidPhone(value(ProfileField.PHONE))
+    ProfileAttributeTypes.BIRTHDAY ->
+        ContactFieldValidation.isValidBirthday(value(ProfileField.BIRTHDAY))
     else -> true
 }
 
@@ -953,10 +958,14 @@ private fun AttributeFields(
         }
 
         ProfileAttributeTypes.BIRTHDAY -> {
+            val birthdayValue = value(ProfileField.BIRTHDAY)
             ProfileField(
-                value = value(ProfileField.BIRTHDAY),
+                value = birthdayValue,
                 label = stringResource(MR.string.profile_edit_birthday),
                 placeholder = stringResource(MR.string.profile_edit_birthday_hint),
+                isError = birthdayValue.isNotBlank() &&
+                    !ContactFieldValidation.isValidBirthday(birthdayValue),
+                errorText = stringResource(MR.string.contactbook_error_birthday),
                 modifier = Modifier.fillMaxWidth(),
             ) { onChange(ProfileField.BIRTHDAY, it) }
         }

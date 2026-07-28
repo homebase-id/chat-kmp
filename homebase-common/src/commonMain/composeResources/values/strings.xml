@@ -1607,6 +1607,7 @@
     <string name="contactbook_error_email">Enter a valid email address</string>
     <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>
     <string name="contactbook_error_odinid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+    <string name="contactbook_error_birthday">Use the format YYYY-MM-DD, e.g. 1969-02-22</string>
 
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
