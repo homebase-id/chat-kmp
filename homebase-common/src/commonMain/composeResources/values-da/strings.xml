@@ -1557,6 +1557,7 @@
     <string name="contactbook_error_email">Indtast en gyldig e-mailadresse</string>
     <string name="contactbook_error_phone">Brug internationalt format, f.eks. +4512345678</string>
     <string name="contactbook_error_odinid">Indtast et gyldigt Homebase-ID (f.eks. sam.homebase.id)</string>
+    <string name="contactbook_error_birthday">Brug formatet ÅÅÅÅ-MM-DD, f.eks. 1969-02-22</string>
 
     <string name="contactbook_settings_section">Kontakter</string>
     <string name="contactbook_settings_open">Åbn Kontakter</string>

@@ -206,8 +206,8 @@ actual object FFmpegUtils {
         val codec: String?,
         val widthPx: Int,
         val heightPx: Int,
-        val bitDepth: Int = 8,
-        val isHdr: Boolean = false,
+        val bitDepth: Int? = null,
+        val isHdr: Boolean? = null,
     )
 
     actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
@@ -242,27 +242,6 @@ actual object FFmpegUtils {
             isHdr = isHdrFromColorTags(colorTransfer, colorPrimaries),
         )
     }
-
-    /**
-     * Luma bit depth inferred from ffprobe's `pix_fmt` token. ffmpeg names
-     * 10/12-bit formats with a `10`/`12` infix (e.g. `yuv420p10le`, `p010le`).
-     * Defaults to 8 for any 8-bit or unrecognised format.
-     */
-    private fun bitDepthFromPixFmt(pixFmt: String): Int = when {
-        pixFmt.isBlank() -> 8
-        "12" in pixFmt -> 12
-        "10" in pixFmt || pixFmt.startsWith("p010") -> 10
-        else -> 8
-    }
-
-    /**
-     * HDR detection from ffprobe colour tags: a PQ (`smpte2084`) or HLG
-     * (`arib-std-b67`) transfer, or BT.2020 primaries.
-     */
-    private fun isHdrFromColorTags(colorTransfer: String, colorPrimaries: String): Boolean =
-        colorTransfer == "smpte2084" ||
-            colorTransfer == "arib-std-b67" ||
-            colorPrimaries.startsWith("bt2020")
 
     private fun formatSeconds(ms: Long): String {
         // Locale-safe (avoid comma decimal separator in some default locales).

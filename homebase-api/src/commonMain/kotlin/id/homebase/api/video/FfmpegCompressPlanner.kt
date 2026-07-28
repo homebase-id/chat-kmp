@@ -116,8 +116,10 @@ object FfmpegCompressPlanner {
         inputBytes: Long,
         rotationDegrees: Int = 0,
         encoder: String = "libx264",
-        probedBitDepth: Int = 8,
-        probedIsHdr: Boolean = false,
+        // Null = the probe couldn't determine this; treated as "possibly 10-bit/HDR" and re-encoded
+        // (fail closed) rather than passed through. See [isAlreadyOptimal] (#959).
+        probedBitDepth: Int? = null,
+        probedIsHdr: Boolean? = null,
         allowTenBit: Boolean = false,
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
@@ -183,7 +185,8 @@ object FfmpegCompressPlanner {
             // allowTenBit (dev/test only): keep a >8-bit source at 10-bit
             // (yuv420p10le → High 10) so the 10-bit pipeline can be inspected.
             // 8-bit sources stay 8-bit regardless — the flag permits, not forces.
-            val outputPixFmt = if (allowTenBit && probedBitDepth > 8) "yuv420p10le" else "yuv420p"
+            val outputPixFmt =
+                if (allowTenBit && (probedBitDepth ?: 0) > 8) "yuv420p10le" else "yuv420p"
             add("-pix_fmt"); add(outputPixFmt)
             add("-c:a"); add("aac")
             add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
@@ -222,13 +225,24 @@ object FfmpegCompressPlanner {
         inputBytes: Long,
         durationMs: Long,
         targets: QualityTargets,
-        bitDepth: Int = 8,
-        isHdr: Boolean = false,
+        bitDepth: Int? = null,
+        isHdr: Boolean? = null,
         allowTenBit: Boolean = false,
     ): Boolean {
         if (codecMime == null || widthPx <= 0 || heightPx <= 0 || durationMs <= 0) return false
-        if (bitDepth > 8 && !allowTenBit) return false
-        if (isHdr) return false
+        // Fail closed on the 8-bit-SDR pin. Pass-through requires the probe to POSITIVELY confirm
+        // 8-bit AND not-HDR; a null (undeterminable) bit depth or HDR flag means the probe could
+        // not rule out a 10-bit/HDR source — Android's MediaExtractor omits KEY_PROFILE /
+        // color-transfer for many in-app camera captures — so we re-encode (the encode leg pins
+        // yuv420p) rather than ship the original 10-bit High-10 bytes untouched (#959).
+        if (!allowTenBit) {
+            if (bitDepth != 8) return false      // null or >8 → re-encode
+            if (isHdr != false) return false     // null or true → re-encode
+        } else {
+            // Toggle on: the user opted into 10-bit pass-through, but a positively-detected HDR
+            // source still re-encodes (HDR is a decode problem beyond bit depth).
+            if (isHdr == true) return false
+        }
         if (!isH264(codecMime)) return false
         val shortEdgePx = minOf(widthPx, heightPx)
         if (shortEdgePx > targets.shortEdgePx) return false

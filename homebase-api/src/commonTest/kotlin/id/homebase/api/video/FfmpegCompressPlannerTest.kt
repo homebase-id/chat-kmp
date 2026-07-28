@@ -54,6 +54,7 @@ class FfmpegCompressPlannerTest {
             codecMime = "video/avc", widthPx = 320, heightPx = 180,
             inputBytes = 26_000L, durationMs = 6_000L,
             targets = standardTargets,
+            bitDepth = 8, isHdr = false,
         )
         assertTrue(ok)
     }
@@ -66,6 +67,7 @@ class FfmpegCompressPlannerTest {
             codecMime = "h264", widthPx = 320, heightPx = 180,
             inputBytes = 26_000L, durationMs = 6_000L,
             targets = standardTargets,
+            bitDepth = 8, isHdr = false,
         )
         assertTrue(ok)
     }
@@ -76,6 +78,7 @@ class FfmpegCompressPlannerTest {
             codecMime = "Video/AVC", widthPx = 320, heightPx = 180,
             inputBytes = 26_000L, durationMs = 6_000L,
             targets = standardTargets,
+            bitDepth = 8, isHdr = false,
         )
         assertTrue(ok)
     }
@@ -99,6 +102,7 @@ class FfmpegCompressPlannerTest {
             codecMime = "video/avc", widthPx = 720, heightPx = 1280,
             inputBytes = 1_000_000L, durationMs = 5_000L,
             targets = standardTargets,
+            bitDepth = 8, isHdr = false,
         )
         assertTrue(targetMet, "short edge at target should pass")
         val overTarget = FfmpegCompressPlanner.isAlreadyOptimal(
@@ -143,6 +147,57 @@ class FfmpegCompressPlannerTest {
             bitDepth = 8, isHdr = true,
         )
         assertFalse(ok)
+    }
+
+    @Test
+    fun alreadyOptimal_unknownBitDepth_false() {
+        // #959: probe couldn't determine bit depth (null). Must NOT pass through — a 10-bit HLG
+        // capture whose KEY_PROFILE was absent used to be mis-classified 8-bit and shipped
+        // undecodable. Fail closed: re-encode.
+        val ok = FfmpegCompressPlanner.isAlreadyOptimal(
+            codecMime = "video/avc", widthPx = 320, heightPx = 180,
+            inputBytes = 26_000L, durationMs = 6_000L,
+            targets = standardTargets,
+            bitDepth = null, isHdr = false,
+        )
+        assertFalse(ok)
+    }
+
+    @Test
+    fun alreadyOptimal_unknownHdr_false() {
+        // #959: HDR undeterminable (null colour-transfer). Fail closed.
+        val ok = FfmpegCompressPlanner.isAlreadyOptimal(
+            codecMime = "video/avc", widthPx = 320, heightPx = 180,
+            inputBytes = 26_000L, durationMs = 6_000L,
+            targets = standardTargets,
+            bitDepth = 8, isHdr = null,
+        )
+        assertFalse(ok)
+    }
+
+    @Test
+    fun alreadyOptimal_defaultsFailClosed() {
+        // With no bit-depth/HDR passed at all (defaults), the predicate must fail closed — a caller
+        // that forgot to thread the probe result never accidentally passes a 10-bit source through.
+        val ok = FfmpegCompressPlanner.isAlreadyOptimal(
+            codecMime = "video/avc", widthPx = 320, heightPx = 180,
+            inputBytes = 26_000L, durationMs = 6_000L,
+            targets = standardTargets,
+        )
+        assertFalse(ok)
+    }
+
+    @Test
+    fun alreadyOptimal_unknownBitDepth_withTenBitToggle_true() {
+        // Toggle ON: the user opted into 10-bit pass-through, so an undeterminable bit depth no
+        // longer forces a re-encode; only a positively-detected HDR source still would.
+        val ok = FfmpegCompressPlanner.isAlreadyOptimal(
+            codecMime = "video/avc", widthPx = 320, heightPx = 180,
+            inputBytes = 26_000L, durationMs = 6_000L,
+            targets = standardTargets,
+            bitDepth = null, isHdr = false, allowTenBit = true,
+        )
+        assertTrue(ok)
     }
 
     @Test
@@ -228,6 +283,7 @@ class FfmpegCompressPlannerTest {
             probedWidthPx = 320, probedHeightPx = 180,
             probedCodecMime = "video/avc",
             inputDurationMs = 6_000L, inputBytes = 26_000L,
+            probedBitDepth = 8, probedIsHdr = false,
         )
         assertNotNull(plan.skipReason)
         assertEquals(emptyList(), plan.args)
