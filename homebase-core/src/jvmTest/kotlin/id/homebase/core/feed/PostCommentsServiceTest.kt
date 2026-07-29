@@ -3,15 +3,23 @@
 package id.homebase.core.feed
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.Outbox
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
@@ -29,12 +37,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class PostCommentsServiceTest {
 
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
+    private val feedDrive = SystemDriveConstants.feedDrive.alias
 
     private lateinit var env: FeedTestEnv
 
@@ -119,6 +129,48 @@ class PostCommentsServiceTest {
             ),
             originalRecipientCount = 0,
             fileSystemType = FileSystemType.Standard,
+        )
+    }
+
+    /**
+     * Land a followed author's post the way feed aggregation does: on the FEED drive with NO
+     * uniqueId, addressable only by its globalTransitId.
+     */
+    private suspend fun seedFollowedPost(gtid: Uuid, author: OdinId) {
+        val content = OdinSystemSerializer.serialize(
+            PostContent(
+                version = FeedProtocol.PostVersion,
+                id = gtid.toString(),
+                channelId = channelDrive.toString(),
+                type = PostType.Tweet,
+                caption = "followed post",
+                slug = "followed-post",
+            )
+        )
+        val file = HomebaseFile(
+            fileId = Uuid.random(),
+            driveId = feedDrive,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
+            fileMetadata = FileMetadata(
+                globalTransitId = gtid,
+                created = UnixTimeUtc(1_000),
+                isEncrypted = false,
+                originalAuthor = author,
+                appData = AppFileMetaData(
+                    fileType = FeedProtocol.PostFileType,
+                    userDate = 1_000,
+                    content = content,
+                ),
+            ),
+            serverMetadata = ServerMetadata(),
+        )
+        MainIndexMetaHelpers.HomebaseFileProcessor(env.databaseManager).baseUpsertEntryZapZap(
+            identityId = env.credentialsManager.requireActiveCredentials().getIdentityId(),
+            driveId = feedDrive,
+            fileHeaders = listOf(file),
+            cursor = null,
         )
     }
 
@@ -257,6 +309,38 @@ class PostCommentsServiceTest {
             assertTrue(
                 privateReq.metadata.isEncrypted,
                 "a comment on an encrypted post must be encrypted",
+            )
+        }
+
+    @Test
+    fun postComment_onFollowedPostAddressedByGlobalTransitId_targetsTheFeedDriveAndTheAuthor() =
+        runFeedTest {
+            val author = OdinId("author.example.com")
+            val gtid = Uuid.random()
+            seedFollowedPost(gtid, author)
+            advanceUntilIdle()
+
+            val commentId = Uuid.random()
+            service().postComment(postId = gtid, body = "nice one", commentUniqueId = commentId)
+            advanceUntilIdle()
+
+            assertNull(
+                env.outboxRow(channelDrive, commentId),
+                "a comment on a followed post must not land on our own channel drive",
+            )
+            val request = readRequest(feedDrive, commentId)
+            assertEquals(
+                listOf(author), request.transitOptions?.recipients,
+                "the post author must be a recipient or the comment never reaches them",
+            )
+            assertTrue(request.metadata.allowDistribution)
+            assertFalse(
+                request.metadata.isEncrypted,
+                "a comment on a public followed post must stay unencrypted",
+            )
+            assertEquals(
+                SecurityGroupType.Anonymous.value,
+                request.metadata.accessControlList?.requiredSecurityGroup,
             )
         }
 

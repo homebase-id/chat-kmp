@@ -14,6 +14,12 @@ import id.homebase.core.widget.ReactionDisplayItem
  * cold-start spinner. [endReached] tells the infinite-scroll trigger to stop calling
  * `loadMore`.
  *
+ * [errorMessage] is the failure of the last load attempt (null while it succeeded) — it is what
+ * separates "the read blew up" from "you follow nobody", which otherwise both render as the
+ * empty-feed state. The screen only shows the full-screen error for it when there are no posts to
+ * show; over a populated list the same failure surfaces as a snackbar instead. Its text is
+ * diagnostic, never rendered — the error state is written from string resources.
+ *
  * [reactorsSheet] / [isReactorsLoading] / [selfOdinId] back the inline "who reacted" sheet
  * opened from a tweet/media post's reaction facepile (articles route to the detail screen
  * instead). [reactorsSheet] null == sheet closed; non-null (even empty) == open.

@@ -33,15 +33,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.PostType
@@ -57,6 +62,7 @@ import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.PostSkeleton
 import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.resources.MR
+import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_reactors_partial
 import id.homebase.resources.feed_timeline_empty_body
 import id.homebase.resources.feed_timeline_empty_title
@@ -64,8 +70,10 @@ import id.homebase.resources.feed_timeline_error_body
 import id.homebase.resources.feed_timeline_error_retry
 import id.homebase.resources.feed_timeline_error_title
 import id.homebase.resources.feed_timeline_title
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
 /**
@@ -107,9 +115,14 @@ fun FeedTimelineScreen(
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(
         state = rememberTopAppBarState(),
     )
+    val scope = rememberCoroutineScope()
     // Tapping a post or its comment button opens comments as a bottom-sheet modal over the feed
     // (vs navigating away); null == closed.
     var commentsPostId by remember { mutableStateOf<Uuid?>(null) }
+    // Kept past dismissal: posting a comment is fire-and-forget on a VM keyed to the post, which
+    // outlives the sheet, so a rejection can land with the sheet already gone. The sheet's own
+    // collector dies with it, so this is what keeps that VM's events observed.
+    var lastCommentsPostId by remember { mutableStateOf<Uuid?>(null) }
     // Tapped photo/video, shown full-screen over the timeline; null == closed. Pure view state, so
     // it lives here rather than in the VM.
     var overlay by remember { mutableStateOf<FullScreenOverlay?>(null) }
@@ -142,6 +155,24 @@ fun FeedTimelineScreen(
         }
     }
 
+    // Permission-drift detection on every screen entry, as on the Moments tab: the feed-qualified
+    // VM checks once on construction and caches that verdict, so a grant added to the requested
+    // set later (or revoked in the owner console) would otherwise never resurface the dialog.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.extendPermissionViewModel.recheckPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Renders only when the feed's drives aren't granted yet; the VM activates (registers + mounts)
+    // them as soon as they are.
+    ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
+
     FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) {
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -163,7 +194,9 @@ fun FeedTimelineScreen(
                 .padding(innerPadding)
 
             when {
-                uiState.errorMessage != null -> FeedMessageState(
+                // Gated on an empty list: a refresh that fails over a populated feed reports on
+                // the snackbar instead of replacing posts the user can still read.
+                uiState.errorMessage != null && uiState.posts.isEmpty() -> FeedMessageState(
                     icon = Icons.Outlined.CloudOff,
                     iconContentDescription = null,
                     title = stringResource(MR.string.feed_timeline_error_title),
@@ -191,7 +224,10 @@ fun FeedTimelineScreen(
                     onRefresh = viewModel::refresh,
                     onLoadMore = viewModel::loadMore,
                     onPostClick = viewModel::onPostClick,
-                    onOpenComments = { commentsPostId = it },
+                    onOpenComments = {
+                        commentsPostId = it
+                        lastCommentsPostId = it
+                    },
                     onOpenMedia = { post, index, title ->
                         feedMediaOverlay(post, index, title)?.let { overlay = it }
                     },
@@ -213,12 +249,34 @@ fun FeedTimelineScreen(
             }
         }
 
-        commentsPostId?.let { pid ->
-            CommentsModalSheet(
-                postId = pid,
-                onDismiss = { commentsPostId = null },
-                onAuthorClick = onAuthorClick,
-            )
+        lastCommentsPostId?.let { pid ->
+            // Resolved here, not inside the sheet, so the collector below outlives a dismissal —
+            // the sheet is handed the same instance.
+            val commentsViewModel: PostDetailViewModel =
+                koinViewModel(key = "feed-comments-$pid") { parametersOf(pid) }
+            val commentFailedMessage = stringResource(MR.string.feed_comment_action_failed)
+            LaunchedEffect(commentsViewModel) {
+                commentsViewModel.events.collect { event ->
+                    // While the sheet is up it hosts its own snackbar (this Scaffold's renders
+                    // behind it, and on Android in another window); once dismissed, the Scaffold's
+                    // is the only host left. Shown from a separate scope so a lingering snackbar
+                    // can't stall the collector.
+                    if (event is PostDetailEvent.ShowSnackbar && commentsPostId == null) {
+                        scope.launch {
+                            snackbarHostState.showSnackbar(event.message ?: commentFailedMessage)
+                        }
+                    }
+                }
+            }
+
+            if (commentsPostId != null) {
+                CommentsModalSheet(
+                    postId = pid,
+                    onDismiss = { commentsPostId = null },
+                    onAuthorClick = onAuthorClick,
+                    viewModel = commentsViewModel,
+                )
+            }
         }
 
         // Inline "who reacted" sheet for tweet/media posts (articles use the detail screen). Names

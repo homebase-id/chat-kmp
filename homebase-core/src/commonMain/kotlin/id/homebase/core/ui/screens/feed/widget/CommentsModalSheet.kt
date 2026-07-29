@@ -16,6 +16,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -25,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,9 +45,11 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.ui.screens.feed.PostDetailEvent
 import id.homebase.core.ui.screens.feed.PostDetailViewModel
 import id.homebase.resources.MR
+import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_comments_title
 import id.homebase.resources.feed_post_detail_comments_disabled
 import id.homebase.resources.feed_post_empty_comments
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -73,6 +78,11 @@ fun CommentsModalSheet(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val uriHandler = getUriHandler()
+    // The sheet needs its OWN host: the timeline's Scaffold snackbar renders behind the sheet
+    // (a separate window on Android), so a failed post/edit/delete would otherwise vanish.
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val actionFailedMessage = stringResource(MR.string.feed_comment_action_failed)
 
     // Resolve comment-author names via the contact/connection map the VM streams; fall back
     // to the raw domain for unknown identities (web `AuthorName` parity).
@@ -180,6 +190,14 @@ fun CommentsModalSheet(
                         )
                     }
                 }
+
+                // Hosted in the list region, not over the whole sheet: this Box ends where the
+                // composer Surface begins, so the snackbar rides above both the composer and the
+                // keyboard without any inset of its own.
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
 
             if (canComment) {
@@ -209,10 +227,18 @@ fun CommentsModalSheet(
         }
     }
 
-    // Author taps inside a comment row route up through the VM's event flow.
+    // Author taps inside a comment row route up through the VM's event flow; failures land on the
+    // sheet's own snackbar. Shown from a separate scope so a lingering snackbar can't stall the
+    // collector and swallow the next event (PostDetailScreen does the same).
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
-            if (event is PostDetailEvent.NavigateToAuthor) onAuthorClick(event.odinId)
+            when (event) {
+                is PostDetailEvent.NavigateToAuthor -> onAuthorClick(event.odinId)
+                is PostDetailEvent.ShowSnackbar -> scope.launch {
+                    snackbarHostState.showSnackbar(event.message ?: actionFailedMessage)
+                }
+                else -> Unit
+            }
         }
     }
 }

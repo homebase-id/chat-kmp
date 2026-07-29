@@ -362,180 +362,145 @@ fun MomentMediaItem(
         }
 
         contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+            // A public feed post ships its video plaintext, so the payload carries no IV.
+            // Build the player path either way (encrypted only when an IV is present) instead of
+            // bailing to a non-tappable placeholder with no route to the full-screen player —
+            // same divergence the image branches above already make.
             val payloadIv = remember(payload.iv) {
                 payload.iv?.let { Base64.decode(it) }
             }
-            if (payloadIv != null) {
-                val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
-                    KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
-                }
-                val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
-                    VideoPlayerData(
-                        fileId = fileId,
-                        driveId = driveId,
-                        payloadKey = payload.key,
-                        keyHeader = perPayloadKeyHeader,
-                        descriptorContent = payload.descriptorContent,
-                    )
-                }
-                val videoDescriptor = remember(payload.descriptorContent) {
-                    payload.descriptorInfo() as? DescriptorContent.VideoFile
-                }
-                var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
-                var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
-                if (!isUploading) {
-                    VideoPreloadEffect(
-                        data = videoPlayerData,
-                        onPreloading = { isPreloading = it },
-                        onProgress = { preloadProgress = it },
-                    )
-                }
-                val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
-                    HomebaseImageData(
-                        driveId = driveId,
-                        fileId = fileId,
-                        payloadKey = payload.key,
-                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
-                            ?: previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
-                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-                        lastModified = payload.lastModified,
-                        isEncrypted = true,
-                        keyHeader = perPayloadKeyHeader,
-                        remoteOdinId = remoteOdinId,
-                        globalTransitId = globalTransitId,
-                    )
-                }
-                val videoLocalContext = localContext as? LocalAttachmentContext.Video
-                val displayDurationMs: Long? = run {
-                    val ctx = videoLocalContext
-                    if (ctx != null) {
-                        val total = ctx.durationMs ?: 0L
-                        val s = ctx.trimStartMs ?: 0L
-                        val e = ctx.trimEndMs ?: total
-                        (e - s).takeIf { it > 0 }
-                    } else videoDescriptor?.durationMs
-                }
-                Box(modifier = finalModifier) {
-                    if (videoLocalContext != null) {
-                        val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
-                            videoLocalContext.thumbnailBytes.toImageBitmap()
-                        }
-                        if (uploadBitmap != null) {
-                            val thumbBaseModifier = Modifier.fillMaxSize()
-                            val thumbModifier = if (onClick != null || onLongPress != null) {
-                                thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                    detectTapGestures(
-                                        onTap = { onClick?.invoke() },
-                                        onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                    )
-                                }
-                            } else {
-                                thumbBaseModifier
-                            }
-                            Image(
-                                bitmap = uploadBitmap,
-                                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                                modifier = thumbModifier,
-                                contentScale = ContentScale.Crop,
-                            )
-                        }
-                    } else {
-                        HomebaseImage(
-                            imageData = imageData,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                            onClick = onClick,
-                            onLongPress = onLongPress,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
+            val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
+                payloadIv?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
+                    ?: KeyHeader.empty()
+            }
+            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
+                VideoPlayerData(
+                    fileId = fileId,
+                    driveId = driveId,
+                    payloadKey = payload.key,
+                    keyHeader = perPayloadKeyHeader,
+                    descriptorContent = payload.descriptorContent,
+                )
+            }
+            val videoDescriptor = remember(payload.descriptorContent) {
+                payload.descriptorInfo() as? DescriptorContent.VideoFile
+            }
+            var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
+            var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
+            if (!isUploading) {
+                VideoPreloadEffect(
+                    data = videoPlayerData,
+                    onPreloading = { isPreloading = it },
+                    onProgress = { preloadProgress = it },
+                )
+            }
+            val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+                HomebaseImageData(
+                    driveId = driveId,
+                    fileId = fileId,
+                    payloadKey = payload.key,
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                        ?: previewThumbnail,
+                    requestedSize = ImageSize.THUMB_MEDIUM,
+                    availableThumbSizes = thumbSizesFrom(payload.thumbnails),
+                    lastModified = payload.lastModified,
+                    isEncrypted = payloadIv != null,
+                    keyHeader = perPayloadKeyHeader,
+                    remoteOdinId = remoteOdinId,
+                    globalTransitId = globalTransitId,
+                )
+            }
+            val videoLocalContext = localContext as? LocalAttachmentContext.Video
+            val displayDurationMs: Long? = run {
+                val ctx = videoLocalContext
+                if (ctx != null) {
+                    val total = ctx.durationMs ?: 0L
+                    val s = ctx.trimStartMs ?: 0L
+                    val e = ctx.trimEndMs ?: total
+                    (e - s).takeIf { it > 0 }
+                } else videoDescriptor?.durationMs
+            }
+            Box(modifier = finalModifier) {
+                if (videoLocalContext != null) {
+                    val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
+                        videoLocalContext.thumbnailBytes.toImageBitmap()
                     }
-                    if (!isUploading) {
-                        Icon(
-                            imageVector = Icons.Default.PlayCircle,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .align(Alignment.Center),
-                            tint = Color.White.copy(alpha = 0.85f)
-                        )
-                        if (displayDurationMs != null) {
-                            Text(
-                                text = formatDurationLabel(displayDurationMs),
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(4.dp)
-                                    .background(
-                                        Color.Black.copy(alpha = 0.55f),
-                                        RoundedCornerShape(4.dp),
-                                    )
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
-                    if (isPreloading && !isUploading) {
-                        Box(
-                            modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (preloadProgress > 0f) {
-                                CircularProgressIndicator(
-                                    progress = { preloadProgress },
-                                    modifier = Modifier.size(40.dp),
-                                    color = Color.White,
-                                    trackColor = Color.White.copy(alpha = 0.3f),
-                                )
-                            } else {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(40.dp),
-                                    color = Color.White,
-                                    trackColor = Color.White.copy(alpha = 0.3f),
+                    if (uploadBitmap != null) {
+                        val thumbBaseModifier = Modifier.fillMaxSize()
+                        val thumbModifier = if (onClick != null || onLongPress != null) {
+                            thumbBaseModifier.pointerInput(onClick, onLongPress) {
+                                detectTapGestures(
+                                    onTap = { onClick?.invoke() },
+                                    onLongPress = { offset -> onLongPress?.invoke(offset) },
                                 )
                             }
+                        } else {
+                            thumbBaseModifier
                         }
-                    }
-                }
-            } else {
-                val videoCtx = localContext as? LocalAttachmentContext.Video
-                val imageBitmap = videoCtx?.thumbnailBytes?.let { bytes ->
-                    remember(bytes) { bytes.toImageBitmap() }
-                }
-                val noIvDurationMs: Long? = videoCtx?.let {
-                    val total = it.durationMs ?: 0L
-                    val s = it.trimStartMs ?: 0L
-                    val e = it.trimEndMs ?: total
-                    (e - s).takeIf { d -> d > 0 }
-                }
-                if (imageBitmap != null) {
-                    Box(modifier = finalModifier) {
                         Image(
-                            bitmap = imageBitmap,
+                            bitmap = uploadBitmap,
                             contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = thumbModifier,
                             contentScale = ContentScale.Crop,
                         )
-                        if (noIvDurationMs != null) {
-                            Text(
-                                text = formatDurationLabel(noIvDurationMs),
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(4.dp)
-                                    .background(
-                                        Color.Black.copy(alpha = 0.55f),
-                                        RoundedCornerShape(4.dp),
-                                    )
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
                     }
                 } else {
-                    MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
+                    HomebaseImage(
+                        imageData = imageData,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                        onClick = onClick,
+                        onLongPress = onLongPress,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                    )
+                }
+                if (!isUploading) {
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .align(Alignment.Center),
+                        tint = Color.White.copy(alpha = 0.85f)
+                    )
+                    if (displayDurationMs != null) {
+                        Text(
+                            text = formatDurationLabel(displayDurationMs),
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(4.dp)
+                                .background(
+                                    Color.Black.copy(alpha = 0.55f),
+                                    RoundedCornerShape(4.dp),
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                if (isPreloading && !isUploading) {
+                    Box(
+                        modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (preloadProgress > 0f) {
+                            CircularProgressIndicator(
+                                progress = { preloadProgress },
+                                modifier = Modifier.size(40.dp),
+                                color = Color.White,
+                                trackColor = Color.White.copy(alpha = 0.3f),
+                            )
+                        } else {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(40.dp),
+                                color = Color.White,
+                                trackColor = Color.White.copy(alpha = 0.3f),
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -1,5 +1,7 @@
 package id.homebase.api.client.peer
 
+import id.homebase.api.client.PayloadSizePolicy
+import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
@@ -16,6 +18,7 @@ import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -89,5 +92,31 @@ class PeerFileByGlobalTransitProviderTest {
     fun payload_404_returnsNull() = runTest {
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
         assertNull(provider(engine).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key))
+    }
+
+    /**
+     * A followed identity's oversized photo must be refused at the render limit (#845) rather than
+     * buffered into RAM — the typed throw is what `HomebaseImageLoader.fetchFullPayloadUncached`
+     * catches to keep the already-rendered thumbnail.
+     */
+    @Test
+    fun payload_overRenderLimit_throwsPayloadTooLarge() = runTest {
+        val oversized = PayloadSizePolicy.RENDER_LIMIT_BYTES + 1
+        // MockEngine validates Content-Length against the body, so the oversized body has to be
+        // real; what's asserted is that the guard trips on the HEADER (sizeBytes == the advertised
+        // length, not -1 from the counting fallback) — i.e. before the body is buffered.
+        val engine = MockEngine {
+            respond(
+                ByteArray(oversized.toInt()),
+                HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentLength, oversized.toString()),
+            )
+        }
+
+        val e = assertFailsWith<PayloadTooLargeException> {
+            provider(engine).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key)
+        }
+        assertEquals(oversized, e.sizeBytes)
+        assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES, e.limitBytes)
     }
 }

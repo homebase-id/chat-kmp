@@ -1037,7 +1037,23 @@ val appModule = module {
     // ponytail: PostComposeViewModel unregistered — the post composer is disabled for now
     // (PR #802). FeedPostSenderService stays registered (delete-post still uses it). Restore
     // the composer VM + Route.PostCompose to re-enable compose.
-    viewModelOf(::FeedTimelineViewModel)
+    // Explicit (not viewModelOf) for the FeedPermissionQualifier: the native feed's drives are
+    // granted by the feed extend-permissions flow, not by the login one the unqualified
+    // ExtendPermissionViewModel checks.
+    viewModel {
+        FeedTimelineViewModel(
+            timelineService = get(),
+            reactionService = get(),
+            channelService = get(),
+            contactService = get(),
+            credentialsManager = get(),
+            publicProfileProvider = get(),
+            senderService = get(),
+            reportingUrlProvider = get(),
+            feedPermissionViewModel = get(FeedPermissionQualifier),
+            optionalDriveActivation = get(),
+        )
+    }
     viewModelOf(::FollowingViewModel)
     viewModel { params ->
         PostDetailViewModel(

@@ -357,7 +357,10 @@ class PostDetailViewModel(
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "togglePostReaction failed: ${e.message}" }
                 flipOwnReaction(emoji)
-                _events.tryEmit(PostDetailEvent.ShowSnackbar(e.message))
+                // Null, not e.message: a rejected enqueue throws with internal text
+                // ("outbox enqueue -> Failed(..)"), and the screen renders null as its
+                // localized fallback.
+                _events.tryEmit(PostDetailEvent.ShowSnackbar(null))
             }
         }
     }
@@ -373,7 +376,7 @@ class PostDetailViewModel(
                 reactionService.toggleReaction(comment, emoji)
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "toggleCommentReaction failed: ${e.message}" }
-                _events.tryEmit(PostDetailEvent.ShowSnackbar(e.message))
+                _events.tryEmit(PostDetailEvent.ShowSnackbar(null))
             }
         }
     }

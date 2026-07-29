@@ -1696,6 +1696,7 @@
     <string name="feed_timeline_empty_body">Posts from people you follow will show up here. Share something to get started.</string>
     <string name="feed_timeline_error_title">Couldn't load your feed</string>
     <string name="feed_timeline_error_retry">Retry</string>
+    <string name="feed_timeline_refresh_failed">Couldn't refresh your feed. Pull down to try again.</string>
     <string name="feed_reaction_failed">Couldn't add your reaction. Please try again.</string>
     <!-- Native feed: M3 redesign additions -->
     <string name="feed_timeline_error_body">Check your connection and try again.</string>
@@ -1738,6 +1739,7 @@
     <string name="feed_post_empty_comments">No comments yet — be the first to comment.</string>
     <string name="feed_view_all_comments">View all comments</string>
     <string name="feed_comment_encrypted">Encrypted comment</string>
+    <string name="feed_comment_action_failed">Something went wrong. Please try again.</string>
 
     <!-- Native feed: following -->
     <string name="feed_following_title">Following</string>

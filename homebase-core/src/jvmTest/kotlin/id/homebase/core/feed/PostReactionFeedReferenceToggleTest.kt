@@ -96,6 +96,29 @@ class PostReactionFeedReferenceToggleTest {
             )
         }
 
+    /**
+     * The server STRIPS `senderOdinId` on a follower's copy of an inbound post (the same reason
+     * `PostCommentsService.recipientsFromPost` reads `originalAuthor` first), so resolving the
+     * author from the raw field queued the reaction with an EMPTY recipient list: it showed in our
+     * own facepile and reached nobody — not the author, not another viewer.
+     */
+    @Test
+    fun toggleReaction_recipientsSurvive_whenTheServerStrippedTheSenderOnOurCopy() = runFeedTest {
+        val post = feedReferencePost().copy(senderOdinId = null)
+
+        service().toggleReaction(post, "❤️")
+        advanceUntilIdle()
+
+        val toggleRow = drainAllRows()
+            .firstOrNull { it.uploadType == DriveOutboxUploader.ToggleReaction }
+        assertNotNull(toggleRow, "a reaction on a followed post must still be enqueued")
+        val json = toggleRow.json.decodeToString()
+        assertTrue(
+            json.contains(post.originalAuthor!!.domainName),
+            "the author must be a recipient even with senderOdinId stripped; was: $json",
+        )
+    }
+
     @Test
     fun toggleReaction_stillDeclines_whenAPostThatHasAUniqueIdIsMissingLocally() = runFeedTest {
         // Own-drive shape: a uniqueId distinct from the globalTransitId. The optimistic write

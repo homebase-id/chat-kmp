@@ -6,7 +6,10 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
+import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.convo.contact.ContactService
+import id.homebase.core.config.feedLabeledDrive
+import id.homebase.core.config.publicChannelLabeledDrive
 import id.homebase.core.feed.services.ChannelDefinitionService
 import id.homebase.core.feed.services.ChannelDefinition
 import id.homebase.core.feed.services.FeedPostItem
@@ -20,10 +23,12 @@ import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.emojiCounts
 import id.homebase.core.feed.services.isAuthoredBy
 import id.homebase.core.feed.services.withOwnReactions
+import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
 import id.homebase.resources.feed_post_delete_failed
 import id.homebase.resources.feed_reaction_failed
+import id.homebase.resources.feed_timeline_refresh_failed
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -32,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -58,6 +64,11 @@ import kotlin.uuid.Uuid
  * author's feed distribution keeps in step (verified against the author's live summary). What the
  * header cannot carry is which reaction is ours, so [PostOwnReactionResolver] resolves that
  * separately — lazily, cached, and only for posts that show a reaction at all.
+ *
+ * The two drives the timeline reads are grant-gated add-ons, not login drives: they are authorized
+ * by the `feedTargetDriveAccessRequest` extend-permissions flow and mounted through
+ * [OptionalDriveActivation], exactly as Moments does (see `MomentsViewModel`). Without that the
+ * native feed would read two drives nothing ever mounts.
  */
 class FeedTimelineViewModel(
     private val timelineService: FeedTimelineService,
@@ -68,7 +79,13 @@ class FeedTimelineViewModel(
     private val publicProfileProvider: PublicProfileProviderCached,
     private val senderService: FeedPostSenderService,
     private val reportingUrlProvider: ReportingUrlProvider,
+    private val feedPermissionViewModel: ExtendPermissionViewModel,
+    private val optionalDriveActivation: OptionalDriveActivation,
 ) : ViewModel() {
+
+    /** The feed's extend-permissions VM; [FeedTimelineScreen] renders its dialog. */
+    val extendPermissionViewModel: ExtendPermissionViewModel
+        get() = feedPermissionViewModel
 
     private val _uiState = MutableStateFlow(FeedTimelineUiState(isLoading = true))
     val uiState: StateFlow<FeedTimelineUiState> = _uiState.asStateFlow()
@@ -118,6 +135,11 @@ class FeedTimelineViewModel(
 
     /** How far down the list own-reactions are resolved; widened by [loadMore] as the user pages. */
     private var reactionWindow = REACTION_WINDOW
+
+    // Synchronous one-shot guard for the auto-activate collector: the drives only read as mounted
+    // once activate()'s mount lands, so a second grant emission in that window would re-enter.
+    // Same latch MomentsViewModel uses.
+    private var activationKicked = false
 
     companion object {
         private const val TAG = "FeedTimelineViewModel"
@@ -169,7 +191,45 @@ class FeedTimelineViewModel(
                 _uiState.update { it.copy(endReached = reached) }
             }
         }
+        viewModelScope.launch {
+            timelineService.loadError.collect { error ->
+                _uiState.update {
+                    if (error == null) {
+                        it.copy(errorMessage = null)
+                    } else {
+                        // The timeline never emits on a failed load, so nothing else would take
+                        // the cold-start skeletons or the refresh spinner down.
+                        it.copy(errorMessage = error, isLoading = false, isRefreshing = false)
+                    }
+                }
+                // With posts already on screen the full-screen error state would blank a working
+                // feed, so the screen keeps the list and the failure is reported here instead.
+                if (error != null && rawPosts.isNotEmpty()) {
+                    _events.tryEmit(
+                        FeedTimelineEvent.ShowSnackbar(MR.string.feed_timeline_refresh_failed)
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            feedPermissionViewModel.permissionsGranted
+                .filter { it }
+                .collect {
+                    if (!activationKicked && !feedDrivesMounted()) {
+                        activationKicked = true
+                        // Both drives: the timeline aggregates the feed drive (followed
+                        // identities' posts) and the user's own public-channel drive, and the
+                        // one extend-permissions flow grants both.
+                        optionalDriveActivation.activate(feedLabeledDrive)
+                        optionalDriveActivation.activate(publicChannelLabeledDrive)
+                    }
+                }
+        }
     }
+
+    private fun feedDrivesMounted(): Boolean =
+        optionalDriveActivation.isActivated(feedLabeledDrive) &&
+            optionalDriveActivation.isActivated(publicChannelLabeledDrive)
 
     private fun overlayOwnReactions(posts: List<FeedPostItem>): List<FeedPostItem> {
         val resolved = ownReactionResolver.ownReactions.value

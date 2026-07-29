@@ -90,6 +90,7 @@ class PostCommentsService(
     companion object {
         private const val TAG = "PostCommentsService"
         private const val ColdLoadPageSize = 1000
+        private const val MaxPendingComments = 200
     }
 
     // Comments land on the post's drive. The home feed reads the FeedDrive; the channel drive
@@ -108,7 +109,11 @@ class PostCommentsService(
     private val perPost = mutableMapOf<Uuid, PerPostState>()
     // Replies whose parent comment hasn't been observed yet, keyed by the reply's groupId
     // (= the parent comment id). Flushed when that parent top-level comment is inserted.
+    // Insertion-ordered and bounded: a groupId naming a POST the user never opens has no drain at
+    // all (cold-load re-reads from the DB, not from here), so unbounded this retains a header per
+    // synced comment for the whole session.
     private val pendingByGroupId = mutableMapOf<Uuid, MutableList<HomebaseFile>>()
+    private var pendingCount = 0
     private var subscriptionStarted = false
 
     /**
@@ -161,6 +166,19 @@ class PostCommentsService(
             perPost.values.forEach { it.flow.value = emptyList() }
             perPost.clear()
             pendingByGroupId.clear()
+            pendingCount = 0
+        }
+    }
+
+    /** Caller must hold [lock]. Buffers [file], evicting the oldest entries past the cap. */
+    private fun bufferPendingLocked(groupId: Uuid, file: HomebaseFile) {
+        pendingByGroupId.getOrPut(groupId) { mutableListOf() }.add(file)
+        pendingCount++
+        while (pendingCount > MaxPendingComments) {
+            val oldest = pendingByGroupId.entries.first()
+            oldest.value.removeAt(0)
+            pendingCount--
+            if (oldest.value.isEmpty()) pendingByGroupId.remove(oldest.key)
         }
     }
 
@@ -290,10 +308,10 @@ class PostCommentsService(
                 if (ownerPostId == null) {
                     // Owning post not observed yet. If this is a reply whose parent comment simply
                     // hasn't arrived, buffer it so a later top-level insert can flush it instead of
-                    // dropping it. (A comment whose groupId is an unobserved POST is genuinely not
-                    // ours and stays buffered until that post is observed and cold-loaded.)
+                    // dropping it. (A comment whose groupId is an unobserved POST has no drain —
+                    // opening that post cold-loads it from the DB — so it just ages out of the cap.)
                     if (!file.isSoftDeleted()) {
-                        pendingByGroupId.getOrPut(groupId) { mutableListOf() }.add(file)
+                        bufferPendingLocked(groupId, file)
                         Logger.d(tag = TAG) {
                             "processIncrementalBatch: buffering comment=$uniqueId with " +
                                 "unresolved parent groupId=$groupId"
@@ -313,7 +331,8 @@ class PostCommentsService(
 
                 // A top-level comment just landed: flush any replies that were waiting on it.
                 if (item.replyToId == null) {
-                    pendingByGroupId.remove(uniqueId)?.forEach { reply ->
+                    val waiting = pendingByGroupId.remove(uniqueId)?.also { pendingCount -= it.size }
+                    waiting?.forEach { reply ->
                         val replyId = reply.fileMetadata.appData.uniqueId ?: return@forEach
                         if (reply.isSoftDeleted()) {
                             if (state.byId.remove(replyId) != null) dirty.add(state)
@@ -348,11 +367,13 @@ class PostCommentsService(
         replyToCommentId: Uuid? = null,
         commentUniqueId: Uuid = Uuid.random(),
     ): PostCommentResult {
-        val drive = resolvePostDrive(postId)
-        // The post header drives recipients AND encryption: a comment must mirror the parent post's
-        // encryption + ACL, or a comment on a PUBLIC post would be encrypted + Owner-locked and
-        // invisible to public/anonymous viewers (broken public commenting).
-        val post = readPostHeader(drive, postId)
+        // The post header drives the target drive, recipients AND encryption: a comment must mirror
+        // the parent post's encryption + ACL, or a comment on a PUBLIC post would be encrypted +
+        // Owner-locked and invisible to public/anonymous viewers (broken public commenting).
+        // Refuse rather than guess — an unresolved header used to silently produce an encrypted,
+        // recipient-less, distribution-off comment that looked posted but never reached the author.
+        val (drive, post) = findPostLocally(postId)
+            ?: error("Parent post $postId not found locally; refusing to post a comment")
         val recipients = recipientsFromPost(post)
         val groupId = replyToCommentId ?: postId
 
@@ -365,7 +386,7 @@ class PostCommentsService(
         // comment on a public post that only connections can read is invisible to exactly the
         // audience the post was written for. Encryption still follows the parent post either way,
         // and `allowDistribution` is already true whenever there are recipients — matching web.
-        val isPublic = post?.fileMetadata?.isEncrypted == false
+        val isPublic = !post.fileMetadata.isEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
         val accessControlList = AccessControlList(
@@ -507,10 +528,11 @@ class PostCommentsService(
         // post), never the parent commenter, and must mirror the post's encryption + ACL exactly
         // like postComment — so an edit to a public comment stays unencrypted/Anonymous.
         val post = resolveOwningPost(drive, groupId)
+            ?: error("Owning post for comment $commentUniqueId not found locally; refusing to edit")
         val recipients = recipientsFromPost(post)
         val isLocalOnly = recipients.isEmpty()
 
-        val isPublic = post?.fileMetadata?.isEncrypted == false
+        val isPublic = !post.fileMetadata.isEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) {
             KeyHeader(iv = ByteArrayUtil.getRndByteArray(16), aesKey = existing.keyHeader.aesKey)
@@ -630,24 +652,27 @@ class PostCommentsService(
         return null
     }
 
-    /** Which drive a post lives on locally — defaults to the channel drive (the author's own). */
-    private suspend fun resolvePostDrive(postId: Uuid): Uuid {
-        val credentials = credentialsManager.requireActiveCredentials()
+    /** Locate a post locally across the source drives, as (drive, header). */
+    private suspend fun findPostLocally(postId: Uuid): Pair<Uuid, HomebaseFile>? {
         for (drive in sourceDrives) {
-            val file = databaseManager.driveMainIndex.selectHomebaseFileByUnique(
-                credentials.getIdentityId(), drive, postId,
-            )
-            if (file != null) return drive
+            readPostHeader(drive, postId)?.let { return drive to it }
         }
-        return channelDrive
+        return null
     }
 
-    /** Read a header by uniqueId on [drive], or null when it isn't present locally. */
-    private suspend fun readPostHeader(drive: Uuid, uniqueId: Uuid): HomebaseFile? {
-        val credentials = credentialsManager.requireActiveCredentials()
-        return databaseManager.driveMainIndex.selectHomebaseFileByUnique(
-            credentials.getIdentityId(), drive, uniqueId,
-        )
+    /**
+     * Read a header on [drive] addressed by [id], or null when it isn't present locally.
+     *
+     * [id] is a uniqueId for our own files, but a followed identity's post is aggregated onto the
+     * feed drive with NO uniqueId — [toFeedPostItem] then falls back to the globalTransitId, so
+     * [FeedPostItem.id] is a gtid for every such post and the uniqueId select can never hit it.
+     */
+    private suspend fun readPostHeader(drive: Uuid, id: Uuid): HomebaseFile? {
+        val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
+        val index = databaseManager.driveMainIndex
+        index.selectHomebaseFileByUnique(identityId, drive, id)?.let { return it }
+        return index.selectByIdentityAndDriveAndGlobal(identityId, drive, id)
+            ?.let { OdinSystemSerializer.deserialize<HomebaseFile>(it.jsonHeader) }
     }
 
     /**

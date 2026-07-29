@@ -8,12 +8,12 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
-import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
+import id.homebase.api.util.codePointCount
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.widget.EmojiReaction
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +29,7 @@ import kotlin.uuid.Uuid
  *  - [toggleReaction] does an optimistic local toggle of the file's `reactionPreview` via
  *    [OptimisticWriter.writeReactionToggle] (so the UI updates instantly), then enqueues a
  *    [ToggleReactionOutboxRequest] — NOT a direct provider toggle — rolling back the optimistic
- *    write on enqueue failure.
+ *    write on enqueue failure and rethrowing, so the caller can undo its own optimistic UI.
  *  - [reactionSummary] / [listReactors] read through [DriveFileGroupReactionProvider]
  *    (`getReactionSummary` / `listReactions`) keyed by the post/comment's `(driveId, fileId)`.
  *
@@ -46,6 +46,7 @@ class PostReactionService(
 
     companion object {
         private const val TAG = "PostReactionService"
+        private const val MaxEmojiCodePoints = 12
     }
 
     // -------------------- TOGGLE --------------------
@@ -59,7 +60,7 @@ class PostReactionService(
             // `toFeedPostItem` falls back to the globalTransitId when the file carries no uniqueId,
             // which is exactly the case for a followed identity's post on the feed drive.
             hasUniqueId = post.id != post.globalTransitId,
-            authorOdinId = post.senderOdinId,
+            authorOdinId = post.authorOdinId,
             emoji = emoji,
         )
 
@@ -71,7 +72,7 @@ class PostReactionService(
             fileId = comment.fileId,
             // `toCommentItem` drops a comment file with no uniqueId, so this id is always one.
             hasUniqueId = true,
-            authorOdinId = comment.senderOdinId,
+            authorOdinId = comment.authorOdinId,
             emoji = emoji,
         )
 
@@ -86,6 +87,11 @@ class PostReactionService(
      * it. That miss is expected and must not block the send, which only ever needed
      * `(driveId, fileId)`; returning early on it made every reaction on a followed post a silent
      * no-op. A miss on a post that DOES have a uniqueId still declines: the row is genuinely gone.
+     *
+     * **Throws when the send fails** — a rejected emoji or a refused enqueue. Callers run their own
+     * optimistic UI flip (the like button, which the drive write cannot light up on a followed post)
+     * before calling, and can only undo it if the failure actually reaches them; swallowing it here
+     * left the button lit for the session with nothing sent.
      */
     private suspend fun toggleInternal(
         driveId: Uuid,
@@ -95,9 +101,7 @@ class PostReactionService(
         authorOdinId: OdinId?,
         emoji: String,
     ): ToggleReactionResult {
-        if (!isValidEmoji(emoji)) {
-            return ToggleReactionResult(resultType = ToggleReactionResultType.None)
-        }
+        require(isValidEmoji(emoji)) { "not a reaction emoji" }
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
 
@@ -116,13 +120,11 @@ class PostReactionService(
                     recipients = recipients,
                 ),
             )
-            if (!enqueued.enqueued) {
-                Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; rolling back optimistic write" }
-                original?.let { optimisticWriter.rollbackWrite(driveId, it) }
-            }
+            check(enqueued.enqueued) { "outbox enqueue -> $enqueued" }
         } catch (t: Throwable) {
             Logger.e(throwable = t, tag = TAG) { "toggleReaction failed to enqueue: ${t.message}" }
             original?.let { runCatching { optimisticWriter.rollbackWrite(driveId, it) } }
+            throw t
         }
 
         return ToggleReactionResult(resultType = resultType)
@@ -220,10 +222,22 @@ class PostReactionService(
 
     // -------------------- HELPERS --------------------
 
+    /**
+     * Code points, not UTF-16 units: a ZWJ sequence the picker offers — 👩‍❤️‍💋‍👨 or 👨‍👩‍👧‍👦 — is 8
+     * code points but 11 units, so a `length` cap rejected 16 of the 1949 emoji in `emoji_data.json`
+     * outright. [MaxEmojiCodePoints] clears the longest RGI sequence (a skin-toned kiss, 10).
+     */
     private fun isValidEmoji(input: String?): Boolean =
-        !input.isNullOrBlank() && input.length <= 8
+        !input.isNullOrBlank() && input.codePointCount() <= MaxEmojiCodePoints
 
-    /** Reaction recipients: the post/comment author minus self; empty for the user's own content. */
+    /**
+     * Reaction recipients: the post/comment author minus self; empty for the user's own content.
+     *
+     * Callers must pass `authorOdinId` (`originalAuthor ?: senderOdinId`), never the raw
+     * `senderOdinId`: the server STRIPS that on a follower's copy of an inbound post, so resolving
+     * from it alone yields no recipients and the reaction is queued for nobody — the same defect
+     * `PostCommentsService.recipientsFromPost` was fixed for.
+     */
     private suspend fun resolveRecipients(authorOdinId: OdinId?): List<OdinId> {
         val self = credentialsManager.requireActiveCredentials().domain
         return listOfNotNull(authorOdinId).filterNot { it == self }

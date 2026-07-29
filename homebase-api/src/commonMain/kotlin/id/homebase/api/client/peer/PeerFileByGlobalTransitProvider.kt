@@ -2,6 +2,7 @@ package id.homebase.api.client.peer
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileProvider
@@ -27,6 +28,19 @@ import kotlin.uuid.Uuid
  * under odin-core UnifiedV2's `PeerByGtid` base (`V2DrivePeerQueryByGtidController`):
  * - payload:   `GET /peer/{odinId}/drives/{driveId}/files/by-gtid/{gtid}/payload/{payloadKey}`
  * - thumbnail: `GET .../by-gtid/{gtid}/payload/{payloadKey}/thumb/{width}/{height}`
+ *
+ * Full payload reads are size-guarded at [PayloadSizePolicy.RENDER_LIMIT_BYTES] (#845), same as the
+ * local read: `HomebaseImageLoader.fetchFullPayloadUncached` catches the
+ * [id.homebase.api.client.PayloadTooLargeException] and keeps the already-rendered thumbnail instead
+ * of buffering a followed identity's oversized photo into RAM. Thumbnails stay uncapped, matching
+ * `DriveFileHttpProvider.getThumbBytesRawNetwork`.
+ *
+ * TODO: unlike the local read this bypasses
+ * [id.homebase.api.client.drives.cache.DriveFileProviderCached], so every followed-post
+ * thumbnail is re-downloaded. Routing it through needs peer/gtid-aware cache keys AND a cache entry
+ * format that persists `sharedsecretencryptedheader64` — the cached bytes stay encrypted and, unlike
+ * the local path, no caller-supplied [id.homebase.api.client.KeyHeader] exists to decrypt them on a
+ * hit. [id.homebase.api.client.peer.temporal.TemporalDriveReadProvider] has the same gap.
  *
  * Both endpoints carry no shared secret on the wire (`NoSharedSecretOnRequest/Response`); the remote
  * resolves the drive by **alias only** (Type is ignored), so [driveId] is the channel drive's alias.
@@ -55,7 +69,7 @@ class PeerFileByGlobalTransitProvider(
         Logger.i(tag = TAG) {
             "getPayload: GET peer=${peer.domainName} drive=$driveId gtid=$globalTransitId key=$payloadKey"
         }
-        return fetchAndDecrypt(url, creds.accessToken)
+        return fetchAndDecrypt(url, creds.accessToken, maxBytes = PayloadSizePolicy.RENDER_LIMIT_BYTES)
     }
 
     /** A server thumbnail ([width]x[height]) of [globalTransitId]'s [payloadKey]. Null on 404. */
@@ -80,8 +94,12 @@ class PeerFileByGlobalTransitProvider(
         return fetchAndDecrypt(url, creds.accessToken)
     }
 
-    private suspend fun fetchAndDecrypt(url: String, token: String): BytesResponse? {
-        val response = requestBytes { httpClient.get(url) { bearerAuth(token) } }
+    private suspend fun fetchAndDecrypt(
+        url: String,
+        token: String,
+        maxBytes: Long? = null,
+    ): BytesResponse? {
+        val response = requestBytes(maxBytes) { httpClient.get(url) { bearerAuth(token) } }
         if (response.status == 404) {
             Logger.i(tag = TAG) { "404 (not shared / missing) url=$url" }
             return null

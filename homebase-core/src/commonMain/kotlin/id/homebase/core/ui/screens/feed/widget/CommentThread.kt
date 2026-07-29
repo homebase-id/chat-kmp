@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -110,46 +111,53 @@ fun CommentThread(
     // and Save/Cancel are local UI state — the VM only hears about the final body.
     var editingId by remember { mutableStateOf<Uuid?>(null) }
 
+    // Keyed by comment id, not position: the thread is live (a reply arriving under an earlier
+    // comment shifts every row below it), and CommentRow's remembered menu/delete-confirm state
+    // would otherwise re-bind to whichever comment slid into the slot.
     Column(modifier = modifier.fillMaxWidth()) {
         topLevel.forEach { comment ->
-            CommentRow(
-                comment = comment,
-                displayName = displayNameFor(comment.originalAuthor ?: comment.senderOdinId),
-                isMine = isMine(comment),
-                canReply = permission?.allowsComment ?: true,
-                isEditing = editingId == comment.id,
-                canLike = permission?.allowsEmoji ?: true,
-                onToggleReaction = { emoji -> onToggleCommentReaction(comment, emoji) },
-                onReply = { onReply(comment) },
-                onStartEdit = { editingId = comment.id },
-                onSaveEdit = { newBody ->
-                    editingId = null
-                    onEdit(comment, newBody)
-                },
-                onCancelEdit = { editingId = null },
-                onDelete = { onDelete(comment) },
-                onBlock = comment.blockAction(isMine(comment), onBlockAuthor),
-            )
-            repliesByParent[comment.id].orEmpty().forEach { reply ->
+            key(comment.id) {
                 CommentRow(
-                    comment = reply,
-                    displayName = displayNameFor(reply.originalAuthor ?: reply.senderOdinId),
-                    isMine = isMine(reply),
-                    canReply = false,
-                    isEditing = editingId == reply.id,
+                    comment = comment,
+                    displayName = displayNameFor(comment.originalAuthor ?: comment.senderOdinId),
+                    isMine = isMine(comment),
+                    canReply = permission?.allowsComment ?: true,
+                    isEditing = editingId == comment.id,
                     canLike = permission?.allowsEmoji ?: true,
-                    onToggleReaction = { emoji -> onToggleCommentReaction(reply, emoji) },
-                    onReply = {},
-                    onStartEdit = { editingId = reply.id },
+                    onToggleReaction = { emoji -> onToggleCommentReaction(comment, emoji) },
+                    onReply = { onReply(comment) },
+                    onStartEdit = { editingId = comment.id },
                     onSaveEdit = { newBody ->
                         editingId = null
-                        onEdit(reply, newBody)
+                        onEdit(comment, newBody)
                     },
                     onCancelEdit = { editingId = null },
-                    onDelete = { onDelete(reply) },
-                    onBlock = reply.blockAction(isMine(reply), onBlockAuthor),
-                    modifier = Modifier.padding(start = 40.dp),
+                    onDelete = { onDelete(comment) },
+                    onBlock = comment.blockAction(isMine(comment), onBlockAuthor),
                 )
+            }
+            repliesByParent[comment.id].orEmpty().forEach { reply ->
+                key(reply.id) {
+                    CommentRow(
+                        comment = reply,
+                        displayName = displayNameFor(reply.originalAuthor ?: reply.senderOdinId),
+                        isMine = isMine(reply),
+                        canReply = false,
+                        isEditing = editingId == reply.id,
+                        canLike = permission?.allowsEmoji ?: true,
+                        onToggleReaction = { emoji -> onToggleCommentReaction(reply, emoji) },
+                        onReply = {},
+                        onStartEdit = { editingId = reply.id },
+                        onSaveEdit = { newBody ->
+                            editingId = null
+                            onEdit(reply, newBody)
+                        },
+                        onCancelEdit = { editingId = null },
+                        onDelete = { onDelete(reply) },
+                        onBlock = reply.blockAction(isMine(reply), onBlockAuthor),
+                        modifier = Modifier.padding(start = 40.dp),
+                    )
+                }
             }
         }
     }

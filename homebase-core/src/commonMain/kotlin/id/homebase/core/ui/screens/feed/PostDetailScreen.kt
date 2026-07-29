@@ -60,6 +60,7 @@ import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.core.widget.ReactionsBottomSheet
 import id.homebase.resources.MR
+import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_comment_denied_anonymous
 import id.homebase.resources.feed_comment_denied_no_access
 import id.homebase.resources.feed_comment_denied_unknown
@@ -105,6 +106,7 @@ fun PostDetailScreen(
     // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps this screen out of the
     // composition, so a state remembered inside it would come back scrolled to the top.
     val postScrollState = rememberScrollState()
+    val actionFailedMessage = stringResource(MR.string.feed_comment_action_failed)
 
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -113,8 +115,9 @@ fun PostDetailScreen(
                 is PostDetailEvent.NavigateToAuthor -> onAuthorClick(event.odinId)
                 is PostDetailEvent.OpenUrl -> uriHandler.openUrl(event.url)
                 is PostDetailEvent.ShowSnackbar -> {
-                    val message = event.message ?: return@collect
-                    scope.launch { snackbarHostState.showSnackbar(message) }
+                    scope.launch {
+                        snackbarHostState.showSnackbar(event.message ?: actionFailedMessage)
+                    }
                 }
             }
         }

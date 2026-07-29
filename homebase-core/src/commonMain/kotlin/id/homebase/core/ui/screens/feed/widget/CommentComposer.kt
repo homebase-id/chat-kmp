@@ -107,6 +107,10 @@ fun CommentComposer(
     // area (not a covering modal), so the input row stays visible while picking emojis.
     var showExpressionSheet by remember { mutableStateOf(false) }
     var expressionTab by remember { mutableStateOf(ExpressionTab.Emoji) }
+    // Send is async (materialize + re-encode) and text/pickedImage only clear once it finishes,
+    // so without this an impatient second tap posts a duplicate comment — each `postComment` mints
+    // its own uniqueId. Same guard shape as the chat composer sheets (PollComposerSheet).
+    var sending by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val fieldFocusRequester = remember { FocusRequester() }
@@ -135,18 +139,25 @@ fun CommentComposer(
     // path chat's StickerHandler.handleSendSavedSticker uses (re-stage as an image upload).
     // A sticker-only comment (empty text) is valid.
     val sendSticker: (SavedSticker) -> Unit = { sticker ->
-        val body = text.trim()
-        scope.launch {
-            val path = stickerService.resolveForSend(sticker) ?: return@launch
-            val attachment = platformFileFromPath(path)
-                .materializeForUpload(fileOps)
-                .toImageAttachmentInput(fileOps)
-            onSend(body, attachment)
-            text = ""
+        if (!sending) {
+            sending = true
+            val body = text.trim()
+            scope.launch {
+                try {
+                    val path = stickerService.resolveForSend(sticker) ?: return@launch
+                    val attachment = platformFileFromPath(path)
+                        .materializeForUpload(fileOps)
+                        .toImageAttachmentInput(fileOps)
+                    onSend(body, attachment)
+                    text = ""
+                } finally {
+                    sending = false
+                }
+            }
         }
     }
 
-    val canSend = text.isNotBlank() || pickedImage != null
+    val canSend = (text.isNotBlank() || pickedImage != null) && !sending
 
     Column(modifier = modifier.fillMaxWidth()) {
         if (replyingToName != null) {
@@ -273,16 +284,26 @@ fun CommentComposer(
 
             Box {
                 IconButton(
+                    // `sending` is re-read here rather than relying on `enabled`: the disable only
+                    // lands on the next recomposition, this read is live.
                     onClick = {
-                        val body = text.trim()
-                        val image = pickedImage
-                        scope.launch {
-                            val attachment = image?.let {
-                                it.materializeForUpload(fileOps).toImageAttachmentInput(fileOps)
+                        if (!sending) {
+                            sending = true
+                            val body = text.trim()
+                            val image = pickedImage
+                            scope.launch {
+                                try {
+                                    val attachment = image?.let {
+                                        it.materializeForUpload(fileOps)
+                                            .toImageAttachmentInput(fileOps)
+                                    }
+                                    onSend(body, attachment)
+                                    text = ""
+                                    pickedImage = null
+                                } finally {
+                                    sending = false
+                                }
                             }
-                            onSend(body, attachment)
-                            text = ""
-                            pickedImage = null
                         }
                     },
                     enabled = canSend,

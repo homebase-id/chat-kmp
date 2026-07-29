@@ -5,6 +5,7 @@ package id.homebase.core.feed
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.ReactionEntry
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
@@ -16,6 +17,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.sync.database.Outbox
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostContent
@@ -37,6 +39,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -146,6 +149,15 @@ class PostReactionSummaryTest {
             fileId = fileId,
         )
         return postItem(postId, fileId)
+    }
+
+    private suspend fun drainAllRows(): List<Outbox> {
+        val seen = mutableListOf<Outbox>()
+        while (true) {
+            val row = env.databaseManager.outbox.checkout() ?: break
+            seen.add(row)
+        }
+        return seen
     }
 
     private fun serviceRespondingWith(body: String) =
@@ -271,21 +283,40 @@ class PostReactionSummaryTest {
         val post = seedPost()
         advanceUntilIdle()
 
-        assertEquals(
-            ToggleReactionResultType.None,
-            service().toggleReaction(post, "").resultType,
-        )
-        assertEquals(
-            ToggleReactionResultType.None,
-            service().toggleReaction(post, "   ").resultType,
-        )
-        assertEquals(
-            ToggleReactionResultType.None,
-            service().toggleReaction(post, "way-too-long-for-a-glyph").resultType,
-        )
+        // Rejection has to reach the caller: it flips the like button before calling, and only
+        // un-flips it on a failure. Returning quietly left the button lit with nothing queued.
+        assertFailsWith<IllegalArgumentException> { service().toggleReaction(post, "") }
+        assertFailsWith<IllegalArgumentException> { service().toggleReaction(post, "   ") }
+        assertFailsWith<IllegalArgumentException> {
+            service().toggleReaction(post, "way-too-long-for-a-glyph")
+        }
         advanceUntilIdle()
 
         assertEquals(0L, env.outboxCount())
+    }
+
+    /**
+     * A ZWJ sequence is one glyph in the picker but many UTF-16 units — 👨‍👩‍👧‍👦 and 👩‍❤️‍💋‍👨 are 11
+     * each — so a `length` cap of 8 rejected 16 of the 1949 emoji in `emoji_data.json` outright.
+     * Counted as code points they are 7 and 8.
+     */
+    @Test
+    fun toggleReaction_zwjEmoji_isQueuedLikeAPlainGlyph() = runFeedTest {
+        val post = seedPost()
+        advanceUntilIdle()
+
+        service().toggleReaction(post, "👨‍👩‍👧‍👦")
+        service().toggleReaction(post, "❤️")
+        advanceUntilIdle()
+
+        val queued = drainAllRows()
+            .filter { it.uploadType == DriveOutboxUploader.ToggleReaction }
+            .map { it.json.decodeToString() }
+        assertEquals(2, queued.size, "both glyphs must queue; was: $queued")
+        assertTrue(
+            queued.any { it.contains("👨‍👩‍👧‍👦") },
+            "a ZWJ family emoji must reach the outbox; was: $queued",
+        )
     }
 
     @Test
@@ -317,7 +348,7 @@ class PostReactionSummaryTest {
             batches.clear()
 
             blockingDriver!!.failOutboxInserts = true
-            service().toggleReaction(post, "❤️")
+            assertFailsWith<IllegalStateException> { service().toggleReaction(post, "❤️") }
             advanceUntilIdle()
 
             assertEquals(0L, env.outboxCount(), "nothing may be queued when the insert fails")

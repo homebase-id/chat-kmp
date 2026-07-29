@@ -34,7 +34,8 @@ import kotlin.uuid.Uuid
  *     (`filetypesAnyOf = [PostFileType]`, NewestFirst / UserDate) reads the *first page* of each
  *     drive from the local DB (no HTTP); [loadMore] walks each drive's cursor for older pages.
  *   - `BatchReceived` for either drive is applied incrementally (live WebSocket pushes).
- *   - `DriveEvent.Stopped(totalCount > 0)` re-cold-loads — bulk `DriveSync.performSync` is silent.
+ *   - `DriveEvent.Stopped(totalCount > 0)` re-cold-loads — bulk `DriveSync.performSync` is silent
+ *     — or, once the user has paged, merges the new rows in from the head ([topUpFromHead]).
  *
  * Posts are deduped by uniqueId (a post that exists on both the author's channel and their feed
  * drive is shown once) and sorted newest-published-first by [FeedPostItem.createdMs].
@@ -55,6 +56,11 @@ class FeedTimelineService(
         // page is several screens of (tall) post cards and the trigger has slack, while a cold-load
         // deserializes at most 2 x PageSize headers instead of the whole local index.
         private const val PageSize = 30
+
+        // Ceiling on the pages a post-sync top-up walks before giving up on finding an overlap
+        // with what is already loaded. Only a sync that landed more than 5 x PageSize new posts
+        // ahead of the timeline's head can reach it, and pull-to-refresh closes any gap it leaves.
+        private const val TopUpPageCap = 5
     }
 
     private val feedDrive = feedLabeledDrive.drive.alias
@@ -85,12 +91,25 @@ class FeedTimelineService(
     // its stale, deeper cursor over the one the rebuild just rewound.
     private var generation = 0
 
+    // True once [loadMore] has appended a page. A completed sync then tops the timeline up from
+    // the head instead of cold-loading, which would throw those pages away.
+    private var pagedPastFirstPage = false
+
     private val _timeline = MutableStateFlow<List<FeedPostItem>>(emptyList())
     val timeline: StateFlow<List<FeedPostItem>> = _timeline.asStateFlow()
 
     /** True once every source drive's cursor is depleted — the UI then stops calling [loadMore]. */
     private val _endReached = MutableStateFlow(false)
     val endReached: StateFlow<Boolean> = _endReached.asStateFlow()
+
+    /**
+     * Message of the last failed cold load, or null while the last one succeeded. A failure is
+     * still swallowed here (an exception must not kill the event collector), but the UI needs it:
+     * without this the ViewModel cannot tell "the read blew up" from "you follow nobody", and
+     * renders the empty-feed state either way.
+     */
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError: StateFlow<String?> = _loadError.asStateFlow()
 
     private var started = false
 
@@ -125,11 +144,20 @@ class FeedTimelineService(
                     is BackendEvent.DriveEvent.Stopped -> {
                         if (event.driveId !in sourceDrives) return@collect
                         if (event.totalCount > 0) {
+                            // A cold load rewinds every cursor, which is what a first sync into a
+                            // near-empty index needs (the cursors recorded against it are already
+                            // exhausted, so a merge alone would leave the drive unpageable) — but
+                            // it also drops every page past the first. Once the user has paged,
+                            // merge the new rows in from the head instead.
+                            val paged = synchronized(lock) { pagedPastFirstPage }
                             Logger.d(tag = TAG) {
                                 "DriveEvent.Stopped(drive=${event.driveId}, " +
-                                    "totalCount=${event.totalCount}) — re-cold-loading feed"
+                                    "totalCount=${event.totalCount}) — " +
+                                    if (paged) "topping up feed" else "re-cold-loading feed"
                             }
-                            scope.launch { coldLoad() }
+                            scope.launch {
+                                if (paged) topUpFromHead(event.driveId) else coldLoad()
+                            }
                         }
                     }
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
@@ -168,6 +196,7 @@ class FeedTimelineService(
                 if (generation != gen) return@synchronized null
                 byId.clear()
                 nextPage.clear()
+                pagedPastFirstPage = false
                 for ((drive, page) in pages) {
                     if (page.hasMoreRows) nextPage[drive] = page.cursor
                     mergeLocked(page.records)
@@ -179,9 +208,45 @@ class FeedTimelineService(
                 "coldLoad: feedSize=$size (scanned=${pages.values.sumOf { it.records.size }}, " +
                     "drivesWithMore=${pages.count { it.value.hasMoreRows }})"
             }
+            _loadError.value = null
             emitSorted()
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Cold-load failed: ${e.message}" }
+            _loadError.value = e.message ?: e::class.simpleName ?: "cold-load failed"
+        }
+    }
+
+    /**
+     * A completed sync brought new rows in: merge the newest pages of [driveId] into what is
+     * already loaded rather than rebuilding. Walks down from the head until it meets a post the
+     * timeline already holds — that overlap is what keeps the merged set contiguous with the pages
+     * the user scrolled through — and leaves every cursor untouched, so a deeply-paged timeline
+     * keeps its depth (and the item its viewport is anchored to).
+     */
+    private suspend fun topUpFromHead(driveId: Uuid) {
+        try {
+            val active = credentialsManager.getActiveCredentials() ?: return
+            val identityId = active.getIdentityId()
+            val gen = synchronized(lock) { generation }
+
+            var cursor: QueryBatchCursor? = null
+            repeat(TopUpPageCap) {
+                val page = queryPage(identityId, driveId, cursor)
+                if (page.records.isEmpty()) return
+                val (stale, overlaps) = synchronized(lock) {
+                    val overlap = page.records.any { feedIdOf(it)?.let(byId::containsKey) == true }
+                    (generation != gen) to overlap
+                }
+                // A refresh rewound everything while this walk was in flight; its pages win.
+                if (stale) return
+                processIncrementalBatch(page.records)
+                if (overlaps || !page.hasMoreRows) return
+                cursor = page.cursor
+            }
+        } catch (e: Exception) {
+            // Log-only: nothing was discarded, the user asked for nothing, and the posts already
+            // on screen stay. A user-initiated load reports through [loadError] instead.
+            Logger.e(throwable = e, tag = TAG) { "Top-up after sync failed: ${e.message}" }
         }
     }
 
@@ -215,6 +280,15 @@ class FeedTimelineService(
      */
     suspend fun refresh() = coldLoad()
 
+    /**
+     * Same id fallback the cold-load mapper uses: a followed identity's post lands on the feed
+     * drive as a reference with NO uniqueId, only a globalTransitId. Keying on uniqueId alone
+     * dropped every one of them, so a live push for a followed post never applied incrementally —
+     * it only appeared on the next cold load.
+     */
+    private fun feedIdOf(file: HomebaseFile): Uuid? =
+        file.fileMetadata.appData.uniqueId ?: file.fileMetadata.globalTransitId
+
     private fun processIncrementalBatch(files: List<HomebaseFile>) {
         val posts = files.filter {
             it.fileMetadata.appData.fileType == FeedProtocol.PostFileType
@@ -224,13 +298,7 @@ class FeedTimelineService(
         val changed = synchronized(lock) {
             var dirty = false
             for (file in posts) {
-                // Same id fallback the cold-load mapper uses: a followed identity's post lands on
-                // the feed drive as a reference with NO uniqueId, only a globalTransitId. Keying on
-                // uniqueId alone dropped every one of them here, so a live push for a followed post
-                // never applied incrementally — it only appeared on the next cold load.
-                val id = file.fileMetadata.appData.uniqueId
-                    ?: file.fileMetadata.globalTransitId
-                    ?: continue
+                val id = feedIdOf(file) ?: continue
                 if (file.isSoftDeleted()) {
                     if (byId.remove(id) != null) dirty = true
                     continue
@@ -281,6 +349,7 @@ class FeedTimelineService(
                     if (page.hasMoreRows) nextPage[drive] = page.cursor else nextPage.remove(drive)
                     mergeLocked(page.records)
                 }
+                pagedPastFirstPage = true
                 true
             }
             if (applied) {
@@ -304,9 +373,11 @@ class FeedTimelineService(
         synchronized(lock) {
             byId.clear()
             rewindPaging()
+            pagedPastFirstPage = false
             // Discard any page fetch still in flight for the identity being logged out.
             generation++
         }
+        _loadError.value = null
         emitSorted()
     }
 }
