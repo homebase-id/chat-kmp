@@ -27,5 +27,13 @@ data class FeedTimelineUiState(
     val endReached: Boolean = false,
     val reactorsSheet: List<ReactionDisplayItem>? = null,
     val isReactorsLoading: Boolean = false,
+    /**
+     * Authoritative `emoji → count` for the open sheet, taken from the post header. The roster
+     * itself can only ever list our own identity's rows on someone else's post, so the chips are
+     * labelled from here rather than from [reactorsSheet].
+     */
+    val reactorsCounts: Map<String, Int> = emptyMap(),
+    /** True when the open sheet's roster is knowably incomplete — i.e. the post isn't ours. */
+    val reactorsPartial: Boolean = false,
     val selfOdinId: OdinId? = null,
 )

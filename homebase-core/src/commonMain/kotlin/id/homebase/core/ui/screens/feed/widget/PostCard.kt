@@ -8,13 +8,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,9 +33,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.chat.services.builder.LinkPreviewDescriptor
 import id.homebase.chat.widget.LinkPreviewCard
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.feed.services.CanReact
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
@@ -38,6 +47,9 @@ import id.homebase.core.feed.services.authorOdinId
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MomentMediaGallery
+import id.homebase.core.util.formatTimestamp
+import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.initials
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -53,6 +65,7 @@ import id.homebase.api.client.drives.files.ReactionSummary
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
+import kotlin.time.Instant
 import id.homebase.resources.MR
 import id.homebase.resources.feed_comment_encrypted
 import id.homebase.resources.feed_view_all_comments
@@ -249,9 +262,13 @@ private fun PostCommentPreview(
 }
 
 /**
- * A quoted / reposted source post rendered inline as a bordered card: the original author and
- * their caption. Mirrors the web feed's embedded-post block; shown whenever a post carries an
- * [EmbeddedPost] (i.e. it's a repost). The full source is opened separately by its id.
+ * A quoted / reposted source post rendered inline as a bordered card, mirroring the web feed's
+ * `EmbeddedPostContent`: author avatar + name + source timestamp, the source caption, then its
+ * media edge-to-edge, with the whole card linking out to the source post's [EmbeddedPost.permalink].
+ * Shown whenever a post carries an [EmbeddedPost] (i.e. it's a repost).
+ *
+ * Renders nothing when the embed yields no author, no caption and no media — a repost of a
+ * caption-less photo post otherwise landed here as an empty bordered box.
  */
 @Composable
 private fun QuotedPost(
@@ -259,33 +276,140 @@ private fun QuotedPost(
     authorName: String?,
     modifier: Modifier = Modifier,
 ) {
+    // Wire value, unvalidated: OdinId's constructor throws on a non-domain, which inside a
+    // LazyColumn item would take the whole timeline down.
+    val author = remember(embedded.authorOdinId) {
+        embedded.authorOdinId?.takeIf { OdinId.isValid(it) }?.let { OdinId(it) }
+    }
+    val caption = embedded.caption?.trim().orEmpty()
+    val mediaPayloads = remember(embedded.payloads) {
+        embedded.payloads.orEmpty().filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
+    }
+    if (author == null && caption.isEmpty() && mediaPayloads.isEmpty()) return
+
+    val uriHandler = getUriHandler()
+    val permalink = embedded.permalink?.takeIf { it.startsWith("http", ignoreCase = true) }
+    val openSource = permalink?.let { link -> { uriHandler.openUrl(link) } }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            (authorName?.takeIf { it.isNotBlank() } ?: embedded.author?.takeIf { it.isNotBlank() })
-                ?.let { author ->
-                Text(
-                    text = author,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+        Column(
+            modifier = if (openSource != null) Modifier.clickable(onClick = openSource) else Modifier,
+        ) {
+            if (author != null || caption.isNotEmpty()) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    if (author != null) {
+                        val name = authorName?.takeIf { it.isNotBlank() } ?: author.domainName
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PublicAvatar(
+                                odinId = author,
+                                initials = name.initials(),
+                                options = AvatarOptions(size = 28.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            embedded.userDate?.takeIf { it > 0L }?.let { ms ->
+                                VerticalDivider(
+                                    modifier = Modifier
+                                        .padding(horizontal = 8.dp)
+                                        .height(12.dp),
+                                    thickness = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                )
+                                Text(
+                                    text = formatTimestamp(Instant.fromEpochMilliseconds(ms)),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                    }
+                    if (caption.isNotEmpty()) {
+                        Text(
+                            text = caption,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = if (author != null) 6.dp else 0.dp),
+                        )
+                    }
+                }
             }
-            embedded.caption?.takeIf { it.isNotBlank() }?.let { caption ->
-                Text(
-                    text = caption,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 4,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            QuotedPostMedia(
+                embedded = embedded,
+                payloads = mediaPayloads,
+                author = author,
+                onClick = openSource,
+            )
         }
     }
+}
+
+/**
+ * The quoted source post's media. Its payload bytes live on the **source author's** channel drive
+ * — a third identity, neither us nor necessarily the reposter — so it reads over peer by the
+ * embed's [EmbeddedPost.globalTransitId] from [EmbeddedPost.channelId], exactly the route
+ * [PostMedia] uses for a followed identity's own post. Renders nothing when any part of that
+ * address is missing or unparseable (older/trimmed embeds carry no payload list at all).
+ */
+@Composable
+private fun QuotedPostMedia(
+    embedded: EmbeddedPost,
+    payloads: List<PayloadDescriptor>,
+    author: OdinId?,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    if (payloads.isEmpty() || author == null) return
+    val fileId = remember(embedded.fileId) {
+        embedded.fileId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+    } ?: return
+    val driveId = remember(embedded.channelId) {
+        embedded.channelId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+    } ?: return
+    val globalTransitId = remember(embedded.globalTransitId) {
+        embedded.globalTransitId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+    } ?: return
+    val thumb = remember(embedded.previewThumbnail) {
+        embedded.previewThumbnail?.let { element ->
+            runCatching {
+                OdinSystemSerializer.json.decodeFromJsonElement(EmbeddedThumb.serializer(), element)
+            }.getOrNull()
+        }
+    }
+
+    MomentMediaGallery(
+        payloads = payloads,
+        fileId = fileId,
+        driveId = driveId,
+        previewThumbnail = thumb,
+        // Repost is only offered on public (unencrypted) posts, so these payloads are plaintext and
+        // carry no per-payload iv — MomentMediaItem gates on that and ignores the header entirely.
+        keyHeader = KeyHeader.empty(),
+        modifier = modifier.fillMaxWidth(),
+        onMediaClick = onClick?.let { open -> { _: PayloadDescriptor -> open() } },
+        sharedTransitionScope = null,
+        animatedVisibilityScope = null,
+        messageId = fileId,
+        downloadingFiles = emptySet(),
+        minAspect = FeedMinMediaAspect,
+        remoteOdinId = author,
+        globalTransitId = globalTransitId,
+    )
 }
 
 /**

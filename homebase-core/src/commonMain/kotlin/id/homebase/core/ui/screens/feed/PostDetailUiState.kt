@@ -47,5 +47,12 @@ data class PostDetailUiState(
      */
     val reactorsSheet: List<ReactionDisplayItem>? = null,
     val isReactorsLoading: Boolean = false,
+    /**
+     * Authoritative `emoji → count` for the open sheet, off the post header. The roster read only
+     * sees our own identity's rows on a post hosted elsewhere, so the chips are labelled from here.
+     */
+    val reactorsCounts: Map<String, Int> = emptyMap(),
+    /** True when the open sheet's roster is knowably incomplete — the post isn't ours. */
+    val reactorsPartial: Boolean = false,
     val errorMessage: String? = null,
 )

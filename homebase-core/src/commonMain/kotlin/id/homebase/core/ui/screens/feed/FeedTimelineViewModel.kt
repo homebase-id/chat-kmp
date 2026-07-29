@@ -17,6 +17,8 @@ import id.homebase.core.feed.services.PostOwnReactionResolver
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.ReportingUrlProvider
 import id.homebase.core.feed.services.authorOdinId
+import id.homebase.core.feed.services.emojiCounts
+import id.homebase.core.feed.services.isAuthoredBy
 import id.homebase.core.feed.services.withOwnReactions
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
@@ -253,9 +255,21 @@ class FeedTimelineViewModel(
      * route to the detail screen instead). Opens immediately with an empty list + loading flag,
      * then fills in once [PostReactionService.listReactors] returns. Names resolve through
      * [ContactService], falling back to the raw domain. Mirrors `PostDetailViewModel.showReactors`.
+     *
+     * The chips are labelled from the post header, not from the roster: on a post hosted by another
+     * identity the roster read can only see our own rows (see [PostReactionService.listReactors]),
+     * so it is flagged partial and the sheet says as much instead of presenting one name as all of
+     * them.
      */
     fun showReactors(post: FeedPostItem) {
-        _uiState.update { it.copy(reactorsSheet = emptyList(), isReactorsLoading = true) }
+        _uiState.update {
+            it.copy(
+                reactorsSheet = emptyList(),
+                isReactorsLoading = true,
+                reactorsCounts = post.reactionPreview.emojiCounts(),
+                reactorsPartial = !post.isAuthoredBy(it.selfOdinId),
+            )
+        }
         viewModelScope.launch {
             try {
                 val reactors = reactionService.listReactors(post, null).map {
@@ -284,7 +298,14 @@ class FeedTimelineViewModel(
     }
 
     fun dismissReactors() {
-        _uiState.update { it.copy(reactorsSheet = null, isReactorsLoading = false) }
+        _uiState.update {
+            it.copy(
+                reactorsSheet = null,
+                isReactorsLoading = false,
+                reactorsCounts = emptyMap(),
+                reactorsPartial = false,
+            )
+        }
     }
 
     /**

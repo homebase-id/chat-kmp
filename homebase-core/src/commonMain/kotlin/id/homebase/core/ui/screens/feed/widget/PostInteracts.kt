@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -51,6 +52,7 @@ import id.homebase.resources.feed_post_comment
 import id.homebase.resources.feed_post_comment_count
 import id.homebase.resources.feed_post_react
 import id.homebase.resources.feed_post_repost
+import id.homebase.resources.feed_post_show_reactors
 import kotlinx.collections.immutable.toImmutableList
 import org.jetbrains.compose.resources.stringResource
 
@@ -64,11 +66,14 @@ import org.jetbrains.compose.resources.stringResource
  * [permission] means "not resolved yet"; the affordance stays visible rather than falsely
  * disappearing, and the write itself is still authorised server-side.
  *
- * Visibility follows [reactAccess]:
- *  - [ReactAccess.None] hides both reactions and comments.
+ * Visibility follows [reactAccess], for the WRITE affordances only:
+ *  - [ReactAccess.None] hides both the like button and the comment button.
  *  - [ReactAccess.EmojiOnly] hides the comment button.
- *  - [ReactAccess.CommentOnly] hides the emoji affordances.
+ *  - [ReactAccess.CommentOnly] hides the like button.
  *  - [ReactAccess.All] shows everything.
+ *
+ * The reaction summary is NOT gated — a post you may not react to still shows its tally and still
+ * opens the roster, exactly as the web feed does.
  *
  * Expressive: action glyphs sit faint at rest ([androidx.compose.material3.ColorScheme.onSurfaceVariant])
  * and spring up — scaling and gaining colour emphasis — while pressed (see [FeedActionButton]),
@@ -139,9 +144,15 @@ fun PostInteracts(
                     )
                 }
             }
-            reactionSummary?.let { summary ->
-                PostReactionSummary(summary = summary, onClick = onShowReactors)
-            }
+        }
+
+        // Web parity (`PostInteracts.tsx`): only the Like button is gated on the viewer's react
+        // permission — `EmojiSummary` renders unconditionally. Keeping the summary inside the
+        // `canReact` branch meant a post you may not react to (reactAccess comment-only, or a
+        // `CanReact.Denied` verdict on the detail screen) showed no tally at all AND lost the only
+        // affordance that opens the "who reacted" roster.
+        reactionSummary?.let { summary ->
+            PostReactionSummary(summary = summary, onClick = onShowReactors)
         }
 
         // Left-grouped action cluster (like → reactions → repost → comment). No weight spacer:
@@ -325,8 +336,11 @@ private fun PostReactionSummary(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            // onClickLabel is what a screen reader announces for the tap — without it the facepile
+            // is an unlabelled clickable and the roster is unreachable non-visually.
+            .clickable(onClickLabel = stringResource(MR.string.feed_post_show_reactors)) { onClick() }
+            .heightIn(min = 36.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Negative spacing overlaps each disc; the surface-coloured border separates them.

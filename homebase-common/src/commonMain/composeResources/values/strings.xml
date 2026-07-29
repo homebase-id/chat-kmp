@@ -1664,6 +1664,8 @@
     <string name="feed_post_comment_count">%1$d</string>
     <string name="feed_post_repost">Repost</string>
     <string name="feed_post_react">React</string>
+    <string name="feed_post_show_reactors">See who reacted</string>
+    <string name="feed_reactors_partial">This post lives on another identity, so only the totals are available here — not everyone who reacted.</string>
     <string name="feed_channel_locked">Restricted channel</string>
     <string name="feed_compose_channel">Channel</string>
     <string name="feed_compose_channel_public">Public</string>

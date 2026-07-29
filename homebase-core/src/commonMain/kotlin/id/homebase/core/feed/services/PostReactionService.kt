@@ -181,7 +181,17 @@ class PostReactionService(
         return listReactors(post, null).filter { it.odinId == self }.map { it.emoji }.distinct()
     }
 
-    /** The individual reactors on [post], optionally filtered to a single [emoji]. */
+    /**
+     * The individual reactors on [post], optionally filtered to a single [emoji].
+     *
+     * **Complete only for a post we host ourselves.** The group-reactions endpoint is addressed at
+     * our own identity (`creds.domain`), so on a followed identity's post it reads OUR feed-drive
+     * copy of the file, whose reaction rows are just the ones we sent — everyone else's live on the
+     * author's server, reachable only over a peer route this client does not have yet (web branches
+     * to `/transit/reactions/list`, see `ReactionService.ts`). Callers rendering a roster for a post
+     * they don't own must say so rather than present the partial list as everyone; the header's
+     * [ReactionSummary] ([emojiCounts]) remains the correct tally.
+     */
     suspend fun listReactors(post: FeedPostItem, emoji: String? = null): List<EmojiReaction> =
         reactorsFor(post.driveId, post.fileId, post.id, emoji)
 
@@ -225,6 +235,25 @@ data class PostReactionSummary(
     val byEmoji: Map<String, Int>,
     val total: Int,
 )
+
+/**
+ * `emoji → count` off a post/comment header, decoded to bare glyphs, machine reactions (a leading
+ * `_` code, e.g. a Groodle vote) dropped and duplicate glyphs summed.
+ *
+ * This is the tally the reactors sheet labels its chips with. The header preview is server-
+ * maintained and kept in step by the author's feed distribution even on a followed post — unlike
+ * [PostReactionService.listReactors], which can only see our own identity's rows.
+ */
+fun ReactionSummary?.emojiCounts(): Map<String, Int> {
+    val entries = this?.reactions?.values ?: return emptyMap()
+    val counts = mutableMapOf<String, Int>()
+    entries.forEach { entry ->
+        val glyph = decodeReactionEmoji(entry.reactionContent)?.takeUnless { it.startsWith('_') }
+            ?: return@forEach
+        counts[glyph] = (counts[glyph] ?: 0) + entry.count
+    }
+    return counts
+}
 
 /**
  * Resolves and caches "which of these reactions are mine" for the posts on the home timeline.

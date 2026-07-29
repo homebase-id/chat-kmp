@@ -1,5 +1,6 @@
 package id.homebase.core.feed.services
 
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -126,20 +127,30 @@ data class PostContent(
 )
 
 /**
- * A post embedded inside another post (repost / quote). Carries only what the embedding post
- * needs to render the quote inline; the full source post is read separately by its
- * [globalTransitId] / [fileId] when present.
+ * A post embedded inside another post (repost / quote). Field names mirror the web wire form
+ * (dotyoucore-js `EmbeddedPost`), which is a whole [PostContent] plus the envelope bits the quote
+ * card needs. Nesting is one level only — the web strips an embed's own embed on upload.
  */
 @Serializable
 data class EmbeddedPost(
-    /** odinId of the embedded post's author. */
-    val author: String? = null,
+    /**
+     * odinId of the source post's author. The wire key is `authorOdinId` (web assigns it from
+     * `fileMetadata.originalAuthor`) — NOT `author`, which never existed on the wire and, with
+     * `ignoreUnknownKeys`, silently parsed to null and blanked the whole quote card.
+     */
+    val authorOdinId: String? = null,
     val caption: String? = null,
     val type: PostType? = null,
+    /** Source channel drive alias — the drive its payloads live on, over on the author's identity. */
+    val channelId: String? = null,
     val fileId: String? = null,
     val globalTransitId: String? = null,
+    /** Absolute URL of the source post on the author's identity; the quote card's tap target. */
+    val permalink: String? = null,
     /** Author's userDate (epoch ms) of the embedded post. */
     val userDate: Long? = null,
+    /** The source post's payload descriptors; web caps these at 6 when the header runs tight. */
+    val payloads: List<PayloadDescriptor>? = null,
     /**
      * Inline preview thumbnail for the embed. On the wire this is a thumbnail OBJECT
      * (`{ pixelWidth, pixelHeight, contentType, ... }`), NOT a string — type it [JsonElement] for

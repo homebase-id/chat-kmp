@@ -20,7 +20,9 @@ import id.homebase.core.feed.services.FeedPermissionService
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.ReportingUrlProvider
 import id.homebase.core.feed.services.authorOdinId
+import id.homebase.core.feed.services.emojiCounts
 import id.homebase.core.feed.services.isAuthoredBy
+import id.homebase.core.feed.services.withOwnReactions
 import id.homebase.core.widget.ReactionDisplayItem
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
@@ -91,8 +94,19 @@ class PostDetailViewModel(
     /** Null until the first permission resolve lands — the UI renders no verdict before then. */
     private val _canReact = MutableStateFlow<CanReact?>(null)
 
-    // Paired so the aux fold below stays on the typed 5-arg combine overload.
-    private val _postAux = combine(_liveReactionSummary, _canReact, ::Pair)
+    /**
+     * The bare glyphs WE hold on the open post; null until the first roster read lands.
+     *
+     * `localAppData.localReactions` — the field [FeedPostItem.ownReactions] is parsed from — is
+     * written only by the local optimistic writer and is null on every post header, so without this
+     * read the like button on the detail screen could never render active. The timeline solves the
+     * same problem with [id.homebase.core.feed.services.PostOwnReactionResolver]; a single post
+     * needs only one read, so it is done inline here.
+     */
+    private val _ownReactions = MutableStateFlow<List<String>?>(null)
+
+    // Folded so the aux combine below stays on the typed 5-arg overload.
+    private val _postAux = combine(_liveReactionSummary, _canReact, _ownReactions, ::Triple)
 
     /**
      * Reactor roster for the "who reacted" sheet. `list == null` means the sheet is
@@ -135,6 +149,29 @@ class PostDetailViewModel(
                 }
                 .collect { post -> loadLiveReactions(post) }
         }
+        // Which of the post's reactions are OURS. Keyed on fileId, so it runs once per post: our own
+        // reactions only change by our own action, which [togglePostReaction] already applies
+        // locally — re-reading on every header bump would race the outbox send and flick the heart
+        // back off before it lands.
+        viewModelScope.launch {
+            timelineService.timeline
+                .mapNotNull { feed -> feed.firstOrNull { it.id == postId } }
+                .distinctUntilChangedBy { it.fileId }
+                .collect { post ->
+                    // Nobody reacted ⇒ neither did we; never pay for a roster read on a bare post.
+                    if (post.reactionPreview?.reactions.isNullOrEmpty()) {
+                        _ownReactions.value = emptyList()
+                        return@collect
+                    }
+                    _ownReactions.value = runCatching { reactionService.ownReactions(post) }
+                        .onFailure {
+                            Logger.w(throwable = it, tag = TAG) {
+                                "ownReactions read failed for post=$postId: ${it.message}"
+                            }
+                        }
+                        .getOrNull()
+                }
+        }
         // Whether we may react/comment depends on the grants the post's channel carries, so it is
         // re-resolved whenever the post's routing or its author's interaction setting changes.
         viewModelScope.launch {
@@ -165,11 +202,11 @@ class PostDetailViewModel(
         contactService.contacts,
         _selfName,
         _postAux,
-    ) { self, reactors, contacts, selfName, (liveReactions, canReact) ->
+    ) { self, reactors, contacts, selfName, (liveReactions, canReact, ownReactions) ->
         val names = contacts.associate { it.odinId to it.name }.toMutableMap()
         // Overlay the owner's own resolved name so your posts/comments show your name, not domain.
         if (self != null && !selfName.isNullOrBlank()) names[self] = selfName
-        DetailAux(self, reactors, names.toMap(), liveReactions, canReact)
+        DetailAux(self, reactors, names.toMap(), liveReactions, canReact, ownReactions)
     }
 
     /**
@@ -210,7 +247,7 @@ class PostDetailViewModel(
                 ?.takeIf { useLiveReactions && it.reactions.isNotEmpty() }
                 ?: postRaw.reactionPreview,
             commentCount = comments.size,
-        )
+        )?.withOwnReactions(aux.ownReactions)
         PostDetailUiState(
             post = post,
             comments = comments,
@@ -224,6 +261,8 @@ class PostDetailViewModel(
             displayNames = aux.displayNames,
             reactorsSheet = aux.reactors.list,
             isReactorsLoading = aux.reactors.loading,
+            reactorsCounts = aux.reactors.counts,
+            reactorsPartial = aux.reactors.partial,
             canReact = aux.canReact,
             errorMessage = null,
         )
@@ -304,16 +343,28 @@ class PostDetailViewModel(
 
     // -------------------- REACTIONS --------------------
 
+    /**
+     * The own-reaction flip is local: the send goes through the outbox and the header tally only
+     * moves once the author redistributes it, so nothing else would light the like button up on a
+     * followed post. A failed toggle flips it straight back.
+     */
     fun togglePostReaction(emoji: String) {
         val post = uiState.value.post ?: return
+        flipOwnReaction(emoji)
         viewModelScope.launch {
             try {
                 reactionService.toggleReaction(post, emoji)
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "togglePostReaction failed: ${e.message}" }
+                flipOwnReaction(emoji)
                 _events.tryEmit(PostDetailEvent.ShowSnackbar(e.message))
             }
         }
+    }
+
+    private fun flipOwnReaction(emoji: String) = _ownReactions.update { current ->
+        val held = current.orEmpty()
+        if (emoji in held) held - emoji else held + emoji
     }
 
     fun toggleCommentReaction(comment: PostCommentItem, emoji: String) {
@@ -347,7 +398,15 @@ class PostDetailViewModel(
      */
     fun showReactors() {
         val post = uiState.value.post ?: return
-        _reactors.value = ReactorsState(list = emptyList(), loading = true)
+        // Chips are labelled from the header, which stays correct on a followed post; the roster
+        // itself only sees our own identity's rows there, so it is flagged partial.
+        val opened = ReactorsState(
+            list = emptyList(),
+            loading = true,
+            counts = post.reactionPreview.emojiCounts(),
+            partial = !post.isAuthoredBy(_selfOdinId.value),
+        )
+        _reactors.value = opened
         viewModelScope.launch {
             try {
                 val reactors = reactionService.listReactors(post, null).map {
@@ -360,7 +419,7 @@ class PostDetailViewModel(
                 }
                 // Drop if the user dismissed the sheet while the fetch was in flight.
                 if (_reactors.value.list != null) {
-                    _reactors.value = ReactorsState(list = reactors, loading = false)
+                    _reactors.value = opened.copy(list = reactors, loading = false)
                 }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "showReactors failed: ${e.message}" }
@@ -421,6 +480,10 @@ class PostDetailViewModel(
 private data class ReactorsState(
     val list: List<ReactionDisplayItem>? = null,
     val loading: Boolean = false,
+    /** Authoritative per-emoji tallies off the post header; the roster can't be trusted for these. */
+    val counts: Map<String, Int> = emptyMap(),
+    /** The roster is knowably incomplete — the post is hosted by another identity. */
+    val partial: Boolean = false,
 )
 
 /**
@@ -434,6 +497,7 @@ private data class DetailAux(
     val displayNames: Map<OdinId, String>,
     val liveReactions: ReactionSummary?,
     val canReact: CanReact?,
+    val ownReactions: List<String>?,
 )
 
 /** One-time navigation / snackbar events for the post detail screen. */

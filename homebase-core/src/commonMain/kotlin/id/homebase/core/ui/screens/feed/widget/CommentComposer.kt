@@ -25,15 +25,19 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -105,6 +109,18 @@ fun CommentComposer(
     var expressionTab by remember { mutableStateOf(ExpressionTab.Emoji) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val fieldFocusRequester = remember { FocusRequester() }
+
+    // Chat parity (ConversationContent's replyToMessage effect): starting a reply drops you
+    // straight into the field. Keyed on the null-ness so a late display-name resolution doesn't
+    // re-fire it; the frame wait covers the iOS first-responder race.
+    LaunchedEffect(replyingToName != null) {
+        if (replyingToName != null) {
+            withFrameNanos {}
+            fieldFocusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
 
     val stickers by stickerStream.stickers.collectAsStateWithLifecycle()
     val stickersLoaded by stickerStream.isLoaded.collectAsStateWithLifecycle()
@@ -148,7 +164,16 @@ fun CommentComposer(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = onCancelReply, modifier = Modifier.size(28.dp)) {
+                // Cancel is the mirror of the focus grab above: hand focus back to nothing
+                // rather than leaving it on a row that's about to leave the composition.
+                IconButton(
+                    onClick = {
+                        onCancelReply()
+                        focusManager.clearFocus()
+                        keyboard?.hide()
+                    },
+                    modifier = Modifier.size(28.dp),
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = stringResource(MR.string.feed_reply_cancel),
@@ -211,6 +236,7 @@ fun CommentComposer(
                 // Tapping into the field closes the expression panel; the keyboard reclaims the space.
                 modifier = Modifier
                     .weight(1f)
+                    .focusRequester(fieldFocusRequester)
                     .onFocusChanged { if (it.isFocused) showExpressionSheet = false },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,

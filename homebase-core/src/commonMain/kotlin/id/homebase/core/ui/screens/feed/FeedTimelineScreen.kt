@@ -16,10 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DynamicFeed
-import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -31,6 +28,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,12 +57,12 @@ import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.PostSkeleton
 import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.resources.MR
+import id.homebase.resources.feed_reactors_partial
 import id.homebase.resources.feed_timeline_empty_body
 import id.homebase.resources.feed_timeline_empty_title
 import id.homebase.resources.feed_timeline_error_body
 import id.homebase.resources.feed_timeline_error_retry
 import id.homebase.resources.feed_timeline_error_title
-import id.homebase.resources.feed_timeline_following_action
 import id.homebase.resources.feed_timeline_title
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
@@ -80,14 +78,20 @@ import kotlin.uuid.Uuid
  * @param onAuthorClick opens the tapped post author's profile. [PostCard]'s own
  *   `onAuthorClick` takes no arg, so the author identity (`originalAuthor ?: senderOdinId`)
  *   is resolved here per row before invoking this callback.
+ * @param onFullScreenMediaChanged reported up because the media viewer renders inside the
+ *   NavHost, below the app-level bottom navigation bar — only the host can hide that.
+ * @param scrollToTop set by the host when the already-selected Feed tab is re-tapped;
+ *   [onScrollToTopHandled] clears it once the list has moved.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedTimelineScreen(
     viewModel: FeedTimelineViewModel = koinViewModel(),
     onNavigateToDetail: (Uuid) -> Unit,
-    onNavigateToFollowing: () -> Unit,
     onAuthorClick: (OdinId) -> Unit,
+    onFullScreenMediaChanged: (Boolean) -> Unit = {},
+    scrollToTop: Boolean = false,
+    onScrollToTopHandled: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     // Opens the author's report intake / the owner console's block page (web parity).
@@ -113,6 +117,20 @@ fun FeedTimelineScreen(
     // composition, so a state remembered inside it would come back scrolled to the top.
     val listState = rememberLazyListState()
 
+    // onDispose resets it: a notification tap can navigate away with the viewer still open,
+    // which would otherwise leave the bottom bar hidden on the destination screen.
+    DisposableEffect(overlay != null) {
+        onFullScreenMediaChanged(overlay != null)
+        onDispose { onFullScreenMediaChanged(false) }
+    }
+
+    LaunchedEffect(scrollToTop) {
+        if (scrollToTop) {
+            listState.animateScrollToItem(0)
+            onScrollToTopHandled()
+        }
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
@@ -128,18 +146,12 @@ fun FeedTimelineScreen(
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
+                // ponytail: the Following/Followers action is parked (PR #802) — the v2 API has
+                // no followers controller, so every /api/v2/followers/* call 404s
+                // (homebase-id/odin-core#1611). FollowingScreen and its VM are kept intact;
+                // restore this action + the Route.Following destination once the routes land.
                 TopAppBar(
                     title = { Text(stringResource(MR.string.feed_timeline_title)) },
-                    actions = {
-                        IconButton(onClick = onNavigateToFollowing) {
-                            Icon(
-                                imageVector = Icons.Outlined.Group,
-                                contentDescription = stringResource(
-                                    MR.string.feed_timeline_following_action,
-                                ),
-                            )
-                        }
-                    },
                     scrollBehavior = scrollBehavior,
                 )
             },
@@ -216,6 +228,9 @@ fun FeedTimelineScreen(
                 reactions = reactors,
                 isLoading = uiState.isReactorsLoading,
                 ownerOdinId = uiState.selfOdinId?.domainName,
+                summaryCounts = uiState.reactorsCounts,
+                footnote = stringResource(MR.string.feed_reactors_partial)
+                    .takeIf { uiState.reactorsPartial },
                 onContactClick = { onAuthorClick(OdinId(it)) },
                 onDismiss = viewModel::dismissReactors,
             )
@@ -343,7 +358,10 @@ private fun FeedTimelineList(
                         else onOpenMedia(post, index, displayName)
                     },
                     onAuthorClick = { if (author != null) onAuthorClick(author) },
-                    embeddedAuthorName = post.embeddedPost?.author
+                    // OdinId's constructor throws on a non-domain; the embed's author is
+                    // unvalidated wire data, so gate on isValid before touching it.
+                    embeddedAuthorName = post.embeddedPost?.authorOdinId
+                        ?.takeIf { OdinId.isValid(it) }
                         ?.let { displayNames[OdinId(it)]?.takeIf { n -> n.isNotBlank() } },
                     isOwnPost = isOwnPost,
                     onEditPost = null,

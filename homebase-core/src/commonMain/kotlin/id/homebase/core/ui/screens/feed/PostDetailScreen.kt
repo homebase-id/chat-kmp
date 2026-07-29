@@ -3,10 +3,10 @@ package id.homebase.core.ui.screens.feed
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -66,6 +66,7 @@ import id.homebase.resources.feed_comment_denied_unknown
 import id.homebase.resources.feed_post_block
 import id.homebase.resources.feed_post_detail_comments_disabled
 import id.homebase.resources.feed_post_report
+import id.homebase.resources.feed_reactors_partial
 import id.homebase.resources.feed_post_detail_delete
 import id.homebase.resources.feed_post_detail_more_actions
 import id.homebase.resources.feed_post_detail_not_found
@@ -228,7 +229,11 @@ fun PostDetailScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    // Scaffold's innerPadding already ate the navigation bar; consuming it here
+                    // makes the composer's imePadding below resolve to the pure keyboard height
+                    // instead of keyboard + nav bar (the gap this screen showed above the IME).
+                    .consumeWindowInsets(innerPadding),
             ) {
                 Box(modifier = Modifier.weight(1f)) {
                     when {
@@ -284,7 +289,9 @@ fun PostDetailScreen(
                                     onOpenComments = {},
                                     onShowReactors = viewModel::showReactors,
                                     permission = uiState.canReact,
-                                    embeddedAuthorName = post.embeddedPost?.author
+                                    // Unvalidated wire data — OdinId() throws on a non-domain.
+                                    embeddedAuthorName = post.embeddedPost?.authorOdinId
+                                        ?.takeIf { OdinId.isValid(it) }
                                         ?.let { displayNameFor(OdinId(it)) },
                                 )
 
@@ -328,7 +335,6 @@ fun PostDetailScreen(
                         tonalElevation = 2.dp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .navigationBarsPadding()
                             .imePadding(),
                     ) {
                         CommentComposer(
@@ -354,6 +360,9 @@ fun PostDetailScreen(
                 reactions = reactors,
                 isLoading = uiState.isReactorsLoading,
                 ownerOdinId = uiState.selfOdinId?.domainName,
+                summaryCounts = uiState.reactorsCounts,
+                footnote = stringResource(MR.string.feed_reactors_partial)
+                    .takeIf { uiState.reactorsPartial },
                 onContactClick = { onAuthorClick(OdinId(it)) },
                 onDismiss = viewModel::dismissReactors,
             )

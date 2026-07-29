@@ -5,6 +5,8 @@ package id.homebase.core.feed
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.files.ReactionEntry
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
@@ -20,6 +22,7 @@ import id.homebase.core.feed.services.PostContent
 import id.homebase.core.feed.services.PostReactionService
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.ReactAccess
+import id.homebase.core.feed.services.emojiCounts
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -219,6 +222,48 @@ class PostReactionSummaryTest {
 
         val hearts = serviceRespondingWith(reactorsJson).listReactors(post, emoji = "❤️")
         assertEquals(listOf("❤️"), hearts.map { it.emoji })
+    }
+
+    // -------------------- header tallies (reactors-sheet chips) --------------------
+
+    // The reactors sheet labels its chips from the header, not from the roster: on a post hosted by
+    // another identity `listReactors` only ever sees our own rows (the group-reactions endpoint is
+    // addressed at our own domain), while the header preview stays correct.
+
+    @Test
+    fun emojiCounts_decodesGlyphsAndDropsUndecodableEntries() {
+        val summary = ReactionSummary(
+            reactions = mapOf(
+                heart to ReactionEntry(key = heart, count = 3, reactionContent = heart),
+                party to ReactionEntry(key = party, count = 1, reactionContent = party),
+                "junk" to ReactionEntry(key = "junk", count = 9, reactionContent = "not-json"),
+            ),
+        )
+
+        assertEquals(mapOf("❤️" to 3, "🎉" to 1), summary.emojiCounts())
+    }
+
+    @Test
+    fun emojiCounts_dropsMachineReactionsAndSumsDuplicateGlyphs() {
+        val vote = OdinSystemSerializer.serialize(ReactionContent(emoji = "_1Y"))
+        // The same glyph can arrive under two keys (a re-serialised reactionContent); the chip must
+        // show their sum, not whichever landed last.
+        val heartAgain = """{"emoji":"❤️"}"""
+        val summary = ReactionSummary(
+            reactions = mapOf(
+                heart to ReactionEntry(key = heart, count = 2, reactionContent = heart),
+                "b" to ReactionEntry(key = "b", count = 5, reactionContent = heartAgain),
+                vote to ReactionEntry(key = vote, count = 4, reactionContent = vote),
+            ),
+        )
+
+        assertEquals(mapOf("❤️" to 7), summary.emojiCounts())
+    }
+
+    @Test
+    fun emojiCounts_absentHeaderIsEmpty() {
+        assertEquals(emptyMap(), (null as ReactionSummary?).emojiCounts())
+        assertEquals(emptyMap(), ReactionSummary().emojiCounts())
     }
 
     @Test

@@ -62,6 +62,13 @@ data class ReactionDisplayItem(
     val emoji: String,
 )
 
+/**
+ * @param summaryCounts authoritative `emoji → count` tallies to label the chips with, for callers
+ *   whose [reactions] roster is knowably partial (the feed: a post hosted on another identity keeps
+ *   its reaction rows there, so the roster read can name at most ourselves while the post header
+ *   still carries the correct totals). Null (the default) derives the counts from [reactions].
+ * @param footnote a line under the title explaining a partial roster. Null hides it.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReactionsBottomSheet(
@@ -70,6 +77,8 @@ fun ReactionsBottomSheet(
     ownerOdinId: String?,
     onContactClick: (odinId: String) -> Unit,
     onAddReaction: ((String) -> Unit)? = null,
+    summaryCounts: Map<String, Int>? = null,
+    footnote: String? = null,
     onDismiss: () -> Unit,
 ) {
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -95,6 +104,15 @@ fun ReactionsBottomSheet(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
 
+                footnote?.let {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (isLoading) {
@@ -111,6 +129,7 @@ fun ReactionsBottomSheet(
                     onContactClick = onContactClick,
                     onAddEmoji = onAddReaction?.let { { showEmojiPicker = true } },
                     onToggleReaction = onAddReaction,
+                    summaryCounts = summaryCounts,
                 )
             }
         }
@@ -134,6 +153,7 @@ private fun ColumnScope.ReactionsContent(
     onContactClick: (odinId: String) -> Unit,
     onAddEmoji: (() -> Unit)? = null,
     onToggleReaction: ((String) -> Unit)? = null,
+    summaryCounts: Map<String, Int>? = null,
 ) {
     // Drop machine reactions whose code starts with "_" (e.g. Groodle vote codes
     // like "_1Y") — they are surfaced by their own kind's bubble, not as emoji.
@@ -143,9 +163,14 @@ private fun ColumnScope.ReactionsContent(
     val grouped = remember(reactions) {
         reactions.groupBy { it.emoji }
     }
-    var knownEmojiKeys by remember { mutableStateOf(grouped.keys.toList()) }
-    LaunchedEffect(grouped.keys) {
-        val currentKeys = grouped.keys
+    // Chip tallies come from the caller's authoritative counts when it has them; otherwise the
+    // roster IS the tally.
+    val counts = remember(grouped, summaryCounts) {
+        summaryCounts?.takeIf { it.isNotEmpty() } ?: grouped.mapValues { it.value.size }
+    }
+    var knownEmojiKeys by remember { mutableStateOf(counts.keys.toList()) }
+    LaunchedEffect(counts.keys) {
+        val currentKeys = counts.keys
         if (!knownEmojiKeys.containsAll(currentKeys)) {
             knownEmojiKeys = (knownEmojiKeys + currentKeys).distinct()
         }
@@ -168,7 +193,7 @@ private fun ColumnScope.ReactionsContent(
             AddEmojiChip(onClick = onAddEmoji)
         }
         knownEmojiKeys.forEach { emoji ->
-            val count = grouped[emoji]?.size ?: 0
+            val count = counts[emoji] ?: 0
             val isOwnReaction = emoji in ownerEmojis
             EmojiToggleChip(
                 isOwnReaction = isOwnReaction,
