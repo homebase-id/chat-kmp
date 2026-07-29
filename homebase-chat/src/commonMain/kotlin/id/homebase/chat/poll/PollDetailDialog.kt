@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,6 +25,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,6 +42,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
@@ -58,12 +61,16 @@ import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.util.initials
 import id.homebase.core.widget.EmojiReaction
 import id.homebase.resources.MR
+import id.homebase.resources.action_retry
 import id.homebase.resources.chat_poll_details_title
 import id.homebase.resources.chat_poll_end
 import id.homebase.resources.chat_poll_end_failed
 import id.homebase.resources.chat_poll_no_votes
 import id.homebase.resources.chat_poll_one_vote
 import id.homebase.resources.chat_poll_question_section
+import id.homebase.resources.chat_poll_roster_error
+import id.homebase.resources.chat_poll_roster_loading
+import id.homebase.resources.chat_poll_roster_partial
 import id.homebase.resources.chat_poll_vote_count
 import id.homebase.resources.chat_poll_you
 import id.homebase.resources.close
@@ -72,11 +79,29 @@ import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
+/** Load state of the per-user voter roster. Loading and failure are distinct
+ *  states on purpose: rendering either of them as "No votes" (which is what
+ *  `runCatching{}.getOrDefault(emptyList())` did) is a wrong answer, not a
+ *  missing one — see #1178. */
+private sealed interface RosterState {
+    data object Loading : RosterState
+    data class Loaded(val reactions: List<EmojiReaction>) : RosterState
+    data class Failed(val error: Throwable) : RosterState
+}
+
 /**
  * Fullscreen read-only roster for a Poll message. Shows the question in a tonal
  * box, then per-option sections with a count and the voter roster (avatar + name,
  * "You" for the current user). Only the organizer can end an open poll via the
  * End poll button. Votes are NOT editable here — voting is done in [PollBubble].
+ *
+ * **Two sources, deliberately.** The per-option COUNT comes from [reactionSummary],
+ * the header `reactionPreview` the bubble itself counts from, so this screen can
+ * never report fewer votes than the bubble behind it. The voter LIST comes from a
+ * live `getReactions` read of the server's per-file reaction table, which is a
+ * different store and can be short (see `ChatMessageActionService.getReactions`).
+ * [PollVote.tally] merges them and flags the shortfall; a partial roster is
+ * footnoted rather than silently under-reported.
  *
  * Mirrors [id.homebase.chat.event.EventDetailDialog]'s roster load pattern
  * (`produceState` + `ContactService`) and
@@ -93,6 +118,8 @@ fun PollDetailDialog(
     // The viewer's own votes — keys the roster re-fetch so tallies refresh when the
     // viewer votes while the dialog is open (mirrors EventDetailDialog).
     ownReactions: ImmutableList<String> = persistentListOf(),
+    // Authoritative per-option counts — the same header summary PollBubble renders.
+    reactionSummary: ReactionSummary? = null,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -104,6 +131,7 @@ fun PollDetailDialog(
             conversationId = conversationId,
             organizer = organizer,
             ownReactions = ownReactions,
+            reactionSummary = reactionSummary,
             onDismiss = onDismiss,
         )
     }
@@ -117,6 +145,7 @@ private fun PollDetailContent(
     conversationId: Uuid,
     organizer: OdinId?,
     ownReactions: ImmutableList<String>,
+    reactionSummary: ReactionSummary?,
     onDismiss: () -> Unit,
 ) {
     val actionService: ChatMessageActionService = koinInject()
@@ -132,15 +161,38 @@ private fun PollDetailContent(
 
     val selfOdinId = ownerSession.user.value?.odinId
 
-    // Roster fetch — re-fires when messageId OR the viewer's own votes change, so a
-    // vote cast while the dialog is open refreshes the roster/tally (matching
-    // EventDetailDialog). null = loading, empty = no reactions yet.
-    val rosterReactions: List<EmojiReaction>? by produceState<List<EmojiReaction>?>(
-        initialValue = null,
+    // Roster fetch — re-fires when messageId OR the viewer's own votes change (so a
+    // vote cast while the dialog is open refreshes the list), and when the user taps
+    // Retry after a failure. A throw here is a real failure and is surfaced as one;
+    // it used to be flattened into an empty list and rendered as "No votes".
+    var retryToken by remember(messageId) { mutableStateOf(0) }
+    val rosterState: RosterState by produceState<RosterState>(
+        initialValue = RosterState.Loading,
         key1 = messageId,
         key2 = ownReactions,
+        key3 = retryToken,
     ) {
-        value = runCatching { actionService.getReactions(messageId) }.getOrDefault(emptyList())
+        value = RosterState.Loading
+        value = runCatching { actionService.getReactions(messageId) }
+            .fold(
+                onSuccess = { RosterState.Loaded(it) },
+                onFailure = { t ->
+                    Logger.w(tag = "PollDetailDialog", throwable = t) {
+                        "Roster load failed for messageId=$messageId"
+                    }
+                    RosterState.Failed(t)
+                },
+            )
+    }
+
+    val roster = (rosterState as? RosterState.Loaded)?.reactions
+    val tallies = remember(reactionSummary, roster, descriptor.options.size, selfOdinId) {
+        PollVote.tally(
+            summary = reactionSummary,
+            roster = roster,
+            optionCount = descriptor.options.size,
+            selfOdinId = selfOdinId,
+        )
     }
 
     val showEndButton = organizer != null && selfOdinId != null &&
@@ -204,12 +256,29 @@ private fun PollDetailContent(
 
             Spacer(Modifier.height(24.dp))
 
+            // Roster status — only ever shown for the two states that are NOT
+            // "nobody voted". A genuinely empty poll falls through to the
+            // per-option "No votes" labels below.
+            when (rosterState) {
+                RosterState.Loading -> {
+                    RosterLoadingRow()
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                is RosterState.Failed -> {
+                    RosterErrorRow(onRetry = { retryToken++ })
+                    Spacer(Modifier.height(16.dp))
+                }
+
+                is RosterState.Loaded -> Unit
+            }
+
             // Per-option sections
             descriptor.options.forEachIndexed { i, optionLabel ->
                 PollOptionSection(
-                    index = i,
                     label = optionLabel,
-                    reactions = rosterReactions ?: emptyList(),
+                    tally = tallies[i],
+                    showPartialNote = rosterState !is RosterState.Loading,
                     contactService = contactService,
                     selfOdinId = selfOdinId,
                 )
@@ -273,16 +342,70 @@ private fun PollDetailContent(
     }
 }
 
+/** Spinner + label shown while the voter roster is in flight. */
+@Composable
+private fun RosterLoadingRow() {
+    val loadingText = stringResource(MR.string.chat_poll_roster_loading)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = loadingText,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Error banner + Retry for a failed roster read. The per-option counts below
+ *  still render from the header summary, so the screen degrades to "the numbers
+ *  the bubble showed, minus the names" instead of claiming nobody voted. */
+@Composable
+private fun RosterErrorRow(onRetry: () -> Unit) {
+    val errorText = stringResource(MR.string.chat_poll_roster_error)
+    val retryText = stringResource(MR.string.action_retry)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = errorText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onRetry) {
+                Text(
+                    text = retryText,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun PollOptionSection(
-    index: Int,
     label: String,
-    reactions: List<EmojiReaction>,
+    tally: PollOptionTally,
+    showPartialNote: Boolean,
     contactService: ContactService,
     selfOdinId: OdinId?,
 ) {
-    val voters = reactions.filter { PollVote.optionOf(it.emoji) == index }
-    val n = voters.size
+    val voters = tally.voters
+    val n = tally.count
 
     // Count text built outside Text() — Konsist bars string literals in Text calls.
     val noVotesText = stringResource(MR.string.chat_poll_no_votes)
@@ -316,18 +439,33 @@ private fun PollOptionSection(
     if (voters.isNotEmpty()) {
         Spacer(Modifier.height(4.dp))
         val youLabel = stringResource(MR.string.chat_poll_you)
-        // Self first, then others — consistent with EventDetailDialog roster ordering intent.
-        val sorted = voters.sortedByDescending { it.odinId == selfOdinId }
+        // Already self-first — PollVote.tally owns the ordering.
         Column {
-            sorted.forEach { reactor ->
+            voters.forEach { voter ->
                 PollVoterRow(
-                    odinId = reactor.odinId,
-                    isOwner = reactor.odinId == selfOdinId,
+                    odinId = voter,
+                    isOwner = voter == selfOdinId,
                     youLabel = youLabel,
                     contactService = contactService,
                 )
             }
         }
+    }
+
+    // The count came from the header summary; the names came from the per-file
+    // reaction read. When the latter is short, say so instead of letting the two
+    // silently disagree. Deliberately OUTSIDE the `voters.isNotEmpty()` block —
+    // the #1178 case is "3 votes, zero names", which is exactly when this note
+    // matters most. Suppressed while the roster is still loading, where a
+    // shortfall says nothing yet.
+    if (showPartialNote && tally.isPartial) {
+        val partialText = stringResource(MR.string.chat_poll_roster_partial, voters.size, n)
+        Text(
+            text = partialText,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 

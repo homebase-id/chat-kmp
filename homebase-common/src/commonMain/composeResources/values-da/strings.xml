@@ -906,6 +906,9 @@
     <string name="chat_poll_end_failed">Kunne ikke afslutte afstemningen. Prøv igen.</string>
     <string name="chat_poll_ended_self">Du afsluttede afstemningen: "%1$s"</string>
     <string name="chat_poll_ended_other">%1$s afsluttede afstemningen: "%2$s"</string>
+    <string name="chat_poll_roster_loading">Indlæser stemmer…</string>
+    <string name="chat_poll_roster_error">Kunne ikke indlæse hvem der stemte.</string>
+    <string name="chat_poll_roster_partial">Viser %1$d af %2$d stemmer</string>
 
     <string name="chat_unknown_message_type">Ukendt beskedtype — opdatér venligst appen.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>

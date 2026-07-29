@@ -236,6 +236,9 @@ fun PollBubble(
             messageId = messageId,
             conversationId = conversationId,
             ownReactions = ownReactions,
+            // Same header summary this bubble counts from, so the detail screen
+            // can never report a lower tally than the bubble that opened it.
+            reactionSummary = reactionSummary,
             organizer = organizer,
             onDismiss = { showDetail = false },
         )

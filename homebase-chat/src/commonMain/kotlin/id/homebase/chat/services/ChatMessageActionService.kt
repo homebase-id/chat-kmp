@@ -227,6 +227,7 @@ class ChatMessageActionService(
 
     private companion object {
         const val TAG = "MarkAsRead"
+        const val REACTIONS_TAG = "ChatReactions"
     }
 
     suspend fun toggleReaction(conversationId: Uuid, messageId: Uuid, emoji: String):
@@ -367,18 +368,49 @@ class ChatMessageActionService(
         }
     }
 
+    /**
+     * Per-user reaction roster for a message, read live from the server's
+     * per-file reaction table (`GET .../group-reactions`).
+     *
+     * This is a DIFFERENT store from the header `reactionPreview` the bubbles
+     * count from: the server maintains the preview as an incrementally
+     * bumped counter (odin-core `ReactionPreviewCalculator`) and the client
+     * layers an optimistic delta on top of it (`OptimisticWriter.writeReactionToggle`),
+     * which is only rolled back when the outbox *enqueue* fails — not when the
+     * upload does. So the roster can legitimately be SMALLER than the preview
+     * count, and callers must not present it as the authoritative tally.
+     *
+     * Throws — deliberately. `requireFileId` throws for an unknown messageId and
+     * the endpoint 400s when the fileId isn't resolvable on the drive. Callers
+     * must render that as an error, never as "nobody reacted".
+     */
     suspend fun getReactions(messageId: Uuid): List<EmojiReaction> {
         val fileId = requireFileId(messageId)
         val response = reactionProvider.listReactions(chatDrive, fileId)
 
-        return response.reactions.map {
+        // Decode per row, not all-or-nothing: one malformed reactionContent used
+        // to throw out of the map() and wipe the entire roster. Same guarded
+        // decode the count path (PollVote.counts) already goes through.
+        val decoded = response.reactions.mapNotNull { item ->
+            val emoji = decodeReactionCode(item.reactionContent)
+            if (emoji == null) {
+                Logger.w(tag = REACTIONS_TAG) {
+                    "getReactions: skipping undecodable reactionContent from ${item.odinId} on message=$messageId"
+                }
+                return@mapNotNull null
+            }
             EmojiReaction(
                 messageId = messageId,
-                odinId = it.odinId,
-                created = UnixTimeUtc(it.created),
-                emoji = OdinSystemSerializer.deserialize<ReactionContent>(it.reactionContent).emoji
+                odinId = item.odinId,
+                created = UnixTimeUtc(item.created),
+                emoji = emoji,
             )
         }
+
+        Logger.d(tag = REACTIONS_TAG) {
+            "getReactions: message=$messageId fileId=$fileId rows=${response.reactions.size} decoded=${decoded.size}"
+        }
+        return decoded
     }
 
     suspend fun requireFileId(messageId: Uuid): Uuid {
