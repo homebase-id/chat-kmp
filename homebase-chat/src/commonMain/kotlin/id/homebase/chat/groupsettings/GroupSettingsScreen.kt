@@ -82,12 +82,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
+import id.homebase.chat.conversationsettings.ConversationOverviewSection
+import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.services.convo.contact.ContactConnectionState
 import id.homebase.chat.widget.AvatarNameDisplay
+import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.chat.widget.ErrorInfoItem
 import id.homebase.chat.widget.LoadingListItem
 import id.homebase.core.HomebaseConstants
+import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
@@ -178,6 +182,7 @@ fun GroupSettingsScreen(
     onShowContactInfo: (odinId: String) -> Unit,
     onAddMembers: (conversationId: String) -> Unit,
     onEditGroup: (conversationId: String) -> Unit,
+    onSeeAllMedia: (conversationId: String) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -273,6 +278,12 @@ fun GroupSettingsScreen(
     // the viewer covers the whole screen, including the top bar. Null = closed.
     var fullScreenAvatar by remember { mutableStateOf<HomebaseImageData?>(null) }
 
+    // A shared-media tile opened full-screen. Separate from [fullScreenAvatar]:
+    // that one is the group photo and uses the zoomable avatar viewer, this one
+    // is a chat attachment and goes through the same ChatMediaFullScreenHost the
+    // 1:1 settings screen uses (save/share/jump-to-message actions).
+    var fullScreenItem by remember { mutableStateOf<SharedMediaItem?>(null) }
+
     SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = fullScreenAvatar,
@@ -288,14 +299,25 @@ fun GroupSettingsScreen(
                     GroupSettingsUi(
                         snackbarHostState = snackbarHostState,
                         uiState = uiState,
+                        conversationId = viewModel.route.conversationId,
                         onUiAction = viewModel::onUiAction,
                         onAvatarClick = { fullScreenAvatar = it },
+                        onMediaClick = { fullScreenItem = it },
+                        onSeeAllMedia = onSeeAllMedia,
+                        isMediaViewerOpen = fullScreenItem != null,
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
                     )
                     if (uiState.isLeaving) {
                         LeavingGroupOverlay()
                     }
+                    ChatMediaFullScreenHost(
+                        item = fullScreenItem,
+                        driveId = chatTargetDrive.alias,
+                        title = uiState.conversation?.name.orEmpty(),
+                        snackbarHostState = snackbarHostState,
+                        onDismiss = { fullScreenItem = null },
+                    )
                 }
             } else {
                 GroupAvatarFullScreenViewer(
@@ -417,35 +439,44 @@ private fun GroupAvatarFullScreenViewer(
 fun GroupSettingsUi(
     snackbarHostState: SnackbarHostState,
     uiState: GroupSettingsUiState,
+    conversationId: String,
     onUiAction: (GroupSettingsUiAction) -> Unit,
     onAvatarClick: (HomebaseImageData) -> Unit = {},
+    onMediaClick: (SharedMediaItem) -> Unit = {},
+    onSeeAllMedia: (conversationId: String) -> Unit = {},
+    /** True while a shared-media tile is open full-screen; suppresses this screen's
+     *  app bar so the viewer's own top bar doesn't stack under it (same reason as
+     *  ConversationSettingsScreen). */
+    isMediaViewerOpen: Boolean = false,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
-                actions = {
-                    if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
-                        IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
+            if (!isMediaViewerOpen) {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = { onUiAction(GroupSettingsUiAction.BackClicked) }) {
                             Icon(
-                                Icons.Outlined.Edit,
-                                contentDescription = stringResource(MR.string.chat_message_edit)
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(MR.string.menu_back)
                             )
                         }
-                    }
-                },
-            )
+                    },
+                    actions = {
+                        if (uiState.isCurrentUserGroupAdmin && !uiState.isLegacyGroup) {
+                            IconButton(onClick = { onUiAction(GroupSettingsUiAction.EditGroupClicked) }) {
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = stringResource(MR.string.chat_message_edit)
+                                )
+                            }
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
         Column(
@@ -481,6 +512,19 @@ fun GroupSettingsUi(
                             animatedVisibilityScope = animatedVisibilityScope,
                         )
                         Spacer(modifier = Modifier.height(32.dp))
+                    }
+                    // Shared media, above the member list — mirrors the 1:1 settings
+                    // screen (#1157). A LazyRow inside a LazyColumn item is fine: the
+                    // scroll axes are perpendicular.
+                    uiState.overview?.let { overview ->
+                        item {
+                            ConversationOverviewSection(
+                                overview = overview,
+                                onMediaClick = onMediaClick,
+                                onSeeAll = { onSeeAllMedia(conversationId) },
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
                     }
                     if (uiState.isLegacyGroup) {
                         item {

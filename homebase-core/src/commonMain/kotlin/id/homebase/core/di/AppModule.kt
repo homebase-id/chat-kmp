@@ -29,6 +29,8 @@ import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.dice.DiceRollPreferences
+import id.homebase.chat.event.EventReminderPreferences
+import id.homebase.chat.event.EventReminderService
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -758,6 +760,10 @@ val appModule = module {
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
+    singleOf(::EventReminderPreferences)
+    // Explicit `single` (not `singleOf`) — the ctor's `now` clock arg is an intentional Kotlin
+    // default the container can't resolve reflectively.
+    single { EventReminderService(get(), get()) }
     // singleOf(::PendingNotificationTap) would force Koin to resolve every
     // constructor parameter from the container — including the Duration TTL
     // and the CoroutineScope, which are intentionally Kotlin-default args.

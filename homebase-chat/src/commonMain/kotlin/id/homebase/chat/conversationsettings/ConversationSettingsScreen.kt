@@ -194,7 +194,7 @@ fun ConversationSettingsUi(
                     }
 
                     uiState.overview?.let { overview ->
-                        OverviewSection(
+                        ConversationOverviewSection(
                             overview = overview,
                             onMediaClick = { fullScreenItem = it },
                             onSeeAll = { onSeeAllMedia(conversationId) },
@@ -219,60 +219,6 @@ fun ConversationSettingsUi(
                 snackbarHostState = snackbarHostState,
                 onDismiss = { fullScreenItem = null },
             )
-        }
-    }
-}
-
-@Composable
-private fun OverviewSection(
-    overview: ConversationOverview,
-    onMediaClick: (SharedMediaItem) -> Unit,
-    onSeeAll: () -> Unit,
-) {
-    val hasAnything = overview.media.isNotEmpty() || overview.files.isNotEmpty() ||
-            overview.audio.isNotEmpty() || overview.diceRolls.isNotEmpty() ||
-            overview.locations.isNotEmpty()
-
-    if (hasAnything) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(MR.string.contact_info_recent_media),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onSeeAll) {
-                Text(text = stringResource(MR.string.conversation_media_see_all))
-            }
-        }
-    }
-
-    if (overview.media.isNotEmpty()) {
-        val strip = remember(overview.media) { overview.media.take(50) }
-        Spacer(modifier = Modifier.height(4.dp))
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(strip) { item ->
-                MediaItem(
-                    payload = item.payload,
-                    fileId = item.fileId,
-                    driveId = chatTargetDrive.alias,
-                    previewThumbnail = item.previewThumbnail,
-                    keyHeader = item.keyHeader,
-                    imageSize = ImageSize.THUMB_MEDIUM,
-                    isSticker = item.isSticker,
-                    modifier = Modifier.size(76.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    onClick = { onMediaClick(item) },
-                    sharedTransitionScope = null,
-                    animatedVisibilityScope = null,
-                )
-            }
         }
     }
 }

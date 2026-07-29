@@ -316,14 +316,6 @@ fun SettingsUi(
                 imageVector = Icons.Outlined.Person,
                 text = stringResource(MR.string.settings_profile_info),
                 onClick = { onAction(SettingsUiAction.ProfileInfoClicked) },
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                        contentDescription = stringResource(MR.string.cd_open_externally),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
             )
             Spacer(modifier = Modifier.height(8.dp))
             SettingsItemAction(

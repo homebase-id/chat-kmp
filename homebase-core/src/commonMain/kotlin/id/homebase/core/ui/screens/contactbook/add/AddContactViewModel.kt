@@ -8,16 +8,22 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
 import id.homebase.api.common.OdinId
+import id.homebase.chat.data.IncomingConnectionRequestUiModel
+import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.connections.RecipientResolution
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
+import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.Job
@@ -34,6 +40,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Drives the full-screen Add Contact flow. By default it leads with the Homebase ID and resolves
@@ -54,20 +61,37 @@ class AddContactViewModel(
 
     private val _state = MutableStateFlow(AddContactUiState())
 
+    /** The network-side inputs the state fold needs, bundled so [state]'s outer combine stays
+     *  within the typed (non-vararg) arities. */
+    private data class RelationInputs(
+        val conn: ConnectionState,
+        val circ: CircleMembershipState,
+        val incoming: List<IncomingConnectionRequestUiModel>,
+        val outgoing: List<OutgoingConnectionRequestUiModel>,
+        val contacts: List<Contact>,
+    )
+
     /**
-     * Public state, with [AddContactUiState.relation] and [AddContactUiState.alreadySaved] folded
-     * in live from the connection map, the pending incoming/outgoing request lists, and the saved
-     * contacts. This is what lets the resolved-identity card offer exactly the applicable action
-     * (send / accept / reject / cancel / nothing) and avoid offering to save a contact twice.
+     * Public state, with [AddContactUiState.relation], [AddContactUiState.alreadySaved] and
+     * [AddContactUiState.assignableCircles] folded in live from the connection map, the circle
+     * definitions, the pending incoming/outgoing request lists, and the saved contacts. This is
+     * what lets the resolved-identity card offer exactly the applicable action (send / accept /
+     * reject / cancel / nothing) and avoid offering to save a contact twice.
      */
     val state: StateFlow<AddContactUiState> =
         combine(
             _state,
-            connectionService.connections,
-            connectionRequestService.incomingRequests,
-            connectionRequestService.outgoingRequests,
-            repo.contacts,
-        ) { s, conn, incoming, outgoing, contacts ->
+            combine(
+                connectionService.connections,
+                connectionService.circles,
+                connectionRequestService.incomingRequests,
+                connectionRequestService.outgoingRequests,
+                repo.contacts,
+            ) { conn, circ, incoming, outgoing, contacts ->
+                RelationInputs(conn, circ, incoming, outgoing, contacts)
+            },
+        ) { s, inputs ->
+            val (conn, circ, incoming, outgoing, contacts) = inputs
             val domain = (s.resolution as? RecipientResolution.Resolved)
                 ?.identity?.odinId?.domainName?.lowercase()
             val status = domain?.let { d ->
@@ -87,7 +111,11 @@ class AddContactViewModel(
             }
             val alreadySaved = domain != null &&
                 contacts.any { it.content.odinId?.lowercase() == domain }
-            s.copy(relation = relation, alreadySaved = alreadySaved)
+            s.copy(
+                relation = relation,
+                alreadySaved = alreadySaved,
+                assignableCircles = circ.assignableCircles(),
+            )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddContactUiState())
 
     private val _events = MutableSharedFlow<AddContactEvent>(extraBufferCapacity = 8)
@@ -129,9 +157,16 @@ class AddContactViewModel(
                 _state.update { it.copy(mode = AddContactMode.BY_IDENTITY) }
             AddContactAction.SaveClicked -> save()
             AddContactAction.MessageClicked -> openConversation()
-            AddContactAction.AcceptRequestClicked -> handleRequestAction(
-                AddContactEvent.RequestAccepted,
-            ) { connectionRequestService.acceptIncomingRequest(it) }
+            is AddContactAction.AcceptRequestClicked -> {
+                // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
+                // any that fail to parse rather than aborting the accept.
+                val circleUuids = action.circleIds.mapNotNull {
+                    runCatching { Uuid.parseHex(it) }.getOrNull()
+                }
+                handleRequestAction(AddContactEvent.RequestAccepted) {
+                    connectionRequestService.acceptIncomingRequest(it, circleUuids)
+                }
+            }
             AddContactAction.RejectRequestClicked -> handleRequestAction(
                 AddContactEvent.RequestRejected,
             ) { connectionRequestService.rejectIncomingRequest(it) }

@@ -100,12 +100,13 @@ data class ContactDraft(
     val emailValid: Boolean get() = ContactFieldValidation.isValidEmail(email)
     val phoneValid: Boolean get() = ContactFieldValidation.isValidPhone(phone)
     val odinIdValid: Boolean get() = ContactFieldValidation.isValidOdinId(odinId)
+    val birthdayValid: Boolean get() = ContactFieldValidation.isValidBirthday(birthday)
 
     /** Has at least one meaningful field AND every non-empty field is well-formed. */
     val isSavable: Boolean
         get() = (givenName.isNotBlank() || surname.isNotBlank() ||
             phone.isNotBlank() || email.isNotBlank() || odinId.isNotBlank()) &&
-            emailValid && phoneValid && odinIdValid
+            emailValid && phoneValid && odinIdValid && birthdayValid
 }
 
 fun ContactBookEntry.toDraft(): ContactDraft = ContactDraft(
