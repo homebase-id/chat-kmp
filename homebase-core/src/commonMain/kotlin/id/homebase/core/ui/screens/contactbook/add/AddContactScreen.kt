@@ -68,7 +68,9 @@ import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.connections.RecipientResolution
+import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
+import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.add_contact_already_connected
@@ -329,6 +331,7 @@ private fun ByIdentitySection(
             RelationActions(
                 relation = uiState.relation,
                 odinId = resolution.identity.odinId,
+                assignableCircles = uiState.assignableCircles,
                 actionInProgress = uiState.actionInProgress,
                 identityOnly = identityOnly,
                 onSendConnectionRequest = onSendConnectionRequest,
@@ -391,11 +394,17 @@ private fun ResolvedIdentityCard(identity: PublicIdentity) {
 private fun RelationActions(
     relation: IdentityRelation,
     odinId: OdinId,
+    assignableCircles: List<ContactCircleUi>,
     actionInProgress: Boolean,
     identityOnly: Boolean,
     onSendConnectionRequest: (OdinId) -> Unit,
     onAction: (AddContactAction) -> Unit,
 ) {
+    // Circle ids the user has ticked to add this identity to on Accept. Keyed by the resolved
+    // identity so correcting the Homebase ID clears a selection made for the previous one (a
+    // transient picker — no need to survive process death).
+    var selectedCircleIds by remember(odinId.domainName) { mutableStateOf(emptySet<String>()) }
+
     when (relation) {
         IdentityRelation.NONE ->
             ConnectRequestOffer(onClick = { onSendConnectionRequest(odinId) })
@@ -408,12 +417,30 @@ private fun RelationActions(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
             )
+            // Optional: pick which of the user's own circles to add this identity to on Accept.
+            // The circles ride the accept request atomically (see AcceptConnectionRequestV2).
+            CirclePickerChips(
+                circles = assignableCircles,
+                selectedIds = selectedCircleIds,
+                onToggle = { id ->
+                    selectedCircleIds = if (id in selectedCircleIds) {
+                        selectedCircleIds - id
+                    } else {
+                        selectedCircleIds + id
+                    }
+                },
+                enabled = !actionInProgress,
+                modifier = Modifier.padding(bottom = 12.dp),
+                centered = false,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(
-                    onClick = { onAction(AddContactAction.AcceptRequestClicked) },
+                    onClick = {
+                        onAction(AddContactAction.AcceptRequestClicked(selectedCircleIds.toList()))
+                    },
                     enabled = !actionInProgress,
                     modifier = Modifier.weight(1f),
                 ) {

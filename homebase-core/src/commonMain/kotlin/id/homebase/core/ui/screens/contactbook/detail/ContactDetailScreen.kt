@@ -24,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Block
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContactEmergency
 import androidx.compose.material.icons.outlined.Delete
@@ -115,12 +114,9 @@ import id.homebase.resources.contactbook_detail_tab_about
 import id.homebase.resources.contactbook_detail_tab_activity
 import id.homebase.resources.contactbook_detail_tab_details
 import id.homebase.resources.contactbook_detail_unblock
-import id.homebase.resources.contactbook_detail_accept
 import id.homebase.resources.contactbook_detail_cancel_request
 import id.homebase.resources.contactbook_detail_not_connected
 import id.homebase.resources.contactbook_detail_pending
-import id.homebase.resources.contactbook_detail_reject
-import id.homebase.resources.contactbook_detail_request_incoming
 import id.homebase.resources.contactbook_detail_request_outgoing
 import id.homebase.resources.contactbook_error_connection_forbidden
 import id.homebase.resources.contactbook_error_delete
@@ -140,6 +136,9 @@ fun ContactDetailScreen(
     viewModel: ContactDetailViewModel,
     connectRequestViewModel: ConnectRequestViewModel,
     onBack: () -> Unit,
+    // Separate from onBack: fired only when the contact was actually deleted, so the
+    // contact book can clear a search whose only match may just have disappeared (#876).
+    onDeleted: () -> Unit = onBack,
     onOpenConversation: (Uuid) -> Unit,
     onSeeAllMedia: (conversationId: String) -> Unit,
     onOpenContact: (uniqueId: String, odinId: String?) -> Unit,
@@ -169,6 +168,7 @@ fun ContactDetailScreen(
                 is ContactDetailEvent.OpenConversation -> onOpenConversation(event.conversationId)
                 is ContactDetailEvent.SeeAllMedia -> onSeeAllMedia(event.conversationId)
                 ContactDetailEvent.Back -> onBack()
+                ContactDetailEvent.DeletedAndBack -> onDeleted()
                 ContactDetailEvent.Error -> snackbarHostState.showSnackbar(errSave)
                 ContactDetailEvent.Forbidden -> snackbarHostState.showSnackbar(errForbidden)
                 ContactDetailEvent.DeleteError -> snackbarHostState.showSnackbar(errDelete)
@@ -223,14 +223,19 @@ fun ContactDetailScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
-                            Icon(
-                                Icons.Outlined.Edit,
-                                contentDescription = stringResource(MR.string.contactbook_detail_edit),
-                            )
-                        }
-                        if (uiState.entry != null) {
-                            ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                        // Edit + the management menu (block/disconnect/delete) act on a saved
+                        // contact — meaningless for a not-yet-accepted incoming request, whose
+                        // only actions are Accept/Reject in the profile card below (#921).
+                        if (!uiState.isPendingIncoming) {
+                            IconButton(onClick = { viewModel.onAction(ContactDetailAction.EditClicked) }) {
+                                Icon(
+                                    Icons.Outlined.Edit,
+                                    contentDescription = stringResource(MR.string.contactbook_detail_edit),
+                                )
+                            }
+                            if (uiState.entry != null) {
+                                ManagementMenu(uiState = uiState, onAction = viewModel::onAction)
+                            }
                         }
                     },
                 )
@@ -247,6 +252,23 @@ fun ContactDetailScreen(
                 ) { CircularProgressIndicator() }
 
                 entry == null -> {}
+
+                // A pending incoming request has no connection-scoped data (contact fields,
+                // groups-in-common, circles are empty; Activity needs a conversation and About
+                // needs synced ext_data — none exist before connecting). Show a self-contained
+                // public-profile card to inform Accept/Reject instead of the placeholder tabs
+                // (#921). Once accepted, this same screen flips to the full detail below.
+                uiState.isPendingIncoming -> PendingRequestProfile(
+                    entry = entry,
+                    assignableCircles = uiState.assignableCircles,
+                    onAccept = { selectedCircleIds ->
+                        viewModel.onAction(
+                            ContactDetailAction.AcceptRequestClicked(selectedCircleIds)
+                        )
+                    },
+                    onReject = { viewModel.onAction(ContactDetailAction.RejectRequestClicked) },
+                    actionInProgress = uiState.actionInProgress,
+                )
 
                 else -> {
                     var detailsExpanded by rememberSaveable(entry.uniqueId) { mutableStateOf(false) }
@@ -518,7 +540,9 @@ private fun DetailHeader(
     val connected = status == ConnectionStatus.Connected
     val blocked = status == ConnectionStatus.Blocked
     val pending = status == ConnectionStatus.None
-    val requestIncoming = uiState.requestDirection == RequestDirection.INCOMING
+    // No incoming-request state here: a pending incoming request takes over the whole body with
+    // [PendingRequestProfile] (which owns Accept/Reject plus the circle picker), so this header
+    // only ever renders once that request is gone — accepted, rejected, or never there.
     val requestOutgoing = uiState.requestDirection == RequestDirection.OUTGOING
     // Has a Homebase identity but no active connection, pending request, or block.
     val canConnect = uiState.hasOdinId && !connected && !blocked && !pending &&
@@ -564,7 +588,7 @@ private fun DetailHeader(
         // belongs right next to the status.
         if (uiState.hasOdinId) {
             val statusColor = when {
-                connected || requestIncoming -> MaterialTheme.colorScheme.primary
+                connected -> MaterialTheme.colorScheme.primary
                 blocked -> MaterialTheme.colorScheme.error
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             }
@@ -576,7 +600,6 @@ private fun DetailHeader(
                     text = stringResource(
                         when {
                             connected -> MR.string.contactbook_connected
-                            requestIncoming -> MR.string.contactbook_detail_request_incoming
                             requestOutgoing -> MR.string.contactbook_detail_request_outgoing
                             pending -> MR.string.contactbook_detail_pending
                             blocked -> MR.string.contactbook_detail_blocked
@@ -651,25 +674,6 @@ private fun DetailHeader(
                     Icon(Icons.Outlined.PersonAddAlt1, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(MR.string.contactbook_detail_connect))
-                }
-            }
-            requestIncoming -> {
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(
-                        onClick = { onAction(ContactDetailAction.AcceptRequestClicked) },
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                    ) {
-                        Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(MR.string.contactbook_detail_accept))
-                    }
-                    OutlinedButton(
-                        onClick = { onAction(ContactDetailAction.RejectRequestClicked) },
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                    ) {
-                        Text(stringResource(MR.string.contactbook_detail_reject))
-                    }
                 }
             }
             requestOutgoing -> {
