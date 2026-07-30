@@ -79,10 +79,7 @@ import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
-/** Load state of the per-user voter roster. Loading and failure are distinct
- *  states on purpose: rendering either of them as "No votes" (which is what
- *  `runCatching{}.getOrDefault(emptyList())` did) is a wrong answer, not a
- *  missing one — see #1178. */
+
 private sealed interface RosterState {
     data object Loading : RosterState
     data class Loaded(val reactions: List<EmojiReaction>) : RosterState
@@ -115,10 +112,7 @@ fun PollDetailDialog(
     conversationId: Uuid,
     organizer: OdinId?,
     onDismiss: () -> Unit,
-    // The viewer's own votes — keys the roster re-fetch so tallies refresh when the
-    // viewer votes while the dialog is open (mirrors EventDetailDialog).
     ownReactions: ImmutableList<String> = persistentListOf(),
-    // Authoritative per-option counts — the same header summary PollBubble renders.
     reactionSummary: ReactionSummary? = null,
 ) {
     Dialog(
@@ -196,7 +190,7 @@ private fun PollDetailContent(
     }
 
     val showEndButton = organizer != null && selfOdinId != null &&
-        organizer == selfOdinId && !descriptor.closed
+            organizer == selfOdinId && !descriptor.closed
 
     val detailsTitleText = stringResource(MR.string.chat_poll_details_title)
     val endPollText = stringResource(MR.string.chat_poll_end)

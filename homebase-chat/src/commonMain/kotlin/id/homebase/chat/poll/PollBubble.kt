@@ -236,8 +236,6 @@ fun PollBubble(
             messageId = messageId,
             conversationId = conversationId,
             ownReactions = ownReactions,
-            // Same header summary this bubble counts from, so the detail screen
-            // can never report a lower tally than the bubble that opened it.
             reactionSummary = reactionSummary,
             organizer = organizer,
             onDismiss = { showDetail = false },
@@ -275,7 +273,8 @@ private fun PollOptionRow(
         ) {
             if (!closed) {
                 // Open: leading indicator — filled check if voted, outline circle otherwise.
-                val indicatorTint = if (isOwn) MaterialTheme.colorScheme.primary else contentColor.copy(alpha = 0.45f)
+                val indicatorTint =
+                    if (isOwn) MaterialTheme.colorScheme.primary else contentColor.copy(alpha = 0.45f)
                 Icon(
                     imageVector = if (isOwn) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
                     contentDescription = null,

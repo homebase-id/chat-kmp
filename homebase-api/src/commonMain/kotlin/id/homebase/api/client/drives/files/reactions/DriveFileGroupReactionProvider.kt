@@ -51,15 +51,6 @@ data class GroupReactionItem(
     val created: Long
 )
 
-/**
- * Response of `GET /drives/{driveId}/files/{fileId}/group-reactions`.
- *
- * [cursor] is the server's `GetReactionsResponse.Cursor`, an `int?` (a rowid) —
- * NOT a string. It was typed `String?` here, which made the strict
- * (`isLenient = false`) decoder throw `JsonDecodingException` on any response
- * that actually carried one, i.e. whenever a file has more reactions than the
- * page size. That exception took the WHOLE roster with it at every call site.
- */
 @Serializable
 data class GetGroupReactionsResponse(
     val reactions: List<GroupReactionItem>,

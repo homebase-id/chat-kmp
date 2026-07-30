@@ -116,10 +116,13 @@ class ChatMessageActionService(
         // one that ever reached the window. Marking that read (#1135) clears the badge
         // that is the only signal the tail is missing.
         val newReadTime = viewedRecords.maxOf { it.sqlUserDate }
-        val convoLatest = participantLookup.getConversationById(conversationId)?.latestMessageTimestamp
+        val convoLatest =
+            participantLookup.getConversationById(conversationId)?.latestMessageTimestamp
         Logger.d(tag = TAG) {
             "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
-                    "(clampedViewedMax=${viewedRecords.maxOf { it.userDate }.toEpochMilliseconds()} " +
+                    "(clampedViewedMax=${
+                        viewedRecords.maxOf { it.userDate }.toEpochMilliseconds()
+                    } " +
                     "convoLatest=${convoLatest?.toEpochMilliseconds()} " +
                     "viewed=${viewedRecords.size} receipt-eligible=${unreadRecords.size})"
         }
@@ -163,9 +166,9 @@ class ChatMessageActionService(
         if (convo != null && convo.resolveLastReadAdvance(newReadTime) == null) {
             Logger.d(tag = TAG) {
                 "convo=$conversationId resolveLastReadAdvance suppressed " +
-                    "(currentMs=${convo.lastRead.toEpochMilliseconds()} " +
-                    "latestMs=${convo.latestMessageTimestamp.toEpochMilliseconds()} " +
-                    "newMs=${newReadTime.toEpochMilliseconds()}) — skipping upsert + enrich"
+                        "(currentMs=${convo.lastRead.toEpochMilliseconds()} " +
+                        "latestMs=${convo.latestMessageTimestamp.toEpochMilliseconds()} " +
+                        "newMs=${newReadTime.toEpochMilliseconds()}) — skipping upsert + enrich"
             }
             return
         }
@@ -368,22 +371,7 @@ class ChatMessageActionService(
         }
     }
 
-    /**
-     * Per-user reaction roster for a message, read live from the server's
-     * per-file reaction table (`GET .../group-reactions`).
-     *
-     * This is a DIFFERENT store from the header `reactionPreview` the bubbles
-     * count from: the server maintains the preview as an incrementally
-     * bumped counter (odin-core `ReactionPreviewCalculator`) and the client
-     * layers an optimistic delta on top of it (`OptimisticWriter.writeReactionToggle`),
-     * which is only rolled back when the outbox *enqueue* fails — not when the
-     * upload does. So the roster can legitimately be SMALLER than the preview
-     * count, and callers must not present it as the authoritative tally.
-     *
-     * Throws — deliberately. `requireFileId` throws for an unknown messageId and
-     * the endpoint 400s when the fileId isn't resolvable on the drive. Callers
-     * must render that as an error, never as "nobody reacted".
-     */
+    
     suspend fun getReactions(messageId: Uuid): List<EmojiReaction> {
         val fileId = requireFileId(messageId)
         val response = reactionProvider.listReactions(chatDrive, fileId)
@@ -530,7 +518,11 @@ class ChatMessageActionService(
      * [localOnly] = true keeps the change on this device only (no outbox). Auto-expiry
      * pruning now syncs, so this defaults false; kept for any purely-local unpin.
      */
-    suspend fun unpinMessage(messageId: Uuid, localOnly: Boolean = false, dismiss: Boolean = false) {
+    suspend fun unpinMessage(
+        messageId: Uuid,
+        localOnly: Boolean = false,
+        dismiss: Boolean = false
+    ) {
         updateMessageTags(messageId, localOnly = localOnly) { tags ->
             val cleared = tags - ChatProtocol.MessagePinnedTag - ChatProtocol.ManualPinnedTag
             if (dismiss) cleared + ChatProtocol.AutoPinDismissedTag else cleared
