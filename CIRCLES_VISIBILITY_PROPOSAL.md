@@ -114,11 +114,21 @@ kinds:
   uploads statements for your archive, a tax accountant. **Write-only in
   practice** — they deposit into your drives and see nothing of you. Neither
   intimate nor an audience, and often not even an individual.
-- **System circles** — not a relationship at all: **hidden per-app default
-  circles** (auto-connect and verified-connect enrollment — section 8). Never
-  shown in any circle UI, never a pill, never affect states.
+A circle is, formally, **a named list of people plus grants defined by its
+owning app**. The membership *list* is referenceable by any app (moments
+distributing to Beer Drinking Buddies uses the circle purely as a set of
+people); the *grants* belong to the owner. Friends, Family, Beer Drinking
+Buddies are owned by the **profile app** — their grants are profile-attribute
+reads, and that is where users create them. Emergency Location Access is the
+same species one app over: the location app's PERSONAL circle.
 
-Every circle carries a **`PERSONAL | AUDIENCE | SERVICE | SYSTEM` designation** (an enum,
+App **default circles** (auto-connect and verified-connect enrollment —
+section 8) are not a fourth relationship kind and carry no special designation:
+their rendering keys off `Enrollment`. They never show as pills and never affect
+states; they surface in the Circles tab as a visibly-distinct group (member
+list, owner toggle, read-only grants).
+
+Every circle carries a **`PERSONAL | AUDIENCE | SERVICE` designation** (an enum,
 not a boolean — and the spare room earned its keep within a week: service circles
 were discovered during review of this very proposal), set by the owning app when
 it registers the circle. This rides the in-progress backend work where circles and
@@ -217,7 +227,7 @@ forms above remain the shorthand for docs and marketing.
 | —                | **Personal circle**                  | Counts toward contact states; user-created circles default to it |
 | —                | **Audience circle**                  | Pure capability grant (e.g. Subscribers); never affects contact states |
 | —                | **Service circle**                   | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; surfaced by its owning app, invisible in this app |
-| —                | **System circle**                    | Hidden per-app default circle (auto/verified enrollment); never in any circle UI, never affects states |
+| —                | **App default circle**               | Auto-/verified-connect enrollment (section 8); renders via the state slot and review toggles, never a pill; visible in the Circles tab as a distinct group |
 
 ## 4. Proposed Changes by Screen
 
@@ -312,7 +322,11 @@ survives only as the verb for completing a review):
   accepting introductions they relay, shard-recovery participation (the list the
   code inventory produced, section 8). These are **visible toggles in the
   modal**, not hidden side effects — hidden side effects are how "Vetted" got
-  confusing in the first place.
+  confusing in the first place. Presentation is **suite-aware**: apps of the
+  suite the user is in collapse to one summary row ("Homebase apps ✓ — Chat,
+  Feed, Moments"), expanded on tap; a genuinely separate app (a receipts
+  vendor's) always gets its own visible row, and the app whose flow the request
+  arrived through is the prominent one.
 - **💬 Chat only** (no circles selected) — no circles granted. For the contact
   you'll talk to but don't want to endorse: the landlord, the seller, the
   introduction you're lukewarm about. Deselecting the last circle also flips the
@@ -404,7 +418,7 @@ the flexibility.
   completes (see section 8) — required as soon as a chat-only review outcome
   is possible, so the Chat state survives across the user's devices
 - Coordinate with the in-progress app-owned circles backend so the
-  `PERSONAL | AUDIENCE | SERVICE | SYSTEM` circle designation **and the optional
+  `PERSONAL | AUDIENCE | SERVICE` circle designation **and the optional
   per-circle `emoji` field** land in that schema now (section 8). The enrollment
   model (`Enrollment`, `AutoConnectDefaults`, deposit-only invariant, owner
   toggle) is specified in odin-core's `docs/drive-addressing.md` (PR #1589) —
@@ -488,11 +502,11 @@ the New → Chat transition usually changes **no grants at all** — it is purel
 question 5: confirming may grant literally nothing beyond the selected circles,
 making the review a pure client-side record.
 
-### The `PERSONAL | AUDIENCE | SERVICE | SYSTEM` designation
+### The `PERSONAL | AUDIENCE | SERVICE` designation
 
 Rides the in-progress backend work where circles and drives belong to an app: the
 circle registration record carries the designation, set by the owning app, with
-user-created circles defaulting to `PERSONAL`. An enum, not a boolean — history
+user-created circles minted under the profile app and defaulting to `PERSONAL`. An enum, not a boolean — history
 (the Confirmed Connections system circle) said new circle kinds would appear, and
 `SERVICE` was discovered during review of this very proposal, before the schema
 even shipped. The **shared** piece is the designation on the circle record —
@@ -560,10 +574,23 @@ client behavior. Each app declares default circles with an `Enrollment` marker:
 
 Consequence for the ladder: New 👋 and Chat 💬 hold zero read keys **by
 construction** — "the states measure read access" upgrades from rationale to
-enforced property. These default circles are designated `SYSTEM` (hidden from
-every circle UI, never a pill, never a state), and clients get to delete their
-hardcoded GUID knowledge (today's `circleSortRank()` pinning and the "Unvetted"
-display rename).
+enforced property. Default circles carry no special designation — their
+rendering keys off `Enrollment`: never a pill, never a state, visible in the
+Circles tab as a distinct group. Clients get to delete their hardcoded GUID
+knowledge (today's `circleSortRank()` pinning and the "Unvetted" display
+rename).
+
+Naming bonus: if the chat app names its auto-connect circle **"Chat-only"**, the
+💬 state is literally that circle's membership made visible — the state icon,
+the review button's "💬 Chat only" label, and the circle's own member list
+("who can message me?") collapse into one concept. New 👋 and Chat 💬 are both
+members; the review stamp is what separates them. Removing someone from the
+circle is a mute softer than blocking.
+
+One coupling to know: a `VERIFIED_CONNECT` circle keeps whatever designation its
+app chose. If an app designates its verified default `PERSONAL` (e.g. feed
+distribution as a personal grant), its review toggle *is* a circle selection —
+enrolling it yields ⭕, and the adaptive button must count it.
 
 Migration items:
 
@@ -648,8 +675,10 @@ removal, or the address book slowly accretes ex-subscribers.
    circles"? (Proposed: yes.)
 2. Do we want to show a small visibility pill next to each field in the main Edit
    Profile view (e.g. "Public" or "3 circles")?
-3. Should we allow users to create circles directly from the review flow,
-   or only from the Circles tab?
+3. ~~Should we allow users to create circles directly from the review flow?~~
+   **Resolved: yes, from both** the profile editor's visibility picker and the
+   review dialog — inline creation mints the circle under the profile app; the
+   Circles tab remains the management home (members, emoji, description).
 4. Should Chat (no circles) contacts show a subtle 💬 indicator, or no
    indicator at all? (The circle badge is reserved for circle membership either way.)
 5. ~~What does confirming actually grant server-side today?~~ **Resolved by the
