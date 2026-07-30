@@ -54,7 +54,7 @@ data class GroupReactionItem(
 @Serializable
 data class GetGroupReactionsResponse(
     val reactions: List<GroupReactionItem>,
-    val cursor: String? = null
+    val cursor: Int? = null
 )
 
 @Serializable
@@ -176,7 +176,7 @@ class DriveFileGroupReactionProvider(
     suspend fun listReactions(
         driveId: Uuid,
         fileId: Uuid,
-        cursor: String? = null,
+        cursor: Int? = null,
         maxRecords: Int? = null
     ): GetGroupReactionsResponse {
 
