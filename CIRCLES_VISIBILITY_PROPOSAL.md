@@ -47,12 +47,14 @@ special photo for one circle) without adding complexity for normal use.
   "💬 Chat only" records your decision and may change nothing server-side. It
   also means an unreviewed stranger can already message you — New 👋 is the UI
   acknowledging exactly that.
-- **"Chat" is the display name for the default connection state.** The state's
-  definition is functional: reviewed, holding only the default connection grants,
-  with **no read access beyond public**. Internally this is a **deposit-only**
-  (no-read) connection — they can put things into your drives, they see nothing
-  extra. Today chat is the only default capability, so "Chat" is the honest UI
-  label; if the default state ever grows, revisit the label, not the model.
+- **"Chat" is the display name for the default connection state in the Chat
+  app.** The state's definition is functional: reviewed, holding only the default
+  connection grants, with **no read access beyond public**. Internally this is a
+  **deposit-only** (no-read) connection — they can put things into your drives,
+  they see nothing extra. In *this* app chat is the default capability that
+  matters, so "Chat" is the honest UI label; a different app would name the same
+  state by *its* default capability. The state machinery is shared — the label is
+  per-app presentation.
 - There is **no special "Vetted" system circle**. Being a **Circle** ⭕ connection
   implies reviewed and connected — but the converse doesn't hold: a contact can be
   reviewed and connected while being in no circles at all.
@@ -116,10 +118,16 @@ it registers the circle. This rides the in-progress backend work where circles a
 drives belong to an app; note the designation is **per-circle, not per-app** — the
 location app owns a personal circle while the feed app owns an audience one.
 
-**Contact states derive from personal circles only.** Audience or service
-membership never awards ⭕ — your bank must not render as a Circle contact. If an
-audience/service member needs a label anywhere, it's the circle's own name
-("Subscribers"), which claims nothing socially. This is also the strongest
+**In this app, contact states derive from personal circles only.** The
+derivation is a presentation rule scoped to the Homebase Chat KMP app (profile,
+contacts, feed, chat, moments — maybe someday photos), not a protocol rule: each
+app surfaces the circle kinds it owns and cares about. A service circle (bank →
+Receipts drive) doesn't merely "not count" here — it doesn't **appear** in this
+app's UI at all, neither as a state nor as a pill; displaying it is the owning
+app's concern. Audience or service membership never awards ⭕ — your bank must
+not render as a Circle contact. If an audience member needs a label anywhere in
+this app (feed's Subscribers management), it's the circle's own name, which
+claims nothing socially. This is also the strongest
 concrete argument in open question 6 against option B: a paid subscriber you've
 never met must not read as "Trusted 🛡️".
 
@@ -201,7 +209,7 @@ forms above remain the shorthand for docs and marketing.
 | —                | **Any of my circles**                | New easy default in visibility picker |
 | —                | **Personal circle**                  | Counts toward contact states; user-created circles default to it |
 | —                | **Audience circle**                  | Pure capability grant (e.g. Subscribers); never affects contact states |
-| —                | **Service circle**                   | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; never affects contact states |
+| —                | **Service circle**                   | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; surfaced by its owning app, invisible in this app |
 
 ## 4. Proposed Changes by Screen
 
@@ -475,7 +483,11 @@ circle registration record carries the designation, set by the owning app, with
 user-created circles defaulting to `PERSONAL`. An enum, not a boolean — history
 (the Confirmed Connections system circle) said new circle kinds would appear, and
 `SERVICE` was discovered during review of this very proposal, before the schema
-even shipped. Clients derive contact states exclusively from `PERSONAL` circles.
+even shipped. The **shared** piece is the designation on the circle record —
+every client can filter consistently. Which kinds an app *surfaces* is that
+app's choice: this app's contact book derives states exclusively from `PERSONAL`
+circles and shows `AUDIENCE` only inside feed's subscriber management; `SERVICE`
+circles are invisible here and belong to whichever app owns them.
 
 **Why personal circles are the ones that count:** the state ladder measures
 **read access — what they can see of you** ("you are choosing what this person
