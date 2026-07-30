@@ -47,6 +47,12 @@ special photo for one circle) without adding complexity for normal use.
   "💬 Chat only" records your decision and may change nothing server-side. It
   also means an unreviewed stranger can already message you — New 👋 is the UI
   acknowledging exactly that.
+- **"Chat" is the display name for the default connection state.** The state's
+  definition is functional: reviewed, holding only the default connection grants,
+  with **no read access beyond public**. Internally this is a **deposit-only**
+  (no-read) connection — they can put things into your drives, they see nothing
+  extra. Today chat is the only default capability, so "Chat" is the honest UI
+  label; if the default state ever grows, revisit the label, not the model.
 - There is **no special "Vetted" system circle**. Being a **Circle** ⭕ connection
   implies reviewed and connected — but the converse doesn't hold: a contact can be
   reviewed and connected while being in no circles at all.
@@ -80,11 +86,15 @@ or with no connection at all:
 - The "Follow their feed" toggle in the review modal is therefore a convenience
   for an orthogonal action offered at a natural moment — not a "connection
   default" that belongs to a tier.
+- **Followers/following are not contacts.** No contact record and no
+  connection-table linkage is required or implied — they remain in their own
+  store, exactly as today. Caching a followed channel's public profile stays the
+  feed app's concern, in the feed app's tables.
 
-### Two kinds of circles — personal and audience
+### Kinds of circles — personal, audience, service
 
-Circles are the single grant primitive, but they serve two very different
-relationship kinds:
+Circles are the single grant primitive, but they serve distinct relationship
+kinds:
 
 - **Personal circles** — intimacy plus visibility/permissions: Friends, Family,
   Beer Drinking Buddies — and Emergency Location Access, which is app-owned yet
@@ -93,16 +103,23 @@ relationship kinds:
 - **Audience circles** — pure capability, no intimacy claim: **Subscribers** is
   just a circle whose grant is read access to the feed drive — that *is* the
   encrypted-feed subscription. Membership means "customer", not "confidant".
+- **Service circles** — vendor and institution relationships: the hotel or
+  airline that writes purchase history into your Receipts drive, the bank that
+  uploads statements for your archive, a tax accountant. **Write-only in
+  practice** — they deposit into your drives and see nothing of you. Neither
+  intimate nor an audience, and often not even an individual.
 
-Every circle carries a **`PERSONAL | AUDIENCE` designation** (an enum, not a
-boolean — leave room for kinds we haven't met yet), set by the owning app when it
-registers the circle. This rides the in-progress backend work where circles and
+Every circle carries a **`PERSONAL | AUDIENCE | SERVICE` designation** (an enum,
+not a boolean — and the spare room earned its keep within a week: service circles
+were discovered during review of this very proposal), set by the owning app when
+it registers the circle. This rides the in-progress backend work where circles and
 drives belong to an app; note the designation is **per-circle, not per-app** — the
 location app owns a personal circle while the feed app owns an audience one.
 
-**Contact states derive from personal circles only.** Audience membership never
-awards ⭕ — if an audience member needs a label anywhere, it's the circle's own
-name ("Subscribers"), which claims nothing socially. This is also the strongest
+**Contact states derive from personal circles only.** Audience or service
+membership never awards ⭕ — your bank must not render as a Circle contact. If an
+audience/service member needs a label anywhere, it's the circle's own name
+("Subscribers"), which claims nothing socially. This is also the strongest
 concrete argument in open question 6 against option B: a paid subscriber you've
 never met must not read as "Trusted 🛡️".
 
@@ -184,6 +201,7 @@ forms above remain the shorthand for docs and marketing.
 | —                | **Any of my circles**                | New easy default in visibility picker |
 | —                | **Personal circle**                  | Counts toward contact states; user-created circles default to it |
 | —                | **Audience circle**                  | Pure capability grant (e.g. Subscribers); never affects contact states |
+| —                | **Service circle**                   | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; never affects contact states |
 
 ## 4. Proposed Changes by Screen
 
@@ -242,7 +260,8 @@ Replace the current **Public / Vetted** segmented control with:
 - Below: Pick a circle.
 - User can select "Any of my circles" (default )**or** pick one or more specific circles.
 
-These are likely private circles, probably not audience circles.
+These are likely personal circles, probably not audience or service circles —
+the visibility picker should list personal circles by default.
 
 This single pattern supports both simple use and the advanced "special beer drinking
 buddies photo" case.
@@ -367,9 +386,9 @@ the flexibility.
   completes (see section 8) — required as soon as a chat-only review outcome
   is possible, so the Chat state survives across the user's devices
 - Coordinate with the in-progress app-owned circles backend so the
-  `PERSONAL | AUDIENCE` circle designation **and the optional per-circle `emoji`
-  field** land in that schema now (section 8) — retrofitting after circles ship
-  is far costlier
+  `PERSONAL | AUDIENCE | SERVICE` circle designation **and the optional
+  per-circle `emoji` field** land in that schema now (section 8) — retrofitting
+  after circles ship is far costlier
 
 **Phase 2**
 
@@ -449,14 +468,24 @@ the New → Chat transition usually changes **no grants at all** — it is purel
 question 5: confirming may grant literally nothing beyond the selected circles,
 making the review a pure client-side record.
 
-### The `PERSONAL | AUDIENCE` designation
+### The `PERSONAL | AUDIENCE | SERVICE` designation
 
 Rides the in-progress backend work where circles and drives belong to an app: the
 circle registration record carries the designation, set by the owning app, with
 user-created circles defaulting to `PERSONAL`. An enum, not a boolean — history
-(the Confirmed Connections system circle) says new circle kinds appear, and a
-spare enum case is cheaper than a schema migration. Clients derive contact states
-exclusively from `PERSONAL` circles.
+(the Confirmed Connections system circle) said new circle kinds would appear, and
+`SERVICE` was discovered during review of this very proposal, before the schema
+even shipped. Clients derive contact states exclusively from `PERSONAL` circles.
+
+**Why personal circles are the ones that count:** the state ladder measures
+**read access — what they can see of you** ("you are choosing what this person
+can see"). Write grants let people *give* you things (chat messages, receipts,
+statements); read grants let people *see* you; only the second is intimacy. A
+bank with receipts-write is deposit-only and sits in the Chat state without
+contradiction. Note the **designation is the normative rule** — explicit and
+auditable; the read/see framing is the rationale. We deliberately do *not*
+derive states from grant plumbing directly, so a permissions change can never
+silently reclassify a contact.
 
 ### Per-circle emoji
 
