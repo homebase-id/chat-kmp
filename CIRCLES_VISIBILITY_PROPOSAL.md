@@ -110,8 +110,11 @@ kinds:
   uploads statements for your archive, a tax accountant. **Write-only in
   practice** — they deposit into your drives and see nothing of you. Neither
   intimate nor an audience, and often not even an individual.
+- **System circles** — not a relationship at all: **platform plumbing**. Carriers
+  of baseline/default grants (see the inventory in section 8). Hidden from every
+  circle UI in every app; never affect states.
 
-Every circle carries a **`PERSONAL | AUDIENCE | SERVICE` designation** (an enum,
+Every circle carries a **`PERSONAL | AUDIENCE | SERVICE | SYSTEM` designation** (an enum,
 not a boolean — and the spare room earned its keep within a week: service circles
 were discovered during review of this very proposal), set by the owning app when
 it registers the circle. This rides the in-progress backend work where circles and
@@ -210,6 +213,7 @@ forms above remain the shorthand for docs and marketing.
 | —                | **Personal circle**                  | Counts toward contact states; user-created circles default to it |
 | —                | **Audience circle**                  | Pure capability grant (e.g. Subscribers); never affects contact states |
 | —                | **Service circle**                   | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; surfaced by its owning app, invisible in this app |
+| —                | **System circle**                    | Platform plumbing (baseline grants); hidden from every circle UI, never affects states |
 
 ## 4. Proposed Changes by Screen
 
@@ -394,7 +398,7 @@ the flexibility.
   completes (see section 8) — required as soon as a chat-only review outcome
   is possible, so the Chat state survives across the user's devices
 - Coordinate with the in-progress app-owned circles backend so the
-  `PERSONAL | AUDIENCE | SERVICE` circle designation **and the optional
+  `PERSONAL | AUDIENCE | SERVICE | SYSTEM` circle designation **and the optional
   per-circle `emoji` field** land in that schema now (section 8) — retrofitting
   after circles ship is far costlier
 
@@ -476,7 +480,7 @@ the New → Chat transition usually changes **no grants at all** — it is purel
 question 5: confirming may grant literally nothing beyond the selected circles,
 making the review a pure client-side record.
 
-### The `PERSONAL | AUDIENCE | SERVICE` designation
+### The `PERSONAL | AUDIENCE | SERVICE | SYSTEM` designation
 
 Rides the in-progress backend work where circles and drives belong to an app: the
 circle registration record carries the designation, set by the owning app, with
@@ -513,6 +517,63 @@ circles (📡 for Subscribers). Implementation cautions:
   fall back to codepoint truncation (`truncateToCodePoints`). The full circle
   name is always the `contentDescription` — screen readers pronounce ZWJ
   sequences unpredictably, so the emoji is never the semantic label.
+
+### System circles — inventory and disposition
+
+Exactly two system circles exist today (client constants in `AppConfig.kt`):
+
+| System circle | Today's role | Disposition |
+|---|---|---|
+| **Confirmed Connections** (`bb2683fa…`) | Membership = the server-computed `vetted` flag (#919); the target of "confirm" | **Retire.** Fully replaced by `connectionReviewedAt` + explicit personal circles. Mark it `SYSTEM` the moment the schema ships so new clients hide it during the deprecation window |
+| **Auto Connections** (`9e22b429…`) | Where introduced/auto-connected identities land; the carrier of their baseline grants — this is how "New connections already hold chat write" is implemented. Shown today in the Circles tab renamed "Unvetted", pinned to top | **Keep as plumbing, remove from UI.** Designate `SYSTEM`; the "New" filter chip replaces its user-facing role. Consider renaming internally to "Default connection grants" |
+
+(`SecurityGroupType` — `anonymous / authenticated / connected / autoconnected /
+owner` — are ACL security groups, not circles; see the next subsection.)
+
+With `SYSTEM` in the schema, clients also get to delete their hardcoded
+knowledge of these two GUIDs (today's `circleSortRank()` pinning and the
+"Unvetted" display rename).
+
+Retiring Confirmed Connections raises three migration items:
+
+1. **Grant inventory** — whatever the Confirmed circle grants today beyond
+   membership must be enumerated; each grant either becomes an explicit default
+   toggle in the review modal or dies. This is open question 5 in concrete form.
+2. **Profile-field ACLs** — today's "Vetted" profile section is presumably
+   secured *to* the Confirmed circle. Those fields must be re-secured to the new
+   "any of my circles" semantics (see `connected(PERSONAL)` below), or
+   vetted-visible fields silently go dark when the circle retires.
+3. **Baseline carrier for direct connections** — confirm whether directly
+   connected (non-introduced) identities get their baseline grants through Auto
+   Connections too, or through the `connected` security group. The answer decides
+   what the surviving SYSTEM circle's rename should claim (open question 8).
+
+### The connected ACL tier — collapse and qualify
+
+`SecurityGroupType.autoconnected` exists to distinguish auto-connected
+identities from confirmed ones **at the ACL level** — precisely the
+confirmed-vs-not distinction this proposal retires (review is a stamp, not a
+grant change). So collapse it: **there is just `connected`**.
+
+Replace the lost expressiveness with something better — **designation-qualified
+connected**: `connected(PERSONAL)` / `connected(AUDIENCE)` / `connected(SERVICE)`,
+meaning "any connection in at least one circle of that designation", evaluated
+dynamically at access time. UX reading: *"My birthday is visible to*
+**connected — personal**.*"*
+
+- This is the ACL-level realization of the visibility picker's **"Any of my
+  circles"**: because it's evaluated against the designation, a personal circle
+  created next year is included automatically — unlike an enumerated
+  `circleIdList`, which snapshots and goes stale.
+- **Consequence:** the designation stops being pure presentation and joins the
+  access-control model. Re-designating a circle changes who can see
+  designation-qualified content — so the designation should be **immutable after
+  creation**, or a change must be treated as an ACL-affecting operation.
+- **Migration:** existing ACLs referencing `autoconnected`, and existing
+  `connected` ACLs whose real intent was "confirmed connections only", need a
+  sweep — most re-target `connected(PERSONAL)`. Confirm odin-core's current
+  `connected` vs `autoconnected` evaluation order as part of this (open
+  question 9).
 
 ### Audience circles at scale
 
@@ -565,6 +626,13 @@ removal, or the address book slowly accretes ex-subscribers.
    the contact book (a search mode / separate tab) or under settings/security?
    It must show every connected identity with the union of its grants (personal
    and audience), paged from the server (section 8).
+8. Do **directly connected** (non-introduced) identities get their baseline
+   grants through the Auto Connections system circle too, or through the
+   `connected` security group? Decides the internal rename of the surviving
+   SYSTEM circle (section 8).
+9. Confirm odin-core's current `connected` vs `autoconnected` ACL evaluation
+   order, and sweep existing ACLs when collapsing the tiers — which ones
+   re-target `connected(PERSONAL)`? (section 8)
 
 ---
 
