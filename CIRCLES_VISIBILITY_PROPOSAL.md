@@ -19,6 +19,9 @@ special photo for one circle) without adding complexity for normal use.
   doesn't clearly explain the consequence of adding someone to circles.
 - The Circles tab is mostly a flat list and doesn't strongly help users understand the
   value of circles.
+- At the ACL level, "Vetted" doesn't even enforce its promise: vetted profile
+  fields are secured to the `connected` security group, which the server grants
+  to **every** connection — unreviewed auto-connections included (section 8).
 
 ## 2. Proposed Mental Model (Simple & Consistent)
 
@@ -41,8 +44,9 @@ special photo for one circle) without adding complexity for normal use.
   about the relationship changed: the connection was exactly as real before you
   reviewed it. The review only records your decision.
 - **Chat is a grant too.** Chatting requires write access to your chat drive —
-  and New connections typically receive it the moment the connection forms
-  (without this, bootstrapping a chat network would be impractical). So
+  and New connections receive it the moment the connection forms, via the chat
+  app's auto-connect default circle (section 8; without this, bootstrapping a
+  chat network would be impractical). So
   New → Chat is promoted by the **review stamp**, not by any grant changing:
   "💬 Chat only" records your decision and may change nothing server-side. It
   also means an unreviewed stranger can already message you — New 👋 is the UI
@@ -110,9 +114,9 @@ kinds:
   uploads statements for your archive, a tax accountant. **Write-only in
   practice** — they deposit into your drives and see nothing of you. Neither
   intimate nor an audience, and often not even an individual.
-- **System circles** — not a relationship at all: **platform plumbing**. Carriers
-  of baseline/default grants (see the inventory in section 8). Hidden from every
-  circle UI in every app; never affect states.
+- **System circles** — not a relationship at all: **hidden per-app default
+  circles** (auto-connect and verified-connect enrollment — section 8). Never
+  shown in any circle UI, never a pill, never affect states.
 
 Every circle carries a **`PERSONAL | AUDIENCE | SERVICE | SYSTEM` designation** (an enum,
 not a boolean — and the spare room earned its keep within a week: service circles
@@ -213,7 +217,7 @@ forms above remain the shorthand for docs and marketing.
 | —                | **Personal circle**                  | Counts toward contact states; user-created circles default to it |
 | —                | **Audience circle**                  | Pure capability grant (e.g. Subscribers); never affects contact states |
 | —                | **Service circle**                   | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; surfaced by its owning app, invisible in this app |
-| —                | **System circle**                    | Platform plumbing (baseline grants); hidden from every circle UI, never affects states |
+| —                | **System circle**                    | Hidden per-app default circle (auto/verified enrollment); never in any circle UI, never affects states |
 
 ## 4. Proposed Changes by Screen
 
@@ -289,7 +293,8 @@ Combine the explanatory text and circle selection into **one clean modal**:
 >
 > - List of your circles with toggles/checkboxes
 > - Special permission circles (Emergency Location Access) stay visually distinct
-> - Connection defaults as visible toggles (e.g. "Follow their feed")
+> - Per-app default toggles (each app's verified-connect defaults, e.g. feed
+>   distribution — collapsed to a summary row by default) + "Follow their feed"
 >
 > **[ ⭕ Add to circles ]**  ← one big review button; label + emoji adapt to the
 > selection: with ≥ 1 circle selected it reads **⭕ Add to circles**, with none it
@@ -302,11 +307,12 @@ always name the destination state the tap will produce, not a judgment ("confirm
 survives only as the verb for completing a review):
 
 - **⭕ Add to circles** (≥ 1 circle selected) — applies the selected circles *and*
-  the connection defaults: whatever confirming enables today beyond circle grants
-  (e.g. follow their feed by default, accept introductions they relay, identity
-  verification — see open question 5). These defaults are shown as **visible
-  toggles in the modal**, not hidden side effects — hidden side effects are how
-  "Vetted" got confusing in the first place.
+  the checked per-app defaults. Each toggle is an app's `VERIFIED_CONNECT`
+  default circle or a per-connection setting — concretely: feed distribution,
+  accepting introductions they relay, shard-recovery participation (the list the
+  code inventory produced, section 8). These are **visible toggles in the
+  modal**, not hidden side effects — hidden side effects are how "Vetted" got
+  confusing in the first place.
 - **💬 Chat only** (no circles selected) — no circles granted. For the contact
   you'll talk to but don't want to endorse: the landlord, the seller, the
   introduction you're lukewarm about. Deselecting the last circle also flips the
@@ -399,8 +405,10 @@ the flexibility.
   is possible, so the Chat state survives across the user's devices
 - Coordinate with the in-progress app-owned circles backend so the
   `PERSONAL | AUDIENCE | SERVICE | SYSTEM` circle designation **and the optional
-  per-circle `emoji` field** land in that schema now (section 8) — retrofitting
-  after circles ship is far costlier
+  per-circle `emoji` field** land in that schema now (section 8). The enrollment
+  model (`Enrollment`, `AutoConnectDefaults`, deposit-only invariant, owner
+  toggle) is specified in odin-core's `docs/drive-addressing.md` (PR #1589) —
+  retrofitting any of it after circles ship is far costlier
 
 **Phase 2**
 
@@ -493,6 +501,10 @@ app's choice: this app's contact book derives states exclusively from `PERSONAL`
 circles and shows `AUDIENCE` only inside feed's subscriber management; `SERVICE`
 circles are invisible here and belong to whichever app owns them.
 
+The designation never participates in ACL evaluation — that role was considered
+and rejected (see *The `connected` ACL tier* below); it remains presentation and
+filtering only.
+
 **Why personal circles are the ones that count:** the state ladder measures
 **read access — what they can see of you** ("you are choosing what this person
 can see"). Write grants let people *give* you things (chat messages, receipts,
@@ -520,60 +532,90 @@ circles (📡 for Subscribers). Implementation cautions:
 
 ### System circles — inventory and disposition
 
-Exactly two system circles exist today (client constants in `AppConfig.kt`):
+Exactly two system circles exist today (client constants in `AppConfig.kt`;
+grants in odin-core's `CircleConstants.cs`). The code inventory showed their
+drive-grant bundles are **identical** — Write|React on the chat/lists/moments/
+mail/feed drives. Confirmed adds only: ShardRecovery write, the
+`AllowIntroductions` key, feed-distribution eligibility, optional
+ReadWhoIFollow/ReadConnections keys, and the right to be granted further circles
+(the 3010 lockout).
 
 | System circle | Today's role | Disposition |
 |---|---|---|
-| **Confirmed Connections** (`bb2683fa…`) | Membership = the server-computed `vetted` flag (#919); the target of "confirm" | **Retire.** Fully replaced by `connectionReviewedAt` + explicit personal circles. Mark it `SYSTEM` the moment the schema ships so new clients hide it during the deprecation window |
-| **Auto Connections** (`9e22b429…`) | Where introduced/auto-connected identities land; the carrier of their baseline grants — this is how "New connections already hold chat write" is implemented. Shown today in the Circles tab renamed "Unvetted", pinned to top | **Keep as plumbing, remove from UI.** Designate `SYSTEM`; the "New" filter chip replaces its user-facing role. Consider renaming internally to "Default connection grants" |
+| **Confirmed Connections** (`bb2683fa…`) | Membership = the server-computed `vetted` flag (#919); the target of "confirm" | **Dissolves** into per-app `VERIFIED_CONNECT` default circles plus explicit review-dialog toggles (enrollment model below) |
+| **Auto Connections** (`9e22b429…`) | Where auto-connected identities land; the carrier of their baseline grants — how "New connections already hold chat write" is implemented. Shown today in the Circles tab renamed "Unvetted" | **Dissolves** into per-app `AUTO_CONNECT` default circles. The "New" filter chip replaces its user-facing role |
 
-(`SecurityGroupType` — `anonymous / authenticated / connected / autoconnected /
-owner` — are ACL security groups, not circles; see the next subsection.)
+**The enrollment model.** Backend spec: `docs/drive-addressing.md` on odin-core
+PR #1589 — the single source of truth for the schema; this doc describes only
+client behavior. Each app declares default circles with an `Enrollment` marker:
 
-With `SYSTEM` in the schema, clients also get to delete their hardcoded
-knowledge of these two GUIDs (today's `circleSortRank()` pinning and the
-"Unvetted" display rename).
+- `AUTO_CONNECT` circles enroll on auto-connection with no owner action — gated
+  by a standing per-app toggle in the owner console (the app declares, the owner
+  disposes). Bound by the **deposit-only invariant**: write/react grants only,
+  no read beyond public, no permission keys.
+- `VERIFIED_CONNECT` circles enroll when the owner completes the connection
+  review — the per-app toggles in section 4C's modal. These may carry read
+  grants: **the review is the key ceremony**, the moment read-bearing grants can
+  be minted.
 
-Retiring Confirmed Connections raises three migration items:
+Consequence for the ladder: New 👋 and Chat 💬 hold zero read keys **by
+construction** — "the states measure read access" upgrades from rationale to
+enforced property. These default circles are designated `SYSTEM` (hidden from
+every circle UI, never a pill, never a state), and clients get to delete their
+hardcoded GUID knowledge (today's `circleSortRank()` pinning and the "Unvetted"
+display rename).
 
-1. **Grant inventory** — whatever the Confirmed circle grants today beyond
-   membership must be enumerated; each grant either becomes an explicit default
-   toggle in the review modal or dies. This is open question 5 in concrete form.
-2. **Profile-field ACLs** — today's "Vetted" profile section is presumably
-   secured *to* the Confirmed circle. Those fields must be re-secured to the new
-   "any of my circles" semantics (see `connected(PERSONAL)` below), or
-   vetted-visible fields silently go dark when the circle retires.
-3. **Baseline carrier for direct connections** — confirm whether directly
-   connected (non-introduced) identities get their baseline grants through Auto
-   Connections too, or through the `connected` security group. The answer decides
-   what the surviving SYSTEM circle's rename should claim (open question 8).
+Migration items:
 
-### The connected ACL tier — collapse and qualify
+1. ~~Grant inventory~~ — **done** (the delta list above); each Confirmed extra
+   becomes an explicit review toggle (feed distribution, introductions) or a
+   deliberate grant (shard recovery).
+2. **Profile-field ACLs** — today's "Vetted" fields are ACL'd to the bare
+   `connected` security group, not to the Confirmed circle. They must be
+   re-secured as app-maintained personal-circle ACLs (next subsection).
+3. ~~Baseline carrier for direct connections~~ — **answered** by the inventory:
+   both origins route through the system circles (`CircleNetworkUtils`); under
+   enrollment the question dissolves — a manual accept goes through the review,
+   an auto-accept uses the enabled `AUTO_CONNECT` set.
 
-`SecurityGroupType.autoconnected` exists to distinguish auto-connected
-identities from confirmed ones **at the ACL level** — precisely the
-confirmed-vs-not distinction this proposal retires (review is a stamp, not a
-grant change). So collapse it: **there is just `connected`**.
+### The `connected` ACL tier — retire it
 
-Replace the lost expressiveness with something better — **designation-qualified
-connected**: `connected(PERSONAL)` / `connected(AUDIENCE)` / `connected(SERVICE)`,
-meaning "any connection in at least one circle of that designation", evaluated
-dynamically at access time. UX reading: *"My birthday is visible to*
-**connected — personal**.*"*
+What the code inventory established (odin-core `DriveAclAuthorizationService`):
+`Connected` and `AutoConnected` ACLs are evaluated as **one case**, and no caller
+is ever stamped `autoconnected` — a `connected` ACL admits **every** connection,
+unreviewed auto-connections included. The tier never enforced what its label
+promised (hence the bullet in section 1), and `autoconnected` as an ACL value is
+accidental semantics: it silently disables feed distribution and mis-buckets
+result priority.
 
-- This is the ACL-level realization of the visibility picker's **"Any of my
-  circles"**: because it's evaluated against the designation, a personal circle
-  created next year is included automatically — unlike an enumerated
-  `circleIdList`, which snapshots and goes stale.
-- **Consequence:** the designation stops being pure presentation and joins the
-  access-control model. Re-designating a circle changes who can see
-  designation-qualified content — so the designation should be **immutable after
-  creation**, or a change must be treated as an ACL-affecting operation.
-- **Migration:** existing ACLs referencing `autoconnected`, and existing
-  `connected` ACLs whose real intent was "confirmed connections only", need a
-  sweep — most re-target `connected(PERSONAL)`. Confirm odin-core's current
-  `connected` vs `autoconnected` evaluation order as part of this (open
-  question 9).
+Decision:
+
+- **Retire both as ACL targets.** No user-facing surface offers "connected" as
+  an audience again; `autoconnected` is deleted outright.
+- The literal string `connected` survives on the wire **only as the carrier of
+  circle-scoped ACLs** (`requiredSecurityGroup: connected` + `circleIdList` is
+  how every circle ACL is already encoded) — retiring the *bare* form needs no
+  wire change and no file migration.
+- **The perimeter is untouched.** `Caller.IsConnected` checks (inbox push, peer
+  websocket, transit) test the wire, not a read audience.
+- **"Any of my circles" becomes an app-maintained enumerated ACL.** Setting a
+  field to "Any of my circles" writes the concrete list of personal circles this
+  app manages and tags the attribute (in app data) as meaning-any; creating or
+  deleting a circle reconciles every tagged attribute. Fail-closed: if
+  reconciliation lags, a new circle temporarily *doesn't* see the field —
+  instead of a stranger temporarily seeing it.
+- Legacy mapping is behavior-identical: existing bare-`connected` files read as
+  "member of any `AUTO_CONNECT` circle" — the same admit set the evaluator
+  produces today.
+
+**Rejected alternative — recorded so it isn't reinvented:** a
+designation-qualified tier (`connected(PERSONAL)`: "any connection in at least
+one PERSONAL circle", evaluated dynamically). Attractive because it never goes
+stale; rejected because it is **ambient authority resting on a distributed
+judgment** — any app that ever registers a mis-designated circle silently widens
+every ACL referencing the qualifier. A global predicate cannot be built on
+per-app semantics. The enumerated-and-reconciled form keeps the semantics inside
+the app that owns them, and fails closed.
 
 ### Audience circles at scale
 
@@ -610,14 +652,12 @@ removal, or the address book slowly accretes ex-subscribers.
    or only from the Circles tab?
 4. Should Chat (no circles) contacts show a subtle 💬 indicator, or no
    indicator at all? (The circle badge is reserved for circle membership either way.)
-5. **What does confirming actually grant server-side today, beyond Confirmed
-   Connections membership?** Candidates: identity verification
-   (`hasVerificationHash`), accepting future introductions relayed by this person,
-   following their feed by default. This decides what the defaults strip in the
-   review modal contains — if confirming grants nothing beyond the selected
-   circles, the strip disappears entirely (the adaptive button is unaffected).
-   Note: since New connections already receive chat-drive write when the
-   connection forms (section 8), "nothing" is a plausible answer.
+5. ~~What does confirming actually grant server-side today?~~ **Resolved by the
+   code inventory** (section 8): ShardRecovery write, `AllowIntroductions`,
+   feed-distribution eligibility, optional ReadWhoIFollow/ReadConnections, and
+   lifting the auto-connected circle lockout (3010). Each becomes an explicit
+   review toggle or a deliberate grant; the defaults strip shows the per-app
+   verified-connect defaults.
 6. **Which state-name set wins — New / Chat / Circle or New / Known / Trusted?**
    And with it, the emoji/icon triple (👋 💬 ⭕ vs 👋 🤝 🛡️). See section 3 for
    the trade-offs. The audience case (section 2) is a concrete strike against
@@ -626,13 +666,14 @@ removal, or the address book slowly accretes ex-subscribers.
    the contact book (a search mode / separate tab) or under settings/security?
    It must show every connected identity with the union of its grants (personal
    and audience), paged from the server (section 8).
-8. Do **directly connected** (non-introduced) identities get their baseline
-   grants through the Auto Connections system circle too, or through the
-   `connected` security group? Decides the internal rename of the surviving
-   SYSTEM circle (section 8).
-9. Confirm odin-core's current `connected` vs `autoconnected` ACL evaluation
-   order, and sweep existing ACLs when collapsing the tiers — which ones
-   re-target `connected(PERSONAL)`? (section 8)
+8. ~~Baseline carrier for direct connections?~~ **Resolved** — both origins route
+   through the system circles today (`CircleNetworkUtils`); under enrollment the
+   question dissolves: a manual accept goes through the review, an auto-accept
+   uses the enabled `AUTO_CONNECT` set (section 8).
+9. ~~Confirm the `connected` vs `autoconnected` evaluation order and plan the ACL
+   sweep.~~ **Resolved** — the evaluator folds both into one case and never
+   stamps callers `autoconnected`; legacy bare-`connected` maps
+   behavior-identically to "member of any `AUTO_CONNECT` circle" (section 8).
 
 ---
 
