@@ -592,6 +592,44 @@ app chose. If an app designates its verified default `PERSONAL` (e.g. feed
 distribution as a personal grant), its review toggle *is* a circle selection —
 enrolling it yields ⭕, and the adaptive button must count it.
 
+**Verified circles are additive deltas — the review never revokes.** A verified
+circle carries only the extras beyond its app's auto circle, never a copy of it;
+auto-circle membership persists for the connection's lifetime (which is what
+keeps the "Chat-only" identity and the soft mute intact). Today's system circles
+are the cautionary fossil of the superset design: five of six drive grants
+duplicated verbatim, with the real content of "confirmed" being a three-item
+delta. Under the delta rule, forgetting a grant can never downgrade someone you
+just approved.
+
+#### Proposed default circles per app
+
+For Todd and Bishwa — a starting decomposition of today's system-circle bundle
+(`CircleConstants.cs`) into per-app defaults. Circle names are placeholders;
+each app owner confirms their row:
+
+| App | `AUTO_CONNECT` default (deposit-only) | `VERIFIED_CONNECT` default (delta only) | Today's source |
+|---|---|---|---|
+| **Chat** | **"Chat-only"** — ChatDrive Write\|React | none | both system circles grant it |
+| **Mail** | Mail default — MailDrive Write\|React | none | both system circles |
+| **Lists** | Lists default — ListsDrive Write\|React | none | both system circles (today granted via the chat app registration — owning app TBD) |
+| **Moments** | Moments default — MomentsDrive Write\|React (reactions/comments deposit) | none — sharing targets personal circles as member lists | both system circles |
+| **Feed** | Feed default — FeedDrive Write\|React (their posts land in my feed) + Read on the anonymous-read channel drives (invariant carve-out) | **"Secured feed"** — distribution eligibility for my circle-secured posts (read-shaped, hence review-gated) | baseline: both circles; distribution: Confirmed-only (`FeedDriveDistributionRouter`) |
+| **Profile** | Profile default — Read + storage keys on the anonymous-read ProfileDrive | none — profile's review-time grants *are* the user's personal circles, chosen per contact, not a default | dynamic `HandleDriveAdded` grants; V9→V10 backfill |
+| **Contacts / Connections** | none | **"Introductions"** — `AllowIntroductions` key; plus `ReadConnections` / `ReadWhoIFollow` when the tenant settings enable them (a key-carrying circle — open question 6 on PR #1589) | Confirmed-only keys today |
+| **Location** | none | none — Emergency Location Access is a user-created PERSONAL circle owned by the location app: deliberate assignment, never a default | — |
+| **Stickers, Wallet** | none | none | no connection grants today |
+
+Not in the table, on purpose: **ShardRecovery** Write (today Confirmed-only) is
+not a review default — trusted shard holders are a deliberate per-person
+selection in security settings, not a toggle you leave checked; and the
+**TransientTempDrive** Write + `UseTransitWrite` grant is minted per connected
+YouAuth context, not via circles, and stays that way.
+
+Sanity check the table gives us: summing the `AUTO_CONNECT` column reproduces
+today's Auto Connections bundle exactly, and the `VERIFIED_CONNECT` column plus
+the two deliberate exclusions reproduces the Confirmed delta — nothing gained,
+nothing lost, just decomposed to its owners.
+
 Migration items:
 
 1. ~~Grant inventory~~ — **done** (the delta list above); each Confirmed extra
