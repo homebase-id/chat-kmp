@@ -338,6 +338,14 @@ Either way the tap completes the review (stamps `connectionReviewedAt`, section 
 and moves the contact out of New — into **Circle** ⭕ or **Chat** 💬, exactly as
 the label promised.
 
+**Foreign-app toggles complete asynchronously.** A checked toggle for an app whose
+keys this client doesn't hold (a third-party vendor app; any app outside this
+suite) can't mint its read grants in-process — the decision is recorded and
+queued, and that app enrolls the contact the next time it runs (backend:
+*Cross-app verified enrollment*, `connection-defaults.md` on odin-core PR #1589).
+Until then the toggle shows a **pending** state — checked but not yet active — so
+the dialog never claims access that doesn't exist yet.
+
 **👋 Keep as new** replaces "Cancel": it dismisses the review without stamping
 anything — the contact stays New, exactly as the label says. With that, every
 labeled exit from the review names the state it leaves the contact in
