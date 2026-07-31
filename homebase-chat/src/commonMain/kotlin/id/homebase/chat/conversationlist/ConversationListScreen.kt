@@ -16,6 +16,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDragHandle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.input.pointer.pointerInput
@@ -85,14 +86,25 @@ import id.homebase.resources.chat_message_discard_draft
 import id.homebase.resources.chat_conversation_deleting_in_progress
 import id.homebase.resources.chat_introduce_preflight_body
 import id.homebase.resources.chat_introduce_preflight_bullet
+import id.homebase.resources.chat_introduce_preflight_check_again
+import id.homebase.resources.chat_introduce_preflight_reason_certificate_invalid
+import id.homebase.resources.chat_introduce_preflight_reason_connection_refused
+import id.homebase.resources.chat_introduce_preflight_reason_needs_repair
 import id.homebase.resources.chat_introduce_preflight_reason_not_configured
+import id.homebase.resources.chat_introduce_preflight_reason_not_confirmed
 import id.homebase.resources.chat_introduce_preflight_reason_not_connected
 import id.homebase.resources.chat_introduce_preflight_reason_not_permitted
+import id.homebase.resources.chat_introduce_preflight_reason_not_recognized
+import id.homebase.resources.chat_introduce_preflight_reason_not_supported
 import id.homebase.resources.chat_introduce_preflight_reason_ready
 import id.homebase.resources.chat_introduce_preflight_reason_rejected
 import id.homebase.resources.chat_introduce_preflight_reason_requires_upgrade
+import id.homebase.resources.chat_introduce_preflight_reason_sender_connection_invalid
+import id.homebase.resources.chat_introduce_preflight_reason_timed_out
 import id.homebase.resources.chat_introduce_preflight_reason_unknown
 import id.homebase.resources.chat_introduce_preflight_reason_unreachable
+import id.homebase.resources.chat_introduce_preflight_reason_unresolvable
+import id.homebase.resources.chat_introduce_preflight_reason_upgrade_in_progress
 import id.homebase.resources.chat_introduce_preflight_send_anyway
 import id.homebase.resources.chat_introduce_preflight_skip_and_send
 import id.homebase.resources.chat_introduce_preflight_title
@@ -489,6 +501,14 @@ fun ConversationListScreen(
                         )
                     )
                 },
+                onCheckAgain = {
+                    viewModel.onAction(
+                        ConversationListUiAction.IntroduceRetryPreflight(
+                            conversationId = dialog.conversationId,
+                            message = dialog.message,
+                        )
+                    )
+                },
                 onCancel = {
                     viewModel.onAction(ConversationListUiAction.IntroduceCancel)
                 },
@@ -567,6 +587,9 @@ private fun InFlightOperationOverlay(label: org.jetbrains.compose.resources.Stri
  * "Send anyway" still passes the FULL original recipient list to the server —
  * preflight is advisory; the server's outbox retries the actual failures in the
  * background.
+ *
+ * A fourth, conditional affordance ("Check again") appears inline under the list
+ * when any entry is retryable; it re-runs preflight rather than sending.
  */
 @Composable
 private fun IntroducePreflightDialog(
@@ -574,6 +597,7 @@ private fun IntroducePreflightDialog(
     nameFor: (id.homebase.api.common.OdinId) -> String,
     onSendAnyway: () -> Unit,
     onSendReadyOnly: () -> Unit,
+    onCheckAgain: () -> Unit,
     onCancel: () -> Unit,
 ) {
     val nonReady = dialog.result.nonReady
@@ -608,17 +632,10 @@ private fun IntroducePreflightDialog(
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 nonReady.forEach { entry ->
                     val name = nameFor(entry.recipient)
+                    // `entry.detail` is deliberately NOT rendered — it carries raw
+                    // server/exception text and is for logs and support only
+                    // (ConnectionIntroductionProvider already logs the full row).
                     val reason = stringResource(entry.status.reasonResource(), name)
-                    val text = if (entry.status ==
-                        id.homebase.api.client.connections.IntroductionPreflightStatus.UnknownError
-                        && !entry.detail.isNullOrBlank()
-                    ) {
-                        // Splice in server detail as a fallback when the per-status
-                        // string is too generic. Format: "<base> <detail>".
-                        "$reason ${entry.detail}"
-                    } else {
-                        reason
-                    }
                     // Build the bullet-prefixed line via stringResource so the
                     // bullet character itself is localized (and so the line we
                     // pass to Text below is an identifier, not a literal — the
@@ -626,7 +643,7 @@ private fun IntroducePreflightDialog(
                     // literals at the Text call site).
                     val bulletLine = stringResource(
                         MR.string.chat_introduce_preflight_bullet,
-                        text,
+                        reason,
                     )
                     Text(
                         text = bulletLine,
@@ -635,13 +652,37 @@ private fun IntroducePreflightDialog(
                         modifier = Modifier.padding(vertical = 4.dp),
                     )
                 }
+                // Retry is offered on the aggregate `canRetry` (server's IsTransient,
+                // falling back to the per-status default) — never on specific status
+                // values, so a status we don't know yet still gets the right
+                // affordance. Statuses that need a human to act first (permission not
+                // granted, connection unconfirmed, connection broken) are not
+                // retryable and deliberately show no button: the copy is the remedy.
+                if (dialog.result.hasRetryableRecipient) {
+                    TextButton(
+                        onClick = onCheckAgain,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text(text = stringResource(MR.string.chat_introduce_preflight_check_again))
+                    }
+                }
             }
         }
     }
 }
 
 /** Maps a preflight status to its localized per-recipient reason string. The
- *  caller passes the recipient's display name as the format arg `%1$s`. */
+ *  caller passes the recipient's display name as the format arg `%1$s`.
+ *
+ *  Wording only — the dialog's *affordances* come from
+ *  [id.homebase.api.client.connections.RecipientPreflightStatus.canRetry] and
+ *  `effectiveRemedyActor`, so an unrecognized future status still behaves
+ *  sensibly. Shared with the group-settings inline label
+ *  (`introductionPreflightInlineLabel`) so both surfaces always say the same
+ *  thing about the same status.
+ *
+ *  ONLY [IntroductionsNotPermitted] may render as "doesn't allow introductions
+ *  from you" — it is the sole status that reflects a decision by the recipient. */
 private fun id.homebase.api.client.connections.IntroductionPreflightStatus.reasonResource():
     org.jetbrains.compose.resources.StringResource = when (this) {
     id.homebase.api.client.connections.IntroductionPreflightStatus.Ready ->
@@ -659,6 +700,30 @@ private fun id.homebase.api.client.connections.IntroductionPreflightStatus.reaso
         MR.string.chat_introduce_preflight_reason_rejected
     id.homebase.api.client.connections.IntroductionPreflightStatus.Unreachable ->
         MR.string.chat_introduce_preflight_reason_unreachable
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientConnectionNotConfirmed ->
+        // A pending step, not a refusal and not an error — see the string.
+        MR.string.chat_introduce_preflight_reason_not_confirmed
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientDoesNotRecognizeConnection ->
+        // Also the blocked case; worded identically to the other broken-connection
+        // states so a block stays indistinguishable from a stale record.
+        MR.string.chat_introduce_preflight_reason_not_recognized
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientConnectionNeedsRepair ->
+        MR.string.chat_introduce_preflight_reason_needs_repair
+    id.homebase.api.client.connections.IntroductionPreflightStatus.SenderConnectionInvalid ->
+        // Our fault, not theirs — the string says "your saved connection details".
+        MR.string.chat_introduce_preflight_reason_sender_connection_invalid
+    id.homebase.api.client.connections.IntroductionPreflightStatus.PreflightNotSupported ->
+        MR.string.chat_introduce_preflight_reason_not_supported
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientUpgradeInProgress ->
+        MR.string.chat_introduce_preflight_reason_upgrade_in_progress
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientUnresolvable ->
+        MR.string.chat_introduce_preflight_reason_unresolvable
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientCertificateInvalid ->
+        MR.string.chat_introduce_preflight_reason_certificate_invalid
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientTimedOut ->
+        MR.string.chat_introduce_preflight_reason_timed_out
+    id.homebase.api.client.connections.IntroductionPreflightStatus.RecipientConnectionRefused ->
+        MR.string.chat_introduce_preflight_reason_connection_refused
     id.homebase.api.client.connections.IntroductionPreflightStatus.UnknownError ->
         MR.string.chat_introduce_preflight_reason_unknown
 }

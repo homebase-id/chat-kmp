@@ -1325,6 +1325,8 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.IntroduceSendReadyOnly -> conversationLifecycleHandler.handleIntroduceSendReadyOnly(action)
 
+            is ConversationListUiAction.IntroduceRetryPreflight -> conversationLifecycleHandler.handleIntroduceRetryPreflight(action)
+
             is ConversationListUiAction.IntroduceCancel -> conversationLifecycleHandler.handleIntroduceCancel()
 
             is ConversationListUiAction.ArchiveConversation -> conversationLifecycleHandler.handleArchiveConversation(action)
