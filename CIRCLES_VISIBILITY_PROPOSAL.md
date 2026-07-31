@@ -607,13 +607,16 @@ For Todd and Bishwa — a starting decomposition of today's system-circle bundle
 (`CircleConstants.cs`) into per-app defaults. Circle names are placeholders;
 each app owner confirms their row:
 
+(Write+React below = `DrivePermission.Write | React`. **React is a deposit** —
+writing an emoji reaction — not a read; the deposit-only invariant holds.)
+
 | App | `AUTO_CONNECT` default (deposit-only) | `VERIFIED_CONNECT` default (delta only) | Today's source |
 |---|---|---|---|
-| **Chat** | **"Chat-only"** — ChatDrive Write\|React | none | both system circles grant it |
-| **Mail** | Mail default — MailDrive Write\|React | none | both system circles |
-| **Lists** | Lists default — ListsDrive Write\|React | none | both system circles (today granted via the chat app registration — owning app TBD) |
-| **Moments** | Moments default — MomentsDrive Write\|React (reactions/comments deposit) | none — sharing targets personal circles as member lists | both system circles |
-| **Feed** | Feed default — FeedDrive Write\|React (their posts land in my feed) + Read on the anonymous-read channel drives (invariant carve-out) | **"Secured feed"** — distribution eligibility for my circle-secured posts (read-shaped, hence review-gated) | baseline: both circles; distribution: Confirmed-only (`FeedDriveDistributionRouter`) |
+| **Chat** | **"Chat-only"** — ChatDrive Write+React | none | both system circles grant it |
+| **Mail** | Mail default — MailDrive Write+React | none | both system circles |
+| **Lists** | Lists default — ListsDrive Write+React | none | both system circles (today granted via the chat app registration — owning app TBD) |
+| **Moments** | Moments default — MomentsDrive Write+React (reactions/comments deposit) | none — sharing targets personal circles as member lists | both system circles |
+| **Feed** | Feed default — FeedDrive Write+React (their posts land in my feed) + Read on the anonymous-read channel drives (invariant carve-out) | no fixed circle — the feed app creates an **AUDIENCE circle per encrypted channel drive** (its read grant *is* the subscription); the review's feed toggle enrolls the contact into the channel(s) the owner shares by default. Distribution eligibility = membership in the channel's audience circle | baseline: both circles; distribution: Confirmed-only (`FeedDriveDistributionRouter`) → becomes per-channel audience membership |
 | **Profile** | Profile default — Read + storage keys on the anonymous-read ProfileDrive | none — profile's review-time grants *are* the user's personal circles, chosen per contact, not a default | dynamic `HandleDriveAdded` grants; V9→V10 backfill |
 | **Contacts / Connections** | none | **"Introductions"** — `AllowIntroductions` key; plus `ReadConnections` / `ReadWhoIFollow` when the tenant settings enable them (a key-carrying circle — open question 6 on PR #1589) | Confirmed-only keys today |
 | **Location** | none | none — Emergency Location Access is a user-created PERSONAL circle owned by the location app: deliberate assignment, never a default | — |
