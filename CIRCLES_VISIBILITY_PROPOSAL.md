@@ -421,7 +421,7 @@ the flexibility.
   `PERSONAL | AUDIENCE | VENDOR` circle designation **and the optional
   per-circle `emoji` field** land in that schema now (section 8). The enrollment
   model (`Enrollment`, `AutoConnectDefaults`, deposit-only invariant, owner
-  toggle) is specified in odin-core's `docs/drive-addressing.md` (PR #1589) —
+  toggle) is specified in odin-core's `docs/connection-defaults.md` (PR #1589) —
   retrofitting any of it after circles ship is far costlier
 
 **Phase 2**
@@ -559,9 +559,10 @@ ReadWhoIFollow/ReadConnections keys, and the right to be granted further circles
 | **Confirmed Connections** (`bb2683fa…`) | Membership = the server-computed `vetted` flag (#919); the target of "confirm" | **Dissolves** into per-app `VERIFIED_CONNECT` default circles plus explicit review-dialog toggles (enrollment model below) |
 | **Auto Connections** (`9e22b429…`) | Where auto-connected identities land; the carrier of their baseline grants — how "New connections already hold chat write" is implemented. Shown today in the Circles tab renamed "Unvetted" | **Dissolves** into per-app `AUTO_CONNECT` default circles. The "New" filter chip replaces its user-facing role |
 
-**The enrollment model.** Backend spec: `docs/drive-addressing.md` on odin-core
-PR #1589 — the single source of truth for the schema; this doc describes only
-client behavior. Each app declares default circles with an `Enrollment` marker:
+**The enrollment model.** Backend spec: `docs/connection-defaults.md` on odin-core
+PR #1589 (split out beside `drive-addressing.md`, which carries only the dormant
+schema columns) — the single source of truth for the server behavior; this doc
+describes only the client side. Each app declares default circles with an `Enrollment` marker:
 
 - `AUTO_CONNECT` circles enroll on auto-connection with no owner action — gated
   by a standing per-app toggle in the owner console (the app declares, the owner
