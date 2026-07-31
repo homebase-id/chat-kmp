@@ -97,7 +97,7 @@ or with no connection at all:
   store, exactly as today. Caching a followed channel's public profile stays the
   feed app's concern, in the feed app's tables.
 
-### Kinds of circles — personal, audience, service
+### Kinds of circles — personal, audience, vendor
 
 Circles are the single grant primitive, but they serve distinct relationship
 kinds:
@@ -109,7 +109,7 @@ kinds:
 - **Audience circles** — pure capability, no intimacy claim: **Subscribers** is
   just a circle whose grant is read access to the feed drive — that *is* the
   encrypted-feed subscription. Membership means "customer", not "confidant".
-- **Service circles** — vendor and institution relationships: the hotel or
+- **Vendor circles** — vendor and institution relationships: the hotel or
   airline that writes purchase history into your Receipts drive, the bank that
   uploads statements for your archive, a tax accountant. **Write-only in
   practice** — they deposit into your drives and see nothing of you. Neither
@@ -128,8 +128,8 @@ their rendering keys off `Enrollment`. They never show as pills and never affect
 states; they surface in the Circles tab as a visibly-distinct group (member
 list, owner toggle, read-only grants).
 
-Every circle carries a **`PERSONAL | AUDIENCE | SERVICE` designation** (an enum,
-not a boolean — and the spare room earned its keep within a week: service circles
+Every circle carries a **`PERSONAL | AUDIENCE | VENDOR` designation** (an enum,
+not a boolean — and the spare room earned its keep within a week: vendor circles
 were discovered during review of this very proposal), set by the owning app when
 it registers the circle. This rides the in-progress backend work where circles and
 drives belong to an app; note the designation is **per-circle, not per-app** — the
@@ -138,10 +138,10 @@ location app owns a personal circle while the feed app owns an audience one.
 **In this app, contact states derive from personal circles only.** The
 derivation is a presentation rule scoped to the Homebase Chat KMP app (profile,
 contacts, feed, chat, moments — maybe someday photos), not a protocol rule: each
-app surfaces the circle kinds it owns and cares about. A service circle (bank →
+app surfaces the circle kinds it owns and cares about. A vendor circle (bank →
 Receipts drive) doesn't merely "not count" here — it doesn't **appear** in this
 app's UI at all, neither as a state nor as a pill; displaying it is the owning
-app's concern. Audience or service membership never awards ⭕ — your bank must
+app's concern. Audience or vendor membership never awards ⭕ — your bank must
 not render as a Circle contact. If an audience member needs a label anywhere in
 this app (feed's Subscribers management), it's the circle's own name, which
 claims nothing socially. This is also the strongest
@@ -226,7 +226,7 @@ forms above remain the shorthand for docs and marketing.
 | —                | **Any of my circles**                | New easy default in visibility picker |
 | —                | **Personal circle**                  | Counts toward contact states; user-created circles default to it |
 | —                | **Audience circle**                  | Pure capability grant (e.g. Subscribers); never affects contact states |
-| —                | **Service circle**                   | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; surfaced by its owning app, invisible in this app |
+| —                | **Vendor circle**                    | Vendor/institution grants (e.g. bank → Receipts drive); write-only in practice; surfaced by its owning app, invisible in this app |
 | —                | **App default circle**               | Auto-/verified-connect enrollment (section 8); renders via the state slot and review toggles, never a pill; visible in the Circles tab as a distinct group |
 
 ## 4. Proposed Changes by Screen
@@ -286,7 +286,7 @@ Replace the current **Public / Vetted** segmented control with:
 - Below: Pick a circle.
 - User can select "Any of my circles" (default )**or** pick one or more specific circles.
 
-These are likely personal circles, probably not audience or service circles —
+These are likely personal circles, probably not audience or vendor circles —
 the visibility picker should list personal circles by default.
 
 This single pattern supports both simple use and the advanced "special beer drinking
@@ -418,7 +418,7 @@ the flexibility.
   completes (see section 8) — required as soon as a chat-only review outcome
   is possible, so the Chat state survives across the user's devices
 - Coordinate with the in-progress app-owned circles backend so the
-  `PERSONAL | AUDIENCE | SERVICE` circle designation **and the optional
+  `PERSONAL | AUDIENCE | VENDOR` circle designation **and the optional
   per-circle `emoji` field** land in that schema now (section 8). The enrollment
   model (`Enrollment`, `AutoConnectDefaults`, deposit-only invariant, owner
   toggle) is specified in odin-core's `docs/drive-addressing.md` (PR #1589) —
@@ -502,17 +502,17 @@ the New → Chat transition usually changes **no grants at all** — it is purel
 question 5: confirming may grant literally nothing beyond the selected circles,
 making the review a pure client-side record.
 
-### The `PERSONAL | AUDIENCE | SERVICE` designation
+### The `PERSONAL | AUDIENCE | VENDOR` designation
 
 Rides the in-progress backend work where circles and drives belong to an app: the
 circle registration record carries the designation, set by the owning app, with
 user-created circles minted under the profile app and defaulting to `PERSONAL`. An enum, not a boolean — history
 (the Confirmed Connections system circle) said new circle kinds would appear, and
-`SERVICE` was discovered during review of this very proposal, before the schema
+`VENDOR` was discovered during review of this very proposal, before the schema
 even shipped. The **shared** piece is the designation on the circle record —
 every client can filter consistently. Which kinds an app *surfaces* is that
 app's choice: this app's contact book derives states exclusively from `PERSONAL`
-circles and shows `AUDIENCE` only inside feed's subscriber management; `SERVICE`
+circles and shows `AUDIENCE` only inside feed's subscriber management; `VENDOR`
 circles are invisible here and belong to whichever app owns them.
 
 The designation never participates in ACL evaluation — that role was considered
