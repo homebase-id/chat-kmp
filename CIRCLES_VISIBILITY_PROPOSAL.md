@@ -1,10 +1,10 @@
-# Proposal: Simplifying Circles, Connection Confirmation & Profile Visibility (3/3)
+# Proposal: Simplifying Circles, Connection Confirmation & Profile Visibility (4/4)
 
 **Prepared for:** Team discussion
 **Date:** July 11, 2026
 **Status:** Draft for feedback
 
-previous doc: odin-core PR#1589 docs/connection-defaults.md
+previous doc: odin-core PR#1589 docs/weak-key-retirement.md
 
 **Goal:** Make circles intuitive, remove confusion around "Vetted", give users clear
 control over what they share, and support advanced per-circle customization (e.g. a
