@@ -51,6 +51,7 @@ import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.core.ui.screens.moments.widget.MomentDateChip
 import id.homebase.core.ui.screens.moments.widget.MomentDescriptionField
 import id.homebase.core.ui.screens.moments.widget.MomentImageInfoChip
+import id.homebase.core.util.contentType
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_add_gallery_image
@@ -61,7 +62,6 @@ import id.homebase.resources.moments_compose_title
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import io.github.vinceglb.filekit.mimeType
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -119,7 +119,7 @@ fun MomentComposeScreen(
     ) { files ->
         if (files.isNullOrEmpty()) return@rememberFilePickerLauncher
         val pending = files.map { f ->
-            val ct = f.mimeType()?.toString().orEmpty()
+            val ct = f.contentType()
             if (ct.startsWith("video/")) {
                 AttachmentPendingFile.FileVideo(Uuid.generateV7(), f, thumbnailBytes = null)
             } else {
@@ -141,7 +141,7 @@ fun MomentComposeScreen(
 
     val cameraLauncher = rememberCameraManager { file ->
         file?.let {
-            val ct = it.mimeType()?.toString().orEmpty()
+            val ct = it.contentType()
             val pending = if (ct.startsWith("video/")) {
                 AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes = null)
             } else {
