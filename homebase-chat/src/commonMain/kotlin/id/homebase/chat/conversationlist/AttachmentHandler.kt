@@ -11,6 +11,7 @@ import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.util.contentType
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.removeBackground
 import id.homebase.chat.services.image.warmUpBackgroundRemoval
@@ -123,7 +124,7 @@ internal class AttachmentHandler(
                 val newFiles = action.files.map { picked ->
                     // Read the type off the PICKED handle first — the copy below is a plain file
                     // whose extension-less photo-picker name resolves to octet-stream (#1149).
-                    val ct = picked.pickedContentType()
+                    val ct = picked.contentType()
                     // Copy the picked file into the sandbox NOW, while the picker's iOS
                     // security scope is still live. The send path later reads the file by
                     // path from a separate coroutine, where a path-rebuilt NSURL has no

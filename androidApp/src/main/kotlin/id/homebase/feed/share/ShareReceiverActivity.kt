@@ -73,12 +73,12 @@ import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.contentType
 import id.homebase.feed.MainActivity
 import id.homebase.feed.R
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -239,8 +239,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 type = FileKitType.ImageAndVideo
             ) { file ->
                 file?.let {
-                    val mimeType = it.mimeType()?.toString() ?: ""
-                    val pending = if (mimeType.startsWith("video/")) {
+                    val pending = if (it.contentType().startsWith("video/")) {
                         AttachmentPendingFile.FileVideo(Uuid.random(), it)
                     } else {
                         AttachmentPendingFile.FileImage(Uuid.random(), it)
@@ -755,17 +754,19 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                         when (attachment) {
                             is AttachmentPendingFile.FileImage -> AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString() ?: "image/jpeg",
+                                contentType = attachment.file.contentType()
+                                    .takeUnless { it == "application/octet-stream" } ?: "image/jpeg",
                                 displayName = attachment.file.name,
                             )
                             is AttachmentPendingFile.FileVideo -> AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString() ?: "video/mp4",
+                                contentType = attachment.file.contentType()
+                                    .takeUnless { it == "application/octet-stream" } ?: "video/mp4",
                                 displayName = attachment.file.name,
                             )
                             is AttachmentPendingFile.File -> AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString() ?: "application/octet-stream",
+                                contentType = attachment.file.contentType(),
                                 displayName = attachment.file.name,
                             )
                             is AttachmentPendingFile.Gallery -> AttachmentInput(

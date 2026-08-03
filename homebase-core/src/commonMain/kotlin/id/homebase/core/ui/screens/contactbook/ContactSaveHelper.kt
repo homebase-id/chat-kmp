@@ -14,10 +14,8 @@ import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
-import id.homebase.core.util.resolveContentType
+import id.homebase.core.util.contentType
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.mimeType
-import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -217,7 +215,7 @@ private suspend fun uploadContactPhoto(
         return false
     }
     if (bytes.isEmpty()) return false
-    val contentType = resolveContentType(photo.name, photo.mimeType()?.toString())
+    val contentType = photo.contentType()
     return repo.setImage(
         uniqueId = uniqueId,
         bytes = bytes,
