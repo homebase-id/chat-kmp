@@ -17,4 +17,7 @@ object ChatBubbleTestTags {
 
     /** The tucked timestamp text of the inline (non-block) text bubble. */
     const val TIMESTAMP = "chat.bubble.timestamp"
+
+    /** The quoted body text inside the inline reply preview. */
+    const val REPLY_QUOTE_TEXT = "chat.bubble.reply.quote"
 }
