@@ -23,7 +23,8 @@ special photo for one circle) without adding complexity for normal use.
   value of circles.
 - At the ACL level, "Vetted" doesn't even enforce its promise: vetted profile
   fields are secured to the `connected` security group, which the server grants
-  to **every** connection — unreviewed auto-connections included (section 8).
+  to **every** connection — unreviewed auto-connections included (fixed by the
+  ladder recut — section 8).
 
 ## 2. Proposed Mental Model (Simple & Consistent)
 
@@ -459,38 +460,33 @@ that system circle. And a **Chat** contact has, by definition, zero circle
 grants — so there is nothing left to infer "reviewed" from. Without explicit storage,
 Chat and New would be indistinguishable.
 
-**Where it lives.** Record it in the contact file's **localAppData JSON**
-(`fileMetadata.localAppData.content`) on the contacts drive — the same pattern
-conversations already use (`ConversationLocalAppDataJson` with `lastReadTime` etc.).
-A new `ContactLocalAppDataJson`:
+**Where it lives — revised: server-side, on the connection registration.** The
+review stamps **`ReviewedAt` on the ICR record** (a JSON-stored record — no
+schema; part 2, *The security ladder, recut*). This satisfies everything the
+earlier client-side design wanted — owner-private, never sent to the peer,
+visible to all owner clients via GetConnectionInfo — **plus** what a client-side
+stamp never could: the server can assign the caller's security level from it
+(unreviewed connections rank as Authenticated; reviewed as the recut
+Reviewed/777 tier), which is what makes "who can see my connections list —
+reviewed people" expressible at all.
 
-```kotlin
-@Serializable
-data class ContactLocalAppDataJson(
-    /**
-     * Stamped when the user completes the connection review — via the
-     * adaptive review button (Add to circles / Chat only) — whether or
-     * not any circles were selected. Null = never reviewed.
-     */
-    val connectionReviewedAt: UnixTimeUtc? = null,
-)
-```
-
-localAppData is stored on the owner's server-side file header and syncs to **all of
-the owner's clients/devices**, but is **never transferred to the peer** — which is
-exactly the right privacy boundary: "I have reviewed you" is my private state.
+*Rejected earlier design (kept for the record):* a `connectionReviewedAt` field
+in the contact file's localAppData. It had the right privacy shape but left the
+reviewed fact invisible to the server — no ACL could ever key on it. Superseded
+the moment the ladder recut made "Reviewed" a security level. Clients now derive
+the New-vs-reviewed state from GetConnectionInfo instead of a local stamp.
 
 **Deriving the three contact-list states.** Put explicitly: **all connections are
 New until reviewed**. Today's "Unvetted" bucket — connected but unconfirmed, whether
 auto-connected, introduced, or a plain direct connection — maps 1:1 onto New. The
 only promotion out of New is completing the review dialog via the adaptive review
-button (which stamps `connectionReviewedAt`); the legacy carve-outs below are the
-sole exceptions.
+button (which stamps `ReviewedAt` on the connection registration); the legacy
+carve-outs below are the sole exceptions.
 
 | State      | Condition                                                    |
 |------------|--------------------------------------------------------------|
-| New 👋     | connected, `connectionReviewedAt == null`, no circle grants  |
-| Chat 💬    | `connectionReviewedAt != null`, no circle grants             |
+| New 👋     | connected, `ReviewedAt == null`, no circle grants            |
+| Chat 💬    | `ReviewedAt != null`, no circle grants                       |
 | Circle ⭕  | ≥ 1 circle grant (implies reviewed)                          |
 
 **Migration / legacy:**
@@ -657,44 +653,50 @@ Migration items:
    enrollment the question dissolves — a manual accept goes through the review,
    an auto-accept uses the enabled `AUTO_CONNECT` set.
 
-### The `connected` ACL tier — retire it
+### The `connected` ACL tier — recut it
+
+*(This revises an earlier version of this section that retired the tier outright.)*
 
 What the code inventory established (odin-core `DriveAclAuthorizationService`):
 `Connected` and `AutoConnected` ACLs are evaluated as **one case**, and no caller
 is ever stamped `autoconnected` — a `connected` ACL admits **every** connection,
-unreviewed auto-connections included. The tier never enforced what its label
-promised (hence the bullet in section 1), and `autoconnected` as an ACL value is
-accidental semantics: it silently disables feed distribution and mis-buckets
-result priority.
+unreviewed auto-connections included. The tier's promise has always been broken.
+The earlier revision fixed that by *removal*; the recut fixes it by **making the
+promise true** — because one class of ACL need can't be expressed any other way:
+"who can see my connections list" wants *reviewed people* (which includes every
+circle member by construction), not an enumerable circle list.
 
-Decision:
+Decision (full design: part 2, *The security ladder, recut*):
 
-- **Retire both as ACL targets.** No user-facing surface offers "connected" as
-  an audience again; `autoconnected` is deleted outright.
-- The literal string `connected` survives on the wire **only as the carrier of
-  circle-scoped ACLs** (`requiredSecurityGroup: connected` + `circleIdList` is
-  how every circle ACL is already encoded) — retiring the *bare* form needs no
-  wire change and no file migration.
-- **The perimeter is untouched.** `Caller.IsConnected` checks (inbox push, peer
-  websocket, transit) test the wire, not a read audience.
-- **"Any of my circles" becomes an app-maintained enumerated ACL.** Setting a
-  field to "Any of my circles" writes the concrete list of personal circles this
-  app manages and tags the attribute (in app data) as meaning-any; creating or
-  deleting a circle reconciles every tagged attribute. Fail-closed: if
-  reconciliation lags, a new circle temporarily *doesn't* see the field —
-  instead of a stranger temporarily seeing it.
-- Legacy mapping is behavior-identical: existing bare-`connected` files read as
-  "member of any `AUTO_CONNECT` circle" — the same admit set the evaluator
-  produces today.
+- The 777 slot is **recut as `Reviewed`**: assigned to callers whose connection
+  registration carries `ReviewedAt`; unreviewed connections rank as
+  **Authenticated** — an introduced stranger reads nothing beyond any logged-in
+  identity. Wire string `connected` is kept; enum member and every UX label
+  become "Reviewed". `autoconnected` is deleted outright.
+- The ambient-authority objection that killed `connected(PERSONAL)` does not
+  apply: *reviewed* is the owner's own recorded act, not an app's distributed
+  judgment.
+- **"Any of my circles" still becomes an app-maintained enumerated ACL** for
+  profile fields (fail-closed, as before) — the Reviewed tier is for
+  low-sensitivity social surfaces (connections list, who-I-follow, reacting to
+  secured posts), never for the home address.
+- **The perimeter is untouched.** `Caller.IsConnected` checks test the wire, not
+  a read audience; "connected-but-unreviewed" survives as an internal caller
+  classification only.
+- **Migration is intent-restoring, not behavior-identical** (revising the
+  earlier mapping): existing bare-`connected` ACLs — today's "Vetted" profile
+  fields — become reviewed-only. A deliberate tightening: unreviewed connections
+  lose access they never should have had, and "Vetted" finally delivers what it
+  always claimed. A behavior change to call out, not a migration no-op.
 
 **Rejected alternative — recorded so it isn't reinvented:** a
 designation-qualified tier (`connected(PERSONAL)`: "any connection in at least
 one PERSONAL circle", evaluated dynamically). Attractive because it never goes
 stale; rejected because it is **ambient authority resting on a distributed
 judgment** — any app that ever registers a mis-designated circle silently widens
-every ACL referencing the qualifier. A global predicate cannot be built on
-per-app semantics. The enumerated-and-reconciled form keeps the semantics inside
-the app that owns them, and fails closed.
+every ACL referencing the qualifier. The Reviewed tier keys on the owner's own
+act; the enumerated-and-reconciled form keeps circle semantics inside the app
+that owns them.
 
 ### Audience circles at scale
 
