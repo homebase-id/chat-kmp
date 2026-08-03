@@ -476,6 +476,33 @@ reviewed fact invisible to the server — no ACL could ever key on it. Supersede
 the moment the ladder recut made "Reviewed" a security level. Clients now derive
 the New-vs-reviewed state from GetConnectionInfo instead of a local stamp.
 
+**The owner-private promise needs viewer-scoped redaction.** The connections
+endpoints serve one redacted shape to owner apps *and* guest viewers today —
+including the legacy `vetted` flag (becoming `reviewedAt`), the introducer, and
+grant info. Third parties must instead receive an identity list only — *"a list
+of identities, never a list of my judgments"* — see part 2, *Viewer-scoped
+redaction*. The owner/app shape replaces `vetted: Boolean` with `reviewedAt`
+(this app's `RedactedIdentityConnectionRegistration.vetted` parses the legacy
+field until the V2 shape lands).
+
+**Client contact API (this app).** The contact model exposes the review as a
+first-class pair:
+
+- `isReviewed(): Boolean` — derived from `reviewedAt != null` on the connection
+  info; the single source the three states (section 4A) and all filtering read.
+- `setReviewed(value: Boolean)`:
+  - `true` = performs a **chat-only review** through the atomic review endpoint
+    (stamp, no circles) — programmatic equivalent of tapping "💬 Chat only".
+  - `false` = **un-review**: clears the stamp, dropping the contact back to
+    New 👋 and its caller tier back to Authenticated. Valid **only when the
+    contact holds no personal circles** (circle membership implies review — the
+    call is rejected otherwise; remove them from circles first). This is the
+    deliberate demotion path, softer than the chat-circle mute and much softer
+    than disconnect.
+
+The server-side **contact** API needs nothing: contact records are owner-only
+and carry no review state — review is connections-API domain.
+
 **Deriving the three contact-list states.** Put explicitly: **all connections are
 New until reviewed**. Today's "Unvetted" bucket — connected but unconfirmed, whether
 auto-connected, introduced, or a plain direct connection — maps 1:1 onto New. The
