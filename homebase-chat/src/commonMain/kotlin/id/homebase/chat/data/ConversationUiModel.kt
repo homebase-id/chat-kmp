@@ -160,14 +160,22 @@ data class ConversationUiModel(
          * on the cold-load / post-sync enrichment path, where the
          * `selectAllConversationPlusLastMessage` row IS the authority for "what
          * is the last message" and the row being patched always still carries
-         * `mapToBasic`'s `" "` placeholder. That query excludes status messages
-         * (`dataType = 202`) while `applyIncomingMessageBump` advances the sort
-         * key for them, so the persisted `localAppData.latestMessageTimestamp`
-         * seed can legitimately be *newer* than the newest real message — under
+         * `mapToBasic`'s `" "` placeholder. The persisted
+         * `localAppData.latestMessageTimestamp` seed can legitimately be
+         * *newer* than the newest real message that query can return — under
          * the old `candidate >= latestMessageTimestamp` guard the preview lost
          * that comparison and the row rendered "No messages yet" next to a
          * correct timestamp (#1148). Live arrivals keep their own recency guard
          * in [id.homebase.chat.services.convo.applyIncomingMessageBump].
+         *
+         * A newer-than-the-message seed used to be routine: that query excludes
+         * status messages (`dataType = 202`) while `applyIncomingMessageBump`
+         * advanced the sort key for them. Since #1153 the live path leaves the
+         * row alone for a status message, so the two agree — but the seed is
+         * stamped monotonically (`UnixTimeUtc.later`) into owner-synced
+         * localAppData, so a status-derived value written by an older build, or
+         * by one of the owner's devices still running one, never goes away. The
+         * unconditional preview is what keeps those rows readable.
          *
          * The candidate timestamp is driven by [latestTimestampOverrideMs]
          * when the caller knows the SQL-side userDate (e.g. from

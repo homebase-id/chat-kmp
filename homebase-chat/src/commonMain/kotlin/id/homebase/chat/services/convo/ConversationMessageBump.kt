@@ -17,12 +17,35 @@ import kotlin.uuid.Uuid
  * last message left every denormalised field unchanged). Returns the
  * new list otherwise.
  *
- * Three cases on the message's `userDate` vs the conversation's current
- * `latestMessageTimestamp`:
+ * A **status message** (`dataType = 202` — group rename, photo update,
+ * member add/remove) is not a last message and returns null outright.
+ * The cold-load / post-`DriveSync.Stopped` enrichment path
+ * ([ConversationMapper.applyLastMessage]) is fed by
+ * `selectAllConversationPlusLastMessage`, whose last-message subquery
+ * excludes `dataType = 202`, so a status message contributes nothing to
+ * the row there. Letting it drive the preview and the sort key here made
+ * the same conversation render differently before and after a restart —
+ * *"You updated the conversation photo"* at the top of the list live,
+ * the newest real message further down after a cold start (#1153).
+ * These two functions are the sole owners of the row's last-message
+ * fields (see the "Message-preview ownership" note on
+ * [mergeConversationFileUpdate]), so they have to agree.
+ *
+ * The exclusion can't move the other way — into the SQL — because status
+ * visibility is decided in Kotlin from *decrypted* content that SQL
+ * cannot read: `mapToMessageData` drops a peer-authored
+ * `GroupHealLocalCleanup`, an emergency-locate notice still inside its
+ * embargo window, and any soft-deleted status message. A JOIN that
+ * returned those would hand `applyLastMessage` a null map and leave the
+ * row on `mapToBasic`'s `" "` placeholder — the exact "No messages yet"
+ * blank that #1148 fixed.
+ *
+ * Three cases on a non-status message's `userDate` vs the conversation's
+ * current `latestMessageTimestamp`:
  *
  *  - **newer (`>`)** — a genuinely new last message. Advance the
  *    timestamp, refresh the preview, and bump unread (non-self,
- *    non-edit, non-status).
+ *    non-edit).
  *  - **equal (`==`)** — a re-emit of the *current* last message
  *    (soft-delete, delivery-status change, or reaction fan-out; a
  *    reaction re-emit carries the original `userDate` because reactions
@@ -78,8 +101,14 @@ internal fun applyIncomingMessageBump(
     sqlUserDate: Instant,
     activeDomain: OdinId?,
 ): List<ConversationUiModel>? {
-    val increment =
-        if (!m.isEdited && !m.isAuthoredBy(activeDomain) && !m.isStatusMessage) 1 else 0
+    // A status message is not a last message. Cold-load enrichment can never
+    // surface one (`selectAllConversationPlusLastMessage` filters
+    // `dataType != 202`), so neither may we, or the row changes on restart
+    // (#1153). Covers both the strictly-newer branch and the same-userDate
+    // re-emit below.
+    if (m.isStatusMessage) return null
+
+    val increment = if (!m.isEdited && !m.isAuthoredBy(activeDomain)) 1 else 0
 
     // Denormalised last-message preview fields, recomputed from `m`. Shared by
     // the "new message" and "same-userDate re-emit" branches so the preview is
@@ -104,7 +133,7 @@ internal fun applyIncomingMessageBump(
         when {
             // Strictly newer → a genuinely new last message. Advance the
             // timestamp, refresh the preview and bump unread (for non-self,
-            // non-edit, non-status arrivals).
+            // non-edit arrivals).
             sqlUserDate > existing.latestMessageTimestamp -> {
                 didChange = true
                 val next = existing
@@ -123,7 +152,7 @@ internal fun applyIncomingMessageBump(
                     "bump convo=$targetConversationId sqlUserDateMs=${sqlUserDate.toEpochMilliseconds()} " +
                         "originalAuthor=${m.originalAuthor?.domainName ?: "null"} " +
                         "isAuthoredBy(self)=${m.isAuthoredBy(activeDomain)} " +
-                        "isEdited=${m.isEdited} isStatusMessage=${m.isStatusMessage} " +
+                        "isEdited=${m.isEdited} " +
                         "increment=$increment unreadCount=${next.unreadCount}"
                 }
                 next
