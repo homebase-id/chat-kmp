@@ -1,14 +1,18 @@
+@file:OptIn(kotlin.uuid.ExperimentalUuidApi::class)
+
 package id.homebase.chat.services.requests
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.connections.AcceptConnectionRequestV2
 import id.homebase.api.client.connections.AutoConnectOutcome
 import id.homebase.api.client.connections.ConnectionRequestResult
 import id.homebase.api.client.connections.ConnectionRequestHeader
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IncomingConnectionRequestResponse
 import id.homebase.api.client.connections.OutgoingConnectionRequestResponse
+import kotlin.uuid.Uuid
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -270,9 +274,15 @@ class ConnectionRequestService(
      * drop our stale copy too so it doesn't linger in the UI, then rethrow so the caller can show
      * a specific "this request was withdrawn" message instead of a generic failure.
      */
-    suspend fun acceptIncomingRequest(senderId: OdinId) {
+    suspend fun acceptIncomingRequest(
+        senderId: OdinId,
+        circleIds: List<Uuid> = emptyList()
+    ) {
         try {
-            connectionRequestProvider.acceptIncomingRequest(senderId)
+            connectionRequestProvider.acceptIncomingRequest(
+                senderId,
+                AcceptConnectionRequestV2(circleIds)
+            )
         } catch (e: ClientException) {
             if (e.errorCode == OdinClientErrorCode.IncomingRequestNotFound) {
                 removeFromIncoming(senderId)

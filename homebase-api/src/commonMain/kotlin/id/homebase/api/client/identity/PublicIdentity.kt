@@ -10,6 +10,9 @@ data class PublicIdentity(
     val firstName: String?,
     val surName: String?,
     val status: String?,
+    /** Public short-bio summary (plain text), from the `short-bio-summary` sitedata section.
+     *  Readable before connecting; null when the identity hasn't set one. */
+    val shortBioSummary: String? = null,
 )
 
 fun PublicIdentity.initials(): String {

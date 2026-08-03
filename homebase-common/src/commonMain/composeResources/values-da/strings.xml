@@ -569,10 +569,10 @@
     <!-- Per-status reasons. %1$s is the recipient's display name. -->
     <string name="chat_introduce_preflight_reason_ready">%1$s er klar.</string>
     <string name="chat_introduce_preflight_reason_not_connected">Du er ikke forbundet med %1$s.</string>
-    <string name="chat_introduce_preflight_reason_not_configured">%1$s's identitet er ikke konfigureret endnu.</string>
+    <string name="chat_introduce_preflight_reason_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet — bed dem logge ind og gøre det færdigt.</string>
     <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s's server skal opdateres.</string>
     <string name="chat_introduce_preflight_reason_not_permitted">%1$s tillader ikke introduktioner fra dig.</string>
-    <string name="chat_introduce_preflight_reason_rejected">%1$s afviste anmodningen.</string>
+    <string name="chat_introduce_preflight_reason_rejected">%1$s's server accepterede ikke anmodningen.</string>
     <string name="chat_introduce_preflight_reason_unreachable">Kunne ikke nå %1$s's server lige nu.</string>
     <string name="chat_introduce_preflight_reason_unknown">Noget gik galt med %1$s.</string>
     <string name="chat_leave_and_delete">Forlad og slet</string>
@@ -906,6 +906,9 @@
     <string name="chat_poll_end_failed">Kunne ikke afslutte afstemningen. Prøv igen.</string>
     <string name="chat_poll_ended_self">Du afsluttede afstemningen: "%1$s"</string>
     <string name="chat_poll_ended_other">%1$s afsluttede afstemningen: "%2$s"</string>
+    <string name="chat_poll_roster_loading">Indlæser stemmer…</string>
+    <string name="chat_poll_roster_error">Kunne ikke indlæse hvem der stemte.</string>
+    <string name="chat_poll_roster_partial">Viser %1$d af %2$d stemmer</string>
 
     <string name="chat_unknown_message_type">Ukendt beskedtype — opdatér venligst appen.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
@@ -1557,6 +1560,7 @@
     <string name="contactbook_error_email">Indtast en gyldig e-mailadresse</string>
     <string name="contactbook_error_phone">Brug internationalt format, f.eks. +4512345678</string>
     <string name="contactbook_error_odinid">Indtast et gyldigt Homebase-ID (f.eks. sam.homebase.id)</string>
+    <string name="contactbook_error_birthday">Brug formatet ÅÅÅÅ-MM-DD, f.eks. 1969-02-22</string>
 
     <string name="contactbook_settings_section">Kontakter</string>
     <string name="contactbook_settings_open">Åbn Kontakter</string>

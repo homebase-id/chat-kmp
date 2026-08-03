@@ -448,6 +448,8 @@
     <string name="moments_audience_to_myself_only">To myself only</string>
     <string name="moments_audience_section_recent">Recent</string>
     <string name="moments_audience_section_groups">Groups</string>
+    <string name="moments_audience_section_circles">Circles</string>
+    <string name="moments_audience_view_circle_members">View circle members</string>
     <string name="moments_audience_section_contacts">Contacts</string>
     <string name="moments_audience_post">Post</string>
     <string name="moments_audience_save_privately">Save privately</string>
@@ -565,16 +567,34 @@
     <string name="chat_introduce_preflight_body">Some recipients may not receive an introduction:</string>
     <string name="chat_introduce_preflight_send_anyway">Send anyway</string>
     <string name="chat_introduce_preflight_skip_and_send">Skip these and send to the rest</string>
+    <!-- Shown under the list when at least one recipient failed for a transient
+         reason (server busy, updating, timed out) — re-runs the preflight check. -->
+    <string name="chat_introduce_preflight_check_again">Check again</string>
     <!-- Bullet-prefixed line in the preflight dialog body. %1$s is a per-status reason. -->
     <string name="chat_introduce_preflight_bullet">• %1$s</string>
-    <!-- Per-status reasons. %1$s is the recipient's display name. -->
+    <!-- Per-status reasons. %1$s is the recipient's display name.
+         Exactly ONE of these may say the recipient doesn't allow introductions:
+         chat_introduce_preflight_reason_not_permitted (IntroductionsNotPermitted).
+         Every other status is a setup gap, a broken connection record or a
+         transport failure — never phrase those as a refusal. Nothing here may
+         reveal that a recipient has blocked the user. -->
     <string name="chat_introduce_preflight_reason_ready">%1$s is ready.</string>
     <string name="chat_introduce_preflight_reason_not_connected">You're not connected to %1$s.</string>
-    <string name="chat_introduce_preflight_reason_not_configured">%1$s's identity isn't set up yet.</string>
-    <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s's server needs an update.</string>
+    <string name="chat_introduce_preflight_reason_not_configured">%1$s hasn't finished setting up their identity — ask them to sign in and complete it.</string>
+    <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s's server needs an update before it can accept introductions.</string>
     <string name="chat_introduce_preflight_reason_not_permitted">%1$s doesn't allow introductions from you.</string>
-    <string name="chat_introduce_preflight_reason_rejected">%1$s declined the request.</string>
-    <string name="chat_introduce_preflight_reason_unreachable">Couldn't reach %1$s's server right now.</string>
+    <string name="chat_introduce_preflight_reason_rejected">%1$s's server didn't accept the request.</string>
+    <string name="chat_introduce_preflight_reason_unreachable">Couldn't reach %1$s right now.</string>
+    <string name="chat_introduce_preflight_reason_not_confirmed">%1$s hasn't confirmed your connection yet — introductions work once they do.</string>
+    <string name="chat_introduce_preflight_reason_not_recognized">Your connection with %1$s isn't active on their side.</string>
+    <string name="chat_introduce_preflight_reason_needs_repair">Your connection with %1$s is damaged and needs to be set up again.</string>
+    <string name="chat_introduce_preflight_reason_sender_connection_invalid">Your saved connection details for %1$s aren't usable.</string>
+    <string name="chat_introduce_preflight_reason_not_supported">%1$s's server is too old to check ahead of time — the introduction may still go through.</string>
+    <string name="chat_introduce_preflight_reason_upgrade_in_progress">%1$s's server is updating right now.</string>
+    <string name="chat_introduce_preflight_reason_unresolvable">%1$s's address couldn't be found — it may have changed or no longer exist.</string>
+    <string name="chat_introduce_preflight_reason_certificate_invalid">%1$s's server has a security certificate problem.</string>
+    <string name="chat_introduce_preflight_reason_timed_out">%1$s's server didn't respond in time.</string>
+    <string name="chat_introduce_preflight_reason_connection_refused">%1$s's server appears to be offline.</string>
     <string name="chat_introduce_preflight_reason_unknown">Something went wrong with %1$s.</string>
     <string name="chat_leave_and_delete">Leave &amp; delete</string>
     <string name="chat_leave_and_delete_conversation_title">Leave and delete this group?</string>
@@ -718,6 +738,7 @@
 
     <!-- Event attachment -->
     <string name="chat_event_share">Event</string>
+    <string name="chat_event_reminder_push">Upcoming event reminder</string>
     <string name="chat_event_create_title">New event</string>
     <string name="chat_event_field_title">Title</string>
     <string name="chat_event_field_description">Description</string>
@@ -909,6 +930,9 @@
     <string name="chat_poll_end_failed">Couldn't end the poll. Please try again.</string>
     <string name="chat_poll_ended_self">You ended the poll: "%1$s"</string>
     <string name="chat_poll_ended_other">%1$s ended the poll: "%2$s"</string>
+    <string name="chat_poll_roster_loading">Loading votes…</string>
+    <string name="chat_poll_roster_error">Couldn't load who voted.</string>
+    <string name="chat_poll_roster_partial">Showing %1$d of %2$d voters</string>
 
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
@@ -932,6 +956,8 @@
     <string name="moment_video_watch_again">Watch again</string>
     <string name="moment_video_fill_screen">Fill screen</string>
     <string name="moment_video_fit_screen">Fit to screen</string>
+    <string name="video_error_generic">Unable to play this video on this device</string>
+    <string name="video_error_ten_bit">Unable to play 10-bit video on this device</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_pdf_preview">PDF preview</string>
@@ -1540,6 +1566,7 @@
     <string name="contactbook_detail_request_outgoing">Connection request sent</string>
     <string name="contactbook_detail_accept">Accept</string>
     <string name="contactbook_detail_reject">Reject</string>
+    <string name="contactbook_detail_add_to_circles">Add to circles (optional)</string>
     <string name="contactbook_detail_cancel_request">Cancel request</string>
     <string name="contactbook_detail_blocked">Blocked</string>
     <string name="contactbook_detail_recent_media">Recent media</string>
@@ -1603,6 +1630,7 @@
     <string name="contactbook_error_email">Enter a valid email address</string>
     <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>
     <string name="contactbook_error_odinid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+    <string name="contactbook_error_birthday">Use the format YYYY-MM-DD, e.g. 1969-02-22</string>
 
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
