@@ -220,6 +220,37 @@ internal class ConversationLifecycleHandler(
         }
     }
 
+    /**
+     * Re-run preflight from the dialog's "Check again" affordance and swap in
+     * the fresh result. Three outcomes:
+     *  - preflight itself failed (null): leave the dialog exactly as it was, so
+     *    a network blip doesn't erase what the user was reading.
+     *  - everything is Ready now: send, same as if the first check had passed.
+     *  - still mixed: replace the dialog's result so the list re-renders with
+     *    the new per-recipient reasons.
+     */
+    fun handleIntroduceRetryPreflight(action: ConversationListUiAction.IntroduceRetryPreflight) {
+        scope.launch {
+            uiState.update {
+                it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress)
+            }
+            val preflight = conversationService.previewIntroduceEveryone(action.conversationId)
+            uiState.update { it.copy(inFlightOperationLabel = null) }
+            if (preflight == null) return@launch
+            if (preflight.allReady) {
+                uiState.update { it.copy(uiDialog = null) }
+                conversationService.introduceEveryone(action.conversationId, action.message)
+                sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                return@launch
+            }
+            uiState.update { state ->
+                val dialog = state.uiDialog as? ConversationListUiDialog.IntroducePreflight
+                    ?: return@update state
+                state.copy(uiDialog = dialog.copy(result = preflight))
+            }
+        }
+    }
+
     fun handleIntroduceCancel() {
         uiState.update { it.copy(uiDialog = null) }
     }

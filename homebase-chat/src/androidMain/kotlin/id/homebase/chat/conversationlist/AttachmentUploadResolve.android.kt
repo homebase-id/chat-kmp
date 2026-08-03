@@ -5,8 +5,8 @@ import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.cacheDir
 import io.github.vinceglb.filekit.copyTo
+import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
-import kotlin.uuid.Uuid
 
 // Native PlatformFile carries a real path / content:// URI; the existing path-based send
 // pipeline (and resolveToFilePath for content URIs) already handles it. No copy needed at send time.
@@ -17,7 +17,7 @@ actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
 // copying through FileKit's copyTo (which reads the content URI) yields a stable plain file the
 // send path can always read — equivalent to the downstream resolveToFilePath copy, just earlier.
 actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile {
-    val dest = PlatformFile(FileKit.cacheDir, "chat_attach_${Uuid.random()}_$name")
+    val dest = PlatformFile(FileKit.cacheDir, sandboxCopyName(name, mimeType()?.toString()))
     copyTo(dest)
     return dest
 }

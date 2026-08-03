@@ -5,8 +5,8 @@ import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.cacheDir
 import io.github.vinceglb.filekit.copyTo
+import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
-import kotlin.uuid.Uuid
 
 // Desktop PlatformFile carries a real filesystem path; the path-based send pipeline reads it
 // directly. No copy needed at send time.
@@ -16,7 +16,7 @@ actual suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
 // contract so all native platforms behave the same. Desktop has no security scope, but copying a
 // real filesystem path is cheap and harmless and keeps the send path reading a sandbox file.
 actual suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile {
-    val dest = PlatformFile(FileKit.cacheDir, "chat_attach_${Uuid.random()}_$name")
+    val dest = PlatformFile(FileKit.cacheDir, sandboxCopyName(name, mimeType()?.toString()))
     copyTo(dest)
     return dest
 }

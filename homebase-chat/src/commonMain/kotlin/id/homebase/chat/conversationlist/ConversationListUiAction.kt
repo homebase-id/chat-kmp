@@ -50,6 +50,23 @@ sealed interface ConversationListUiAction {
         val message: String,
     ) : ConversationListUiAction
 
+    /**
+     * "Check again" in the preflight dialog — re-runs the preflight call and
+     * replaces the dialog's result with the fresh one. Offered only when the
+     * result contains at least one retryable entry
+     * ([id.homebase.api.client.connections.IntroductionPreflightResult.hasRetryableRecipient]),
+     * i.e. a failure the recipient's server may recover from on its own; a
+     * missing permission or an unconfirmed connection needs a human first and
+     * gets no retry button.
+     *
+     * If the retry comes back all-Ready the introduction is sent, matching what
+     * would have happened had the first preflight succeeded.
+     */
+    data class IntroduceRetryPreflight(
+        val conversationId: Uuid,
+        val message: String,
+    ) : ConversationListUiAction
+
     /** Dismiss the preflight dialog without sending. Equivalent to closing the dialog. */
     data object IntroduceCancel : ConversationListUiAction
     data object FilterByUnreadClicked : ConversationListUiAction

@@ -119,8 +119,12 @@ class ConnectionIntroductionProvider(
         body.recipients.forEach { entry ->
             Logger.i(tag = TAG) {
                 "preflightIntroductions: ${entry.recipient.domainName} → status=${entry.status} " +
+                    "remedy=${entry.effectiveRemedyActor} canRetry=${entry.canRetry} " +
                     "isConfigured=${entry.isConfigured} requiresUpgrade=${entry.requiresUpgrade} " +
-                    "allowsIntroductions=${entry.allowsIntroductions} detail=${entry.detail}"
+                    "allowsIntroductions=${entry.allowsIntroductions} " +
+                    "callerConnected=${entry.isCallerConnected} callerConfirmed=${entry.isCallerConfirmed} " +
+                    "callerAutoConnected=${entry.isCallerAutoConnected} " +
+                    "callerConnectionState=${entry.callerConnectionState} detail=${entry.detail}"
             }
         }
         Logger.i(tag = TAG) {

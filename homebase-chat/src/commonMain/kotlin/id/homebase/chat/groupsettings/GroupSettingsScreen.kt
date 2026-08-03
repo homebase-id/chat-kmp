@@ -120,13 +120,23 @@ import id.homebase.resources.chat_group_choose_new_admin
 import id.homebase.api.client.connections.IntroductionPreflightStatus
 import id.homebase.resources.chat_group_heal
 import id.homebase.resources.chat_group_heal_admin_resent
+import id.homebase.resources.chat_introduce_preflight_reason_certificate_invalid
+import id.homebase.resources.chat_introduce_preflight_reason_connection_refused
+import id.homebase.resources.chat_introduce_preflight_reason_needs_repair
 import id.homebase.resources.chat_introduce_preflight_reason_not_configured
+import id.homebase.resources.chat_introduce_preflight_reason_not_confirmed
 import id.homebase.resources.chat_introduce_preflight_reason_not_connected
 import id.homebase.resources.chat_introduce_preflight_reason_not_permitted
+import id.homebase.resources.chat_introduce_preflight_reason_not_recognized
+import id.homebase.resources.chat_introduce_preflight_reason_not_supported
 import id.homebase.resources.chat_introduce_preflight_reason_rejected
 import id.homebase.resources.chat_introduce_preflight_reason_requires_upgrade
+import id.homebase.resources.chat_introduce_preflight_reason_sender_connection_invalid
+import id.homebase.resources.chat_introduce_preflight_reason_timed_out
 import id.homebase.resources.chat_introduce_preflight_reason_unknown
 import id.homebase.resources.chat_introduce_preflight_reason_unreachable
+import id.homebase.resources.chat_introduce_preflight_reason_unresolvable
+import id.homebase.resources.chat_introduce_preflight_reason_upgrade_in_progress
 import id.homebase.resources.chat_group_heal_already_in_sync
 import id.homebase.resources.chat_group_heal_checking_peers
 import id.homebase.resources.chat_group_heal_main_resent
@@ -1465,6 +1475,16 @@ internal fun introductionPreflightInlineLabel(
         IntroductionPreflightStatus.IntroductionsNotPermitted -> MR.string.chat_introduce_preflight_reason_not_permitted
         IntroductionPreflightStatus.RecipientRejected -> MR.string.chat_introduce_preflight_reason_rejected
         IntroductionPreflightStatus.Unreachable -> MR.string.chat_introduce_preflight_reason_unreachable
+        IntroductionPreflightStatus.RecipientConnectionNotConfirmed -> MR.string.chat_introduce_preflight_reason_not_confirmed
+        IntroductionPreflightStatus.RecipientDoesNotRecognizeConnection -> MR.string.chat_introduce_preflight_reason_not_recognized
+        IntroductionPreflightStatus.RecipientConnectionNeedsRepair -> MR.string.chat_introduce_preflight_reason_needs_repair
+        IntroductionPreflightStatus.SenderConnectionInvalid -> MR.string.chat_introduce_preflight_reason_sender_connection_invalid
+        IntroductionPreflightStatus.PreflightNotSupported -> MR.string.chat_introduce_preflight_reason_not_supported
+        IntroductionPreflightStatus.RecipientUpgradeInProgress -> MR.string.chat_introduce_preflight_reason_upgrade_in_progress
+        IntroductionPreflightStatus.RecipientUnresolvable -> MR.string.chat_introduce_preflight_reason_unresolvable
+        IntroductionPreflightStatus.RecipientCertificateInvalid -> MR.string.chat_introduce_preflight_reason_certificate_invalid
+        IntroductionPreflightStatus.RecipientTimedOut -> MR.string.chat_introduce_preflight_reason_timed_out
+        IntroductionPreflightStatus.RecipientConnectionRefused -> MR.string.chat_introduce_preflight_reason_connection_refused
         IntroductionPreflightStatus.UnknownError -> MR.string.chat_introduce_preflight_reason_unknown
     }
     return stringResource(key, peerName)
