@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -1131,6 +1132,7 @@ fun InlineReplyPreview(
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = replyPreviewMaxLines,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT),
                         )
                     }
                 }
