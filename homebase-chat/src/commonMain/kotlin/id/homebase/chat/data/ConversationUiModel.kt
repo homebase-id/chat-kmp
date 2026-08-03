@@ -168,14 +168,12 @@ data class ConversationUiModel(
          * correct timestamp (#1148). Live arrivals keep their own recency guard
          * in [id.homebase.chat.services.convo.applyIncomingMessageBump].
          *
-         * A newer-than-the-message seed used to be routine: that query excludes
-         * status messages (`dataType = 202`) while `applyIncomingMessageBump`
-         * advanced the sort key for them. Since #1153 the live path leaves the
-         * row alone for a status message, so the two agree — but the seed is
-         * stamped monotonically (`UnixTimeUtc.later`) into owner-synced
-         * localAppData, so a status-derived value written by an older build, or
-         * by one of the owner's devices still running one, never goes away. The
-         * unconditional preview is what keeps those rows readable.
+         * Such a seed used to be routine, before #1153 made the live path leave
+         * status messages alone. It can still occur: the seed is stamped
+         * monotonically (`UnixTimeUtc.later`) into owner-synced localAppData, so
+         * a status-derived value written by an older build — or by another of
+         * the owner's devices still on one — never goes away. Keep the preview
+         * unconditional.
          *
          * The candidate timestamp is driven by [latestTimestampOverrideMs]
          * when the caller knows the SQL-side userDate (e.g. from
