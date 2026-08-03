@@ -69,9 +69,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
+import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.connections.ConnectRequestAction
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -205,13 +207,17 @@ fun ContactDetailScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // The contact's photo opened full-screen. Kept out of [uiState.fullScreenMedia]:
+    // that one is a chat attachment, this is a profile image. Null = closed.
+    var fullScreenAvatar by remember { mutableStateOf<SubSamplingImageSource?>(null) }
+
     Scaffold(
         topBar = {
             // While the full-screen media viewer is open it draws its own top bar
             // (contact name + date + back/menu). Suppress this screen's app bar so
             // the two don't stack — the viewer's opaque surface already covers the
             // content beneath it. Mirrors ConversationMediaScreen.
-            if (uiState.fullScreenMedia == null) {
+            if (uiState.fullScreenMedia == null && fullScreenAvatar == null) {
                 TopAppBar(
                     title = {},
                     navigationIcon = {
@@ -268,6 +274,7 @@ fun ContactDetailScreen(
                     },
                     onReject = { viewModel.onAction(ContactDetailAction.RejectRequestClicked) },
                     actionInProgress = uiState.actionInProgress,
+                    onAvatarClick = { fullScreenAvatar = it },
                 )
 
                 else -> {
@@ -288,6 +295,7 @@ fun ContactDetailScreen(
                         DetailHeader(
                             uiState = uiState,
                             onAction = viewModel::onAction,
+                            onAvatarClick = { fullScreenAvatar = it },
                             onConnect = {
                                 uiState.entry?.odinId?.let { domain ->
                                     runCatching { OdinId(domain) }.getOrNull()?.let {
@@ -401,6 +409,14 @@ fun ContactDetailScreen(
                 snackbarHostState = snackbarHostState,
                 onDismiss = { viewModel.onAction(ContactDetailAction.CloseMedia) },
             )
+
+            fullScreenAvatar?.let { source ->
+                AvatarFullScreenViewer(
+                    source = source,
+                    title = uiState.entry?.displayName.orEmpty(),
+                    onDismiss = { fullScreenAvatar = null },
+                )
+            }
 
             if (uiState.actionInProgress) {
                 Box(
@@ -533,6 +549,7 @@ private fun ManagementMenu(
 private fun DetailHeader(
     uiState: ContactDetailUiState,
     onAction: (ContactDetailAction) -> Unit,
+    onAvatarClick: (SubSamplingImageSource) -> Unit,
     onConnect: () -> Unit,
 ) {
     val entry = uiState.entry ?: return
@@ -552,7 +569,7 @@ private fun DetailHeader(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ContactBookAvatar(entry = entry, size = 88.dp)
+        ContactBookAvatar(entry = entry, size = 88.dp, onClick = onAvatarClick)
         Spacer(modifier = Modifier.height(8.dp))
         // Name and Homebase ID are selectable so they can be copied (the ID especially).
         SelectionContainer {
