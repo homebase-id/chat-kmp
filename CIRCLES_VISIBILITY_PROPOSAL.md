@@ -461,8 +461,10 @@ grants — so there is nothing left to infer "reviewed" from. Without explicit s
 Chat and New would be indistinguishable.
 
 **Where it lives — revised: server-side, on the connection registration.** The
-review stamps **`ReviewedAt` on the ICR record** (a JSON-stored record — no
-schema; part 2, *The security ladder, recut*). This satisfies everything the
+review stamps **`ReviewedAt` on the ICR record** (a nullable column on the
+Connections table — DDL in part 1's *Schema*; design in part 2, *The security
+ladder, recut* — a column because the contact book pages and filters on it at
+audience scale). This satisfies everything the
 earlier client-side design wanted — owner-private, never sent to the peer,
 visible to all owner clients via GetConnectionInfo — **plus** what a client-side
 stamp never could: the server can assign the caller's security level from it
