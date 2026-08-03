@@ -376,7 +376,22 @@ class ConversationListViewModel(
             return
         }
         launch {
-            val outcome = jumpTargetWaiter.awaitJumpTarget(conversationId, messageId)
+            // Contained deliberately, and NOT to paper over a failure — this coroutine is a
+            // child of currentConversationJob, so an exception here (e.g. a logout landing
+            // mid-wait makes requireActiveCredentials throw) would cancel the parent and
+            // take the message collect down with it, leaving the detail pane spinning
+            // forever. Losing the pending jump is the correct blast radius; it's logged at
+            // error so the cause is still in homebase.log rather than swallowed.
+            val outcome = try {
+                jumpTargetWaiter.awaitJumpTarget(conversationId, messageId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "NotifTap") {
+                    "message stage: wait for msg=$messageId failed: ${e.message}"
+                }
+                JumpTargetOutcome.TimedOut
+            }
             if (outcome == JumpTargetOutcome.TimedOut) onGiveUp()
         }
     }
