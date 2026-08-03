@@ -57,6 +57,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
@@ -429,6 +430,14 @@ fun MessageBubbleRaw(
             markdownHasBlockElements(bodyText)
     }
 
+    // The author name carries its own 4dp bottom padding, so the text row drops its top one
+    // when the name is the element directly above it. The quote sits above the name in the
+    // custom Layout below, but between the name and the text in the block Column.
+    val authorAbutsText = authorName != null && !hasMedia
+    val textTopPadding = if (authorAbutsText) 0.dp else 12.dp
+    val blockTextTopPadding =
+        if (authorAbutsText && message.messageAppData.replyPreview == null) 0.dp else 12.dp
+
     val big = Dimens.Message.cornerRadius
     val small = Dimens.Message.cornerCollapseRadius
     val shape = remember(sentByYou, clusterPosition, mediaOnly) {
@@ -671,7 +680,9 @@ fun MessageBubbleRaw(
                         }
                     }
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(
+                            start = 12.dp, end = 12.dp, top = blockTextTopPadding, bottom = 12.dp,
+                        ),
                     ) {
                         // No onTextLayout: the block renderer reports none, and the
                         // timestamp is placed below as its own row (next).
@@ -786,7 +797,8 @@ fun MessageBubbleRaw(
                             }
                             Row(
                                 modifier = Modifier.padding(
-                                    horizontal = 12.dp, vertical = 12.dp
+                                    start = 12.dp, end = 12.dp,
+                                    top = textTopPadding, bottom = 12.dp,
                                 ),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -882,7 +894,8 @@ fun MessageBubbleRaw(
                                     Text(
                                         text = messageInfoText,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = contentColor.copy(alpha = 0.7f)
+                                        color = contentColor.copy(alpha = 0.7f),
+                                        modifier = Modifier.testTag(ChatBubbleTestTags.TIMESTAMP),
                                     )
                                     if (sentByYou && !message.isDeleted) {
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -956,6 +969,11 @@ fun MessageBubbleRaw(
                         // Measure info text
                         val infoPlaceable = measurables[infoIndex].measure(constraints)
 
+                        // The 8dp gap is already the info Row's own start padding; a hidden
+                        // footer is an empty Row and reserves nothing.
+                        val infoReservation =
+                            if (showMessageFooter) infoPlaceable.width + 12.dp.roundToPx() else 0
+
                         // Calculate potential final width BEFORE measuring reply
                         val layoutResult = textLayoutResult
 
@@ -974,19 +992,18 @@ fun MessageBubbleRaw(
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
                             val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                            val horizontalGap = 8.dp.roundToPx()
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                             val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+                                (lastLineEnd + infoReservation) <= availableWidth
 
                             rawPotentialFinalWidth = if (fitsOnLastLine) {
                                 maxOf(
                                     mediaWidth,
                                     textPlaceable.width,
-                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    (lastLineEnd + infoReservation),
                                     authorWidth
                                 )
                             } else {
@@ -1007,12 +1024,21 @@ fun MessageBubbleRaw(
                                 )
                         }
 
+                        // The quote fills whatever exact width it is handed, so only its
+                        // intrinsic reveals what the quoted content actually needs. A media
+                        // bubble sizes to the media, which is never narrower than the floor.
+                        val replyNaturalWidth =
+                            if (replyIndex != -1 && mediaWidth == 0) {
+                                measurables[replyIndex].maxIntrinsicWidth(Constraints.Infinity)
+                            } else 0
+
                         // Clamp to the parent's bound. The reply re-measure below forces an exact
                         // width, so an unclamped value here would propagate any computation drift
                         // straight into a child measurement — turning a one-off mismeasure into a
                         // sustained layout-invalidation loop. The clamp guarantees convergence.
                         val potentialFinalWidth =
-                            rawPotentialFinalWidth.coerceAtMost(constraints.maxWidth)
+                            maxOf(rawPotentialFinalWidth, replyNaturalWidth)
+                                .coerceAtMost(constraints.maxWidth)
 
                         // NOW measure reply with the correct width that accounts for info placement
                         val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
@@ -1033,25 +1059,25 @@ fun MessageBubbleRaw(
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
                             val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                            val horizontalGap = 8.dp.roundToPx()
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                             val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+                                (lastLineEnd + infoReservation) <= availableWidth
 
                             if (fitsOnLastLine) {
                                 finalWidth = maxOf(
                                     mediaWidth,
                                     replyWidth,
                                     textPlaceable.width,
-                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    (lastLineEnd + infoReservation),
                                     authorWidth
                                 )
                                 val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
                                 infoY =
-                                    placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() + 16.dp.roundToPx() - infoPlaceable.height
+                                    placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() +
+                                        textTopPadding.roundToPx() + 4.dp.roundToPx() - infoPlaceable.height
                                 infoX = finalWidth - infoPlaceable.width - textRowPadding
                                 finalHeight =
                                     placeables.sumOf { it.height } +
