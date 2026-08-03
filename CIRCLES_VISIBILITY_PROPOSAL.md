@@ -500,6 +500,26 @@ first-class pair:
     deliberate demotion path, softer than the chat-circle mute and much softer
     than disconnect.
 
+Completing the pair, the membership side of the state derivation:
+
+- `personalCircles(): List<Circle>` — the contact's memberships filtered to
+  `Designation == PERSONAL`, **regardless of owning app** (Emergency Location
+  Access counts; the profile app is merely where most personal circles are
+  minted). This is the list the pills render.
+- `isInAnyPersonalCircle(): Boolean` — its non-empty check. With `isReviewed()`
+  these two are the whole state machine: New = !reviewed, Chat = reviewed &&
+  !inAnyPersonalCircle, Circle ⭕ = reviewed && inAnyPersonalCircle.
+
+Both are computed **client-side** from data the app already holds (connection
+info ∩ circle definitions). Deliberately **no server endpoint** for this
+predicate: a server-side "in any personal circle" query is the rejected
+`connected(PERSONAL)` primitive by another door — once it exists, someone will
+wire it into an access decision. The one legitimate server-side use of the
+designation is *invariant enforcement* on the review endpoint (part 2, *API
+surface*): un-review is rejected while personal memberships exist, because a
+circle member at Authenticated tier would still be readable via `circleIdList`
+ACLs — membership must imply review.
+
 The server-side **contact** API needs nothing: contact records are owner-only
 and carry no review state — review is connections-API domain.
 
