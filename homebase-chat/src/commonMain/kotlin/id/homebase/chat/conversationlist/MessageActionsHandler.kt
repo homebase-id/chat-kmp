@@ -689,7 +689,7 @@ internal class MessageActionsHandler(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toUploadPath(fileOperationsProvider),
-                                contentType = resolveContentType(
+                                contentType = attachment.sourceContentType ?: resolveContentType(
                                     fileName = attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
                                 ),
@@ -700,7 +700,8 @@ internal class MessageActionsHandler(
 
                     is AttachmentPendingFile.FileImage -> {
                         attachments.add(
-                            attachment.file.toImageAttachmentInput(fileOperationsProvider)
+                            attachment.file
+                                .toImageAttachmentInput(fileOperationsProvider, attachment.sourceContentType)
                                 .copy(forceSticker = attachment.forceSticker),
                         )
                     }
@@ -709,7 +710,7 @@ internal class MessageActionsHandler(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toUploadPath(fileOperationsProvider),
-                                contentType = resolveContentType(
+                                contentType = attachment.sourceContentType ?: resolveContentType(
                                     fileName = attachment.sourceFileName ?: attachment.file.name,
                                     platformMimeType = attachment.file.mimeType()?.toString(),
                                 ),

@@ -1,7 +1,12 @@
 package id.homebase.chat.conversationlist
 
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.core.util.extensionForMimeType
+import id.homebase.core.util.resolveContentType
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.mimeType
+import io.github.vinceglb.filekit.name
+import kotlin.uuid.Uuid
 
 /**
  * Resolves a picked [PlatformFile] to a path that [fileOps] can read for upload.
@@ -42,6 +47,30 @@ expect suspend fun PlatformFile.toUploadPath(fileOps: FileOperationsProvider): S
  *   keeps its bytes and [toUploadPath]'s web actual materializes them at send time via `readBytes()`.
  */
 expect suspend fun PlatformFile.materializeForUpload(fileOps: FileOperationsProvider): PlatformFile
+
+/**
+ * Content type of a **freshly picked** [PlatformFile], resolved before [materializeForUpload]
+ * throws the evidence away.
+ *
+ * Only the picked handle knows the real type: on Android it is a `content://` URI whose
+ * `ContentResolver.getType()` answers `image/jpeg`, while the sandbox copy is a plain file that can
+ * only be typed from its name — and the system photo picker's display names (`photopicker-1000022602`)
+ * carry no extension, so the copy resolves to `application/octet-stream` and the message ships as a
+ * generic file chip with no thumbnail (#1149). Carry this to `AttachmentInput.contentType`.
+ */
+internal fun PlatformFile.pickedContentType(): String =
+    resolveContentType(fileName = name, platformMimeType = mimeType()?.toString())
+
+/**
+ * Name for the pick-time sandbox copy: the original name behind a collision-proof prefix, plus an
+ * extension derived from [mimeType] when the picker's name has none. Belt to [pickedContentType]'s
+ * braces — it keeps the copy self-describing for anything that only sees the file (#1149).
+ */
+internal fun sandboxCopyName(name: String, mimeType: String?): String {
+    val hasExtension = name.substringAfterLast('.', "").isNotEmpty()
+    val ext = if (hasExtension) null else mimeType?.let(::extensionForMimeType)
+    return "chat_attach_${Uuid.random()}_$name" + if (ext != null) ".$ext" else ""
+}
 
 /**
  * A handle the in-editor video decoder/player can read **immediately**, without the expensive
