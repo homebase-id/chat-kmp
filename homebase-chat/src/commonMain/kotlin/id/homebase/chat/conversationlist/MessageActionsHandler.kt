@@ -45,6 +45,7 @@ import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
 import id.homebase.core.util.ScrollPosition
+import id.homebase.core.util.contentType
 import id.homebase.core.util.resolveContentType
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.widget.ReactionDisplayItem
@@ -689,10 +690,8 @@ internal class MessageActionsHandler(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.file.toUploadPath(fileOperationsProvider),
-                                contentType = attachment.sourceContentType ?: resolveContentType(
-                                    fileName = attachment.file.name,
-                                    platformMimeType = attachment.file.mimeType()?.toString(),
-                                ),
+                                contentType = attachment.sourceContentType
+                                    ?: attachment.file.contentType(),
                                 displayName = attachment.file.name,
                             )
                         )
@@ -757,10 +756,7 @@ internal class MessageActionsHandler(
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.audioFile.toUploadPath(fileOperationsProvider),
-                                contentType = resolveContentType(
-                                    fileName = attachment.audioFile.name,
-                                    platformMimeType = attachment.audioFile.mimeType()?.toString(),
-                                ),
+                                contentType = attachment.audioFile.contentType(),
                                 displayName = attachment.audioFile.name,
                                 waveformFile = attachment.waveformFile?.toUploadPath(fileOperationsProvider),
                                 audioLengthSeconds = attachment.lengthSeconds,

@@ -404,7 +404,7 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     data class File(
         val id: Uuid,
         val file: PlatformFile,
-        // Content type read from the ORIGINAL picked handle (see PlatformFile.pickedContentType),
+        // Content type read from the ORIGINAL picked handle (see PlatformFile.contentType),
         // before the pick-time sandbox copy dropped it. [file] here is that copy: a plain file whose
         // type can only come from its name, and Android's photo picker vends extension-less names
         // ("photopicker-1000022602") that resolve to application/octet-stream — which ships the
