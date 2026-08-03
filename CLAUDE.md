@@ -270,6 +270,26 @@ Rules:
 - CI must be green on every layer before merging — the stack merge is all-or-nothing.
 - Branch names still must not contain `/`.
 
+## Comments
+
+Default to none. This codebase is over-commented; do not add to it.
+
+Don't write:
+
+- What the code already says. `// increment the counter`, `/** Returns the user's name. */`.
+- KDoc restating parameter names, or a header block on every function.
+- Narrative about how the code got here, alternatives considered, or how it was tested.
+
+Do write, as one terse line:
+
+- A **why** that isn't derivable from the code: a landmine, an ordering constraint, a
+  workaround for someone else's bug, a deliberate simplification and its ceiling.
+- The issue/PR number when the line exists to fix a specific reported bug (`(#1145)`).
+
+If the comment is longer than the code it explains, delete it. Rename the variable
+instead — a self-explaining name beats any comment. Put the reasoning in the PR
+description, not the source.
+
 ## UI & Design Quality
 
 All UI code must follow **Material 3** guidelines and the **kmp-compose-multiplatform** skill. Before
