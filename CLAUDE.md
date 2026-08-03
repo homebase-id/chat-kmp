@@ -280,11 +280,11 @@ Don't write:
 - KDoc restating parameter names, or a header block on every function.
 - Narrative about how the code got here, alternatives considered, or how it was tested.
 
-Do write, as one terse line:
+- Issue and PR numbers. `git blame` already links the line to its commit and PR.
 
-- A **why** that isn't derivable from the code: a landmine, an ordering constraint, a
-  workaround for someone else's bug, a deliberate simplification and its ceiling.
-- The issue/PR number when the line exists to fix a specific reported bug (`(#1145)`).
+Do write, as one terse line: a **why** that isn't derivable from the code — a landmine,
+an ordering constraint, a workaround for someone else's bug, a deliberate simplification
+and its ceiling.
 
 If the comment is longer than the code it explains, delete it. Rename the variable
 instead — a self-explaining name beats any comment. Put the reasoning in the PR
