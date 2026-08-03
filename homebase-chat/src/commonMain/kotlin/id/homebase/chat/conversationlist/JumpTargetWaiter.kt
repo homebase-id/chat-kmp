@@ -3,8 +3,11 @@ package id.homebase.chat.conversationlist
 import co.touchlab.kermit.Logger
 import id.homebase.resources.MR
 import id.homebase.resources.conversation_jump_message_not_arrived
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.compose.resources.StringResource
 import kotlin.time.Duration
@@ -127,7 +130,15 @@ class JumpTargetWaiter(
             val arrived = withTimeoutOrNull(timeout) {
                 // Re-check on every arrival signal rather than trusting any single one:
                 // a round that reports Completed with 0 records is not proof of absence.
-                arrivals.first { isMessageLocal(messageId) }
+                //
+                // The poll is a backstop, not the mechanism. [arrivals] is a plain Flow, so
+                // the instant our collector actually subscribes isn't observable — a row
+                // landing between the miss above and that instant emits its signal into the
+                // void, and nothing re-checks until the *next* signal, which may never come.
+                // Polling makes the outcome independent of subscription timing.
+                // ponytail: fixed interval; delete the poll if `arrivals` ever becomes a
+                // SharedFlow we can hook with `onSubscription`.
+                merge(arrivals, pollTicks()).first { isMessageLocal(messageId) }
                 true
             } != null
 
@@ -153,8 +164,18 @@ class JumpTargetWaiter(
         }
     }
 
+    private fun pollTicks(): Flow<Unit> = flow {
+        while (true) {
+            delay(POLL_INTERVAL)
+            emit(Unit)
+        }
+    }
+
     companion object {
         private const val NOTIF_TAP = "NotifTap"
+
+        /** Backstop re-check cadence: worst case the jump resolves this late, rather than never. */
+        internal val POLL_INTERVAL: Duration = 1.seconds
 
         /**
          * Budget for a pending notification jump. The issue calls for 10-15s; the

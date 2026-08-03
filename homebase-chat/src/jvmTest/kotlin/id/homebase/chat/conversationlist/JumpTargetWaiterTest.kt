@@ -15,6 +15,7 @@ import org.jetbrains.compose.resources.StringResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -125,6 +126,29 @@ class JumpTargetWaiterTest {
         assertEquals(listOf(msg), rec.seeded, "the window must be re-seeded around the arrival")
         assertEquals(listOf(msg to true, msg to false), rec.waiting, "the affordance must be cleared on arrival")
         assertTrue(rec.infos.isEmpty(), "an arrival must never toast")
+    }
+
+    @Test
+    fun messageLandsWithNoArrivalSignal_isStillPickedUpByTheBackstopPoll() = runTest {
+        // `arrivals` is a plain Flow, so the instant the collector subscribes isn't
+        // observable: a row landing between the caller's miss and that instant emits its
+        // signal into the void. Without the poll nothing re-checks until the NEXT signal,
+        // and if none comes the jump waits out the full budget and toasts for a message
+        // that is sitting in SQL. `arrivals` here never emits at all — the harshest form
+        // of that race.
+        val rec = Rec()
+        var local = false
+        val w = waiter(rec, arrivals = MutableSharedFlow(), isMessageLocal = { local })
+
+        val job = async { w.awaitJumpTarget(convo, msg) }
+        runCurrent()
+
+        local = true
+        advanceTimeBy(JumpTargetWaiter.POLL_INTERVAL + 100.milliseconds)
+
+        assertEquals(JumpTargetOutcome.Arrived, job.await())
+        assertEquals(listOf(msg), rec.seeded, "the window must still be re-seeded")
+        assertTrue(rec.infos.isEmpty(), "a message that did arrive must never toast")
     }
 
     @Test
