@@ -100,7 +100,9 @@ fun PublicAvatar(
             is AsyncImagePainter.State.Error -> {
                 FallbackAvatar(
                     initials = initials,
-                    options = options,
+                    // FallbackAvatar applies options.onClick itself; an image-gated
+                    // tap must not survive into the no-image branch.
+                    options = if (imageClick != null) options.copy(onClick = null) else options,
                     modifier = Modifier.fillMaxSize()
                 )
             }

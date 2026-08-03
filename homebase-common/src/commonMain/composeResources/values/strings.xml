@@ -138,6 +138,7 @@
     <string name="avatar_conversation">Conversation avatar</string>
     <string name="avatar_default">Default avatar</string>
     <string name="avatar_public">Public avatar</string>
+    <string name="avatar_contact">Contact avatar</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
