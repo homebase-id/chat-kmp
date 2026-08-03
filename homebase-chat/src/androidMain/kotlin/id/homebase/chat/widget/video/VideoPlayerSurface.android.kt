@@ -97,6 +97,7 @@ actual fun VideoPlayerSurface(
     onEnded: () -> Unit,
     replayToken: Int,
     paused: Boolean,
+    onError: (String) -> Unit,
 ) {
     // useInlineOptimizations is a no-op on Android — the player pool, audio
     // track disable, and first-frame paint already apply unconditionally to
@@ -155,9 +156,12 @@ actual fun VideoPlayerSurface(
                 // this device can't decode (e.g. a 10-bit HLG capture from a sender that shipped it
                 // un-downconverted) gets a specific message; everything else a generic one.
                 val format = (error as? ExoPlaybackException)?.rendererFormat
-                state = VpsState.Error(
+                val message =
                     if (isTenBitFormat(format)) tenBitPlaybackError else genericPlaybackError
-                )
+                state = VpsState.Error(message)
+                // Callers that cover this surface with a thumbnail render the
+                // message themselves — ours is invisible under it (#959).
+                onError(message)
             }
             override fun onPlayerErrorChanged(error: PlaybackException?) {
                 if (error == null) {
@@ -429,7 +433,10 @@ actual fun VideoPlayerSurface(
                 Logger.e(tag = "VideoIO", throwable = e) {
                     "playback setup error: fileId=${data.fileId} key=${data.payloadKey} message=${e.message}"
                 }
-                state = VpsState.Error(e.message ?: "Playback error")
+                // The raw exception text is logged above; the UI gets the
+                // localized generic message (and so does the caller, #959).
+                state = VpsState.Error(genericPlaybackError)
+                onError(genericPlaybackError)
             }
         }
     }
