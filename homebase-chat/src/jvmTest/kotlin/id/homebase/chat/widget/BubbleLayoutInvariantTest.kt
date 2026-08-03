@@ -20,6 +20,7 @@ import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
@@ -183,7 +184,11 @@ class BubbleLayoutInvariantTest {
         )
     }
 
-    private fun ComposeUiTest.render(case: Case, authorName: String? = null) = setContent {
+    private fun ComposeUiTest.render(
+        case: Case,
+        authorName: String? = null,
+        cluster: MessageClusterPosition = MessageClusterPosition.ALONE,
+    ) = setContent {
         Host {
             MessageBubbleRaw(
                 message = case.message(),
@@ -196,6 +201,7 @@ class BubbleLayoutInvariantTest {
                 animatedVisibilityScope = null,
                 downloadingFiles = emptySet(),
                 authorName = authorName,
+                clusterPosition = cluster,
             )
         }
     }
@@ -409,6 +415,55 @@ class BubbleLayoutInvariantTest {
                     failures += "[file/$cap/${if (sent) "sent" else "recv"}] document got media height=$h (>= minHeight=$floor); expected a compact file card"
             }
         assertTrue(failures.isEmpty(), "document compact-card failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * #1196: a short text bubble hugs its text.
+     *
+     * With the footer shown there is exactly ONE 8dp gap between the text and the tucked
+     * timestamp — pre-fix it was 16dp, because the width formula added an 8dp gap on top of
+     * the info Row's own `start = 8.dp` padding — plus the usual 12dp trailing inset.
+     *
+     * With the footer hidden (a non-terminal cluster bubble, #814) the empty info Row must
+     * reserve nothing: the bubble is the text plus its 12dp side insets. Pre-fix it reserved
+     * the full 28dp strip for an empty Row, i.e. 16dp more than the inset it needs.
+     */
+    @Test
+    fun textBubble_hugsText_singleGapBeforeTimestamp() = runComposeUiTest {
+        val inset = 12f
+        val gap = 8f
+        val failures = mutableListOf<String>()
+
+        for (sent in listOf(true, false)) {
+            val who = if (sent) "sent" else "recv"
+            render(Case("text/$who", sent, 0, Caption.SHORT), cluster = MessageClusterPosition.END)
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            val caption = boundsOf(ChatBubbleTestTags.CAPTION)
+            val timestamp = boundsOf(ChatBubbleTestTags.TIMESTAMP)
+
+            if (!approx(timestamp.left.value - caption.right.value, gap))
+                failures += "[$who] gap before the tucked timestamp is " +
+                    "${timestamp.left.value - caption.right.value}dp, expected ${gap}dp"
+            // Only on a received bubble is the timestamp the last footer child; a sent one
+            // trails a 4dp spacer + delivery ticks.
+            if (!sent && !approx(bubble.right.value - timestamp.right.value, inset))
+                failures += "[$who] trailing inset is " +
+                    "${bubble.right.value - timestamp.right.value}dp, expected ${inset}dp"
+        }
+
+        // Footer hidden: no timestamp, and nothing reserved for it.
+        render(Case("text/mid", false, 0, Caption.SHORT), cluster = MessageClusterPosition.MIDDLE)
+        val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+        val caption = boundsOf(ChatBubbleTestTags.CAPTION)
+        if (exists(ChatBubbleTestTags.TIMESTAMP))
+            failures += "[mid] a non-terminal cluster bubble must not render a timestamp"
+        val bubbleWidth = bubble.right.value - bubble.left.value
+        val hugWidth = (caption.right.value - caption.left.value) + 2 * inset
+        if (!approx(bubbleWidth, hugWidth))
+            failures += "[mid] footerless bubble is ${bubbleWidth}dp wide, expected ${hugWidth}dp " +
+                "(text + 2x${inset}dp inset)"
+
+        assertTrue(failures.isEmpty(), "bubble text-hug failures:\n" + failures.joinToString("\n"))
     }
 
     /**

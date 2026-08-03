@@ -14,4 +14,7 @@ object ChatBubbleTestTags {
 
     /** The rendered caption text (inside its padded row). */
     const val CAPTION = "chat.bubble.caption"
+
+    /** The tucked timestamp text of the inline (non-block) text bubble. */
+    const val TIMESTAMP = "chat.bubble.timestamp"
 }

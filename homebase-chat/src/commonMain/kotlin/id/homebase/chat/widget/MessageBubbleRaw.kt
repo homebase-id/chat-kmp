@@ -882,7 +882,8 @@ fun MessageBubbleRaw(
                                     Text(
                                         text = messageInfoText,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = contentColor.copy(alpha = 0.7f)
+                                        color = contentColor.copy(alpha = 0.7f),
+                                        modifier = Modifier.testTag(ChatBubbleTestTags.TIMESTAMP),
                                     )
                                     if (sentByYou && !message.isDeleted) {
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -956,6 +957,12 @@ fun MessageBubbleRaw(
                         // Measure info text
                         val infoPlaceable = measurables[infoIndex].measure(constraints)
 
+                        // #1196: the strip the tucked timestamp needs. The 8dp gap is already
+                        // the info Row's own start padding, so adding one here double-counted
+                        // it; a hidden footer (#814) is an empty Row and reserves nothing.
+                        val infoReservation =
+                            if (showMessageFooter) infoPlaceable.width + 12.dp.roundToPx() else 0
+
                         // Calculate potential final width BEFORE measuring reply
                         val layoutResult = textLayoutResult
 
@@ -974,19 +981,18 @@ fun MessageBubbleRaw(
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
                             val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                            val horizontalGap = 8.dp.roundToPx()
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                             val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+                                (lastLineEnd + infoReservation) <= availableWidth
 
                             rawPotentialFinalWidth = if (fitsOnLastLine) {
                                 maxOf(
                                     mediaWidth,
                                     textPlaceable.width,
-                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    (lastLineEnd + infoReservation),
                                     authorWidth
                                 )
                             } else {
@@ -1033,20 +1039,19 @@ fun MessageBubbleRaw(
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
                             val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                            val horizontalGap = 8.dp.roundToPx()
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                             val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+                                (lastLineEnd + infoReservation) <= availableWidth
 
                             if (fitsOnLastLine) {
                                 finalWidth = maxOf(
                                     mediaWidth,
                                     replyWidth,
                                     textPlaceable.width,
-                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    (lastLineEnd + infoReservation),
                                     authorWidth
                                 )
                                 val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
