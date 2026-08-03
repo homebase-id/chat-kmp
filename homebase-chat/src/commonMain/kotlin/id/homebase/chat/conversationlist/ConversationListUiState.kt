@@ -147,6 +147,11 @@ data class MessageListUiState(
      *  clear it. Null once consumed, so unrelated remounts (closing the image
      *  viewer) don't re-scroll. */
     val scrollToLatestRequest: Uuid? = null,
+    /** Set while a notification-tap jump is waiting for its message to sync in (#1158).
+     *  The conversation is fully usable at the latest page meanwhile; this only drives
+     *  the "waiting for the message" bar. Cleared when the message lands, when the wait
+     *  times out, and on conversation switch. */
+    val awaitingJumpMessageId: Uuid? = null,
 )
 
 /**

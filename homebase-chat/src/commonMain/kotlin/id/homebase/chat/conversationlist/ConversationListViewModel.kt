@@ -76,10 +76,12 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -91,6 +93,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -165,6 +168,9 @@ class ConversationListViewModel(
     private val liveLocationReceiveStore: id.homebase.chat.services.livelocation.LiveLocationReceiveStore,
     private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
     private val locationService: id.homebase.core.location.LocationService,
+    /** Optional so tests can build the VM without the sync engine; used only to kick a
+     *  targeted chat-drive sync when a notification-tap jump target is missing (#1158). */
+    private val driveSyncManager: id.homebase.api.sync.DriveSyncManager? = null,
 ) : ViewModel() {
 
     companion object {
@@ -320,6 +326,109 @@ class ConversationListViewModel(
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
         awaitDriveGranted = ::ensureStickerDriveReady,
     )
+
+    /**
+     * Bounded wait for a notification-tap jump target that hasn't synced in yet (#1158).
+     * See [JumpTargetWaiter] for the race this exists for and why a completed sync round
+     * is not allowed to terminate the wait.
+     */
+    private val jumpTargetWaiter = JumpTargetWaiter(
+        arrivals = chatDriveArrivals(),
+        // Deliberately the SAME predicate loadConversationAroundMessage opens with, not the
+        // cheaper raw-row check: a row that exists but doesn't map (wrong fileType, corrupt
+        // header) would otherwise end the wait and then fail to seed, hanging the jump
+        // silently with no toast and no spinner.
+        isMessageLocal = { messageId -> chatMessageStream.getMessage(messageId) != null },
+        requestSync = ::requestJumpTargetSync,
+        setWaiting = { messageId, waiting ->
+            _messagesUiState.update { state ->
+                when {
+                    waiting -> state.copy(awaitingJumpMessageId = messageId)
+                    // Compare-and-clear: a cancelled wait's teardown runs on a later Main
+                    // dispatch and must not wipe a newer conversation's pending jump.
+                    state.awaitingJumpMessageId == messageId ->
+                        state.copy(awaitingJumpMessageId = null)
+                    else -> state
+                }
+            }
+        },
+        seedWindowAround = { conversationId, messageId ->
+            chatMessageStream.loadConversationAroundMessage(conversationId, messageId)
+        },
+        sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
+    )
+
+    /**
+     * A jump-to-message anchor wasn't in the local DB. A notification tap enters the
+     * bounded wait (#1158) — the conversation is already usable at the latest page, so
+     * this must not block the caller; every other jump reports it unavailable now.
+     * [onGiveUp] disarms the caller's per-emission scroll retry.
+     */
+    private fun CoroutineScope.handleJumpTargetMiss(
+        conversationId: Uuid,
+        messageId: Uuid,
+        trigger: ConversationLoadTrigger,
+        onGiveUp: () -> Unit,
+    ) {
+        if (!shouldWaitForJumpTarget(trigger)) {
+            reportJumpTargetUnavailable(conversationId, messageId)
+            onGiveUp()
+            return
+        }
+        launch {
+            val outcome = jumpTargetWaiter.awaitJumpTarget(conversationId, messageId)
+            if (outcome == JumpTargetOutcome.TimedOut) onGiveUp()
+        }
+    }
+
+    /**
+     * Every route by which a chat-drive row can reach `DriveMainIndex`, as a bare tick:
+     * a WS-pushed batch ([BackendEvent.DataEvent.BatchReceived]) or a finished sync round
+     * ([BackendEvent.DriveEvent.Stopped] — DriveSync is silent and emits no per-batch data
+     * events). These are the same two signals `ChatMessageStream` refreshes its windows off.
+     */
+    private fun chatDriveArrivals(): Flow<Unit> {
+        val chatDrive = chatTargetDrive.alias
+        return eventBus.events
+            .filter { event ->
+                when (event) {
+                    is BackendEvent.DataEvent.BatchReceived -> event.driveId == chatDrive
+                    is BackendEvent.DriveEvent.Stopped -> event.driveId == chatDrive
+                    else -> false
+                }
+            }
+            .map { }
+    }
+
+    /**
+     * Accelerate a pending notification jump: kick a targeted chat-drive sync, and probe the
+     * server for that exact header.
+     *
+     * The probe is deliberately diagnostic rather than load-bearing — `getFileHeaderByUid`
+     * can't write into `DriveMainIndex`, so it can't satisfy the jump by itself. What it
+     * buys is the single most useful fact for the next report of this (#1158 Bug 3):
+     * "the server had the header and we didn't" (a client sync gap) reads very differently
+     * from "the server didn't have it either" (still sitting in the transit inbox, which is
+     * the documented `processAllInboxes()`-races-`syncAll()` case). Only ever runs on the
+     * miss path, so it costs nothing in steady state.
+     */
+    private suspend fun requestJumpTargetSync(messageId: Uuid) {
+        val chatDrive = chatTargetDrive.alias
+        runCatching { driveSyncManager?.syncDrive(chatDrive) }.onFailure {
+            Logger.w(tag = "NotifTap", throwable = it) {
+                "message stage: syncDrive($chatDrive) kick failed for msg=$messageId"
+            }
+        }
+        val serverHasIt = runCatching {
+            driveFileProvider.getFileHeaderByUid(chatDrive, messageId) != null
+        }
+        Logger.i(tag = "NotifTap") {
+            "message stage: server header probe msg=$messageId " +
+                (serverHasIt.getOrNull()
+                    ?.let { "present=$it (${if (it) "client sync gap" else "not in our drive yet — transit/inbox"})" }
+                    ?: "failed: ${serverHasIt.exceptionOrNull()?.message}")
+        }
+    }
 
     /**
      * Gate the sticker save/create paths: surface the extend-permissions dialog if needed,
@@ -1636,6 +1745,9 @@ class ConversationListViewModel(
                 // doesn't flash stale pins before the new conversation's collector emits.
                 pinnedMessages = if (isNewSelection) persistentListOf() else it.pinnedMessages,
                 currentPinIndex = if (isNewSelection) 0 else it.currentPinIndex,
+                // A pending jump belongs to the conversation it was requested for; the
+                // waiter's own finally-clear covers cancellation, this covers a reload.
+                awaitingJumpMessageId = null,
             )
         }
 
@@ -1686,6 +1798,10 @@ class ConversationListViewModel(
             }
 
             try {
+                // Also written by the jump-target waiter launched below when it gives up, so
+                // a timed-out jump stops the per-emission retry. Safe as a plain var: both
+                // writers are children of this viewModelScope job and run on Main — the same
+                // reasoning as `notifTapMark` in init.
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
 
@@ -1707,14 +1823,14 @@ class ConversationListViewModel(
                         // the anchor's message has been purged from the DB.
                         val found = chatMessageStream
                             .loadConversationAroundMessage(conversationId, anchorTarget)
+                        logJumpTargetLookup(conversationId, anchorTarget, found, trigger)
                         if (!found && messageIdForScroll != null) {
-                            // Explicit jump to a message that's no longer on disk:
-                            // the window fell back to the latest page, so the
-                            // scroll lookup below can never resolve. Tell the user
-                            // instead of silently landing at the bottom, and stop
-                            // the per-emission retry from waiting forever.
-                            reportJumpTargetUnavailable(conversationId, messageIdForScroll)
-                            messageIdForScrollNullable = null
+                            // Explicit jump to a message that isn't on disk: the window
+                            // fell back to the latest page, so the scroll lookup below
+                            // can't resolve yet.
+                            handleJumpTargetMiss(conversationId, messageIdForScroll, trigger) {
+                                messageIdForScrollNullable = null
+                            }
                         }
                     } else {
                         chatMessageStream.loadConversation(conversationId)
@@ -1733,9 +1849,11 @@ class ConversationListViewModel(
                     }
                     val found = chatMessageStream
                         .loadConversationAroundMessage(conversationId, messageIdForScroll)
+                    logJumpTargetLookup(conversationId, messageIdForScroll, found, trigger)
                     if (!found) {
-                        reportJumpTargetUnavailable(conversationId, messageIdForScroll)
-                        messageIdForScrollNullable = null
+                        handleJumpTargetMiss(conversationId, messageIdForScroll, trigger) {
+                            messageIdForScrollNullable = null
+                        }
                     }
                 } else {
                     Logger.d(tag = "ChatPaging") {
@@ -2033,6 +2151,10 @@ class ConversationListViewModel(
      * resolved to a message that's no longer on disk, so no window could be
      * centered on it. Surface a snackbar instead of silently landing on the
      * latest page, and log it so the miss is visible in homebase.log.
+     *
+     * NOT used for a notification tap — see [shouldWaitForJumpTarget]. The copy here
+     * claims a deletion, which is only defensible for a target the user was just
+     * shown from local data.
      */
     private fun reportJumpTargetUnavailable(conversationId: Uuid, messageId: Uuid) {
         Logger.w(tag = TAG) {
@@ -2040,6 +2162,29 @@ class ConversationListViewModel(
                 "anchor not in DB, landed on latest page"
         }
         sendEvent(ShowInfoMessage(MR.string.conversation_jump_message_unavailable))
+    }
+
+    /**
+     * `NotifTap` evidence trail, message stage (#1158 Bug 3). The conversation stage
+     * already logs tap → resolved; without this the trail stops there and the next
+     * report of "that message is no longer available" is another archaeology session.
+     *
+     * A hit here means the anchor was in `DriveMainIndex` — including as a tombstone,
+     * since `selectHomebaseFileByUnique` does no fileState filtering and a soft-deleted
+     * header still maps to a `MessageUiModel(isDeleted = true)`. So `found = false`
+     * already means "no row at all", i.e. not-synced-yet rather than deleted.
+     */
+    private fun logJumpTargetLookup(
+        conversationId: Uuid,
+        messageId: Uuid,
+        found: Boolean,
+        trigger: ConversationLoadTrigger,
+    ) {
+        if (trigger != ConversationLoadTrigger.NotificationResolved) return
+        Logger.i(tag = "NotifTap") {
+            "message stage: convo=$conversationId msg=$messageId anchorFound=$found " +
+                (if (found) "(window centered on it)" else "(no DriveMainIndex row — entering bounded wait)")
+        }
     }
 }
 
