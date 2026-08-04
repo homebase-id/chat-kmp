@@ -148,6 +148,8 @@ fun MessageBubbleRaw(
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
+    // Null keeps combinedClickable's single-tap path undelayed for bubbles that can't react.
+    onDoubleClick: (() -> Unit)? = null,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
@@ -468,6 +470,7 @@ fun MessageBubbleRaw(
                 Modifier.combinedClickable(
                     onClick = {},
                     onLongClick = { handleLongClick() },
+                    onDoubleClick = onDoubleClick,
                     interactionSource = pressInteractionSource,
                     indication = null
                 )
@@ -480,14 +483,18 @@ fun MessageBubbleRaw(
         color = if (isStickerBubble) Color.Transparent else backgroundColor,
     ) {
         Box {
-            // Overlay Box that captures all long clicks
+            // Sits under the content and takes every tap the content itself doesn't claim
+            // (plain body text is not a pointer-input node). It consumes the down, so the
+            // Surface's combinedClickable above never sees a second tap — the double-tap
+            // has to be handled here too, not only there.
             if (isMobile()) {
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .pointerInput(message.id) {
+                        .pointerInput(message.id, onDoubleClick != null) {
                             detectTapGestures(
-                                onLongPress = { handleLongClick() }
+                                onLongPress = { handleLongClick() },
+                                onDoubleTap = onDoubleClick?.let { react -> { _ -> react() } },
                             )
                         }
                 )
