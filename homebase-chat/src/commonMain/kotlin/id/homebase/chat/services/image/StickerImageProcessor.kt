@@ -22,10 +22,10 @@ private const val TAG = "StickerImageProcessor"
 object StickerImageProcessor {
 
     /**
-     * Max edge (px) of the persisted/uploaded cut-out. The chat render-side caps a
-     * sticker at `Dimens.Sticker.maxSize` (160.dp ≈ ≤480px even at 3x density), so 512
-     * gives crisp 2× display headroom while staying a tiny fraction of a full-resolution
-     * camera frame. The send path uploads images BYTE-FOR-BYTE (see
+     * Max edge (px) of the persisted/uploaded cut-out. `Dimens.Sticker.baseSize` (180.dp)
+     * is ~540px at 3x density, so 512 renders near 1:1 on the densest phones while staying
+     * a tiny fraction of a full-resolution camera frame. The send path uploads images
+     * BYTE-FOR-BYTE (see
      * [id.homebase.chat.services.builder.MessageAttachmentBuilder]), so this directly
      * bounds upload/storage/download cost. Mirrors the 512px sticker convention used by
      * Signal / WhatsApp / Telegram.
@@ -37,9 +37,9 @@ object StickerImageProcessor {
 
     // Alpha above this counts as "the subject" when building the outline mask.
     private const val OUTLINE_ALPHA_THRESHOLD = 16
-    // Outline thickness as a fraction of the (capped) longest edge. ~4–5% reads as a clean
-    // WhatsApp-style halo without looking heavy.
-    private const val OUTLINE_RADIUS_FRACTION = 0.045f
+    // Halo thickness as a fraction of the (capped) longest edge. Coupled to
+    // Dimens.Sticker.baseSize — a thinner halo renders the subject larger at the same box.
+    private const val OUTLINE_RADIUS_FRACTION = 0.03f
 
     /**
      * Adds a WhatsApp-style opaque-white outline around the alpha shape of a transparent
