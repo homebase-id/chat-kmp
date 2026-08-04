@@ -199,7 +199,6 @@
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
     <string name="settings_haptic_feedback">Haptic Feedback</string>
-    <string name="settings_connections">Connections</string>
     <string name="connections_already_sent_title">Request already sent</string>
     <string name="connections_already_sent_text">A connection request to %1$s already exists. Open the owner console to view or manage it.</string>
     <string name="connections_refresh">Refresh</string>
@@ -221,8 +220,7 @@
     <string name="connections_empty_outgoing_subtitle">Tap the + button to send a connection request.</string>
     <string name="connections_send_request">Send Request</string>
     <string name="settings_notifications">Notifications</string>
-    <string name="settings_profile_info">Profile Info</string>
-    <string name="settings_security_setup">Security Setup</string>
+    <string name="settings_security_setup">Security setup</string>
     <string name="settings_help">Help</string>
     <string name="settings_storage">Storage</string>
     <string name="settings_logout">Log out</string>
@@ -312,8 +310,6 @@
     <string name="settings_delete_account_dialog_title">Delete your account?</string>
     <string name="settings_delete_account_dialog_text">Your account is much more than only this app. If you want to remove your account, you can do so in the owner console.</string>
     <string name="settings_open_owner_console">Open owner console</string>
-    <string name="settings_notifications_active">Notifications active</string>
-    <string name="settings_notifications_issue">Notifications issue</string>
 
     <!-- Notification settings screen -->
     <string name="settings_notifications_disabled_title">Push Notifications are disabled</string>
@@ -1231,9 +1227,26 @@
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
-    <!-- Settings section headers -->
-    <string name="settings_section_general">General</string>
-    <string name="settings_section_danger_zone">Danger Zone</string>
+    <!-- Settings hub -->
+    <string name="settings_section_preferences">Preferences</string>
+    <string name="settings_section_apps">Apps</string>
+    <string name="settings_section_device">Device</string>
+    <string name="settings_section_account_actions">Account actions</string>
+    <string name="settings_edit_profile">Edit profile</string>
+    <string name="settings_security_setup_desc">Password and recovery key</string>
+    <string name="settings_notifications_status_checking">Checking…</string>
+    <string name="settings_notifications_status_on">Push notifications are working</string>
+    <string name="settings_notifications_status_error">Push notifications aren't working</string>
+    <string name="settings_appearance_theme">Theme: %1$s</string>
+    <string name="settings_moments_desc">Photos, clips and notes</string>
+    <string name="settings_vault_desc">Encrypted document storage</string>
+    <string name="settings_location_desc">Private location history</string>
+    <string name="settings_contactbook_desc">Your address book and circles</string>
+    <string name="settings_storage_desc">Caches, database and media</string>
+    <string name="settings_storage_used">%1$s used on this device</string>
+    <string name="settings_help_desc">Logs and diagnostics</string>
+    <string name="settings_logout_desc">Your data stays on your identity</string>
+    <string name="settings_delete_account_desc">Permanent, in your owner console</string>
 
     <!-- Audio player -->
     <string name="audio_pause">Pause</string>
