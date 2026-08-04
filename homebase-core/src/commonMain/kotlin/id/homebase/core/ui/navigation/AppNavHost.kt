@@ -123,6 +123,7 @@ import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
+import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
@@ -1259,35 +1260,37 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onNavigateToNotifications = {
-                                        navController.navigate(Route.NotificationSettings)
-                                    },
-                                    onNavigateToAppearance = {
-                                        navController.navigate(Route.AppearanceSettings)
-                                    },
-                                    onNavigateToStorage = {
-                                        navController.navigate(Route.StorageSettings)
-                                    },
-                                    onNavigateToHelp = {
-                                        navController.navigate(Route.Help)
-                                    },
-                                    onNavigateToMomentsSettings = {
-                                        navController.navigate(Route.MomentsSettings)
-                                    },
-                                    onNavigateToVaultSettings = {
-                                        navController.navigate(Route.VaultSettings)
-                                    },
-                                    onNavigateToLocation = openLocation,
-                                    onNavigateToContactBookSettings = {
-                                        navController.navigate(Route.ContactBookSettings)
-                                    },
-                                    onNavigateToProfileEdit = {
-                                        navController.navigate(Route.ProfileEdit)
-                                    },
-                                    onNavigateToProfileAvatarEdit = {
-                                        navController.navigate(Route.ProfileAvatarEdit)
-                                    },
+                                    actions = SettingsActions(
+                                        onBack = { navController.popBackStack() },
+                                        onNotifications = {
+                                            navController.navigate(Route.NotificationSettings)
+                                        },
+                                        onAppearance = {
+                                            navController.navigate(Route.AppearanceSettings)
+                                        },
+                                        onStorage = {
+                                            navController.navigate(Route.StorageSettings)
+                                        },
+                                        onHelp = {
+                                            navController.navigate(Route.Help)
+                                        },
+                                        onMomentsSettings = {
+                                            navController.navigate(Route.MomentsSettings)
+                                        },
+                                        onVaultSettings = {
+                                            navController.navigate(Route.VaultSettings)
+                                        },
+                                        onLocation = openLocation,
+                                        onContactBookSettings = {
+                                            navController.navigate(Route.ContactBookSettings)
+                                        },
+                                        onProfileEdit = {
+                                            navController.navigate(Route.ProfileEdit)
+                                        },
+                                        onProfileAvatarEdit = {
+                                            navController.navigate(Route.ProfileAvatarEdit)
+                                        },
+                                    ),
                                 )
                             }
                         }
