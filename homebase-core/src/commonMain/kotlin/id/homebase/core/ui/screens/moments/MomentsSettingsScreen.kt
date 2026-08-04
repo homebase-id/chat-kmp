@@ -17,7 +17,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -25,7 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.core.widget.SettingsItemAction
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.moments_settings_open
@@ -81,21 +81,20 @@ fun MomentsSettingsUi(
                 .verticalScroll(scrollState),
         ) {
             Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.AutoAwesome,
-                text = stringResource(MR.string.moments_settings_open),
-                onClick = { onAction(MomentsSettingsUiAction.OpenMomentsClicked) },
-            )
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Visibility,
-                text = stringResource(MR.string.moments_settings_show_icon),
-                onClick = { onAction(MomentsSettingsUiAction.SetIconVisible(!uiState.iconVisible)) },
-                trailingContent = {
-                    Switch(
-                        checked = uiState.iconVisible,
-                        onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },
-                    )
+            SettingsRow(
+                icon = Icons.Outlined.AutoAwesome,
+                title = stringResource(MR.string.moments_settings_open),
+                action = SettingsRowAction.Navigate {
+                    onAction(MomentsSettingsUiAction.OpenMomentsClicked)
                 },
+            )
+            SettingsRow(
+                icon = Icons.Outlined.Visibility,
+                title = stringResource(MR.string.moments_settings_show_icon),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.iconVisible,
+                    onCheckedChange = { onAction(MomentsSettingsUiAction.SetIconVisible(it)) },
+                ),
             )
             Spacer(modifier = Modifier
                 .fillMaxWidth()
