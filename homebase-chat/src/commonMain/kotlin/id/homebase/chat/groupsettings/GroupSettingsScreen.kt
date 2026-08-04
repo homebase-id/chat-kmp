@@ -60,7 +60,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,7 +74,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,6 +84,7 @@ import id.homebase.chat.conversationsettings.ConversationOverviewSection
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.chat.createconversation.ContactItem
 import id.homebase.chat.services.convo.contact.ContactConnectionState
+import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.chat.widget.ErrorInfoItem
@@ -97,7 +96,6 @@ import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.subsample.SubSamplingImageSource
-import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -106,7 +104,6 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.ListItemAction
 import id.homebase.core.widget.ListItemActionNormalIcon
 import id.homebase.resources.MR
-import id.homebase.resources.avatar_conversation
 import id.homebase.resources.cancel
 import id.homebase.resources.error_no_group_loaded
 import id.homebase.resources.chat_group_add_members
@@ -330,9 +327,9 @@ fun GroupSettingsScreen(
                     )
                 }
             } else {
-                GroupAvatarFullScreenViewer(
-                    imageData = avatar,
-                    groupName = uiState.conversation?.name.orEmpty(),
+                AvatarFullScreenViewer(
+                    source = SubSamplingImageSource.Remote(avatar.copy(loadFullPayload = true)),
+                    title = uiState.conversation?.name.orEmpty(),
                     onDismiss = { fullScreenAvatar = null },
                     sharedTransitionScope = this@SharedTransitionLayout,
                     animatedVisibilityScope = this@AnimatedContent,
@@ -381,66 +378,6 @@ private fun LeavingGroupOverlay() {
                 )
             }
         }
-    }
-}
-
-/**
- * Full-screen, pinch-zoomable viewer for the group photo. The header avatar
- * morphs in via a shared element; a translucent top bar shows the group name.
- * Exit via the back arrow or system back.
- */
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
-@Composable
-private fun GroupAvatarFullScreenViewer(
-    imageData: HomebaseImageData,
-    groupName: String,
-    onDismiss: () -> Unit,
-    sharedTransitionScope: SharedTransitionScope? = null,
-    animatedVisibilityScope: AnimatedVisibilityScope? = null,
-) {
-    @Suppress("DEPRECATION")
-    BackHandler(enabled = true) { onDismiss() }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center,
-    ) {
-        ZoomableSubSamplingImage(
-            source = SubSamplingImageSource.Remote(imageData.copy(loadFullPayload = true)),
-            contentDescription = stringResource(MR.string.avatar_conversation),
-            modifier = Modifier.fillMaxSize(),
-            sharedTransitionScope = sharedTransitionScope,
-            animatedVisibilityScope = animatedVisibilityScope,
-            sharedContentStateKey = "image-${imageData.fileId}-${imageData.payloadKey}",
-        )
-
-        TopAppBar(
-            modifier = Modifier.align(Alignment.TopCenter),
-            title = {
-                Text(
-                    text = groupName,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            },
-            navigationIcon = {
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(MR.string.menu_back),
-                    )
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Black.copy(alpha = 0.4f),
-                titleContentColor = Color.White,
-                navigationIconContentColor = Color.White,
-            ),
-        )
     }
 }
 

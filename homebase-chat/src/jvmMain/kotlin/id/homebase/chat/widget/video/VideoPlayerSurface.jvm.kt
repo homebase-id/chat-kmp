@@ -51,6 +51,7 @@ import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.cd_video_frame
+import id.homebase.resources.video_error_generic
 import id.homebase.resources.vlc_required
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -101,6 +102,7 @@ actual fun VideoPlayerSurface(
     // which the desktop never shows (it uses the wide split layout), so the
     // flag is accepted to satisfy the expect signature but not wired here.
     @Suppress("UNUSED_PARAMETER") paused: Boolean,
+    onError: (String) -> Unit,
 ) {
     // VLC-J's CallbackMediaPlayerComponent paints to a Swing canvas with no
     // built-in transport UI of its own (host renders controls). Param is
@@ -121,6 +123,10 @@ actual fun VideoPlayerSurface(
     // startup sweep is the backstop.
     var tempFile by remember(data) { mutableStateOf<File?>(null) }
     var httpServer by remember(data) { mutableStateOf<HttpServer?>(null) }
+
+    // Resolved in composable scope — stringResource can't run inside the
+    // LaunchedEffect's catch block below (#959).
+    val genericPlaybackError = stringResource(MR.string.video_error_generic)
 
     DisposableEffect(data) {
         onDispose {
@@ -230,7 +236,14 @@ actual fun VideoPlayerSurface(
                     }
                 }
             } catch (e: Exception) {
-                state = VpsState.Error(e.message ?: "Playback error")
+                Logger.e(tag = "VideoIO", throwable = e) {
+                    "playback setup error: fileId=${data.fileId} key=${data.payloadKey} message=${e.message}"
+                }
+                // Localized message for the UI; the raw exception text stays in
+                // the log. Also raised to the caller, whose thumbnail overlay
+                // would otherwise hide our own centred Text (#959).
+                state = VpsState.Error(genericPlaybackError)
+                onError(genericPlaybackError)
             }
         }
     }

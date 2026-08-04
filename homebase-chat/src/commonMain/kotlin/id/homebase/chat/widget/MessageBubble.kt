@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -78,6 +79,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
@@ -198,6 +200,11 @@ fun SentMessageBubble(
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val haptics = rememberHaptics()
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val openReactionBar: (() -> Unit)? =
+        if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
+            { popupMode = MessagePopupMode.Reaction }
+        } else null
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -334,11 +341,9 @@ fun SentMessageBubble(
                                     popupMode = MessagePopupMode.All
                                 }
                             },
-                            onDoubleClick = {
-                                if (onAddReaction != null) {
-                                    popupMode = MessagePopupMode.Reaction
-                                }
-                            },
+                            // Only reaches the padding around the bubble and the typed kinds
+                            // that paint their own surface; MessageBubbleRaw owns the rest.
+                            onDoubleClick = openReactionBar,
                         )
                     } else Modifier,
                 ) {
@@ -358,6 +363,7 @@ fun SentMessageBubble(
                                 popupMode = MessagePopupMode.All
                             }
                         },
+                        onDoubleClick = openReactionBar,
                         onMediaClick = onMediaClick,
                         onClickMessageId = onClickMessageId,
                         onRequestDecryptedFile = onRequestDecryptedFile,
@@ -386,6 +392,22 @@ fun SentMessageBubble(
                             onReactionClick = { onShowReactions?.invoke() },
                             onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
                             ownReactions = message.ownReactions,
+                        )
+                    }
+                    if (isMobile() && popupMode == MessagePopupMode.Reaction && !message.isDeleted) {
+                        BubbleReactionPopup(
+                            message = message,
+                            userDefaultReactions = userDefaultReactions,
+                            alignToBubbleEnd = true,
+                            dismissMenu = { popupMode = MessagePopupMode.None },
+                            onSelectEmoji = { reaction ->
+                                popupMode = MessagePopupMode.None
+                                onAddReaction?.invoke(message.id, reaction)
+                            },
+                            onShowAllEmojis = {
+                                popupMode = MessagePopupMode.None
+                                showEmojiPicker = true
+                            },
                         )
                     }
                 }
@@ -512,6 +534,11 @@ fun ReceivedMessageBubble(
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val openReactionBar: (() -> Unit)? =
+        if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
+            { popupMode = MessagePopupMode.Reaction }
+        } else null
 
     Row(
         modifier = Modifier.fillMaxWidth()
@@ -555,11 +582,8 @@ fun ReceivedMessageBubble(
                                 popupMode = MessagePopupMode.All
                             }
                         },
-                        onDoubleClick = {
-                            if (onAddReaction != null) {
-                                popupMode = MessagePopupMode.Reaction
-                            }
-                        },
+                        // See SentMessageBubble — MessageBubbleRaw owns the bubble surface.
+                        onDoubleClick = openReactionBar,
                     )
                 } else Modifier.weight(1f, fill = false),
                 contentAlignment = Alignment.CenterStart,
@@ -606,6 +630,7 @@ fun ReceivedMessageBubble(
                                     popupMode = MessagePopupMode.All
                                 }
                             },
+                            onDoubleClick = openReactionBar,
                             onMediaClick = onMediaClick,
                             onClickMessageId = onClickMessageId,
                             onRequestDecryptedFile = onRequestDecryptedFile,
@@ -632,6 +657,24 @@ fun ReceivedMessageBubble(
                                 onReactionClick = { onShowReactions?.invoke() },
                                 onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
                                 ownReactions = message.ownReactions,
+                            )
+                        }
+                        if (isMobile() && popupMode == MessagePopupMode.Reaction &&
+                            !message.isDeleted
+                        ) {
+                            BubbleReactionPopup(
+                                message = message,
+                                userDefaultReactions = userDefaultReactions,
+                                alignToBubbleEnd = false,
+                                dismissMenu = { popupMode = MessagePopupMode.None },
+                                onSelectEmoji = { reaction ->
+                                    popupMode = MessagePopupMode.None
+                                    onAddReaction?.invoke(message.id, reaction)
+                                },
+                                onShowAllEmojis = {
+                                    popupMode = MessagePopupMode.None
+                                    showEmojiPicker = true
+                                },
                             )
                         }
                     }
@@ -1131,6 +1174,7 @@ fun InlineReplyPreview(
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = replyPreviewMaxLines,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT),
                         )
                     }
                 }

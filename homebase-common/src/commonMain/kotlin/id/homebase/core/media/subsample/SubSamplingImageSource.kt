@@ -11,4 +11,8 @@ sealed interface SubSamplingImageSource {
     class LocalFile(
         val filePath: String,
     ) : SubSamplingImageSource
+
+    class Url(
+        val url: String,
+    ) : SubSamplingImageSource
 }

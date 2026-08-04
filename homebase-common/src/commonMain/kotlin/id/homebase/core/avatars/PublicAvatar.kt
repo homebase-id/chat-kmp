@@ -51,12 +51,15 @@ fun PublicAvatar(
     // future Coil upgrade that changes singleton resolution semantics.
     val imageLoader: ImageLoader = koinInject()
 
+    val containerClick = options.onClick?.takeIf { !options.onClickNeedsImage }
+    val imageClick = options.onClick?.takeIf { options.onClickNeedsImage }
+
     val clickableModifier =
-        if (options.onClick != null) {
+        if (containerClick != null) {
             modifier
                 .size(options.size)
                 .clip(CircleShape)
-                .clickable { options.onClick.invoke() }
+                .clickable(onClick = containerClick)
         } else {
             modifier
                 .size(options.size)
@@ -85,13 +88,21 @@ fun PublicAvatar(
             }
 
             is AsyncImagePainter.State.Success -> {
-                SubcomposeAsyncImageContent()
+                SubcomposeAsyncImageContent(
+                    modifier = if (imageClick != null) {
+                        Modifier.fillMaxSize().clickable(onClick = imageClick)
+                    } else {
+                        Modifier
+                    }
+                )
             }
 
             is AsyncImagePainter.State.Error -> {
                 FallbackAvatar(
                     initials = initials,
-                    options = options,
+                    // FallbackAvatar applies options.onClick itself; an image-gated
+                    // tap must not survive into the no-image branch.
+                    options = if (imageClick != null) options.copy(onClick = null) else options,
                     modifier = Modifier.fillMaxSize()
                 )
             }
