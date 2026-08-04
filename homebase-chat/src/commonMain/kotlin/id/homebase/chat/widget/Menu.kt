@@ -52,8 +52,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.core.ui.assets.HomebaseIcons
@@ -310,9 +315,10 @@ fun ReceivedMessagePopup(
 
     when (mode) {
         MessagePopupMode.Reaction -> {
-            // Defensive: this mode is only entered for kinds that allow inline
-            // reactions, so the gate is mostly belt-and-braces.
-            if (policy.allowInlineReactions) {
+            // This unanchored Popup positions against its parent — the hover-icons Row,
+            // which only has icons (and therefore a size) on desktop. Mobile renders the
+            // bar from the bubble itself via BubbleReactionPopup.
+            if (policy.allowInlineReactions && !isMobile()) {
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
@@ -514,7 +520,8 @@ fun SentMessagePopup(
 
     when (mode) {
         MessagePopupMode.Reaction -> {
-            if (policy.allowInlineReactions) {
+            // Desktop-only anchor — see ReceivedMessagePopup.
+            if (policy.allowInlineReactions && !isMobile()) {
                 Popup(
                     onDismissRequest = dismissMenu
                 ) {
@@ -618,6 +625,63 @@ enum class MessagePopupMode {
     All,
     Reaction,
     Menu,
+}
+
+/**
+ * The compact reaction bar, anchored just above the bubble it belongs to. Declare it as a
+ * child of the layout that wraps the bubble — [PopupPositionProvider.calculatePosition]
+ * receives that parent's bounds as its anchor.
+ */
+@Composable
+fun BubbleReactionPopup(
+    message: MessageUiModel,
+    userDefaultReactions: ImmutableList<String>,
+    alignToBubbleEnd: Boolean,
+    dismissMenu: () -> Unit,
+    onSelectEmoji: (String) -> Unit,
+    onShowAllEmojis: () -> Unit,
+) {
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    if (!policy.allowInlineReactions) return
+    Popup(
+        popupPositionProvider = rememberAboveBubblePositionProvider(alignToBubbleEnd),
+        onDismissRequest = dismissMenu,
+    ) {
+        ReactionMenu(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            userDefaultReactions = userDefaultReactions,
+            ownReactions = message.ownReactions,
+            onSelect = onSelectEmoji,
+            onShowAllEmojis = onShowAllEmojis,
+        )
+    }
+}
+
+@Composable
+private fun rememberAboveBubblePositionProvider(alignToEnd: Boolean): PopupPositionProvider {
+    val gapPx = with(LocalDensity.current) { 4.dp.roundToPx() }
+    return remember(gapPx, alignToEnd) { AboveBubblePositionProvider(gapPx, alignToEnd) }
+}
+
+internal class AboveBubblePositionProvider(
+    private val gapPx: Int,
+    private val alignToEnd: Boolean,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val alignToRightEdge = alignToEnd == (layoutDirection == LayoutDirection.Ltr)
+        val x = if (alignToRightEdge) anchorBounds.right - popupContentSize.width
+        else anchorBounds.left
+        val maxX = (windowSize.width - popupContentSize.width).coerceAtLeast(0)
+        val maxY = (windowSize.height - popupContentSize.height).coerceAtLeast(0)
+        val above = anchorBounds.top - popupContentSize.height - gapPx
+        val y = if (above >= 0) above else (anchorBounds.bottom + gapPx).coerceAtMost(maxY)
+        return IntOffset(x.coerceIn(0, maxX), y)
+    }
 }
 
 @Composable
