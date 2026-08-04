@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsToggleRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -191,7 +192,10 @@ fun NotificationSettingsUi(
             }
 
             // ── Sounds Section ──
-            SectionHeader(title = stringResource(MR.string.settings_sounds), modifier = Modifier.testTag("soundsTitle"))
+            SettingsSectionHeader(
+                title = stringResource(MR.string.settings_sounds),
+                modifier = Modifier.testTag("soundsTitle").padding(horizontal = 4.dp),
+            )
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     // Message Sound row — opens system notification settings
@@ -214,7 +218,10 @@ fun NotificationSettingsUi(
             }
 
             // ── Notification Content Section ──
-            SectionHeader(title = stringResource(MR.string.settings_notification_content), modifier = Modifier.testTag("notificationContent"))
+            SettingsSectionHeader(
+                title = stringResource(MR.string.settings_notification_content),
+                modifier = Modifier.testTag("notificationContent").padding(horizontal = 4.dp),
+            )
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     SettingsClickableRow(
@@ -248,7 +255,10 @@ fun NotificationSettingsUi(
             )
 
             // ── Badge Count Section ──
-            SectionHeader(title = stringResource(MR.string.settings_badge_count), modifier = Modifier.testTag("badgeCount"))
+            SettingsSectionHeader(
+                title = stringResource(MR.string.settings_badge_count),
+                modifier = Modifier.testTag("badgeCount").padding(horizontal = 4.dp),
+            )
             Card(modifier = Modifier.fillMaxWidth()) {
                 SettingsToggleRow(
                     modifier = Modifier.testTag("includeMutedChats"),
@@ -308,11 +318,11 @@ fun NotificationSettingsUi(
             }
 
             // ── Push Notification Status (Debug — tap header 5 times to reveal) ──
-            SectionHeader(
+            SettingsSectionHeader(
                 title = stringResource(MR.string.settings_push_notification_status),
-                modifier = Modifier.clickable {
-                    onAction(NotificationSettingsUiAction.DebugHeaderTapped)
-                }
+                modifier = Modifier
+                    .clickable { onAction(NotificationSettingsUiAction.DebugHeaderTapped) }
+                    .padding(horizontal = 4.dp),
             )
 
             if (uiState.showDebugInfo) {
@@ -479,16 +489,6 @@ fun NotificationSettingsUi(
 }
 
 // ── Reusable Setting Components ──
-
-@Composable
-private fun SectionHeader(title: String, modifier: Modifier = Modifier) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier.padding(horizontal = 4.dp)
-    )
-}
 
 @Composable
 private fun SettingsClickableRow(

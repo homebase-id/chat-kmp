@@ -22,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
@@ -69,7 +68,9 @@ import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
 import id.homebase.core.widget.DialogTitle
-import id.homebase.core.widget.SettingsItemAction
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.menu_back
@@ -88,7 +89,6 @@ import id.homebase.resources.settings_notifications_issue
 import id.homebase.resources.settings_open_owner_console
 import id.homebase.resources.settings_profile_info
 import id.homebase.resources.settings_security_setup
-import id.homebase.resources.cd_open_externally
 import id.homebase.resources.settings_section_danger_zone
 import id.homebase.resources.settings_section_general
 import id.homebase.resources.location_settings_section
@@ -308,127 +308,96 @@ fun SettingsUi(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            SettingsSectionHeader(stringResource(MR.string.settings_section_general))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Person,
-                text = stringResource(MR.string.settings_profile_info),
-                onClick = { onAction(SettingsUiAction.ProfileInfoClicked) },
+            SettingsSectionHeader(
+                title = stringResource(MR.string.settings_section_general),
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
+                icon = Icons.Outlined.Person,
+                title = stringResource(MR.string.settings_profile_info),
+                action = SettingsRowAction.Navigate {
+                    onAction(SettingsUiAction.ProfileInfoClicked)
+                },
+            )
+            SettingsRow(
                 modifier = Modifier.testTag("notificationsButton"),
-                imageVector = Icons.Outlined.Notifications,
-                text = stringResource(MR.string.settings_notifications),
-                onClick = onNavigateToNotifications,
-                trailingContent = {
-                    when (uiState.notificationStatus) {
-                        NotificationVerificationStatus.CHECKING -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                        }
-
-                        NotificationVerificationStatus.OK -> {
-                            Icon(
-                                imageVector = Icons.Outlined.CheckCircle,
-                                contentDescription = stringResource(MR.string.settings_notifications_active),
-                                tint = ExtendedColors.Success,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        NotificationVerificationStatus.ERROR -> {
-                            Icon(
-                                imageVector = Icons.Outlined.Error,
-                                contentDescription = stringResource(MR.string.settings_notifications_issue),
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
+                icon = Icons.Outlined.Notifications,
+                title = stringResource(MR.string.settings_notifications),
+                action = SettingsRowAction.Navigate(onNavigateToNotifications),
+                status = { NotificationStatusIndicator(uiState.notificationStatus) },
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
                 modifier = Modifier.testTag("securitySetupButton"),
-                imageVector = Icons.Outlined.Security,
-                text = stringResource(MR.string.settings_security_setup),
-                onClick = { onAction(SettingsUiAction.SecuritySetupClicked) },
-                trailingContent = {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
-                        contentDescription = stringResource(MR.string.cd_open_externally),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                icon = Icons.Outlined.Security,
+                title = stringResource(MR.string.settings_security_setup),
+                action = SettingsRowAction.External {
+                    onAction(SettingsUiAction.SecuritySetupClicked)
+                },
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
                 modifier = Modifier.testTag("appearanceButton"),
-                imageVector = Icons.Outlined.Brightness6,
-                text = stringResource(MR.string.settings_appearance),
-                onClick = onNavigateToAppearance
+                icon = Icons.Outlined.Brightness6,
+                title = stringResource(MR.string.settings_appearance),
+                action = SettingsRowAction.Navigate(onNavigateToAppearance),
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
                 modifier = Modifier.testTag("storageButton"),
-                imageVector = Icons.Outlined.Storage,
-                text = stringResource(MR.string.settings_storage),
-                onClick = onNavigateToStorage
+                icon = Icons.Outlined.Storage,
+                title = stringResource(MR.string.settings_storage),
+                action = SettingsRowAction.Navigate(onNavigateToStorage),
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
                 modifier = Modifier.testTag("momentsSettingsButton"),
-                imageVector = Icons.Outlined.AutoAwesome,
-                text = stringResource(MR.string.moments_settings_section),
-                onClick = onNavigateToMomentsSettings,
+                icon = Icons.Outlined.AutoAwesome,
+                title = stringResource(MR.string.moments_settings_section),
+                action = SettingsRowAction.Navigate(onNavigateToMomentsSettings),
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Lock,
-                text = stringResource(MR.string.vault_settings_section),
-                onClick = onNavigateToVaultSettings,
+            SettingsRow(
+                icon = Icons.Outlined.Lock,
+                title = stringResource(MR.string.vault_settings_section),
+                action = SettingsRowAction.Navigate(onNavigateToVaultSettings),
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
                 modifier = Modifier.testTag("locationSettingsButton"),
-                imageVector = Icons.Outlined.LocationOn,
-                text = stringResource(MR.string.location_settings_section),
-                onClick = onNavigateToLocation,
+                icon = Icons.Outlined.LocationOn,
+                title = stringResource(MR.string.location_settings_section),
+                action = SettingsRowAction.Navigate(onNavigateToLocation),
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
                 modifier = Modifier.testTag("contactBookSettingsButton"),
-                imageVector = Icons.Outlined.People,
-                text = stringResource(MR.string.contactbook_settings_section),
-                onClick = onNavigateToContactBookSettings,
+                icon = Icons.Outlined.People,
+                title = stringResource(MR.string.contactbook_settings_section),
+                action = SettingsRowAction.Navigate(onNavigateToContactBookSettings),
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsItemAction(
+            SettingsRow(
                 modifier = Modifier.testTag("helpButton"),
-                imageVector = Icons.AutoMirrored.Outlined.HelpOutline,
-                text = stringResource(MR.string.settings_help),
-                onClick = onNavigateToHelp
+                icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                title = stringResource(MR.string.settings_help),
+                action = SettingsRowAction.Navigate(onNavigateToHelp),
             )
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-            SettingsSectionHeader(stringResource(MR.string.settings_section_danger_zone))
-            SettingsItemAction(
-                modifier = Modifier.testTag("deleteAccountButton"),
-                imageVector = Icons.Outlined.Delete,
-                text = stringResource(MR.string.settings_delete_account),
-                tint = MaterialTheme.colorScheme.error,
-                onClick = { onAction(SettingsUiAction.DeleteAccount) }
+            SettingsSectionHeader(
+                title = stringResource(MR.string.settings_section_danger_zone),
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
             )
-            SettingsItemAction(
+            SettingsRow(
+                modifier = Modifier.testTag("deleteAccountButton"),
+                icon = Icons.Outlined.Delete,
+                title = stringResource(MR.string.settings_delete_account),
+                isDestructive = true,
+                action = SettingsRowAction.Invoke {
+                    onAction(SettingsUiAction.DeleteAccount)
+                },
+            )
+            SettingsRow(
                 modifier = Modifier.testTag("logoutButton"),
-                imageVector = Icons.AutoMirrored.Outlined.Logout,
-                text = stringResource(MR.string.settings_logout),
-                tint = MaterialTheme.colorScheme.error,
-                onClick = { onAction(SettingsUiAction.LogoutClicked) }
+                icon = Icons.AutoMirrored.Outlined.Logout,
+                title = stringResource(MR.string.settings_logout),
+                isDestructive = true,
+                action = SettingsRowAction.Invoke {
+                    onAction(SettingsUiAction.LogoutClicked)
+                },
             )
             Spacer(modifier = Modifier.height(32.dp))
         }
@@ -436,13 +405,27 @@ fun SettingsUi(
 }
 
 @Composable
-private fun SettingsSectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
-    )
+private fun NotificationStatusIndicator(status: NotificationVerificationStatus) {
+    when (status) {
+        NotificationVerificationStatus.CHECKING -> CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            strokeWidth = 2.dp,
+        )
+
+        NotificationVerificationStatus.OK -> Icon(
+            imageVector = Icons.Outlined.CheckCircle,
+            contentDescription = stringResource(MR.string.settings_notifications_active),
+            tint = ExtendedColors.Success,
+            modifier = Modifier.size(20.dp),
+        )
+
+        NotificationVerificationStatus.ERROR -> Icon(
+            imageVector = Icons.Outlined.Error,
+            contentDescription = stringResource(MR.string.settings_notifications_issue),
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(20.dp),
+        )
+    }
 }
 
 @Preview
