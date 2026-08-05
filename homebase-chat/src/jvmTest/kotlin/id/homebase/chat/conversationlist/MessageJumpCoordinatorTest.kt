@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -212,5 +213,20 @@ class MessageJumpCoordinatorTest {
 
         assertTrue(coordinator.ensureWindowContains(conversationId, target))
         assertEquals(0, harness.loadAroundCalls)
+    }
+
+    @Test
+    fun ensureWindowContains_missDoesNotReport_soANotificationTapCanWaitInstead() = runTest {
+        // The conversation-open path decides what a miss means: on a notification tap it
+        // is "not synced yet" and gets a bounded wait, so reporting here would claim a
+        // deletion before the waiter ever runs.
+        val target = Uuid.random()
+        val state = stateWith(listOf(message(Uuid.random())))
+        val harness = Harness(windowIds = emptyList(), onDisk = emptySet())
+        val coordinator = harness.coordinator(state)
+
+        assertFalse(coordinator.ensureWindowContains(conversationId, target))
+        assertEquals(1, harness.loadAroundCalls)
+        assertTrue(harness.reportedUnavailable.isEmpty())
     }
 }

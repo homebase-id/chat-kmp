@@ -147,6 +147,7 @@ data class MessageListUiState(
      *  clear it. Null once consumed, so unrelated remounts (closing the image
      *  viewer) don't re-scroll. */
     val scrollToLatestRequest: Uuid? = null,
+    val awaitingJumpMessageId: Uuid? = null,
 )
 
 /**
