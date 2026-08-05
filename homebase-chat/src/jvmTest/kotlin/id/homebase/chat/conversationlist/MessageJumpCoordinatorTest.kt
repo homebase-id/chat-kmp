@@ -55,11 +55,13 @@ class MessageJumpCoordinatorTest {
     private class Harness(
         windowIds: List<Uuid>,
         private val onDisk: Set<Uuid> = windowIds.toSet(),
+        private val excludedFromView: Set<Uuid> = emptySet(),
     ) {
         val window = windowIds.toMutableList()
         var loadAroundCalls = 0
             private set
         val reportedUnavailable = mutableListOf<Uuid>()
+        val reportedExcluded = mutableListOf<Uuid>()
 
         fun coordinator(
             state: MutableStateFlow<MessageListUiState>,
@@ -67,6 +69,9 @@ class MessageJumpCoordinatorTest {
         ) = MessageJumpCoordinator(
             messagesUiState = state,
             isMessageInWindow = { _, messageId -> window.contains(messageId) },
+            isExcludedFromView = { _, messageId ->
+                window.contains(messageId) && excludedFromView.contains(messageId)
+            },
             loadAroundMessage = { _, messageId ->
                 loadAroundCalls++
                 if (!onDisk.contains(messageId)) {
@@ -78,6 +83,7 @@ class MessageJumpCoordinatorTest {
                 }
             },
             reportUnavailable = { _, messageId -> reportedUnavailable.add(messageId) },
+            reportExcluded = { _, messageId -> reportedExcluded.add(messageId) },
         )
     }
 
@@ -120,7 +126,10 @@ class MessageJumpCoordinatorTest {
         assertNull(state.value.scrollPosition)
         assertEquals(target, state.value.highlightedMessageId)
 
-        assertEquals(1, coordinator.resolvePendingIndex(loadedItems))
+        assertEquals(
+            JumpTargetResolution.Landed(1),
+            coordinator.resolvePendingJump(loadedItems),
+        )
         assertNull(coordinator.pendingTarget)
         assertTrue(harness.reportedUnavailable.isEmpty())
     }
@@ -134,7 +143,10 @@ class MessageJumpCoordinatorTest {
 
         coordinator.jumpToMessage(conversationId, target)
 
-        assertNull(coordinator.resolvePendingIndex(listOf(message(Uuid.random()))))
+        assertEquals(
+            JumpTargetResolution.Pending,
+            coordinator.resolvePendingJump(listOf(message(Uuid.random()))),
+        )
         assertEquals(target, coordinator.pendingTarget)
     }
 
@@ -151,6 +163,44 @@ class MessageJumpCoordinatorTest {
         assertNull(coordinator.pendingTarget)
         assertNull(state.value.highlightedMessageId)
         assertNull(state.value.scrollPosition)
+    }
+
+    @Test
+    fun targetExcludedByTheExitCutoff_disarmsAndReportsInsteadOfRetryingForever() = runTest {
+        val target = Uuid.random()
+        val rendered = listOf(message(Uuid.random()))
+        val state = stateWith(rendered)
+        val harness = Harness(
+            windowIds = rendered.map { it.message.id } + target,
+            excludedFromView = setOf(target),
+        )
+        val coordinator = harness.coordinator(state)
+
+        coordinator.arm(conversationId, target)
+
+        assertEquals(
+            JumpTargetResolution.ExcludedFromView,
+            coordinator.resolvePendingJump(rendered),
+        )
+        assertNull(coordinator.pendingTarget)
+        assertEquals(listOf(target), harness.reportedExcluded)
+        assertTrue(harness.reportedUnavailable.isEmpty())
+    }
+
+    @Test
+    fun jumpToExcludedTarget_reportsWithoutArmingOrReseeding() = runTest {
+        val target = Uuid.random()
+        val state = stateWith(listOf(message(Uuid.random())))
+        val harness = Harness(windowIds = listOf(target), excludedFromView = setOf(target))
+        val coordinator = harness.coordinator(state)
+
+        coordinator.jumpToMessage(conversationId, target)
+
+        assertEquals(listOf(target), harness.reportedExcluded)
+        assertNull(coordinator.pendingTarget)
+        assertEquals(0, harness.loadAroundCalls)
+        assertNull(state.value.scrollPosition)
+        assertNull(state.value.highlightedMessageId)
     }
 
     @Test

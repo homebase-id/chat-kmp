@@ -1357,6 +1357,7 @@
     <string name="conversation_media_tab_locations">Locations</string>
     <string name="conversation_media_go_to_message">Go to message</string>
     <string name="conversation_jump_message_unavailable">That message is no longer available</string>
+    <string name="conversation_jump_message_after_exit">That message was sent after you left this conversation</string>
 
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>
