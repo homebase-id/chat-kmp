@@ -48,11 +48,13 @@ import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.about_homebase
 import id.homebase.resources.dev_menu_title
+import id.homebase.resources.error_unknown
 import id.homebase.resources.help_contact_us
 import id.homebase.resources.help_copyright
 import id.homebase.resources.help_debug_log_description
 import id.homebase.resources.help_enable_error_collection
 import id.homebase.resources.help_ffmpeg_version
+import id.homebase.resources.help_share_log_failed
 import id.homebase.resources.help_submit_debug_log
 import id.homebase.resources.help_support_center
 import id.homebase.resources.help_terms_privacy
@@ -67,6 +69,7 @@ import id.homebase.resources.update_get_update
 import id.homebase.resources.update_not_supported
 import id.homebase.resources.update_using_latest_version
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -94,8 +97,10 @@ fun HelpScreen(
                     file = event.filePath,
                     onError = { error ->
                         scope.launch {
+                            val detail = error.message?.takeIf { it.isNotBlank() }
+                                ?: getString(MR.string.error_unknown)
                             snackbarHostState.showSnackbar(
-                                message = "Failed to share log: ${error.message}"
+                                message = getString(MR.string.help_share_log_failed, detail)
                             )
                         }
                     },
@@ -104,7 +109,7 @@ fun HelpScreen(
 
             is HelpUiEvent.ShowError -> {
                 viewModel.eventConsumed()
-                scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+                scope.launch { snackbarHostState.showSnackbar(message = getString(event.res)) }
             }
 
             is HelpUiEvent.OpenDeveloperMenu -> {
