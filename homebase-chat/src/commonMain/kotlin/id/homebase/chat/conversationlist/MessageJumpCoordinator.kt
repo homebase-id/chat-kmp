@@ -49,13 +49,12 @@ internal class MessageJumpCoordinator(
 
     /**
      * Re-seeds a window centered on [messageId] unless one already holds it.
-     * False means the target is no longer on disk and the user has been told.
+     * False means the target is not on disk; reporting that is the caller's, because
+     * on a notification tap it means "not synced yet" and is waited on rather than told.
      */
     suspend fun ensureWindowContains(conversationId: Uuid, messageId: Uuid): Boolean {
         if (isMessageInWindow(conversationId, messageId)) return true
-        val found = loadAroundMessage(conversationId, messageId)
-        if (!found) reportUnavailable(conversationId, messageId)
-        return found
+        return loadAroundMessage(conversationId, messageId)
     }
 
     suspend fun jumpToMessage(conversationId: Uuid, messageId: Uuid) {
@@ -83,6 +82,7 @@ internal class MessageJumpCoordinator(
         arm(messageId)
         messagesUiState.update { it.copy(highlightedMessageId = messageId) }
         if (!ensureWindowContains(conversationId, messageId)) {
+            reportUnavailable(conversationId, messageId)
             if (pendingTarget == messageId) disarm()
             messagesUiState.update {
                 if (it.highlightedMessageId == messageId) it.copy(highlightedMessageId = null)
