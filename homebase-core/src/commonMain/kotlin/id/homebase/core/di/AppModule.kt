@@ -882,6 +882,7 @@ val appModule = module {
             liveLocationReceiveStore = get(),
             liveShareReadiness = get(),
             locationService = get(),
+            driveSyncManager = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)

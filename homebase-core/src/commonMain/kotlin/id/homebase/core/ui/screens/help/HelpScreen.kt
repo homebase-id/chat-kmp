@@ -1,25 +1,30 @@
 package id.homebase.core.ui.screens.help
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Policy
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.SystemUpdateAlt
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -31,20 +36,25 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.widget.CheckboxRow
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.about_homebase
 import id.homebase.resources.dev_menu_title
+import id.homebase.resources.error_unknown
 import id.homebase.resources.help_contact_us
 import id.homebase.resources.help_copyright
 import id.homebase.resources.help_debug_log_description
 import id.homebase.resources.help_enable_error_collection
 import id.homebase.resources.help_ffmpeg_version
+import id.homebase.resources.help_share_log_failed
 import id.homebase.resources.help_submit_debug_log
 import id.homebase.resources.help_support_center
 import id.homebase.resources.help_terms_privacy
@@ -59,6 +69,7 @@ import id.homebase.resources.update_get_update
 import id.homebase.resources.update_not_supported
 import id.homebase.resources.update_using_latest_version
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -86,8 +97,10 @@ fun HelpScreen(
                     file = event.filePath,
                     onError = { error ->
                         scope.launch {
+                            val detail = error.message?.takeIf { it.isNotBlank() }
+                                ?: getString(MR.string.error_unknown)
                             snackbarHostState.showSnackbar(
-                                message = "Failed to share log: ${error.message}"
+                                message = getString(MR.string.help_share_log_failed, detail)
                             )
                         }
                     },
@@ -96,7 +109,7 @@ fun HelpScreen(
 
             is HelpUiEvent.ShowError -> {
                 viewModel.eventConsumed()
-                scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+                scope.launch { snackbarHostState.showSnackbar(message = getString(event.res)) }
             }
 
             is HelpUiEvent.OpenDeveloperMenu -> {
@@ -128,9 +141,17 @@ fun HelpUi(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.settings_help)) },
+                title = {
+                    Text(
+                        stringResource(MR.string.settings_help),
+                        modifier = Modifier.testTag("helpTitle"),
+                    )
+                },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier.testTag("helpBackButton"),
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(MR.string.menu_back)
@@ -145,192 +166,156 @@ fun HelpUi(
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .verticalScroll(scrollState)
+                .testTag("helpList"),
         ) {
-            // ── Support Section ──
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    HelpClickableRow(
-                        label = stringResource(MR.string.help_support_center),
-                        onClick = { onAction(HelpUiAction.SupportCenterClicked) }
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    HelpClickableRow(
-                        label = stringResource(MR.string.help_contact_us),
-                        onClick = { onAction(HelpUiAction.ContactUsClicked) }
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // ── Logging Section ──
-            HelpSectionHeader(title = stringResource(MR.string.logging))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                HelpClickableRow(
-                    label = stringResource(MR.string.help_submit_debug_log),
-                    showChevron = false,
-                    onClick = { onAction(HelpUiAction.SubmitDebugLogClicked) }
+            SettingsRow(
+                modifier = Modifier.testTag("supportCenterRow"),
+                icon = Icons.AutoMirrored.Outlined.HelpOutline,
+                title = stringResource(MR.string.help_support_center),
+                action = SettingsRowAction.External {
+                    onAction(HelpUiAction.SupportCenterClicked)
+                },
+            )
+            SettingsRow(
+                modifier = Modifier.testTag("contactUsRow"),
+                icon = Icons.Outlined.MailOutline,
+                title = stringResource(MR.string.help_contact_us),
+                action = SettingsRowAction.External { onAction(HelpUiAction.ContactUsClicked) },
+            )
+
+            HelpSectionHeader(stringResource(MR.string.logging))
+            SettingsRow(
+                modifier = Modifier.testTag("submitDebugLogRow"),
+                icon = Icons.Outlined.Share,
+                title = stringResource(MR.string.help_submit_debug_log),
+                action = SettingsRowAction.Invoke {
+                    onAction(HelpUiAction.SubmitDebugLogClicked)
+                },
+            )
+            SettingsRow(
+                modifier = Modifier.testTag("errorCollectionRow"),
+                icon = Icons.Outlined.BugReport,
+                title = stringResource(MR.string.help_enable_error_collection),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.errorCollectionEnabled,
+                    onCheckedChange = { onAction(HelpUiAction.ToggleErrorCollection) },
+                ),
+            )
+            HelpFootnote(stringResource(MR.string.help_debug_log_description))
+
+            HelpSectionHeader(stringResource(MR.string.about_homebase))
+            // Five taps here unlock the developer menu row below.
+            SettingsRow(
+                modifier = Modifier.testTag("versionRow"),
+                icon = Icons.Outlined.Info,
+                title = stringResource(MR.string.help_version),
+                supportingText = uiState.appVersion,
+                action = SettingsRowAction.Invoke { onAction(HelpUiAction.DeveloperClicked) },
+            )
+            uiState.ffmpegVersion?.let { ffmpegVersion ->
+                HelpInfoRow(
+                    modifier = Modifier.testTag("ffmpegVersionRow"),
+                    icon = Icons.Outlined.Movie,
+                    title = stringResource(MR.string.help_ffmpeg_version),
+                    supportingText = ffmpegVersion,
                 )
             }
-            CheckboxRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                label = stringResource(MR.string.help_enable_error_collection),
-                checked = uiState.errorCollectionEnabled,
-                onCheckedChange = { onAction(HelpUiAction.ToggleErrorCollection) }
+            UpdateRow(uiState = uiState, onAction = onAction)
+            SettingsRow(
+                modifier = Modifier.testTag("termsPrivacyRow"),
+                icon = Icons.Outlined.Policy,
+                title = stringResource(MR.string.help_terms_privacy),
+                action = SettingsRowAction.External { onAction(HelpUiAction.TermsPrivacyClicked) },
             )
-
-            Text(
-                text = stringResource(MR.string.help_debug_log_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-
-            // ── About Section ──
-            HelpSectionHeader(title = stringResource(MR.string.about_homebase))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    // Version row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onAction(HelpUiAction.DeveloperClicked)
-                            }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(MR.string.help_version),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                        Text(
-                            text = uiState.appVersion,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    uiState.ffmpegVersion?.let { ffmpegVersion ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = stringResource(MR.string.help_ffmpeg_version),
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                text = ffmpegVersion,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    if (uiState.isCheckingForUpdate) {
-                        HelpClickableRow(
-                            label = stringResource(MR.string.update_checking),
-                            onClick = { /* No action, show loading state */ },
-                            showChevron = false
-                        )
-                    } else if (uiState.isUpdateAvailable) {
-                        HelpClickableRow(
-                            label = stringResource(MR.string.update_get_update),
-                            onClick = { onAction(HelpUiAction.DownloadUpdateClicked) }
-                        )
-                    } else {
-                        HelpClickableRow(
-                            label = stringResource(MR.string.update_check_now),
-                            onClick = { onAction(HelpUiAction.CheckForUpdatedClicked) }
-                        )
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (!uiState.isUpdateSupported)
-                                stringResource(MR.string.update_not_supported)
-                            else if (uiState.isUpdateAvailable)
-                                stringResource(MR.string.update_available)
-                            else
-                                stringResource(MR.string.update_using_latest_version),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    HelpClickableRow(
-                        label = stringResource(MR.string.help_terms_privacy),
-                        onClick = { onAction(HelpUiAction.TermsPrivacyClicked) }
-                    )
-                    if (uiState.showDeveloperMenu) {
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                        HelpClickableRow(
-                            label = stringResource(MR.string.dev_menu_title),
-                            onClick = { onAction(HelpUiAction.DeveloperMenu) }
-                        )
-                    }
-                }
+            if (uiState.showDeveloperMenu) {
+                SettingsRow(
+                    modifier = Modifier.testTag("developerMenuRow"),
+                    icon = Icons.Outlined.Code,
+                    title = stringResource(MR.string.dev_menu_title),
+                    action = SettingsRowAction.Navigate { onAction(HelpUiAction.DeveloperMenu) },
+                )
             }
 
-            Text(
-                text = stringResource(MR.string.help_copyright),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-
+            HelpFootnote(stringResource(MR.string.help_copyright))
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
-// ── Reusable Components ──
+@Composable
+private fun UpdateRow(uiState: HelpUiState, onAction: (HelpUiAction) -> Unit) {
+    val status = when {
+        !uiState.isUpdateSupported -> stringResource(MR.string.update_not_supported)
+        uiState.isUpdateAvailable -> stringResource(MR.string.update_available)
+        else -> stringResource(MR.string.update_using_latest_version)
+    }
+
+    when {
+        uiState.isCheckingForUpdate -> HelpInfoRow(
+            modifier = Modifier.testTag("updateCheckingRow"),
+            icon = Icons.Outlined.SystemUpdateAlt,
+            title = stringResource(MR.string.update_checking),
+            trailing = {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            },
+        )
+
+        // Not External: only the store-backed platforms leave the app, Desktop updates in place.
+        uiState.isUpdateAvailable -> SettingsRow(
+            modifier = Modifier.testTag("getUpdateRow"),
+            icon = Icons.Outlined.SystemUpdateAlt,
+            title = stringResource(MR.string.update_get_update),
+            supportingText = status,
+            action = SettingsRowAction.Invoke { onAction(HelpUiAction.DownloadUpdateClicked) },
+        )
+
+        else -> SettingsRow(
+            modifier = Modifier.testTag("checkForUpdateRow"),
+            icon = Icons.Outlined.SystemUpdateAlt,
+            title = stringResource(MR.string.update_check_now),
+            supportingText = status,
+            action = SettingsRowAction.Invoke { onAction(HelpUiAction.CheckForUpdatedClicked) },
+        )
+    }
+}
 
 @Composable
-fun HelpSectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(horizontal = 4.dp)
+private fun HelpSectionHeader(title: String) {
+    SettingsSectionHeader(
+        title = title,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
     )
 }
 
 @Composable
-fun HelpClickableRow(
-    label: String,
-    showChevron: Boolean = true,
-    onClick: () -> Unit,
+private fun HelpFootnote(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+    )
+}
+
+// Read-only counterpart to SettingsRow: same metrics, no click target, so it can't imply an action.
+@Composable
+private fun HelpInfoRow(
+    icon: ImageVector,
+    title: String,
+    modifier: Modifier = Modifier,
+    supportingText: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        if (showChevron) {
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            Spacer(modifier = Modifier.height(24.dp)) // To align with rows that have chevron
-        }
-    }
+    ListItem(
+        modifier = modifier,
+        headlineContent = { Text(text = title) },
+        supportingContent = supportingText?.let { { Text(text = it) } },
+        leadingContent = {
+            Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(24.dp))
+        },
+        trailingContent = trailing,
+    )
 }
