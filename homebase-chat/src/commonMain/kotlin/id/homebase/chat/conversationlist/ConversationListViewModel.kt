@@ -80,6 +80,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -361,7 +362,10 @@ class ConversationListViewModel(
         }
 
         viewModelScope.launch {
-            ownerSessionRepository.user.collect { session ->
+            effectiveOwnerSessionFlow(
+                live = ownerSessionRepository.user,
+                credentials = credentialsManager.credentialsFlow,
+            ).collect { session ->
                 _uiState.update { it.copy(ownerSession = session) }
                 _messagesUiState.update { it.copy(ownerSession = session) }
             }
@@ -2109,6 +2113,18 @@ fun synthesizeOwnerSession(
         profileImageLastModified = null,
         status = null,
     )
+}
+
+/**
+ * The owner session as the UI states should see it. [live] stays null until the connect
+ * chain reaches `loadProfile()` — seconds on a slow link — while [credentials] are set
+ * locally at login/restore, so own-vs-peer rendering must not wait on [live].
+ */
+internal fun effectiveOwnerSessionFlow(
+    live: Flow<OwnerSession?>,
+    credentials: Flow<ApiCredentials?>,
+): Flow<OwnerSession?> = combine(live, credentials) { session, creds ->
+    synthesizeOwnerSession(session, creds)
 }
 
 /**
