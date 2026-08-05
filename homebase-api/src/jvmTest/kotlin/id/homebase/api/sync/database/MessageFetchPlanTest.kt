@@ -70,6 +70,58 @@ class MessageFetchPlanTest {
     }
 
     /**
+     * The pinned-messages bar refreshes on every conversation open. Unpinned, SQLite
+     * drives the join from DriveMainIndex — seeking the conversation by `groupId` and
+     * probing the tag table once per message — so open cost grows with the conversation's
+     * length. The tag table must be the outer loop: seek the handful of tagged files
+     * directly, then look each one up by fileId.
+     */
+    @Test
+    fun pinnedBarShape_drivesJoinFromTagIndex() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        OdinDatabase.Schema.create(driver)
+        seedMessages(driver)
+        seedLocalTags(driver)
+        val plan = explainPlan(driver, pinnedBarSql)
+        val tagLine = plan.lineSequence().firstOrNull { it.contains(" t ") }.orEmpty()
+        assertTrue(
+            tagLine.contains("idx_localtag_tag"),
+            "the pinned-bar refresh must seek the tag table via idx_localtag_tag; was:\n$plan",
+        )
+        assertTrue(
+            plan.lineSequence().indexOfFirst { it.contains(" t ") } <
+                plan.lineSequence().indexOfFirst { it.contains(" m ") },
+            "the tag table must be the OUTER loop; driving from DriveMainIndex probes the " +
+                "tag table once per message in the conversation. Plan was:\n$plan",
+        )
+    }
+
+    private val pinnedBarSql = """
+        SELECT m.jsonHeader
+        FROM DriveLocalTagIndex t INDEXED BY idx_localtag_tag
+        JOIN DriveMainIndex m
+          ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId
+        WHERE t.identityId = x'00' AND t.driveId = x'01' AND t.tagId = x'4d'
+          AND m.groupId = x'3b' AND m.fileType = 7878
+          AND m.fileState = 1 AND m.archivalStatus != 2
+        ORDER BY m.userDate DESC
+    """.trimIndent()
+
+    /** One local tag per message — production writes pending/failed/pin/dismiss markers. */
+    private fun seedLocalTags(driver: SqlDriver) {
+        driver.execute(
+            null,
+            """
+            INSERT INTO DriveLocalTagIndex(identityId, driveId, fileId, tagId)
+            SELECT identityId, driveId, fileId,
+                   CASE WHEN groupId = x'3b' THEN x'4d' ELSE randomblob(16) END
+            FROM DriveMainIndex
+            """.trimIndent(),
+            0,
+        )
+    }
+
+    /**
      * Many recent messages spread across many conversations + one OLD, SPARSE target
      * (groupId x'3b', 7 rows at low userDate). This is the shape that makes the global-scan
      * plan pathological: the target's few rows sit deep below everyone else's newer messages.

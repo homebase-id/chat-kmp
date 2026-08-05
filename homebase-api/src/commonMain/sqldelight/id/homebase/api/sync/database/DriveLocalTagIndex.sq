@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS DriveLocalTagIndex(
    UNIQUE(identityId,driveId,fileId,tagId)
 );
 
+-- Lets selectFilesByLocalTagInGroup seek straight to the tagged files. fileId is in the
+-- index so the seek is covering. Over existing columns only, so Schema.create() adds it
+-- to already-installed databases without a DATABASE_VERSION bump (which would wipe).
+CREATE INDEX IF NOT EXISTS idx_localtag_tag ON DriveLocalTagIndex(identityId,driveId,tagId,fileId);
+
 -- Insert a local tag
 insertLocalTag:
 INSERT INTO DriveLocalTagIndex(identityId, driveId, fileId, tagId)
@@ -23,9 +28,14 @@ WHERE identityId = ? AND driveId = ? AND fileId = ?;
 -- Joins to DriveMainIndex for the header columns; powers the pinned-messages bar.
 -- fileState = 1 (Active) AND archivalStatus != 2 mirror the soft-delete double-check
 -- used by ChatReadCount.sq (HomebaseFile.isSoftDeleted() ORs both markers).
+-- INDEXED BY forces the tag-first join order. Left to its own devices (no ANALYZE stats)
+-- SQLite drives from DriveMainIndex, seeking the conversation by groupId and probing the
+-- tag table once per message — O(conversation size) on every open, which is what made
+-- opening a long chat visibly slow. Seeking the few tagged files first is ~500x faster
+-- at 20k messages. Same reasoning as QueryBatch's idx_chatmessage_convid_userDate hint.
 selectFilesByLocalTagInGroup:
 SELECT m.jsonHeader
-FROM DriveLocalTagIndex t
+FROM DriveLocalTagIndex t INDEXED BY idx_localtag_tag
 JOIN DriveMainIndex m
   ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId
 WHERE t.identityId = ? AND t.driveId = ? AND t.tagId = ?

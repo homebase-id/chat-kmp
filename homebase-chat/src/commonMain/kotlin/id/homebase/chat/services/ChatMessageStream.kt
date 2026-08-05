@@ -277,13 +277,26 @@ class ChatMessageStream(
             )
         }
 
-        // Cold open: evaluate auto-pin so a message confirmed while the app was closed
-        // still pins, and populate the pinned bar — mirrors loadConversationAroundMessage.
-        // Read the finalized window so a merged raced write is included; runs on both the
-        // raced and common paths. Dismissed messages carry AutoPinDismissedTag and are skipped.
-        val windowMessages = paginatedState.getWindow(conversationId)?.messages ?: return
-        autoPinNewTypedMessages(windowMessages)
-        refreshPinnedFor(conversationId)
+        refreshPinsAfterOpen(conversationId)
+    }
+
+    /**
+     * Evaluate auto-pin so a message confirmed while the app was closed still pins, and
+     * populate the pinned bar. Reads the finalized window so a merged raced write is
+     * included; dismissed messages carry AutoPinDismissedTag and are skipped.
+     *
+     * Launched, not awaited: callers run this on the conversation-open path, where the
+     * caller is awaited before the message collector starts — so anything done inline
+     * here holds the loading spinner up. The bar reaches the UI on its own StateFlow
+     * ([observePinnedMessages]), so it does not need to land before the messages do.
+     */
+    private fun refreshPinsAfterOpen(conversationId: Uuid) {
+        scope.launch {
+            val windowMessages =
+                paginatedState.getWindow(conversationId)?.messages ?: return@launch
+            autoPinNewTypedMessages(windowMessages)
+            refreshPinnedFor(conversationId)
+        }
     }
 
     /**
@@ -419,6 +432,9 @@ class ChatMessageStream(
         if (racedConcurrentWrite) {
             seedWindowAround(conversationId, messageUniqueId, target, merge = true)
         }
+        // Without this, opening to a saved scroll anchor (the common case) leaves the
+        // bar empty until a live BatchReceived arrives.
+        refreshPinsAfterOpen(conversationId)
         return true
     }
 
@@ -468,13 +484,6 @@ class ChatMessageStream(
             "loadAround($conversationId, $messageUniqueId) older=${olderHalf.records.size}+anchor+newer=${newerHalf.records.size} " +
                 "windowSize=${combined.size} hasOlder=${olderHalf.hasMoreRows} hasNewer=${newerHalf.hasMoreRows} took=${start.elapsedNow()}"
         }
-        // Evaluate auto-pin and populate the pinned bar on open — mirrors
-        // loadConversation. Without the refresh, opening to a saved scroll anchor
-        // (the common case) leaves the bar empty until a live BatchReceived arrives.
-        // Runs on both the initial seed and the raced merge=true re-seed
-        // (autoPinNewTypedMessages/refreshPinnedFor are idempotent).
-        autoPinNewTypedMessages(combined)
-        refreshPinnedFor(conversationId)
     }
 
     /**
