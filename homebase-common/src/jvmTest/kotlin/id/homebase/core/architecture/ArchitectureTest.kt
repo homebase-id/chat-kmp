@@ -67,6 +67,34 @@ class ArchitectureTest {
             }
     }
 
+    /**
+     * Efficacy guard for the non-blocking login (#1231). The connect sequence must resolve the
+     * drive registry from the local index and let [AuthConnectionCoordinator]'s background
+     * reconcile do the server half — otherwise every login, warm restores included, queues the
+     * WebSocket connect and profile load behind a `getFileHeaderByUid` round-trip.
+     *
+     * This is a source-level rule because the invariant lives in a call-site ARGUMENT, and the
+     * first attempt at this fix passed `deferServerReconcile = !headless` — which is `false` for
+     * an ordinary Android launcher launch (`startsHeadless = supportsBackgroundWake`, corrected
+     * only once `promoteToForeground()` runs) and so blocked exactly as before. Every unit test
+     * still passed against that no-op. Any condition here reintroduces that bug.
+     */
+    @Test
+    fun `AuthConnectionCoordinator never blocks the connect sequence on the registry server fetch`() {
+        Konsist.scopeFromProject()
+            .files
+            .filter { it.hasNameEndingWith("AuthConnectionCoordinator") }
+            .assertFalse(
+                additionalMessage = "The connect sequence must call " +
+                    "driveRegistry.bootstrap(deferServerReconcile = true) unconditionally (issue #1231). " +
+                    "A bare bootstrap() or a conditional argument blocks login on a server round-trip; " +
+                    "`headless` in particular cannot distinguish a launcher launch from an FCM wake at " +
+                    "this point. Callers needing the authoritative set use awaitRegistryReconcile()."
+            ) { file ->
+                file.text.contains(Regex("""bootstrap\s*\((?!\s*deferServerReconcile\s*=\s*true\s*\))"""))
+            }
+    }
+
     @Test
     fun `Do not allow calling close on httpClient`() {
         Konsist.scopeFromProject()

@@ -936,6 +936,8 @@ fun ConversationContent(
                     onUiAction = onUiAction,
                 )
 
+                JumpTargetWaitingBar(isWaiting = uiState.awaitingJumpMessageId != null)
+
                 if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
