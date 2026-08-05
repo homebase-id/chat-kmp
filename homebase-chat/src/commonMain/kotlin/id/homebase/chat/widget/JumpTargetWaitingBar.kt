@@ -18,14 +18,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.conversation_jump_waiting_for_message
 import org.jetbrains.compose.resources.stringResource
 
-/**
- * Shown while a notification-tap jump is waiting for its message to sync in (#1158).
- *
- * The conversation underneath stays fully usable at the latest page — this bar is the
- * only sign that a jump is still pending, and it replaces the old toast that asserted a
- * deletion nobody had verified. It disappears when the message lands (the list jumps to
- * it) or when the wait gives up (an honest snackbar takes over).
- */
 @Composable
 fun JumpTargetWaitingBar(
     isWaiting: Boolean,
