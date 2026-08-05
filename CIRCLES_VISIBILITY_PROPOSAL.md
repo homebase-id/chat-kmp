@@ -127,7 +127,7 @@ same species one app over: the location app's PERSONAL circle.
 
 App **default circles** (auto-connect and verified-connect enrollment —
 section 8) are not a fourth relationship kind and carry no special designation:
-their rendering keys off `Enrollment`. They never show as pills and never affect
+their rendering keys off `GrantOn`. They never show as pills and never affect
 states; they surface in the Circles tab as a visibly-distinct group (member
 list, owner toggle, read-only grants).
 
@@ -320,7 +320,7 @@ always name the destination state the tap will produce, not a judgment ("confirm
 survives only as the verb for completing a review):
 
 - **⭕ Add to circles** (≥ 1 circle selected) — applies the selected circles *and*
-  the checked per-app defaults. Each toggle is an app's `VERIFIED_CONNECT`
+  the checked per-app defaults. Each toggle is an app's `Review`
   default circle or a per-connection setting — concretely: feed distribution,
   accepting introductions they relay, shard-recovery participation (the list the
   code inventory produced, section 8). These are **visible toggles in the
@@ -431,8 +431,8 @@ the flexibility.
 - Coordinate with the in-progress app-owned circles backend so the
   `PERSONAL | AUDIENCE | VENDOR` circle designation **and the optional
   per-circle `emoji` field** land in that schema now (section 8). The enrollment
-  model (`Enrollment`, `AutoConnectDefaults`, deposit-only invariant, owner
-  toggle) is specified in odin-core's `docs/connection-defaults.md` (PR #1589) —
+  model (`Circle.GrantOn`, deposit-only invariant, owner toggle) is specified in
+  odin-core's `docs/connection-defaults.md` (PR #1589) —
   retrofitting any of it after circles ship is far costlier
 
 **Phase 2**
@@ -611,19 +611,22 @@ ReadWhoIFollow/ReadConnections keys, and the right to be granted further circles
 
 | System circle | Today's role | Disposition |
 |---|---|---|
-| **Confirmed Connections** (`bb2683fa…`) | Membership = the server-computed `vetted` flag (#919); the target of "confirm" | **Dissolves** into per-app `VERIFIED_CONNECT` default circles plus explicit review-dialog toggles (enrollment model below) |
-| **Auto Connections** (`9e22b429…`) | Where auto-connected identities land; the carrier of their baseline grants — how "New connections already hold chat write" is implemented. Shown today in the Circles tab renamed "Unvetted" | **Dissolves** into per-app `AUTO_CONNECT` default circles. The "New" filter chip replaces its user-facing role |
+| **Confirmed Connections** (`bb2683fa…`) | Membership = the server-computed `vetted` flag (#919); the target of "confirm" | **Dissolves** into per-app `Review` default circles plus explicit review-dialog toggles (enrollment model below) |
+| **Auto Connections** (`9e22b429…`) | Where auto-connected identities land; the carrier of their baseline grants — how "New connections already hold chat write" is implemented. Shown today in the Circles tab renamed "Unvetted" | **Dissolves** into per-app `Connect` default circles. The "New" filter chip replaces its user-facing role |
 
 **The enrollment model.** Backend spec: `docs/connection-defaults.md` on odin-core
 PR #1589 (split out beside `drive-addressing.md`, which carries only the dormant
 schema columns) — the single source of truth for the server behavior; this doc
-describes only the client side. Each app declares default circles with an `Enrollment` marker:
+describes only the client side. Each app declares default circles with a `GrantOn` marker
+(`None | Connect | OwnFlowConnect | Review`):
 
-- `AUTO_CONNECT` circles enroll on auto-connection with no owner action — gated
+- `Connect` circles are granted at connection establishment with no owner action — gated
   by a standing per-app toggle in the owner console (the app declares, the owner
   disposes). Bound by the **deposit-only invariant**: write/react grants only,
   no read beyond public, no permission keys.
-- `VERIFIED_CONNECT` circles enroll when the owner completes the connection
+- `OwnFlowConnect` circles are granted only through the owning app's own consent
+  flow (the vendor case), never ambiently.
+- `Review` circles are granted when the owner completes the connection
   review — the per-app toggles in section 4C's modal. These may carry read
   grants: **the review is the key ceremony**, the moment read-bearing grants can
   be minted.
@@ -631,7 +634,7 @@ describes only the client side. Each app declares default circles with an `Enrol
 Consequence for the ladder: New 👋 and Chat 💬 hold zero read keys **by
 construction** — "the states measure read access" upgrades from rationale to
 enforced property. Default circles carry no special designation — their
-rendering keys off `Enrollment`: never a pill, never a state, visible in the
+rendering keys off `GrantOn`: never a pill, never a state, visible in the
 Circles tab as a distinct group. Clients get to delete their hardcoded GUID
 knowledge (today's `circleSortRank()` pinning and the "Unvetted" display
 rename).
@@ -643,7 +646,7 @@ the review button's "💬 Chat only" label, and the circle's own member list
 members; the review stamp is what separates them. Removing someone from the
 circle is a mute softer than blocking.
 
-One coupling to know: a `VERIFIED_CONNECT` circle keeps whatever designation its
+One coupling to know: a `Review` circle keeps whatever designation its
 app chose. If an app designates its verified default `PERSONAL` (e.g. feed
 distribution as a personal grant), its review toggle *is* a circle selection —
 enrolling it yields ⭕, and the adaptive button must count it.
@@ -666,7 +669,7 @@ each app owner confirms their row:
 (Write+React below = `DrivePermission.Write | React`. **React is a deposit** —
 writing an emoji reaction — not a read; the deposit-only invariant holds.)
 
-| App | `AUTO_CONNECT` default (deposit-only) | `VERIFIED_CONNECT` default (delta only) | Today's source |
+| App | `Connect` default (deposit-only) | `Review` default (delta only) | Today's source |
 |---|---|---|---|
 | **Chat** | **"Chat-only"** — ChatDrive Write+React | none | both system circles grant it |
 | **Mail** | Mail default — MailDrive Write+React | none | both system circles |
@@ -684,8 +687,8 @@ selection in security settings, not a toggle you leave checked; and the
 **TransientTempDrive** Write + `UseTransitWrite` grant is minted per connected
 YouAuth context, not via circles, and stays that way.
 
-Sanity check the table gives us: summing the `AUTO_CONNECT` column reproduces
-today's Auto Connections bundle exactly, and the `VERIFIED_CONNECT` column plus
+Sanity check the table gives us: summing the `Connect` column reproduces
+today's Auto Connections bundle exactly, and the `Review` column plus
 the two deliberate exclusions reproduces the Confirmed delta — nothing gained,
 nothing lost, just decomposed to its owners.
 
@@ -700,7 +703,7 @@ Migration items:
 3. ~~Baseline carrier for direct connections~~ — **answered** by the inventory:
    both origins route through the system circles (`CircleNetworkUtils`); under
    enrollment the question dissolves — a manual accept goes through the review,
-   an auto-accept uses the enabled `AUTO_CONNECT` set.
+   an auto-accept uses the enabled `Connect` circles.
 
 ### The `connected` ACL tier — recut it
 
@@ -801,11 +804,11 @@ removal, or the address book slowly accretes ex-subscribers.
 8. ~~Baseline carrier for direct connections?~~ **Resolved** — both origins route
    through the system circles today (`CircleNetworkUtils`); under enrollment the
    question dissolves: a manual accept goes through the review, an auto-accept
-   uses the enabled `AUTO_CONNECT` set (section 8).
+   uses the enabled `Connect` circles (section 8).
 9. ~~Confirm the `connected` vs `autoconnected` evaluation order and plan the ACL
    sweep.~~ **Resolved** — the evaluator folds both into one case and never
    stamps callers `autoconnected`; legacy bare-`connected` maps
-   behavior-identically to "member of any `AUTO_CONNECT` circle" (section 8).
+   behavior-identically to "member of any `Connect` circle" (section 8).
 
 ---
 
