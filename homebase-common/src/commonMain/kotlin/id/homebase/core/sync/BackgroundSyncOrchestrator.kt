@@ -61,6 +61,11 @@ class BackgroundSyncOrchestrator(
         }
         Logger.i(tag = "BackgroundSync") { "syncIfAuthenticated: WS offline — running background sync" }
         return runCatching {
+            // The connect sequence serves the local drive set and reconciles with the server
+            // in the background, so a drive activated on another device may not be mounted
+            // yet. This syncAll() can be the only pass it gets before the process dies, and
+            // nothing here is user-visible, so this is the one caller that waits for it.
+            authConnectionCoordinator.awaitRegistryReconcile()
             driveSyncManager.start()
 
             // processInbox no longer needed — server auto-processes on QueryBatch.

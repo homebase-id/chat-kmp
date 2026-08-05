@@ -173,6 +173,8 @@ class AuthConnectionCoordinator(
 
     // Background grant-refresh + prune (#1079); cancel-and-relaunched on foreground promotion.
     private var grantReconcileJob: Job? = null
+    // Background registry reconcile — the server half of the deferred bootstrap.
+    private var registryReconcileJob: Job? = null
     // endregion
 
     /**
@@ -233,12 +235,19 @@ class AuthConnectionCoordinator(
                 // Unconditional: BG sync's syncAll() needs the drives mounted.
                 driveSyncManager.ensureMandatoryMounted()
 
-                // Resolve the cross-device registry: local DB on cold boot (free), or one
-                // targeted server fetch on fresh login. Either way we have the canonical
-                // list before opening the WebSocket, so the first WS connect already
-                // subscribes to the full set — no late observer-driven reconnect.
+                // Resolve the cross-device registry from the local index and never block on
+                // the server here — everything below (WS connect, profile load) used to queue
+                // behind that round-trip on every login, warm restores included.
+                // [scheduleRegistryReconcile] does the server half afterwards; whoever needs
+                // the authoritative set waits for it via [awaitRegistryReconcile].
+                //
+                // Do NOT reintroduce a `headless`-style condition here to decide whether to
+                // block: on Android `headless` is true for an ordinary launcher launch too
+                // (startsHeadless = supportsBackgroundWake) and is only corrected by
+                // promoteToForeground() a few hundred ms later, so it cannot tell a
+                // background wake from a user-visible cold start at this point.
                 // Unconditional: BG sync's syncAll() needs the drive list.
-                val initialDrives = driveRegistry.bootstrap()
+                val initialDrives = driveRegistry.bootstrap(deferServerReconcile = true)
                 // Resolve which optional drives this app token can actually READ before mounting
                 // anything. The registry is the cross-device "activated" list and is NOT
                 // permission-aware: a drive activated on another device (or before a permission
@@ -272,6 +281,10 @@ class AuthConnectionCoordinator(
                 lastAuthenticatedDrives = initialDrives
 
                 if (headless) {
+                    // Still kick the reconcile: a background wake's syncAll() may be the only
+                    // pass a drive activated on another device gets, and BackgroundSyncOrchestrator
+                    // awaits this job before syncing.
+                    scheduleRegistryReconcile(initialDrives)
                     Logger.i(tag = "AuthLifecycle") {
                         "AuthCC: Authenticated branch — mode=headless " +
                             "deferred=[onPostAuthenticated, connect, driveRegistry.start, loadProfile]"
@@ -310,6 +323,7 @@ class AuthConnectionCoordinator(
                     onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
                     initialBaseline = initialDrives.mapTo(HashSet()) { it.drive.alias },
                 )
+                scheduleRegistryReconcile(initialDrives)
                 loadProfile()
                 // Resolve read grants off the critical path and prune any live drive we've lost
                 // the grant for (rare). Kicked after connect() so the WS refresh has a client.
@@ -383,6 +397,7 @@ class AuthConnectionCoordinator(
                 onUnmount = { driveId -> unmountDrive(driveId, persist = false) },
                 initialBaseline = drives.mapTo(HashSet()) { it.drive.alias },
             )
+            scheduleRegistryReconcile(drives)
             loadProfile()
             // Retry point: a cold background wake may have missed the grant fetch on a dead
             // network; the first real foreground open re-runs it (cancel-and-relaunch) and prunes.
@@ -721,6 +736,9 @@ class AuthConnectionCoordinator(
         Logger.i(tag = "AuthLifecycle") {
             "AuthCC: disconnect() begin (wsClient=${wsClient?.let { "WS[${it.instanceId}]" } ?: "null"})"
         }
+        // Before driveRegistry.stop() clears the baseline this job diffs against.
+        registryReconcileJob?.cancel()
+        registryReconcileJob = null
         refreshWsSubscription.cancel()
         driveRegistry.stop()
         // Close every per-owner peer websocket so a second login doesn't inherit the first user's
@@ -784,6 +802,44 @@ class AuthConnectionCoordinator(
                 unmountDrive(driveId, persist = false)
             }
         }
+    }
+
+    /**
+     * The server half of the deferred [DriveRegistry.bootstrap]: hot-mount anything the
+     * server registry lists that [known] doesn't — a drive activated on the user's other
+     * device. Uses the same `persist = false` path as the cross-device registry observer,
+     * so a discovery here is indistinguishable downstream from one the chat-drive sync made.
+     *
+     * Discovered drives are appended to [lastAuthenticatedDrives] because
+     * [promoteToForeground] replays `connect()` from it — without that, a drive found during
+     * a headless wake would be mounted but missing from the WebSocket subscription.
+     *
+     * Cancelled in [disconnect] so a reconcile still in flight at logout can't mount drives
+     * into a dead session.
+     */
+    private fun scheduleRegistryReconcile(known: List<LabeledDrive>) {
+        val knownIds = known.mapTo(HashSet()) { it.drive.alias }
+        registryReconcileJob?.cancel()
+        registryReconcileJob = scope.launch {
+            driveRegistry.reconcileWithServer(knownIds) { drive ->
+                lastAuthenticatedDrives = (lastAuthenticatedDrives ?: emptyList()) + drive
+                mountDrive(drive, persist = false)
+            }
+        }
+    }
+
+    /**
+     * Wait for the in-flight [scheduleRegistryReconcile] to finish, so a caller that genuinely
+     * needs the server-authoritative drive set gets it.
+     *
+     * This is the seam that replaced blocking the whole connect sequence on the registry fetch.
+     * The distinction "is a user waiting on this?" cannot be made inside [onAuthStateChanged] —
+     * on Android [headless] is true for an ordinary launcher launch as well as an FCM wake, and
+     * is only corrected once [promoteToForeground] runs. The one component that knows
+     * unambiguously is the background sync itself, so it asks rather than being told.
+     */
+    suspend fun awaitRegistryReconcile() {
+        registryReconcileJob?.join()
     }
 
     /**
