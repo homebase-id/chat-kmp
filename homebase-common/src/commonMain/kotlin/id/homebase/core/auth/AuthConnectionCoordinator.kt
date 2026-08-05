@@ -224,8 +224,12 @@ class AuthConnectionCoordinator(
                 // foreground mode (matches pre-headless-mode ordering: preload starts
                 // local-DB warmups while drive mount + WS handshake happen in
                 // parallel). Deferred to [promoteToForeground] in headless mode.
-                if (!headless) {
+                val startedHeadless = headless
+                if (!startedHeadless) {
                     runPostAuthenticatedOnce()
+                    // Before the network work below: load() emits a local-only session first,
+                    // and own-vs-peer rendering blocks on that emission.
+                    loadProfile()
                 }
 
                 // Mount mandatory drives FIRST — before bootstrap, before any network I/O.
@@ -299,6 +303,9 @@ class AuthConnectionCoordinator(
                 // (the infinite spinner). We're past the headless return, so run it now;
                 // runPostAuthenticatedOnce() is a no-op if the foreground path already ran it.
                 runPostAuthenticatedOnce()
+                // Guarded, unlike the call above: loadProfile has no once-gate, and a second
+                // one would race a failed fetch's fallback over the resolved profile.
+                if (startedHeadless) loadProfile()
 
                 // #1108: don't open the notify WS if we authenticated while already backgrounded on a
                 // push-capable platform — FCM + WorkManager HTTP cover background sync. setForeground(true)
@@ -324,7 +331,6 @@ class AuthConnectionCoordinator(
                     initialBaseline = initialDrives.mapTo(HashSet()) { it.drive.alias },
                 )
                 scheduleRegistryReconcile(initialDrives)
-                loadProfile()
                 // Resolve read grants off the critical path and prune any live drive we've lost
                 // the grant for (rare). Kicked after connect() so the WS refresh has a client.
                 scheduleGrantReconcile()
