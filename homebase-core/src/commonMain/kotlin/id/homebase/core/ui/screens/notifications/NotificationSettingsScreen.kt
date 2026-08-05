@@ -16,8 +16,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,8 +31,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import id.homebase.core.widget.SettingsSectionHeader
-import id.homebase.core.widget.SettingsToggleRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -48,6 +49,10 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.theme.ExtendedColors
+import id.homebase.core.widget.SettingsOptionRow
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.not_available
@@ -150,13 +155,11 @@ fun NotificationSettingsUi(
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // ── Permission Section ──
             if (!uiState.isPermissionGranted) {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             modifier = Modifier.testTag("pushNotificationsDisabled"),
@@ -192,89 +195,91 @@ fun NotificationSettingsUi(
             }
 
             // ── Sounds Section ──
-            SettingsSectionHeader(
+            NotificationSectionHeader(
                 title = stringResource(MR.string.settings_sounds),
-                modifier = Modifier.testTag("soundsTitle").padding(horizontal = 4.dp),
+                modifier = Modifier.testTag("soundsTitle"),
             )
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    // Message Sound row — opens system notification settings
-                    SettingsClickableRow(
-                        modifier = Modifier.testTag("messageSound"),
-                        label = stringResource(MR.string.settings_message_sound),
-                        value = stringResource(MR.string.settings_sound_system_default),
-                        onClick = onOpenSystemSettings
-                    )
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                    // Play While App is Open toggle
-                    SettingsToggleRow(
-                        modifier = Modifier.testTag("playWhileAppIsOpen"),
-                        label = stringResource(MR.string.settings_play_while_app_open),
-                        checked = uiState.playWhileAppOpen,
-                        onCheckedChange = {
-                            onAction(NotificationSettingsUiAction.SetPlayWhileAppOpen(it))
-                        })
-                }
-            }
+            SettingsRow(
+                modifier = Modifier.testTag("messageSound"),
+                icon = Icons.Outlined.MusicNote,
+                title = stringResource(MR.string.settings_message_sound),
+                supportingText = stringResource(MR.string.settings_sound_system_default),
+                action = SettingsRowAction.External(onOpenSystemSettings),
+            )
+            SettingsRow(
+                modifier = Modifier.testTag("playWhileAppIsOpen"),
+                icon = Icons.AutoMirrored.Outlined.VolumeUp,
+                title = stringResource(MR.string.settings_play_while_app_open),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.playWhileAppOpen,
+                    onCheckedChange = {
+                        onAction(NotificationSettingsUiAction.SetPlayWhileAppOpen(it))
+                    },
+                ),
+            )
 
             // ── Notification Content Section ──
-            SettingsSectionHeader(
+            NotificationSectionHeader(
                 title = stringResource(MR.string.settings_notification_content),
-                modifier = Modifier.testTag("notificationContent").padding(horizontal = 4.dp),
+                modifier = Modifier.testTag("notificationContent"),
             )
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    SettingsClickableRow(
-                        modifier = Modifier.testTag(uiState.notificationContentLevel.code),
-                        label = stringResource(MR.string.settings_notification_show),
-                        value = uiState.notificationContentLevel.displayName,
+            SettingsRow(
+                modifier = Modifier.testTag(uiState.notificationContentLevel.code),
+                icon = Icons.Outlined.Visibility,
+                title = stringResource(MR.string.settings_notification_show),
+                supportingText = uiState.notificationContentLevel.displayName,
+                action = SettingsRowAction.Expand(
+                    expanded = uiState.showContentLevelPicker,
+                    onExpandedChange = {
+                        onAction(NotificationSettingsUiAction.ToggleContentLevelPicker)
+                    },
+                ),
+            )
+            if (uiState.showContentLevelPicker) {
+                NotificationContentLevel.entries.forEach { level ->
+                    SettingsOptionRow(
+                        label = level.displayName,
+                        selected = level == uiState.notificationContentLevel,
                         onClick = {
-                            onAction(NotificationSettingsUiAction.ToggleContentLevelPicker)
-                        })
-
-                    if (uiState.showContentLevelPicker) {
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                        NotificationContentLevel.entries.forEach { level ->
-                            ContentLevelOption(
-                                level = level,
-                                isSelected = level == uiState.notificationContentLevel,
-                                onClick = {
-                                    onAction(
-                                        NotificationSettingsUiAction.SetContentLevel(level)
-                                    )
-                                })
-                        }
-                    }
+                            onAction(NotificationSettingsUiAction.SetContentLevel(level))
+                        },
+                    )
                 }
             }
             Text(
                 text = stringResource(MR.string.settings_notification_locked_screen_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
             // ── Badge Count Section ──
-            SettingsSectionHeader(
+            NotificationSectionHeader(
                 title = stringResource(MR.string.settings_badge_count),
-                modifier = Modifier.testTag("badgeCount").padding(horizontal = 4.dp),
+                modifier = Modifier.testTag("badgeCount"),
             )
-            Card(modifier = Modifier.fillMaxWidth()) {
-                SettingsToggleRow(
-                    modifier = Modifier.testTag("includeMutedChats"),
-                    label = stringResource(MR.string.settings_include_muted_chats),
+            SettingsRow(
+                modifier = Modifier.testTag("includeMutedChats"),
+                icon = Icons.Outlined.NotificationsOff,
+                title = stringResource(MR.string.settings_include_muted_chats),
+                action = SettingsRowAction.Toggle(
                     checked = uiState.includeMutedChatsInBadge,
                     onCheckedChange = {
                         onAction(NotificationSettingsUiAction.SetIncludeMutedChatsInBadge(it))
-                    })
-            }
+                    },
+                ),
+            )
 
+            Spacer(modifier = Modifier.height(24.dp))
 
             // ── Re-register Push Notifications ──
+            // Kept as a Card, not a SettingsRow: it must go inert while a re-registration is in
+            // flight, and SettingsRow has no disabled state by design.
             Card(
-                modifier = Modifier.fillMaxWidth().clickable(enabled = !uiState.isReRegistering) {
-                    onAction(NotificationSettingsUiAction.ReRegisterPushNotifications)
-                }) {
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    .clickable(enabled = !uiState.isReRegistering) {
+                        onAction(NotificationSettingsUiAction.ReRegisterPushNotifications)
+                    }) {
                 Row(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -298,8 +303,9 @@ fun NotificationSettingsUi(
                 }
 
                 val isSuccess = result is ReRegisterResult.Success
+                Spacer(modifier = Modifier.height(8.dp))
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     shape = RoundedCornerShape(12.dp),
                     color = if (isSuccess) ExtendedColors.Success.copy(alpha = 0.12f)
                     else MaterialTheme.colorScheme.errorContainer,
@@ -318,18 +324,18 @@ fun NotificationSettingsUi(
             }
 
             // ── Push Notification Status (Debug — tap header 5 times to reveal) ──
-            SettingsSectionHeader(
+            NotificationSectionHeader(
                 title = stringResource(MR.string.settings_push_notification_status),
                 modifier = Modifier
-                    .clickable { onAction(NotificationSettingsUiAction.DebugHeaderTapped) }
-                    .padding(horizontal = 4.dp),
+                    .testTag("pushNotificationStatusHeader")
+                    .clickable { onAction(NotificationSettingsUiAction.DebugHeaderTapped) },
             )
 
             if (uiState.showDebugInfo) {
                 val clipboardManager = LocalClipboard.current
                 val scope = rememberCoroutineScope()
 
-                Card(modifier = Modifier.fillMaxWidth()) {
+                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Column {
                         // Token row
                         Row(
@@ -488,68 +494,10 @@ fun NotificationSettingsUi(
     }
 }
 
-// ── Reusable Setting Components ──
-
 @Composable
-private fun SettingsClickableRow(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun ContentLevelOption(
-    modifier: Modifier = Modifier,
-    level: NotificationContentLevel,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = level.displayName,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (isSelected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurface
-        )
-        if (isSelected) {
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
+private fun NotificationSectionHeader(title: String, modifier: Modifier = Modifier) {
+    SettingsSectionHeader(
+        title = title,
+        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+    )
 }
