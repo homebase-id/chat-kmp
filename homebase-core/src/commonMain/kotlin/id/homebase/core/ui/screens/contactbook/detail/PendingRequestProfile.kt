@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -61,6 +62,7 @@ fun PendingRequestProfile(
     onAccept: (selectedCircleIds: List<String>) -> Unit,
     onReject: () -> Unit,
     actionInProgress: Boolean,
+    onAvatarClick: (SubSamplingImageSource) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Circle ids the user has ticked to add this contact to on Accept. Keyed by the contact so it
@@ -74,7 +76,7 @@ fun PendingRequestProfile(
             .padding(horizontal = 24.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ContactBookAvatar(entry = entry, size = 112.dp)
+        ContactBookAvatar(entry = entry, size = 112.dp, onClick = onAvatarClick)
 
         Spacer(modifier = Modifier.height(12.dp))
 

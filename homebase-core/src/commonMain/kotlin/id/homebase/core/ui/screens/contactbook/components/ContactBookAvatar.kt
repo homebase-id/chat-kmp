@@ -11,22 +11,32 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.publicImageUrl
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.FallbackAvatar
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.resources.MR
+import id.homebase.resources.avatar_contact
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Avatar for a contact-book entry, in priority order:
  *  1. An uploaded photo stored on the contact drive ([ContactBookEntry.profileImageData]).
  *  2. An identity contact's published public avatar ([ContactAvatar]).
  *  3. Coloured initials ([FallbackAvatar]).
+ *
+ * [onClick] receives the source of whichever image was actually rendered, so a caller can open it
+ * full screen without re-deriving that priority. The initials fallback never calls it, and the
+ * public avatar only does once Coil has the image.
  */
 @Composable
 fun ContactBookAvatar(
     entry: ContactBookEntry,
     size: Dp = 44.dp,
+    onClick: ((SubSamplingImageSource) -> Unit)? = null,
 ) {
     val options = AvatarOptions(size = size, fontSize = (size.value * 0.4f).sp)
 
@@ -34,10 +44,18 @@ fun ContactBookAvatar(
         entry.profileImageData()
     }
     if (imageData != null) {
+        // Remembered: HomebaseImage keys its tap detector on this lambda, and
+        // HomebaseImageData is not a stable type, so a fresh one each recomposition
+        // would restart the detector mid-gesture.
+        val openPhoto = remember(imageData, onClick) {
+            onClick?.let { { it(SubSamplingImageSource.Remote(imageData.copy(loadFullPayload = true))) } }
+        }
         HomebaseImage(
             imageData = imageData,
             modifier = Modifier.size(size).clip(CircleShape),
+            contentDescription = stringResource(MR.string.avatar_contact),
             contentScale = ContentScale.Crop,
+            onClick = openPhoto,
         )
         return
     }
@@ -50,7 +68,12 @@ fun ContactBookAvatar(
                 odinId = parsed,
                 profileImageData = null,
                 initials = entry.avatarInitials,
-                options = options,
+                options = options.copy(
+                    onClick = onClick?.let {
+                        { it(SubSamplingImageSource.Url(parsed.publicImageUrl())) }
+                    },
+                    onClickNeedsImage = true,
+                ),
             )
             return
         }

@@ -197,7 +197,6 @@
     <!-- Settings screen -->
     <string name="settings_appearance">Udseende</string>
     <string name="settings_haptic_feedback">Haptisk feedback</string>
-    <string name="settings_connections">Forbindelser</string>
     <string name="connections_already_sent_title">Anmodning allerede sendt</string>
     <string name="connections_already_sent_text">En forbindelsesanmodning til %1$s findes allerede. Åbn ejer konsollen for at se eller administrere den.</string>
     <string name="connections_refresh">Opdater</string>
@@ -219,7 +218,6 @@
     <string name="connections_empty_outgoing_subtitle">Tryk på + knappen for at sende en forbindelsesanmodning.</string>
     <string name="connections_send_request">Send anmodning</string>
     <string name="settings_notifications">Notifikationer</string>
-    <string name="settings_profile_info">Profiloplysninger</string>
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_help">Hjælp</string>
     <string name="settings_storage">Lagerplads</string>
@@ -310,8 +308,6 @@
     <string name="settings_delete_account_dialog_title">Slet din konto?</string>
     <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
     <string name="settings_open_owner_console">Åben ejer konsol</string>
-    <string name="settings_notifications_active">Notifikationer aktive</string>
-    <string name="settings_notifications_issue">Problem med notifikationer</string>
 
     <!-- Notification settings screen -->
     <string name="settings_notifications_disabled_title">Push-notifikationer er deaktiveret</string>
@@ -1194,9 +1190,26 @@
     <string name="cd_video_scrubber_frame">Videoskrubberbillede</string>
     <string name="video_web_large_playback_unsupported">Store videoer kan endnu ikke afspilles i browseren</string>
 
-    <!-- Settings section headers -->
-    <string name="settings_section_general">Generelt</string>
-    <string name="settings_section_danger_zone">Farezone</string>
+    <!-- Settings hub -->
+    <string name="settings_section_preferences">Præferencer</string>
+    <string name="settings_section_apps">Apps</string>
+    <string name="settings_section_device">Enhed</string>
+    <string name="settings_section_account_actions">Kontohandlinger</string>
+    <string name="settings_edit_profile">Rediger profil</string>
+    <string name="settings_security_setup_desc">Adgangskode og gendannelsesnøgle</string>
+    <string name="settings_notifications_status_checking">Kontrollerer…</string>
+    <string name="settings_notifications_status_on">Push-notifikationer virker</string>
+    <string name="settings_notifications_status_error">Push-notifikationer virker ikke</string>
+    <string name="settings_appearance_theme">Tema: %1$s</string>
+    <string name="settings_moments_desc">Billeder, klip og noter</string>
+    <string name="settings_vault_desc">Krypteret dokumentopbevaring</string>
+    <string name="settings_location_desc">Privat placeringshistorik</string>
+    <string name="settings_contactbook_desc">Din adressebog og cirkler</string>
+    <string name="settings_storage_desc">Caches, database og medier</string>
+    <string name="settings_storage_used">%1$s brugt på denne enhed</string>
+    <string name="settings_help_desc">Logs og diagnostik</string>
+    <string name="settings_logout_desc">Dine data forbliver på din identitet</string>
+    <string name="settings_delete_account_desc">Permanent, i din ejer konsol</string>
 
     <!-- Audio player -->
     <string name="audio_pause">Pause</string>
