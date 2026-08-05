@@ -307,6 +307,10 @@
     <string name="help_ffmpeg_version">FFmpeg</string>
     <string name="help_terms_privacy">Terms &amp; Privacy Policy</string>
     <string name="help_copyright">Copyright © 2024–2026 Homebase</string>
+    <string name="help_share_log_failed">Couldn't share the log: %1$s</string>
+    <string name="help_no_log_files">No log files found.</string>
+    <string name="help_logging_not_initialized">Logging isn't ready yet. Try again in a moment.</string>
+    <string name="help_developer_menu_enabled">Developer menu enabled.</string>
     <string name="settings_delete_account_dialog_title">Delete your account?</string>
     <string name="settings_delete_account_dialog_text">Your account is much more than only this app. If you want to remove your account, you can do so in the owner console.</string>
     <string name="settings_open_owner_console">Open owner console</string>
