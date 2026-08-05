@@ -8,6 +8,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -23,6 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.cd_open_externally
+import id.homebase.resources.collapse
+import id.homebase.resources.expand
 import org.jetbrains.compose.resources.stringResource
 
 // The trailing affordance is derived from the variant, so an unmarked row can't be rendered.
@@ -34,6 +38,12 @@ sealed interface SettingsRowAction {
     data class Toggle(
         val checked: Boolean,
         val onCheckedChange: (Boolean) -> Unit,
+    ) : SettingsRowAction
+
+    /** Discloses a list of [SettingsOptionRow]s below the row; the row itself picks nothing. */
+    data class Expand(
+        val expanded: Boolean,
+        val onExpandedChange: (Boolean) -> Unit,
     ) : SettingsRowAction
 
     /** Runs here and now, with no onward destination to point at. */
@@ -93,6 +103,16 @@ fun SettingsRow(
                         onCheckedChange = null,
                     )
 
+                    // Announced as the row's click label, like External.
+                    is SettingsRowAction.Expand -> Icon(
+                        imageVector = if (action.expanded) {
+                            Icons.Filled.KeyboardArrowUp
+                        } else {
+                            Icons.Filled.KeyboardArrowDown
+                        },
+                        contentDescription = null,
+                    )
+
                     is SettingsRowAction.Invoke -> Unit
                 }
             }
@@ -111,6 +131,16 @@ fun SettingsRow(
             onClickLabel = stringResource(MR.string.cd_open_externally),
             onClick = action.onClick,
         )
+
+        is SettingsRowAction.Expand -> modifier.clickable(
+            onClickLabel = if (action.expanded) {
+                stringResource(MR.string.collapse)
+            } else {
+                stringResource(MR.string.expand)
+            },
+            onClick = { action.onExpandedChange(!action.expanded) },
+        )
+
         is SettingsRowAction.Invoke -> modifier.clickable(onClick = action.onClick)
     }
 

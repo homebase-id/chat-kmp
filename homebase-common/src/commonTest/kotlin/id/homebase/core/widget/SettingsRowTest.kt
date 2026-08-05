@@ -206,6 +206,68 @@ class SettingsRowTest {
     }
 
     @Test
+    fun expandRowReportsTheOppositeOfItsCurrentState() = runComposeUiTest {
+        var received: Boolean? = null
+        setContent {
+            MaterialTheme {
+                SettingsRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Theme",
+                    supportingText = "Dark",
+                    action = SettingsRowAction.Expand(
+                        expanded = false,
+                        onExpandedChange = { received = it },
+                    ),
+                )
+            }
+        }
+        onNodeWithText("Theme").performClick()
+        assertEquals(true, received)
+    }
+
+    @Test
+    fun expandRowAnnouncesExpandOrCollapseAsItsClickLabel() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                SettingsRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Collapsed",
+                    action = SettingsRowAction.Expand(expanded = false, onExpandedChange = {}),
+                )
+                SettingsRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Expanded",
+                    action = SettingsRowAction.Expand(expanded = true, onExpandedChange = {}),
+                )
+            }
+        }
+        onNodeWithText("Collapsed").assert(
+            SemanticsMatcher("has an 'Expand' click label") { node ->
+                node.config.getOrNull(SemanticsActions.OnClick)?.label == "Expand"
+            }
+        )
+        onNodeWithText("Expanded").assert(
+            SemanticsMatcher("has a 'Collapse' click label") { node ->
+                node.config.getOrNull(SemanticsActions.OnClick)?.label == "Collapse"
+            }
+        )
+    }
+
+    @Test
+    fun expandRowIsNotToggleable() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                SettingsRow(
+                    icon = Icons.Filled.Notifications,
+                    title = "Theme",
+                    action = SettingsRowAction.Expand(expanded = false, onExpandedChange = {}),
+                )
+            }
+        }
+        onAllNodes(isToggleable()).assertCountEquals(0)
+    }
+
+    @Test
     fun showsStatusSlotAlongsideTheAffordance() = runComposeUiTest {
         setContent {
             MaterialTheme {
