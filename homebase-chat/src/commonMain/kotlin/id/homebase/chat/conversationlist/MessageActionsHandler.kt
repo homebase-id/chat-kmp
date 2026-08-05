@@ -44,7 +44,6 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
-import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.contentType
 import id.homebase.core.util.resolveContentType
 import id.homebase.core.util.toMessageMarkdown
@@ -238,31 +237,6 @@ internal class MessageActionsHandler(
         }
     }
 
-    fun handleScrollToMessageId(action: ConversationListUiAction.ScrollToMessageId) {
-        scope.launch {
-            try {
-                val indexOfMessageForScroll = messagesUiState.value.messages.indexOfLast {
-                    it is MessageListContentModel.Message && it.message.id == action.messageId
-                }
-
-                if (indexOfMessageForScroll != -1) {
-                    messagesUiState.update {
-                        it.copy(
-                            scrollPosition =
-                                ScrollPosition(
-                                    firstVisibleItemIndex = indexOfMessageForScroll,
-                                    triggerScroll = true
-                                ),
-                            highlightedMessageId = action.messageId,
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
-            }
-        }
-    }
-
     fun handleClearHighlightedMessage() {
         messagesUiState.update { it.copy(highlightedMessageId = null) }
     }
@@ -298,17 +272,13 @@ internal class MessageActionsHandler(
                         )
                     }
                 } else {
-                    handleScrollToMessageId(
-                        ConversationListUiAction.ScrollToMessageId(action.messageId)
-                    )
+                    dispatch(ConversationListUiAction.ScrollToMessageId(action.messageId))
                 }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) {
                     "Failed to open reply target ${action.messageId}: ${e.message}"
                 }
-                handleScrollToMessageId(
-                    ConversationListUiAction.ScrollToMessageId(action.messageId)
-                )
+                dispatch(ConversationListUiAction.ScrollToMessageId(action.messageId))
             }
         }
     }
