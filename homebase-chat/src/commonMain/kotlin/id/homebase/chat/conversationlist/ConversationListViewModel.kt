@@ -76,6 +76,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -92,6 +93,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -166,6 +168,8 @@ class ConversationListViewModel(
     private val liveLocationReceiveStore: id.homebase.chat.services.livelocation.LiveLocationReceiveStore,
     private val liveShareReadiness: id.homebase.chat.services.livelocation.LiveShareReadiness,
     private val locationService: id.homebase.core.location.LocationService,
+    // Nullable so tests can build the VM without the sync engine.
+    private val driveSyncManager: id.homebase.api.sync.DriveSyncManager? = null,
 ) : ViewModel() {
 
     companion object {
@@ -321,6 +325,98 @@ class ConversationListViewModel(
         sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
         awaitDriveGranted = ::ensureStickerDriveReady,
     )
+
+    private val jumpTargetWaiter = JumpTargetWaiter(
+        arrivals = chatDriveArrivals(),
+        // Must be the same predicate loadConversationAroundMessage opens with, not a cheaper
+        // raw-row check: a row that exists but doesn't map would end the wait and then fail to
+        // seed, hanging the jump with no toast and no spinner.
+        isMessageLocal = { messageId -> chatMessageStream.getMessage(messageId) != null },
+        requestSync = ::requestJumpTargetSync,
+        setWaiting = { messageId, waiting ->
+            _messagesUiState.update { state ->
+                when {
+                    waiting -> state.copy(awaitingJumpMessageId = messageId)
+                    // Compare-and-clear: a cancelled wait's teardown runs on a later Main
+                    // dispatch and must not wipe a newer conversation's pending jump.
+                    state.awaitingJumpMessageId == messageId ->
+                        state.copy(awaitingJumpMessageId = null)
+                    else -> state
+                }
+            }
+        },
+        seedWindowAround = { conversationId, messageId ->
+            chatMessageStream.loadConversationAroundMessage(conversationId, messageId)
+        },
+        sendInfo = { res -> sendEvent(ConversationListUiEvent.ShowInfoMessage(res)) },
+    )
+
+    /** [onGiveUp] disarms the caller's per-emission scroll retry. */
+    private fun CoroutineScope.handleJumpTargetMiss(
+        conversationId: Uuid,
+        messageId: Uuid,
+        trigger: ConversationLoadTrigger,
+        onGiveUp: () -> Unit,
+    ) {
+        if (!shouldWaitForJumpTarget(trigger)) {
+            reportJumpTargetUnavailable(conversationId, messageId)
+            onGiveUp()
+            return
+        }
+        launch {
+            // Contained, not swallowed: this is a child of currentConversationJob, so an
+            // exception here (a logout mid-wait makes requireActiveCredentials throw) would
+            // cancel the parent and strand the detail pane spinning forever.
+            val outcome = try {
+                jumpTargetWaiter.awaitJumpTarget(conversationId, messageId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "NotifTap") {
+                    "message stage: wait for msg=$messageId failed: ${e.message}"
+                }
+                JumpTargetOutcome.TimedOut
+            }
+            if (outcome == JumpTargetOutcome.TimedOut) onGiveUp()
+        }
+    }
+
+    /** The only two routes by which a chat-drive row reaches `DriveMainIndex`. */
+    private fun chatDriveArrivals(): Flow<Unit> {
+        val chatDrive = chatTargetDrive.alias
+        return eventBus.events
+            .filter { event ->
+                when (event) {
+                    is BackendEvent.DataEvent.BatchReceived -> event.driveId == chatDrive
+                    is BackendEvent.DriveEvent.Stopped -> event.driveId == chatDrive
+                    else -> false
+                }
+            }
+            .map { }
+    }
+
+    /**
+     * The header probe is diagnostic only — `getFileHeaderByUid` can't write into
+     * `DriveMainIndex`, so it can't satisfy the jump. It distinguishes a client sync gap
+     * from a message still sitting in the transit inbox. Only runs on the miss path.
+     */
+    private suspend fun requestJumpTargetSync(messageId: Uuid) {
+        val chatDrive = chatTargetDrive.alias
+        runCatching { driveSyncManager?.syncDrive(chatDrive) }.onFailure {
+            Logger.w(tag = "NotifTap", throwable = it) {
+                "message stage: syncDrive($chatDrive) kick failed for msg=$messageId"
+            }
+        }
+        val serverHasIt = runCatching {
+            driveFileProvider.getFileHeaderByUid(chatDrive, messageId) != null
+        }
+        Logger.i(tag = "NotifTap") {
+            "message stage: server header probe msg=$messageId " +
+                (serverHasIt.getOrNull()
+                    ?.let { "present=$it (${if (it) "client sync gap" else "not in our drive yet — transit/inbox"})" }
+                    ?: "failed: ${serverHasIt.exceptionOrNull()?.message}")
+        }
+    }
 
     /**
      * Gate the sticker save/create paths: surface the extend-permissions dialog if needed,
@@ -1640,6 +1736,7 @@ class ConversationListViewModel(
                 // doesn't flash stale pins before the new conversation's collector emits.
                 pinnedMessages = if (isNewSelection) persistentListOf() else it.pinnedMessages,
                 currentPinIndex = if (isNewSelection) 0 else it.currentPinIndex,
+                awaitingJumpMessageId = null,
             )
         }
 
@@ -1690,6 +1787,8 @@ class ConversationListViewModel(
             }
 
             try {
+                // Also written by the jump-target waiter below. Safe as a plain var: both
+                // writers are children of this viewModelScope job and run on Main.
                 var messageIdForScrollNullable = messageIdForScroll
                 var setInitialScroll = true
 
@@ -1711,14 +1810,11 @@ class ConversationListViewModel(
                         // the anchor's message has been purged from the DB.
                         val found = chatMessageStream
                             .loadConversationAroundMessage(conversationId, anchorTarget)
+                        logJumpTargetLookup(conversationId, anchorTarget, found, trigger)
                         if (!found && messageIdForScroll != null) {
-                            // Explicit jump to a message that's no longer on disk:
-                            // the window fell back to the latest page, so the
-                            // scroll lookup below can never resolve. Tell the user
-                            // instead of silently landing at the bottom, and stop
-                            // the per-emission retry from waiting forever.
-                            reportJumpTargetUnavailable(conversationId, messageIdForScroll)
-                            messageIdForScrollNullable = null
+                            handleJumpTargetMiss(conversationId, messageIdForScroll, trigger) {
+                                messageIdForScrollNullable = null
+                            }
                         }
                     } else {
                         chatMessageStream.loadConversation(conversationId)
@@ -1737,9 +1833,11 @@ class ConversationListViewModel(
                     }
                     val found = chatMessageStream
                         .loadConversationAroundMessage(conversationId, messageIdForScroll)
+                    logJumpTargetLookup(conversationId, messageIdForScroll, found, trigger)
                     if (!found) {
-                        reportJumpTargetUnavailable(conversationId, messageIdForScroll)
-                        messageIdForScrollNullable = null
+                        handleJumpTargetMiss(conversationId, messageIdForScroll, trigger) {
+                            messageIdForScrollNullable = null
+                        }
                     }
                 } else {
                     Logger.d(tag = "ChatPaging") {
@@ -2037,6 +2135,9 @@ class ConversationListViewModel(
      * resolved to a message that's no longer on disk, so no window could be
      * centered on it. Surface a snackbar instead of silently landing on the
      * latest page, and log it so the miss is visible in homebase.log.
+     *
+     * The copy claims a deletion, so this is not used for a notification tap — see
+     * [shouldWaitForJumpTarget].
      */
     private fun reportJumpTargetUnavailable(conversationId: Uuid, messageId: Uuid) {
         Logger.w(tag = TAG) {
@@ -2044,6 +2145,19 @@ class ConversationListViewModel(
                 "anchor not in DB, landed on latest page"
         }
         sendEvent(ShowInfoMessage(MR.string.conversation_jump_message_unavailable))
+    }
+
+    private fun logJumpTargetLookup(
+        conversationId: Uuid,
+        messageId: Uuid,
+        found: Boolean,
+        trigger: ConversationLoadTrigger,
+    ) {
+        if (trigger != ConversationLoadTrigger.NotificationResolved) return
+        Logger.i(tag = "NotifTap") {
+            "message stage: convo=$conversationId msg=$messageId anchorFound=$found " +
+                (if (found) "(window centered on it)" else "(no DriveMainIndex row — entering bounded wait)")
+        }
     }
 }
 
