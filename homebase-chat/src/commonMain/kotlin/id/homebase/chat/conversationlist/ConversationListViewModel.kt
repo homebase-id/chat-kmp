@@ -219,6 +219,13 @@ class ConversationListViewModel(
     // conversation like pendingScrollToLatest.
     private val frozenUnreadBoundary = mutableMapOf<Uuid, Instant>()
 
+    private val jumpCoordinator = MessageJumpCoordinator(
+        messagesUiState = _messagesUiState,
+        isMessageInWindow = chatMessageStream::isMessageInWindow,
+        loadAroundMessage = chatMessageStream::loadConversationAroundMessage,
+        reportUnavailable = ::reportJumpTargetUnavailable,
+    )
+
     private val mediaDownloadHandler = MediaDownloadHandler(
         scope = viewModelScope,
         uiState = _uiState,
@@ -1300,7 +1307,21 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.DecryptFile -> mediaDownloadHandler.handleDecryptFile(action)
 
-            is ConversationListUiAction.ScrollToMessageId -> messageActionsHandler.handleScrollToMessageId(action)
+            is ConversationListUiAction.ScrollToMessageId -> {
+                val conversationId = _uiState.value.selectedConversationId
+                if (conversationId != null) {
+                    viewModelScope.launch {
+                        try {
+                            jumpCoordinator.jumpToMessage(conversationId, action.messageId)
+                        } catch (e: Exception) {
+                            Logger.e(throwable = e, tag = TAG) {
+                                "jump-to-message failed id=$conversationId message=${action.messageId}: ${e.message}"
+                            }
+                            sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
+                        }
+                    }
+                }
+            }
 
             is ConversationListUiAction.OpenReplyTarget -> messageActionsHandler.handleOpenReplyTarget(action)
 
@@ -1787,9 +1808,7 @@ class ConversationListViewModel(
             }
 
             try {
-                // Also written by the jump-target waiter below. Safe as a plain var: both
-                // writers are children of this viewModelScope job and run on Main.
-                var messageIdForScrollNullable = messageIdForScroll
+                jumpCoordinator.arm(messageIdForScroll)
                 var setInitialScroll = true
 
                 if (!hasCachedMessages) {
@@ -1813,30 +1832,25 @@ class ConversationListViewModel(
                         logJumpTargetLookup(conversationId, anchorTarget, found, trigger)
                         if (!found && messageIdForScroll != null) {
                             handleJumpTargetMiss(conversationId, messageIdForScroll, trigger) {
-                                messageIdForScrollNullable = null
+                                jumpCoordinator.disarm()
                             }
                         }
                     } else {
                         chatMessageStream.loadConversation(conversationId)
                     }
-                } else if (messageIdForScroll != null &&
-                    !chatMessageStream.isMessageInWindow(conversationId, messageIdForScroll)
-                ) {
-                    // Cached, but the jump target lives outside the in-memory
-                    // window (e.g. an album item older than the ~PAGE_SIZE
-                    // window). Reusing the window would never contain it and the
-                    // jump would silently no-op, so re-seed a window centered on
-                    // the target — same machinery as the uncached around-open.
+                } else if (messageIdForScroll != null) {
+                    // Cached, but the jump target may live outside the in-memory
+                    // window (e.g. an album item older than the ~PAGE_SIZE window);
+                    // reusing that window would never contain it.
                     Logger.d(tag = "ChatPaging") {
-                        "open conversationId=$conversationId hasCached=true but target=$messageIdForScroll " +
-                            "outside window → loadAround"
+                        "open conversationId=$conversationId hasCached=true target=$messageIdForScroll " +
+                            "→ ensureWindowContains"
                     }
-                    val found = chatMessageStream
-                        .loadConversationAroundMessage(conversationId, messageIdForScroll)
+                    val found = jumpCoordinator.ensureWindowContains(conversationId, messageIdForScroll)
                     logJumpTargetLookup(conversationId, messageIdForScroll, found, trigger)
                     if (!found) {
                         handleJumpTargetMiss(conversationId, messageIdForScroll, trigger) {
-                            messageIdForScrollNullable = null
+                            jumpCoordinator.disarm()
                         }
                     }
                 } else {
@@ -1941,27 +1955,11 @@ class ConversationListViewModel(
                             // which only scrolls when the user was already at the bottom. Forcing
                             // a scroll-to-new-message here would yank the user out of history.
                             messageActionsHandler.pendingMessageId = null
-                            // If the target message hasn't synced yet, keep
-                            // messageIdForScrollNullable set so the next
-                            // ChatMessagesData.Messages emission retries the
-                            // lookup (messages stream re-emits on each sync
-                            // batch). Clear only once the message is found.
-                            // Capture the requested scroll-to-message id BEFORE we null it
-                            // so we can persist it as the new anchor below.
-                            val targetMessageId = messageIdForScrollNullable
-                            val indexOfMessageForScroll = if (targetMessageId != null) {
-                                val messageIndex = messagesModels.indexOfLast {
-                                    it is MessageListContentModel.Message && it.message.id == targetMessageId
-                                }
-                                if (messageIndex >= 0) {
-                                    messageIdForScrollNullable = null
-                                    messageIndex
-                                } else {
-                                    null
-                                }
-                            } else {
-                                null
-                            }
+                            // Read BEFORE resolvePendingIndex disarms, so the anchor
+                            // persist below still sees the id it landed on.
+                            val targetMessageId = jumpCoordinator.pendingTarget
+                            val indexOfMessageForScroll =
+                                jumpCoordinator.resolvePendingIndex(messagesModels)
 
                             val newScroll = when {
                                 // ScrollToLatest reload: the user tapped the
