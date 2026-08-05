@@ -3,8 +3,9 @@ name: Build Check
 on:
   push:
     branches: [main]
+  # Unfiltered: a stacked PR based on a feature branch gets no checks at all if
+  # this is restricted to main, so a layer can reach merge never having compiled.
   pull_request:
-    branches: [main]
 
 jobs:
   test:
