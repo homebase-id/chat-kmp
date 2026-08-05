@@ -384,7 +384,11 @@ class ChatMessageStream(
      * cached at all.
      */
     fun isMessageInWindow(conversationId: Uuid, messageId: Uuid): Boolean =
-        paginatedState.getWindow(conversationId)?.messages?.any { it.id == messageId } == true
+        messageInWindow(conversationId, messageId) != null
+
+    /** [messageId] as held by the cached in-memory window, without a DB read. */
+    fun messageInWindow(conversationId: Uuid, messageId: Uuid): MessageUiModel? =
+        paginatedState.getWindow(conversationId)?.messages?.firstOrNull { it.id == messageId }
 
     /**
      * Load a centered page of messages around [messageUniqueId]. Used to

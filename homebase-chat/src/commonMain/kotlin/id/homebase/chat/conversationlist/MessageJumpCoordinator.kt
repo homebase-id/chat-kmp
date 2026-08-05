@@ -5,6 +5,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.uuid.Uuid
 
+/** Outcome of matching an armed jump target against a freshly emitted window. */
+internal sealed interface JumpTargetResolution {
+    /** Rendered at [index]; the coordinator has disarmed. */
+    data class Landed(val index: Int) : JumpTargetResolution
+
+    /** Nothing armed, or not rendered yet — stays armed so a later emission retries. */
+    data object Pending : JumpTargetResolution
+
+    /** In the window but filtered out of the rendered list, so it can never land. */
+    data object ExcludedFromView : JumpTargetResolution
+}
+
 /**
  * Single decision point for "take me to this message" — pinned bar, reply quote,
  * search result and the conversation-open path all route through here.
@@ -18,33 +30,44 @@ import kotlin.uuid.Uuid
 internal class MessageJumpCoordinator(
     private val messagesUiState: MutableStateFlow<MessageListUiState>,
     private val isMessageInWindow: (conversationId: Uuid, messageId: Uuid) -> Boolean,
+    private val isExcludedFromView: (conversationId: Uuid, messageId: Uuid) -> Boolean,
     private val loadAroundMessage: suspend (conversationId: Uuid, messageId: Uuid) -> Boolean,
     private val reportUnavailable: (conversationId: Uuid, messageId: Uuid) -> Unit,
+    private val reportExcluded: (conversationId: Uuid, messageId: Uuid) -> Unit,
 ) {
     var pendingTarget: Uuid? = null
         private set
 
-    fun arm(messageId: Uuid?) {
+    private var pendingConversationId: Uuid? = null
+
+    fun arm(conversationId: Uuid, messageId: Uuid?) {
         pendingTarget = messageId
+        pendingConversationId = messageId?.let { conversationId }
     }
 
     fun disarm() {
         pendingTarget = null
+        pendingConversationId = null
     }
 
     /**
-     * Index of the armed target in a freshly emitted window, disarming once it
-     * lands. Null keeps the coordinator armed so a later emission retries —
-     * the target may still be syncing in.
+     * Matches the armed target against a freshly emitted window, disarming once
+     * it lands or once it turns out this view will never render it.
      */
-    fun resolvePendingIndex(messages: List<MessageListContentModel>): Int? {
-        val target = pendingTarget ?: return null
+    fun resolvePendingJump(messages: List<MessageListContentModel>): JumpTargetResolution {
+        val target = pendingTarget ?: return JumpTargetResolution.Pending
+        val conversationId = pendingConversationId ?: return JumpTargetResolution.Pending
         val index = messages.indexOfLast {
             it is MessageListContentModel.Message && it.message.id == target
         }
-        if (index < 0) return null
+        if (index >= 0) {
+            disarm()
+            return JumpTargetResolution.Landed(index)
+        }
+        if (!isExcludedFromView(conversationId, target)) return JumpTargetResolution.Pending
         disarm()
-        return index
+        reportExcluded(conversationId, target)
+        return JumpTargetResolution.ExcludedFromView
     }
 
     /**
@@ -58,6 +81,13 @@ internal class MessageJumpCoordinator(
     }
 
     suspend fun jumpToMessage(conversationId: Uuid, messageId: Uuid) {
+        // Before the window checks: an excluded target IS in the window, so they
+        // would read it as "not here yet" and arm a retry that can never resolve.
+        if (isExcludedFromView(conversationId, messageId)) {
+            reportExcluded(conversationId, messageId)
+            return
+        }
+
         val renderedIndex = if (isMessageInWindow(conversationId, messageId)) {
             messagesUiState.value.messages.indexOfLast {
                 it is MessageListContentModel.Message && it.message.id == messageId
@@ -79,7 +109,7 @@ internal class MessageJumpCoordinator(
             return
         }
 
-        arm(messageId)
+        arm(conversationId, messageId)
         messagesUiState.update { it.copy(highlightedMessageId = messageId) }
         if (!ensureWindowContains(conversationId, messageId)) {
             reportUnavailable(conversationId, messageId)

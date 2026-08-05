@@ -70,6 +70,7 @@ import id.homebase.resources.chat_location_unavailable
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
+import id.homebase.resources.conversation_jump_message_after_exit
 import id.homebase.resources.conversation_jump_message_unavailable
 import id.homebase.resources.live_share_ended
 import kotlinx.collections.immutable.persistentListOf
@@ -222,8 +223,10 @@ class ConversationListViewModel(
     private val jumpCoordinator = MessageJumpCoordinator(
         messagesUiState = _messagesUiState,
         isMessageInWindow = chatMessageStream::isMessageInWindow,
+        isExcludedFromView = ::isMessageHiddenByExit,
         loadAroundMessage = chatMessageStream::loadConversationAroundMessage,
         reportUnavailable = ::reportJumpTargetUnavailable,
+        reportExcluded = ::reportJumpTargetExcluded,
     )
 
     private val mediaDownloadHandler = MediaDownloadHandler(
@@ -1796,7 +1799,8 @@ class ConversationListViewModel(
             }
             launch {
                 chatMessageStream.observePinnedMessages(conversationId).collect { pinned ->
-                    val list = pinned.toPersistentList()
+                    val exitedAt = exitedAtFor(conversationId)
+                    val list = pinned.filterNot { it.isHiddenByExit(exitedAt) }.toPersistentList()
                     _messagesUiState.update { state ->
                         state.copy(
                             pinnedMessages = list,
@@ -1808,7 +1812,7 @@ class ConversationListViewModel(
             }
 
             try {
-                jumpCoordinator.arm(messageIdForScroll)
+                jumpCoordinator.arm(conversationId, messageIdForScroll)
                 var setInitialScroll = true
 
                 if (!hasCachedMessages) {
@@ -1866,9 +1870,7 @@ class ConversationListViewModel(
                         }
 
                         is ChatMessagesData.Messages -> {
-                            val exitedAt = _uiState.value.activeConversations
-                                .find { it.conversation.id == conversationId }
-                                ?.conversation?.exitedAt
+                            val exitedAt = exitedAtFor(conversationId)
 
                             val window = messageState.window
                             val windowMessages = window.messages
@@ -1880,10 +1882,7 @@ class ConversationListViewModel(
                                 // a just-deleted note-to-self message remains visible as a
                                 // "Deleted File" tombstone briefly and disappears on the
                                 // next visit. Single source of truth.
-                                val messages = if (exitedAt != null)
-                                    windowMessages.filter { it.userDate <= exitedAt }
-                                else
-                                    windowMessages
+                                val messages = windowMessages.filterNot { it.isHiddenByExit(exitedAt) }
                                 val timezone = TimeZone.currentSystemDefault()
                                 val groupedMessages =
                                     messages.sortedBy { it.userDate }.groupBy { message ->
@@ -1955,11 +1954,12 @@ class ConversationListViewModel(
                             // which only scrolls when the user was already at the bottom. Forcing
                             // a scroll-to-new-message here would yank the user out of history.
                             messageActionsHandler.pendingMessageId = null
-                            // Read BEFORE resolvePendingIndex disarms, so the anchor
+                            // Read BEFORE resolvePendingJump disarms, so the anchor
                             // persist below still sees the id it landed on.
                             val targetMessageId = jumpCoordinator.pendingTarget
                             val indexOfMessageForScroll =
-                                jumpCoordinator.resolvePendingIndex(messagesModels)
+                                (jumpCoordinator.resolvePendingJump(messagesModels)
+                                    as? JumpTargetResolution.Landed)?.index
 
                             val newScroll = when {
                                 // ScrollToLatest reload: the user tapped the
@@ -2143,6 +2143,30 @@ class ConversationListViewModel(
                 "anchor not in DB, landed on latest page"
         }
         sendEvent(ShowInfoMessage(MR.string.conversation_jump_message_unavailable))
+    }
+
+    /**
+     * The target is on disk and in the window but sits past the exit cutoff, so
+     * no window can ever satisfy the jump. Distinct copy from
+     * [reportJumpTargetUnavailable]: the message is not gone.
+     */
+    private fun reportJumpTargetExcluded(conversationId: Uuid, messageId: Uuid) {
+        Logger.w(tag = TAG) {
+            "jump-to-message target excluded id=$conversationId message=$messageId — " +
+                "newer than exitedAt, not rendered in this conversation"
+        }
+        sendEvent(ShowInfoMessage(MR.string.conversation_jump_message_after_exit))
+    }
+
+    private fun exitedAtFor(conversationId: Uuid): Instant? =
+        _uiState.value.activeConversations
+            .find { it.conversation.id == conversationId }
+            ?.conversation?.exitedAt
+
+    private fun isMessageHiddenByExit(conversationId: Uuid, messageId: Uuid): Boolean {
+        val exitedAt = exitedAtFor(conversationId) ?: return false
+        return chatMessageStream.messageInWindow(conversationId, messageId)
+            ?.isHiddenByExit(exitedAt) == true
     }
 
     private fun logJumpTargetLookup(
