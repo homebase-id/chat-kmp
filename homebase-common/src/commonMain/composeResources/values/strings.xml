@@ -1286,6 +1286,7 @@
     <string name="dev_menu_force_logout_confirm_action">Force logout</string>
     <string name="dev_menu_test_notification">Test Rich Notification</string>
     <string name="dev_menu_test_temporal_read">Test temporal location read (Frodo)</string>
+    <string name="dev_menu_test_qb_collection">Test query-batch-collection</string>
     <string name="dev_menu_test_scheduled_push">Test scheduled push notifications</string>
     <string name="scheduled_push_test_title">Scheduled Push Test</string>
     <string name="scheduled_push_test_schedule_one_shot">Schedule one-shot (10s)</string>

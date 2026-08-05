@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -92,6 +93,7 @@ import id.homebase.resources.dev_menu_section_testing
 import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
 import id.homebase.resources.dev_menu_test_scheduled_push
+import id.homebase.resources.dev_menu_test_qb_collection
 import id.homebase.resources.dev_menu_test_temporal_read
 import id.homebase.resources.dev_menu_title
 import id.homebase.resources.dev_menu_trigger_test_crash
@@ -284,6 +286,13 @@ fun DeveloperMenuUi(
                 title = stringResource(MR.string.dev_menu_test_temporal_read),
                 action = SettingsRowAction.Invoke {
                     onAction(DeveloperMenuUiAction.TestTemporalLocationRead)
+                },
+            )
+            SettingsRow(
+                icon = Icons.Outlined.Layers,
+                title = stringResource(MR.string.dev_menu_test_qb_collection),
+                action = SettingsRowAction.Invoke {
+                    onAction(DeveloperMenuUiAction.TestQueryBatchCollection)
                 },
             )
             SettingsRow(

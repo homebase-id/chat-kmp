@@ -12,6 +12,7 @@ import id.homebase.api.client.diagnostics.runNetworkDiagnostics
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.QueryBatchSortOrder
+import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
@@ -38,6 +39,7 @@ class DeveloperMenuViewModel(
     private val credentialsManager: CredentialsManager,
     private val userPreferences: UserPreferences,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
+    private val driveQueryProvider: DriveQueryProvider,
     private val serverIpStore: ServerIpStore,
     private val youAuthFlowManager: YouAuthFlowManager,
 ) : ViewModel() {
@@ -74,6 +76,10 @@ class DeveloperMenuViewModel(
 
             is DeveloperMenuUiAction.TestTemporalLocationRead -> {
                 testTemporalLocationRead()
+            }
+
+            is DeveloperMenuUiAction.TestQueryBatchCollection -> {
+                testQueryBatchCollection()
             }
 
             is DeveloperMenuUiAction.ForceSyncAll -> {
@@ -195,6 +201,18 @@ class DeveloperMenuViewModel(
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TEMPORAL_TAG) { "Temporal read test failed" }
                 sendEvent(DeveloperMenuUiEvent.Error("Temporal read failed: ${e.message}"))
+            }
+        }
+    }
+
+    private fun testQueryBatchCollection() {
+        viewModelScope.launch {
+            try {
+                val summary = QueryBatchCollectionProbe(driveQueryProvider).run()
+                sendEvent(DeveloperMenuUiEvent.Success(summary))
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = "QBCollection") { "query-batch-collection probe failed" }
+                sendEvent(DeveloperMenuUiEvent.Error("Collection probe failed: ${e.message}"))
             }
         }
     }
@@ -328,6 +346,7 @@ sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
+    data object TestQueryBatchCollection : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction
     data object RunNetworkDiagnostics : DeveloperMenuUiAction
     data object ClearAllData : DeveloperMenuUiAction
