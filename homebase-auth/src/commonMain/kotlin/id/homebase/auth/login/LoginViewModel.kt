@@ -71,7 +71,7 @@ class LoginViewModel(
     fun onAction(action: LoginUiAction) {
         when (action) {
             is LoginUiAction.CreateAccount -> {
-                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl("https://homebase.id/sign-up")) }
+                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl("https://homebase.id/app-create-account")) }
             }
 
             is LoginUiAction.LoginClicked -> {
