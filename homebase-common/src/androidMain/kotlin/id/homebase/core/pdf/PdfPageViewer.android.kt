@@ -69,9 +69,16 @@ actual fun PdfPageViewer(
             val fm = activity.supportFragmentManager
             val container = frameLayout.getChildAt(0) as? FragmentContainerView ?: return@AndroidView
             val existing = fm.findFragmentByTag(fragmentTag) as? PdfViewerFragment
-            if (existing == null) {
+            // An Activity recreation (rotation, theme or locale change, split-screen resize)
+            // builds a new container while the FragmentManager restores the old fragment against
+            // the container it was added to — which is gone. Its view has nowhere to live, so the
+            // page area renders blank and stays blank, because the fragment is still findable by
+            // tag. Host a fresh one whenever the one we find isn't in the container we just built.
+            val orphaned = existing != null && existing.view?.parent !== container
+            if (existing == null || orphaned) {
                 val fragment = PdfViewerFragment()
                 fm.beginTransaction()
+                    .apply { if (existing != null) remove(existing) }
                     .replace(container.id, fragment, fragmentTag)
                     .commitAllowingStateLoss()
                 fm.executePendingTransactions()
