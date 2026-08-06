@@ -118,6 +118,8 @@ import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
+import id.homebase.core.config.chatLabeledDrive
+import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
@@ -429,6 +431,13 @@ val appModule = module {
             //         ),
             //     ),
             // ),
+            // Likely-large drives go LAST in the syncAll batch-collection so the greedy budget
+            // serves every small drive first; chat is expected largest and goes very last.
+            collectionTail = listOf(
+                feedLabeledDrive.drive.alias,
+                momentsLabeledDrive.drive.alias,
+                chatLabeledDrive.drive.alias,
+            ),
         )
     }
 
