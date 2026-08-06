@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseCrashlytics
 import FirebaseMessaging
 import ComposeApp
+import SafariServices
 import UserNotifications
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -251,6 +252,8 @@ struct iOSApp: App {
                 handlePermissionCallbackURL(url)
             case "data-upgrade-callback":
                 handleDataUpgradeCallbackURL()
+            case "create-account-callback":
+                handleCreateAccountCallbackURL(url)
             default:
                 break
             }
@@ -273,6 +276,33 @@ struct iOSApp: App {
     /// owner-console data-upgrade page. Triggers an immediate upgrade status re-check.
     private func handleDataUpgradeCallbackURL() {
         DataUpgradeCallbackBridge.shared.handleDataUpgradeCallback()
+    }
+
+    /// Handles `homebase-fchat://create-account-callback?domain=...`, the return leg of the
+    /// sign-up flow. The owner console redirects at our scheme once the new identity is set up;
+    /// SFSafariViewController hands that to the system, which reopens the app — with the browser
+    /// still presented on top of it, so dismiss it before the login screen underneath is seen.
+    private func handleCreateAccountCallbackURL(_ url: URL) {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        if let domain = components?.queryItems?.first(where: { $0.name == "domain" })?.value,
+           !domain.isEmpty {
+            CreatedIdentityRelay.shared.deliver(domain: domain)
+        }
+        dismissInAppBrowser()
+    }
+
+    private func dismissInAppBrowser() {
+        guard var top = UIApplication.shared.connectedScenes
+            .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+            .first?.rootViewController
+        else { return }
+
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        if top is SFSafariViewController {
+            top.dismiss(animated: true)
+        }
     }
 
     /// Handles `homebase-fchat://permission-callback?status=...` URLs returned from the

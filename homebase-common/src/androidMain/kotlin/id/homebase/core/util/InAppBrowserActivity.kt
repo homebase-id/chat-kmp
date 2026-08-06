@@ -3,6 +3,7 @@ package id.homebase.core.util
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -40,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
+import id.homebase.core.config.AppConfig
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.close
@@ -137,7 +139,33 @@ class InAppBrowserActivity : ComponentActivity() {
                         factory = { context ->
                             WebView(context).apply {
                                 setBackgroundColor(surface.toArgb())
-                                webViewClient = WebViewClient()
+                                webViewClient = object : WebViewClient() {
+                                    // Sign-up ends by navigating at our own scheme. A WebView
+                                    // can't load that and doesn't need to — this activity is
+                                    // the thing being addressed, so read it here and close,
+                                    // rather than bouncing out through the system.
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView,
+                                        request: WebResourceRequest,
+                                    ): Boolean {
+                                        val target = request.url
+                                        if (!target.scheme.equals(
+                                                AppConfig.DEEP_LINK_SCHEME,
+                                                ignoreCase = true,
+                                            )
+                                        ) {
+                                            return false
+                                        }
+
+                                        if (target.host == AppConfig.CREATE_ACCOUNT_CALLBACK_HOST) {
+                                            target.getQueryParameter("domain")
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?.let { CreatedIdentityRelay.deliver(it) }
+                                        }
+                                        this@InAppBrowserActivity.finish()
+                                        return true
+                                    }
+                                }
                                 webChromeClient = object : WebChromeClient() {
                                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                         progress = newProgress / 100f

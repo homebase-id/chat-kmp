@@ -46,3 +46,5 @@ private fun ensureCallbackServer(): Int {
     }
     return port
 }
+
+actual fun createAccountReturnUrl(): String? = null
