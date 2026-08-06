@@ -49,7 +49,12 @@ class QueryBatchCollectionProbe(
         }
     }
 
-    /** Three real drives, generous budget: proves rows decode and sections match back by name. */
+    /**
+     * Three real drives, generous budget: proves rows decode and sections match back by name.
+     *
+     * A leading drive with a backlog eats the whole budget, so trailing sections legitimately come
+     * back [QueryBatchSectionStatus.BudgetExhausted] — that is success, not failure.
+     */
     private suspend fun probeHappyPath(): Verdict = phase("happy-path") {
         val response = collection(MANDATORY, budget = 1000)
         logSections(response)
@@ -63,16 +68,24 @@ class QueryBatchCollectionProbe(
         if (names != MANDATORY.map { it.label }) {
             return@phase fail("section names/order did not round-trip: got $names")
         }
-        if (response.any { it.status != QueryBatchSectionStatus.Ok }) {
-            return@phase fail("a granted drive did not report ok")
+        val failures = response.filter { it.isFailure }
+        if (failures.isNotEmpty()) {
+            return@phase fail("granted drives reported failures: ${failures.joinToString { it.describeFailure() }}")
         }
-        pass("${response.sumOf { it.searchResults.size }} rows across ${response.size} sections")
+        val served = response.count { it.status == QueryBatchSectionStatus.Ok }
+        val skipped = response.count { it.status == QueryBatchSectionStatus.BudgetExhausted }
+        pass("${response.sumOf { it.searchResults.size }} rows; $served served, $skipped budgetExhausted")
     }
 
-    /** The call that used to 500 the whole collection. */
+    /**
+     * The call that used to 500 the whole collection.
+     *
+     * The bad section goes FIRST: a trailing one would be skipped for budget before the server ever
+     * evaluated the drive, testing nothing. Leading also pins that a failed section consumes no
+     * budget — the sections behind it must still be served.
+     */
     private suspend fun probeNonExistentDrive(): Verdict = phase("non-existent-drive") {
-        val sections = MANDATORY + ProbeDrive("ghost", Uuid.random())
-        val response = collection(sections, budget = 100)
+        val response = collection(listOf(ProbeDrive("ghost", Uuid.random())) + MANDATORY, budget = 100)
         logSections(response)
 
         val ghost = response.firstOrNull { it.name == "ghost" }
@@ -83,13 +96,15 @@ class QueryBatchCollectionProbe(
         if (response.filter { it.name != "ghost" }.any { it.isFailure }) {
             return@phase fail("a healthy section was collateral damage")
         }
-        pass("collection survived; ghost=driveNotFound, ${response.size - 1} healthy sections intact")
+        val served = response.sumOf { it.searchResults.size }
+        if (served == 0) return@phase fail("the failed section appears to have consumed the budget")
+        pass("collection survived; ghost=driveNotFound, $served rows still served behind it")
     }
 
-    /** walletDrive exists on every identity but chat never requests read on it. */
+    /** walletDrive exists on every identity but chat never requests read on it. Leading, per above. */
     private suspend fun probeUngrantedDrive(): Verdict = phase("ungranted-drive") {
         val wallet = ProbeDrive("wallet", SystemDriveConstants.walletDrive.alias)
-        val response = collection(MANDATORY + wallet, budget = 100)
+        val response = collection(listOf(wallet) + MANDATORY, budget = 100)
         logSections(response)
 
         val section = response.firstOrNull { it.name == "wallet" }
@@ -104,7 +119,7 @@ class QueryBatchCollectionProbe(
         if (!section.invalidDrive) {
             return@phase fail("invalidDrive was not set on a failed section")
         }
-        pass("wallet=${section.status}, healthy sections unaffected")
+        pass("wallet=${section.status}, ${response.sumOf { it.searchResults.size }} rows served behind it")
     }
 
     /**
@@ -163,6 +178,7 @@ class QueryBatchCollectionProbe(
     private suspend fun probeDrainLoop(): Verdict = phase("drain-loop") {
         var pending = MANDATORY
         val seenFileIds = mutableSetOf<String>()
+        val rowsByDrive = mutableMapOf<String, Int>()
         var duplicates = 0
         var rounds = 0
         var total = 0
@@ -174,12 +190,15 @@ class QueryBatchCollectionProbe(
             total += roundRows
 
             for (section in response) {
+                val name = section.name ?: continue
+                rowsByDrive[name] = (rowsByDrive[name] ?: 0) + section.searchResults.size
                 for (file in section.searchResults) {
                     if (!seenFileIds.add(file.fileId.toString())) duplicates++
                 }
             }
             Logger.i(tag = TAG) {
-                "  round $rounds: ${pending.size} sections → $roundRows rows, " +
+                "  round $rounds: head=${pending.first().label} → $roundRows rows " +
+                    "(${response.joinToString { "${it.name}=${it.searchResults.size}" }}), " +
                     "still paging=${response.count { it.needsAnotherRound }}"
             }
             response.filter { it.isFailure }.forEach {
@@ -187,14 +206,26 @@ class QueryBatchCollectionProbe(
             }
 
             val byName = response.associateBy { it.name }
-            pending = pending.mapNotNull { drive ->
+            val carried = pending.mapNotNull { drive ->
                 val section = byName[drive.label] ?: return@mapNotNull null
                 if (section.needsAnotherRound) drive.copy(cursorState = section.cursorState) else null
             }
+            // Rotate the head each round. The server fills greedily in request order and never
+            // reorders, so a fixed order lets a drive with a backlog starve every drive behind it
+            // indefinitely — the live probe showed chat taking 50/50 for five straight rounds.
+            pending = if (carried.size > 1) carried.drop(1) + carried.first() else carried
         }
 
+        Logger.i(tag = TAG) { "  rows by drive: $rowsByDrive" }
         if (duplicates > 0) return@phase fail("$duplicates file(s) returned more than once across rounds")
-        pass("$rounds round(s), $total rows, no duplicates, ${pending.size} section(s) still paging")
+        val starved = MANDATORY.map { it.label }.filter { (rowsByDrive[it] ?: 0) == 0 }
+        if (starved.size == MANDATORY.size) {
+            return@phase fail("no drive was served in $rounds rounds")
+        }
+        pass(
+            "$rounds round(s), $total rows, no duplicates, served=$rowsByDrive" +
+                if (starved.isEmpty()) "" else ", no rows for ${starved.joinToString()} (may simply be empty)"
+        )
     }
 
     private suspend fun collection(drives: List<ProbeDrive>, budget: Int): List<QueryBatchCollectionSection> =
