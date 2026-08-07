@@ -570,8 +570,9 @@ class DriveSyncManager(
     }
 
     companion object {
-        /** Global record budget for the syncAll collection call — greedy in-order fill server-side. */
-        private const val COLLECTION_BUDGET = 500
+        /** Global record budget for the syncAll collection call — greedy in-order fill server-side.
+         *  1000 is the server's clamp ceiling; asking for more would be silently reduced. */
+        private const val COLLECTION_BUDGET = 1000
 
         /** Floor of the remote-drive retry backoff (first failure waits this long). */
         private const val REMOTE_RETRY_BASE_MS = 1_000L
