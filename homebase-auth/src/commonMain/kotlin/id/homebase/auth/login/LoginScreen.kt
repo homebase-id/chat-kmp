@@ -458,6 +458,15 @@ private fun LoginForm(
         mutableStateOf(TextFieldValue(homebaseId, selection = TextRange(homebaseId.length)))
     }
 
+    // The field owns what the user types, so it seeds from state rather than reading it. Re-seed
+    // when a new value does arrive: sign-up hands back the domain it created while this screen is
+    // already composed, and a once-only seed would drop it.
+    LaunchedEffect(homebaseId) {
+        if (homebaseId.isNotBlank() && homebaseId != homebaseIdField.text) {
+            homebaseIdField = TextFieldValue(homebaseId, selection = TextRange(homebaseId.length))
+        }
+    }
+
     // Focus the ID field once on first entry — not on every re-entry/recomposition, which kept
     // re-popping the keyboard (#1054).
     var didFocus by rememberSaveable { mutableStateOf(false) }
