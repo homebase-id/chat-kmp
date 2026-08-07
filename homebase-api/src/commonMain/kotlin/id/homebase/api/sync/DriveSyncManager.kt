@@ -2,6 +2,12 @@ package id.homebase.api.sync
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.CollectionQueryParamSection
+import id.homebase.api.client.drives.CollectionSectionResultOptions
+import id.homebase.api.client.drives.QueryBatchCollectionRequest
+import id.homebase.api.client.drives.QueryBatchCollectionSection
+import id.homebase.api.client.drives.QueryBatchResponse
+import id.homebase.api.client.drives.QueryBatchSectionStatus
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -45,6 +51,11 @@ class DriveSyncManager(
     // homebase-core's AppModule where chat-specific fileTypes are visible; this layer
     // stays drive-agnostic.
     private val driveSyncPolicies: Map<Uuid, DriveSyncPolicy> = emptyMap(),
+    // Drives likely to carry a large backlog (feed, moments, chat), ordered — placed LAST in the
+    // syncAll collection so the greedy budget serves every small drive first; a big drive only
+    // takes the remainder and continues per-drive. Assembled in AppModule, same key space as
+    // [mandatoryDrives]; this layer stays drive-agnostic.
+    private val collectionTail: List<Uuid> = emptyList(),
 ) {
     // Immutable map reference — always replaced, never mutated in-place, preventing CME.
     // All writes are serialized via driveSyncsMutex, which provides the happens-before
@@ -256,16 +267,131 @@ class DriveSyncManager(
             return
         }
         val snapshot = driveSyncsMutex.withLock { driveSyncs.toList() }
-        // Kick every drive, but only barrier on the user's OWN drives. A remote (owner-hosted) drive
-        // whose owner is offline/slow must not stall the aggregate round via joinAll — its sync is
-        // launched fire-and-forget and reconciled independently through the Stopped/backoff path.
-        val ownJobs = mutableListOf<Job>()
-        for ((driveId, sync) in snapshot) {
-            val job = sync.sync() ?: continue
-            if (_driveStatuses.value[driveId]?.isRemote != true) ownJobs.add(job)
+
+        // Fold the own-host drives' page-1 pulls into ONE query-batch-collection call (#1102).
+        // beginBatchedRound holds each drive's sync lock across the round trip, so killroy
+        // coalescing and cursor confinement keep exactly sync()'s semantics; every fallback —
+        // whole-call failure, failed section, missing section — is resumeBatchedRound(null),
+        // which IS today's per-drive round. [collectionTail] drives go last so the greedy
+        // budget serves every small drive before a large backlog takes the remainder.
+        // Remote (owner-hosted) drives can't join an own-host collection: kicked fire-and-forget
+        // as before, so an offline owner never stalls the aggregate round.
+        val tailOrder = collectionTail.withIndex().associate { (i, id) -> id to i }
+        val ordered = snapshot.sortedBy { (driveId, _) -> tailOrder[driveId] ?: -1 }
+
+        val rounds = mutableListOf<BatchedDrive>()
+        for ((driveId, sync) in ordered) {
+            if (sync.isRemote) {
+                sync.sync()
+                continue
+            }
+            val round = sync.beginBatchedRound() ?: continue // busy → killroy set, as today
+            rounds += BatchedDrive(driveId, sync, round)
         }
-        ownJobs.joinAll()
+        if (rounds.isEmpty()) return
+
+        // Manager scope, not the caller's coroutine: a cancelled caller (e.g. a ViewModel scope
+        // going away mid-round) must not strand N drives holding their sync locks.
+        scope.launch { runCollectionRound(rounds) }.join()
     }
+
+    private class BatchedDrive(val driveId: Uuid, val sync: DriveSync, val round: DriveSync.BatchedRound)
+
+    private suspend fun runCollectionRound(rounds: List<BatchedDrive>) {
+        // A collection of one is a query-batch with extra wrapping — skip straight to per-drive.
+        val sections = rounds.filter { it.round.request != null }
+        val response = if (sections.size >= 2) {
+            runCatching {
+                driveQueryProvider.queryBatchCollection(
+                    QueryBatchCollectionRequest(
+                        queries = sections.map { bd ->
+                            val pageRequest = bd.round.request!!
+                            val opts = pageRequest.resultOptionsRequest
+                            CollectionQueryParamSection(
+                                name = bd.driveId.toString(),
+                                driveId = bd.driveId,
+                                queryParams = pageRequest.queryParams,
+                                // maxRecords is deliberately absent: the budget is collection-level.
+                                resultOptionsRequest = CollectionSectionResultOptions(
+                                    cursorState = opts.cursorState,
+                                    includeMetadataHeader = opts.includeMetadataHeader,
+                                    includeTransferHistory = opts.includeTransferHistory,
+                                    ordering = opts.ordering,
+                                    sorting = opts.sorting,
+                                ),
+                            )
+                        },
+                        maxRecords = COLLECTION_BUDGET,
+                    )
+                )
+            }.onFailure { e ->
+                // Also reached on caller cancellation — the NonCancellable resume below still runs.
+                Logger.e(tag = "DriveSync") {
+                    "DriveSync collection: whole-call FAILED (${e::class.simpleName}: ${e.message}) — " +
+                        "falling back to per-drive for ${sections.size} drives"
+                }
+            }.getOrNull()
+        } else null
+
+        val byName = response?.results?.associateBy { it.name }
+        var ok = 0
+        var exhausted = 0
+        val failed = mutableListOf<String>()
+
+        // Every begun drive MUST be resumed — its sync lock is held until the resumed round's
+        // finally releases it. NonCancellable so a cancelled round can't strand a locked drive.
+        val jobs = withContext(NonCancellable) {
+            rounds.map { bd ->
+                val label = _driveStatuses.value[bd.driveId]?.label ?: "?"
+                val section = byName?.get(bd.driveId.toString())
+                val prefetch = when {
+                    section == null -> {
+                        if (byName != null && bd.round.request != null) {
+                            failed += label
+                            Logger.w(tag = "DriveSync") {
+                                "DriveSync collection: section=$label(${bd.driveId}) MISSING from response — " +
+                                    "falling back to per-drive"
+                            }
+                        }
+                        null
+                    }
+
+                    section.isFailure -> {
+                        failed += label
+                        Logger.w(tag = "DriveSync") {
+                            "DriveSync collection: section=$label(${bd.driveId}) ${section.describeFailure()} — " +
+                                "falling back to per-drive"
+                        }
+                        null
+                    }
+
+                    else -> {
+                        if (section.status == QueryBatchSectionStatus.BudgetExhausted) exhausted++ else ok++
+                        section.toQueryBatchResponse()
+                    }
+                }
+                bd.sync.resumeBatchedRound(bd.round, prefetch)
+            }
+        }
+        if (response != null) {
+            Logger.i(tag = "DriveSync") {
+                "DriveSync collection: requested=${sections.size} ok=$ok budgetExhausted=$exhausted " +
+                    "failed=${failed.size}${if (failed.isEmpty()) "" else "(${failed.joinToString()})"}" +
+                    (rounds.size - sections.size).let { if (it > 0) " plain=$it" else "" }
+            }
+        }
+        jobs.joinAll()
+    }
+
+    private fun QueryBatchCollectionSection.toQueryBatchResponse() = QueryBatchResponse(
+        name = name,
+        invalidDrive = invalidDrive,
+        queryTime = queryTime,
+        includeMetadataHeader = includeMetadataHeader,
+        cursorState = cursorState,
+        searchResults = searchResults,
+        hasMoreRows = hasMoreRows,
+    )
 
     suspend fun syncAllFailed() {
         val failedIds = _driveStatuses.value
@@ -444,6 +570,10 @@ class DriveSyncManager(
     }
 
     companion object {
+        /** Global record budget for the syncAll collection call — greedy in-order fill server-side.
+         *  1000 is the server's clamp ceiling; asking for more would be silently reduced. */
+        private const val COLLECTION_BUDGET = 1000
+
         /** Floor of the remote-drive retry backoff (first failure waits this long). */
         private const val REMOTE_RETRY_BASE_MS = 1_000L
         /** Ceiling of the remote-drive retry backoff — an offline owner is polled at most this often. */
