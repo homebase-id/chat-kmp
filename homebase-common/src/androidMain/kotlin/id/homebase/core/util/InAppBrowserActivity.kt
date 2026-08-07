@@ -35,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,7 +75,6 @@ class InAppBrowserActivity : ComponentActivity() {
             HomebaseTheme {
                 var pageTitle by remember { mutableStateOf(host) }
                 var progress by remember { mutableFloatStateOf(0f) }
-                val surface = MaterialTheme.colorScheme.surface
 
                 Scaffold(
                     topBar = {
@@ -138,7 +136,7 @@ class InAppBrowserActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().padding(innerPadding),
                         factory = { context ->
                             WebView(context).apply {
-                                setBackgroundColor(surface.toArgb())
+                                // Default white canvas, not the app's surface — a page shorter than the viewport shows it below the document.
                                 webViewClient = object : WebViewClient() {
                                     // Sign-up ends by navigating at our own scheme. A WebView
                                     // can't load that and doesn't need to — this activity is
