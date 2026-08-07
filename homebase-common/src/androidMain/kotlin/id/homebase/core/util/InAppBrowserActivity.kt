@@ -2,6 +2,7 @@ package id.homebase.core.util
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -136,6 +137,11 @@ class InAppBrowserActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().padding(innerPadding),
                         factory = { context ->
                             WebView(context).apply {
+                                // Without explicit MATCH_PARENT, WebView resolves every vh unit to 0 — a page laid out with min-h-screen collapses to its content height.
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                )
                                 // Default white canvas, not the app's surface — a page shorter than the viewport shows it below the document.
                                 webViewClient = object : WebViewClient() {
                                     // Sign-up ends by navigating at our own scheme. A WebView
