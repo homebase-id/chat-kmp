@@ -2,7 +2,6 @@ package id.homebase.api.client
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.upload.DriveUploadProvider.Companion.TAG
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
@@ -523,7 +522,7 @@ abstract class OdinApiProviderBase(
         when (response.status) {
             400 -> {
                 val problem = deserialize<ProblemDetails>(response.body)
-                Logger.e(tag = TAG) {
+                Logger.e(tag = "HttpIO") {
                     "BadRequest (400) Returned from Server - code: ${problem.errorCodeEnumOrUnhandled()} (raw: ${problem.errorCode()}).  title: ${problem.title}"
                 }
 
