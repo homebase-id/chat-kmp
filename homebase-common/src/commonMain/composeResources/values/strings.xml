@@ -182,6 +182,7 @@
     <string name="login_try_again_button">Try again</string>
     <string name="login_create_account_button">Create account</string>
     <string name="login_authenticating">Authenticating…</string>
+    <string name="login_waiting_for_browser">Waiting for login confirmation — check your browser</string>
     <string name="login_successful">Login successful</string>
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
