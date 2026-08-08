@@ -358,7 +358,6 @@ class ChatMessageStream(
             val start = TimeSource.Monotonic.markNow()
             val anchor = window.messages.firstOrNull()?.sqlUserDate?.toEpochMilliseconds()
             val page = serverHistory.fetchOlderPage(conversationId, anchor)
-            paginatedState.setServerHasMoreOlder(conversationId, page.serverHasMore)
             val result = fetchMessages(
                 conversationId = conversationId,
                 limit = PaginatedConversationState.PAGE_SIZE,
@@ -371,6 +370,12 @@ class ChatMessageStream(
                 olderCursor = result.cursor,
                 hasMore = result.hasMoreRows,
             )
+            // AFTER the prepend: flipping serverHasMoreOlder=false first would swap the
+            // top row pill → Header for one frame, and the Header's disappearance on the
+            // insertion emission defeats both LazyColumn key anchoring and the prepend
+            // compensation in ConversationContent (which keys off a marker row being
+            // first-visible). See #1223.
+            paginatedState.setServerHasMoreOlder(conversationId, page.serverHasMore)
             Logger.i(tag = "ChatPaging") {
                 "loadOlderFromServer($conversationId) fetched=${page.upsertedCount} " +
                     "localPage=${result.records.size} localHasMore=${result.hasMoreRows} " +
