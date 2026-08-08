@@ -80,6 +80,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -1002,6 +1003,43 @@ fun ConversationContent(
                     }
                 }
 
+                // Prepend compensation (#1223): when an older page lands while the viewport
+                // is parked on a top marker row, key-based anchoring can't hold a message
+                // steady — the "Load more" pill's key vanishes and the spinner row sits
+                // ABOVE the insertion point — so the viewport teleports to the top of the
+                // prepended block and the proximity trigger chain-loads from there. Pin the
+                // first visible message row at its previous pixel offset instead; only
+                // Message/pending rows are stable anchors (a date Section moves up when
+                // older same-day messages land above it). requestScrollToItem applies at
+                // the next measure, so there is no intermediate frame.
+                var prevMergedItems by remember(conversation.conversation.id) {
+                    mutableStateOf(mergedItems)
+                }
+                SideEffect {
+                    if (prevMergedItems === mergedItems) return@SideEffect
+                    prevMergedItems = mergedItems
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    val firstKey = visible.firstOrNull()?.key
+                    if (firstKey != MessageListContentModel.LoadServerHistory.id &&
+                        firstKey != MessageListContentModel.LoadingOlder.id
+                    ) return@SideEffect
+                    val indexByKey = HashMap<String, Int>(mergedItems.size)
+                    mergedItems.forEachIndexed { i, item ->
+                        when (item) {
+                            is MessageListContentModel.Message -> indexByKey[item.id] = i
+                            is PendingOutgoingMessage -> indexByKey["pending-${item.id}"] = i
+                            else -> {}
+                        }
+                    }
+                    val anchor = visible.firstOrNull {
+                        (it.key as? String)?.let(indexByKey::containsKey) == true
+                    } ?: return@SideEffect
+                    val newIndex = indexByKey.getValue(anchor.key as String)
+                    if (newIndex > anchor.index) {
+                        listState.requestScrollToItem(newIndex, -anchor.offset)
+                    }
+                }
+
                 val currentMergedItems by rememberUpdatedState(mergedItems)
                 // The section walk runs INSIDE the snapshotFlow block so that snapshotFlow's
                 // built-in dedup compares the resolved `LocalDate?` (O(1)) instead of a
@@ -1215,16 +1253,26 @@ fun ConversationContent(
 
                                     is MessageListContentModel.LoadingOlder,
                                     is MessageListContentModel.LoadingNewer -> {
+                                        // The row is a "more exists" placeholder keeping the Header
+                                        // honest; it only animates while a fetch is in flight — an
+                                        // idle perpetual spinner reads as a hang.
+                                        val isFetching =
+                                            if (item is MessageListContentModel.LoadingOlder) uiState.isLoadingOlder
+                                            else uiState.isLoadingNewer
                                         Box(
                                             modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
                                                 .fillMaxWidth()
                                                 .padding(vertical = 16.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(24.dp),
-                                                strokeWidth = 2.dp,
-                                            )
+                                            Box(modifier = Modifier.size(24.dp)) {
+                                                if (isFetching) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(24.dp),
+                                                        strokeWidth = 2.dp,
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
 
