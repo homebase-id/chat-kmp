@@ -306,17 +306,30 @@ class LoginViewModel(
                             if (syncStopped || syncCannotStart) {
                                 handleAuthenticatedUser()
                             } else {
-                                _uiState.update { it.copy(isLoading = true) }
+                                _uiState.update {
+                                    it.copy(isLoading = true, isAwaitingAuthConfirmation = false)
+                                }
                             }
                         }
 
-                        is YouAuthState.Authenticating,
+                        is YouAuthState.Authenticating -> {
+                            _uiState.update {
+                                it.copy(isLoading = true, isAwaitingAuthConfirmation = true)
+                            }
+                        }
+
                         is YouAuthState.Initializing -> {
                             _uiState.update { it.copy(isLoading = true) }
                         }
 
                         is YouAuthState.Unauthenticated -> {
-                            _uiState.update { it.copy(isLoading = false, isAuthenticated = false) }
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isAuthenticated = false,
+                                    isAwaitingAuthConfirmation = false,
+                                )
+                            }
                         }
 
                         is YouAuthState.Error -> {
@@ -324,6 +337,7 @@ class LoginViewModel(
                                 it.copy(
                                     isLoading = false,
                                     isAuthenticated = false,
+                                    isAwaitingAuthConfirmation = false,
                                     error = LoginError.Message(authState.message)
                                 )
                             }

@@ -180,6 +180,7 @@
     <string name="login_try_again_button">Prøv igen</string>
     <string name="login_create_account_button">Opret konto</string>
     <string name="login_authenticating">Authentikerer…</string>
+    <string name="login_waiting_for_browser">Venter på login-bekræftelse — tjek din browser</string>
     <string name="login_successful">Login lykkedes</string>
     <string name="login_progress_sync">Synkroniserer drev %1$s</string>
     <string name="login_progress_sync_count">Poster %1$s / %2$s synkroniseret</string>
