@@ -1334,6 +1334,19 @@ class ConversationListViewModel(
                 viewModelScope.launch { chatMessageStream.loadOlderMessages(action.conversationId) }
             }
 
+            is ConversationListUiAction.LoadOlderMessagesFromServer -> {
+                viewModelScope.launch {
+                    try {
+                        chatMessageStream.loadOlderMessagesFromServer(action.conversationId)
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = TAG) {
+                            "load older from server failed id=${action.conversationId}: ${e.message}"
+                        }
+                        sendEvent(ShowErrorMessage("Failed to load older messages: ${e.message}"))
+                    }
+                }
+            }
+
             is ConversationListUiAction.LoadNewerMessages -> {
                 viewModelScope.launch { chatMessageStream.loadNewerMessages(action.conversationId) }
             }
@@ -1897,6 +1910,10 @@ class ConversationListViewModel(
                                 val models: MutableList<MessageListContentModel> = mutableListOf()
                                 if (window.hasOlderMessages) {
                                     models.add(MessageListContentModel.LoadingOlder)
+                                } else if (window.serverHasMoreOlder) {
+                                    // Local EOS on a windowed-synced drive: older history may
+                                    // still exist on the server (#1223).
+                                    models.add(MessageListContentModel.LoadServerHistory)
                                 } else {
                                     models.add(MessageListContentModel.Header)
                                 }
@@ -2046,6 +2063,8 @@ class ConversationListViewModel(
                                     hasNewerMessages = window.hasNewerMessages,
                                     isLoadingOlder = window.isLoadingOlder,
                                     isLoadingNewer = window.isLoadingNewer,
+                                    serverHasMoreOlder = window.serverHasMoreOlder,
+                                    isLoadingOlderFromServer = window.isLoadingOlderFromServer,
                                 )
                             }
 

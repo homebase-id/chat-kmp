@@ -242,6 +242,8 @@ sealed interface ConversationListUiAction {
     /** Fetch the next page of older messages into the visible window. */
     data class LoadOlderMessages(val conversationId: Uuid) : ConversationListUiAction
 
+    data class LoadOlderMessagesFromServer(val conversationId: Uuid) : ConversationListUiAction
+
     /** Fetch the next page of newer messages into the visible window. */
     data class LoadNewerMessages(val conversationId: Uuid) : ConversationListUiAction
 

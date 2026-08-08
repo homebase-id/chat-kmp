@@ -50,7 +50,8 @@ class ChatMessageStream(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val driveFileProvider: DriveFileProvider,
-    private val optimisticWriter: OptimisticWriter
+    private val optimisticWriter: OptimisticWriter,
+    private val serverHistory: ChatServerHistory,
 ) : MessageLookup {
     /** Set by ConversationStream to let us skip messages for left conversations. */
     var isConversationLeft: (Uuid) -> Boolean = { false }
@@ -105,6 +106,7 @@ class ChatMessageStream(
                         paginatedState.reset()
                         _pinnedMessages.value = emptyMap()
                         autoPinHandled.clear()
+                        serverHistory.reset()
                     }
                     is BackendEvent.OutboxEvent.OptimisticRollback -> {
                         if (event.driveId == chatDrive) {
@@ -247,6 +249,7 @@ class ChatMessageStream(
                 messages = result.records,
                 olderCursor = result.cursor,
                 hasOlderMessages = result.hasMoreRows,
+                serverHasMoreOlder = serverHistory.mayHaveOlderHistory(conversationId),
             )
             paginatedState.endInitialLoad(conversationId)
         } catch (t: Throwable) {
@@ -273,6 +276,7 @@ class ChatMessageStream(
                 messages = fresh.records,
                 olderCursor = fresh.cursor,
                 hasOlderMessages = fresh.hasMoreRows,
+                serverHasMoreOlder = serverHistory.mayHaveOlderHistory(conversationId),
                 merge = true,
             )
         }
@@ -327,6 +331,53 @@ class ChatMessageStream(
             }
         } catch (t: Throwable) {
             paginatedState.setLoadingOlder(conversationId, false)
+            throw t
+        }
+    }
+
+    /**
+     * Windowed sync (#1223): local history is exhausted but the server may hold older
+     * messages — fetch one server page, upsert it locally (drive cursor untouched), then
+     * re-read through the normal local paging path so [MessageWindow.olderCursor] and
+     * [MessageWindow.hasOlderMessages] advance atomically and local auto-paging resumes.
+     */
+    suspend fun loadOlderMessagesFromServer(conversationId: Uuid) {
+        val window = paginatedState.getWindow(conversationId) ?: run {
+            Logger.d(tag = "ChatPaging") { "loadOlderFromServer($conversationId) skip: no window" }
+            return
+        }
+        if (window.isLoadingOlderFromServer || window.hasOlderMessages || !window.serverHasMoreOlder) {
+            Logger.d(tag = "ChatPaging") {
+                "loadOlderFromServer($conversationId) skip: loading=${window.isLoadingOlderFromServer} " +
+                    "hasLocalOlder=${window.hasOlderMessages} serverHasMore=${window.serverHasMoreOlder}"
+            }
+            return
+        }
+        paginatedState.setLoadingOlderFromServer(conversationId, true)
+        try {
+            val start = TimeSource.Monotonic.markNow()
+            val anchor = window.messages.firstOrNull()?.sqlUserDate?.toEpochMilliseconds()
+            val page = serverHistory.fetchOlderPage(conversationId, anchor)
+            paginatedState.setServerHasMoreOlder(conversationId, page.serverHasMore)
+            val result = fetchMessages(
+                conversationId = conversationId,
+                limit = PaginatedConversationState.PAGE_SIZE,
+                cursor = window.olderCursor,
+                sortOrder = QueryBatchSortOrder.NewestFirst,
+            )
+            paginatedState.prependOlderMessages(
+                conversationId = conversationId,
+                olderMessages = result.records,
+                olderCursor = result.cursor,
+                hasMore = result.hasMoreRows,
+            )
+            Logger.i(tag = "ChatPaging") {
+                "loadOlderFromServer($conversationId) fetched=${page.upsertedCount} " +
+                    "localPage=${result.records.size} localHasMore=${result.hasMoreRows} " +
+                    "serverHasMore=${page.serverHasMore} took=${start.elapsedNow()}"
+            }
+        } catch (t: Throwable) {
+            paginatedState.setLoadingOlderFromServer(conversationId, false)
             throw t
         }
     }
@@ -466,6 +517,7 @@ class ChatMessageStream(
             hasOlderMessages = olderHalf.hasMoreRows,
             newerCursor = newerHalf.cursor,
             hasNewerMessages = newerHalf.hasMoreRows,
+            serverHasMoreOlder = serverHistory.mayHaveOlderHistory(conversationId),
             merge = merge,
         )
         Logger.d(tag = "ChatPaging") {

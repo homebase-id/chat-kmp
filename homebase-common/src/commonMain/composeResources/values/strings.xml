@@ -678,6 +678,7 @@
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_load_older_messages">Load more</string>
     <string name="chat_new_messages">New messages</string>
     <string name="chat_connection_invited">Invited</string>
     <string name="chat_connection_wants_to_connect">Wants to connect</string>

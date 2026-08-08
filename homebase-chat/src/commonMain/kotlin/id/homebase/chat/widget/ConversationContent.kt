@@ -187,6 +187,7 @@ import id.homebase.resources.chat_unpin_message
 import id.homebase.resources.chat_message_search_no_results
 import id.homebase.resources.chat_message_search_result_count
 import id.homebase.resources.chat_next_result
+import id.homebase.resources.chat_load_older_messages
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_not_connected_description
 import id.homebase.resources.chat_not_connected_incoming_description
@@ -1224,6 +1225,34 @@ fun ConversationContent(
                                                 modifier = Modifier.size(24.dp),
                                                 strokeWidth = 2.dp,
                                             )
+                                        }
+                                    }
+
+                                    is MessageListContentModel.LoadServerHistory -> {
+                                        Box(
+                                            modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            if (uiState.isLoadingOlderFromServer) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(24.dp),
+                                                    strokeWidth = 2.dp,
+                                                )
+                                            } else {
+                                                TextButton(
+                                                    onClick = {
+                                                        onUiAction(
+                                                            ConversationListUiAction.LoadOlderMessagesFromServer(
+                                                                conversation.conversation.id
+                                                            )
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text(stringResource(MR.string.chat_load_older_messages))
+                                                }
+                                            }
                                         }
                                     }
                                 }

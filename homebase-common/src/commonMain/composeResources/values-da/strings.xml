@@ -651,6 +651,7 @@
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
+    <string name="chat_load_older_messages">Indlæs flere</string>
     <string name="chat_new_messages">Nye beskeder</string>
     <string name="chat_connection_invited">Inviteret</string>
     <string name="chat_connection_wants_to_connect">Vil forbinde</string>
