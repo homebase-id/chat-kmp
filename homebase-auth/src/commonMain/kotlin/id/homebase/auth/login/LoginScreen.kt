@@ -69,6 +69,7 @@ import id.homebase.resources.failed
 import id.homebase.resources.homebase_logo
 import id.homebase.resources.loading
 import id.homebase.resources.login_authenticating
+import id.homebase.resources.login_waiting_for_browser
 import id.homebase.resources.login_continue_button
 import id.homebase.resources.login_create_account_button
 import id.homebase.resources.login_id_label
@@ -205,7 +206,8 @@ fun LoginUi(
                 pendingAuthUrl != null -> LoginPopupBlocked(onContinue = onContinueAuth)
                 uiState.isLoading -> LoginLoading(
                     driveProgresses = uiState.driveProgresses,
-                    isPinging = uiState.isPinging
+                    isPinging = uiState.isPinging,
+                    isAwaitingAuthConfirmation = uiState.isAwaitingAuthConfirmation,
                 )
                 uiState.isAuthenticated -> LoginSuccess()
                 else ->
@@ -299,7 +301,11 @@ private fun LoginPopupBlocked(onContinue: () -> Unit) {
 /* ---------- STATES ---------- */
 
 @Composable
-private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPinging: Boolean = false) {
+private fun LoginLoading(
+    driveProgresses: ImmutableList<DriveProgress>,
+    isPinging: Boolean = false,
+    isAwaitingAuthConfirmation: Boolean = false,
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = stringResource(MR.string.loading),
@@ -312,7 +318,10 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPingin
             CircularProgressIndicator()
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = stringResource(MR.string.login_authenticating),
+                text = stringResource(
+                    if (isAwaitingAuthConfirmation) MR.string.login_waiting_for_browser
+                    else MR.string.login_authenticating
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.testTag("authenticating_text"),
