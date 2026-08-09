@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.QueryBatchCollectionRequest
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.query.DriveQueryProvider
+import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -37,6 +38,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
 
 /**
@@ -69,6 +71,7 @@ class DriveSyncCollectionTest {
         mockEngine: MockEngine,
         mandatoryDrives: Map<Uuid, String>,
         collectionTail: List<Uuid> = emptyList(),
+        driveSyncPolicies: Map<Uuid, DriveSyncPolicy> = emptyMap(),
     ): DriveSyncManager {
         val driveQueryProvider = DriveQueryProvider(HttpClient(mockEngine), credentialsManager)
         return DriveSyncManager(
@@ -78,6 +81,7 @@ class DriveSyncCollectionTest {
             scope = scope,
             databaseManager = db,
             mandatoryDrives = mandatoryDrives,
+            driveSyncPolicies = driveSyncPolicies,
             collectionTail = collectionTail,
         )
     }
@@ -547,6 +551,168 @@ class DriveSyncCollectionTest {
                 listOf(small[0].toString(), small[1].toString(), feedLike.toString(), chatLike.toString()),
                 names,
                 "Small drives first (mount order), then the tail in its given order, chat very last"
+            )
+        }
+        db.close()
+    }
+
+    @Test
+    fun freshPolicyDriveExcludedFromCollectionAndRunsPolicyPreSteps() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val eventBus = EventBus()
+            val plain = List(2) { Uuid.random() }
+            val windowed = Uuid.random()
+            lateinit var engine: MockEngine
+            engine = MockEngine { request ->
+                if (isCollectionPath(request)) {
+                    val req = parseCollectionRequest(request)
+                    respond(
+                        collectionBody(*req.queries.map { sectionJson(it.name) }.toTypedArray()),
+                        HttpStatusCode.OK
+                    )
+                } else {
+                    respond(emptyOkBody(), HttpStatusCode.OK)
+                }
+            }
+            val manager = buildManager(
+                db, buildCredentials(), eventBus, backgroundScope, engine,
+                mandatoryDrives = (plain + windowed).associateWith { "Drive $it" },
+                driveSyncPolicies = mapOf(
+                    windowed to DriveSyncPolicy(
+                        fullSyncWindow = 30.days,
+                        initialQueries = listOf(FileQueryParams(fileType = listOf(8888))),
+                    )
+                ),
+            )
+
+            val before = UnixTimeUtc().milliseconds
+            manager.start()
+            runCurrent()
+            manager.syncAll()
+            runCurrent()
+            val after = UnixTimeUtc().milliseconds
+
+            val collection = engine.requestHistory.single { isCollectionPath(it) }
+            assertEquals(
+                plain.map { it.toString() }.toSet(),
+                parseCollectionRequest(collection).queries.map { it.name }.toSet(),
+                "A fresh drive with policy pre-steps must not be a collection section"
+            )
+
+            val perDrive = engine.requestHistory.filterNot { isCollectionPath(it) }
+            assertEquals(2, perDrive.size, "Policy drive: initial query, then the windowed crawl")
+            perDrive.forEach {
+                assertTrue(it.url.encodedPath.contains(windowed.toString()))
+            }
+            val initialQuery = parseQueryBatchRequest(perDrive[0])
+            assertEquals(listOf(8888), initialQuery.queryParams.fileType)
+            assertEquals(null, initialQuery.resultOptionsRequest.cursorState)
+            val crawl = parseQueryBatchRequest(perDrive[1])
+            assertEquals(null, crawl.queryParams.fileType, "The windowed crawl is the plain sync query")
+            val floor = QueryBatchCursor.fromJson(assertNotNull(crawl.resultOptionsRequest.cursorState))
+                .paging!!.time.milliseconds
+            val thirtyDaysMs = 30L * 24 * 60 * 60 * 1000
+            assertTrue(
+                floor in (before - thirtyDaysMs)..(after - thirtyDaysMs),
+                "The crawl cursor must be seeded at now - fullSyncWindow (floor=$floor)"
+            )
+        }
+        db.close()
+    }
+
+    @Test
+    fun policyExclusionBelowTwoSectionsSkipsCollectionEntirely() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val eventBus = EventBus()
+            val plain = Uuid.random()
+            val windowed = Uuid.random()
+            lateinit var engine: MockEngine
+            engine = MockEngine { respond(emptyOkBody(), HttpStatusCode.OK) }
+            val manager = buildManager(
+                db, buildCredentials(), eventBus, backgroundScope, engine,
+                mandatoryDrives = mapOf(plain to "Plain", windowed to "Windowed"),
+                driveSyncPolicies = mapOf(
+                    windowed to DriveSyncPolicy(
+                        fullSyncWindow = 30.days,
+                        initialQueries = listOf(FileQueryParams(fileType = listOf(8888))),
+                    )
+                ),
+            )
+            val events = mutableListOf<BackendEvent>()
+            val collector = launch { eventBus.events.collect { events.add(it) } }
+
+            manager.start()
+            runCurrent()
+            manager.syncAll()
+            runCurrent()
+
+            assertFalse(
+                engine.requestHistory.any { isCollectionPath(it) },
+                "One eligible section left is not a collection"
+            )
+            listOf(plain, windowed).forEach { driveId ->
+                assertTrue(
+                    events.any {
+                        it is BackendEvent.DriveEvent.Stopped && it.driveId == driveId &&
+                            it.result is BackendEvent.DriveResult.Completed
+                    },
+                    "Drive $driveId must complete via its per-drive round"
+                )
+            }
+            collector.cancel()
+        }
+        db.close()
+    }
+
+    @Test
+    fun policyDriveWithExistingCursorJoinsCollection() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val eventBus = EventBus()
+            val plain = List(2) { Uuid.random() }
+            val windowed = Uuid.random()
+            val seeded = QueryBatchCursor.fromStartPoint(UnixTimeUtc(333_444L))
+            CursorStorage(db, windowed).saveCursor(seeded)
+
+            lateinit var engine: MockEngine
+            engine = MockEngine { request ->
+                if (isCollectionPath(request)) {
+                    val req = parseCollectionRequest(request)
+                    respond(
+                        collectionBody(*req.queries.map { sectionJson(it.name) }.toTypedArray()),
+                        HttpStatusCode.OK
+                    )
+                } else {
+                    respond(emptyOkBody(), HttpStatusCode.OK)
+                }
+            }
+            val manager = buildManager(
+                db, buildCredentials(), eventBus, backgroundScope, engine,
+                mandatoryDrives = (plain + windowed).associateWith { "Drive $it" },
+                driveSyncPolicies = mapOf(
+                    windowed to DriveSyncPolicy(
+                        fullSyncWindow = 30.days,
+                        initialQueries = listOf(FileQueryParams(fileType = listOf(8888))),
+                    )
+                ),
+            )
+
+            manager.start()
+            runCurrent()
+            manager.syncAll()
+            runCurrent()
+
+            val request = engine.requestHistory.single()
+            assertTrue(isCollectionPath(request), "An incremental policy drive is prefetchable — one collection call only")
+            val parsed = parseCollectionRequest(request)
+            assertEquals(3, parsed.queries.size)
+            assertEquals(
+                seeded.toJson(),
+                parsed.queries.single { it.name == windowed.toString() }
+                    .resultOptionsRequest.cursorState,
+                "The policy drive's section must carry its persisted cursor"
             )
         }
         db.close()

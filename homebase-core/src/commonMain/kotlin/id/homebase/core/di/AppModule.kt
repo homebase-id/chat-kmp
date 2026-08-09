@@ -13,7 +13,11 @@ import id.homebase.api.file.wipeOutboxStaging
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.core.config.dataUpgradeReturnUrl
 
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.DriveSyncPolicy
+import kotlin.time.Duration.Companion.days
 import id.homebase.api.youauth.YouAuthFlowManager
 import okio.Path.Companion.toPath
 import id.homebase.auth.login.LoginViewModel
@@ -49,6 +53,7 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.ChatServerHistory
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContentParser
@@ -409,28 +414,18 @@ val appModule = module {
         DriveSyncManager(
             get(), get(), get(), get(), get(),
             mandatoryDrives = mandatorySyncDrives.associate { it.drive.alias to it.label },
-            // Per-drive fresh-sync policy (sync-back window + custom initial queries) is
-            // wired and tested, but no drive opts in yet — chat behaves like every other
-            // drive (sync everything). Part 2 re-enables the chat policy below together
-            // with the "load older messages when scrolling to the top" feature; until
-            // then a fresh login would only see the last N days, which is confusing
-            // without that scroll-to-load path. Diagnostics confirmed the window itself
-            // is correct (cursor: zero duplicates / no floor breaches at 7/30/60 days).
-            //
-            // To re-enable, add the imports
-            //   id.homebase.api.client.drives.SystemDriveConstants
-            //   id.homebase.api.client.drives.query.FileQueryParams
-            //   id.homebase.api.sync.DriveSyncPolicy
-            //   kotlin.time.Duration.Companion.days
-            // and pass:
-            // driveSyncPolicies = mapOf(
-            //     SystemDriveConstants.chatDrive.alias to DriveSyncPolicy(
-            //         fullSyncWindow = 30.days,
-            //         initialQueries = listOf(
-            //             FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
-            //         ),
-            //     ),
-            // ),
+            // Windowed fresh sync (#1223): first login pulls only the last 14 days of
+            // chat plus the FULL conversation list (initialQueries); older history is
+            // reachable per conversation via ChatMessageStream.loadOlderMessagesFromServer
+            // (the "Load more" row at the top of a conversation).
+            driveSyncPolicies = mapOf(
+                SystemDriveConstants.chatDrive.alias to DriveSyncPolicy(
+                    fullSyncWindow = 14.days,
+                    initialQueries = listOf(
+                        FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
+                    ),
+                ),
+            ),
             // Likely-large drives go LAST in the syncAll batch-collection so the greedy budget
             // serves every small drive first; chat is expected largest and goes very last.
             collectionTail = listOf(
@@ -714,9 +709,10 @@ val appModule = module {
     // emits after successful group creation, ConversationListViewModel collects and
     // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
     singleOf(::PostCreateIntroductionPreflightBus)
+    singleOf(::ChatServerHistory)
     single {
         ChatMessageStream(
-            get(), get(), get(), get(), get(), get(), get(), get(),
+            get(), get(), get(), get(), get(), get(), get(), get(), get(),
         ).also { stream ->
             // #887: wire auto-pin at construction, NOT in onPostAuthenticated. That
             // post-auth block is deferred and frequently never runs on a warm
