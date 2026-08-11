@@ -223,6 +223,13 @@ fun MessageBubbleRaw(
             )
             return
         }
+        is MessageContent.ContactCard -> {
+            id.homebase.chat.contactcard.ContactCardBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
+            )
+            return
+        }
         is MessageContent.Unknown -> {
             UnknownMessageBubble(
                 dataType = content.dataType,

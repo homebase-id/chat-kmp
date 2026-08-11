@@ -1,5 +1,6 @@
 package id.homebase.chat.services.content
 
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
@@ -124,6 +125,21 @@ sealed interface MessageContent {
     }
 
     /**
+     * A shared contact card (name, organization, phones, emails) — produced by sharing a vCard
+     * into the app. [actions] inherits [ActionPolicy.StructuredOneShot]; the card is an
+     * immutable snapshot of what the sender shared, so there is nothing to edit and forwarding
+     * a stranger's phone number out of context is a leak the long-press menu shouldn't invite.
+     * [descriptor] follows the same nullability contract as [Event.descriptor].
+     */
+    data class ContactCard(val descriptor: ContactCardDescriptor?) : MessageContent {
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_CONTACT_LABEL
+
+        // A contact's name is somebody else's PII; it must not reach the recipient's push
+        // provider. Generic wire label — the real card renders from the decrypted header.
+        override val notificationLabel: String get() = UNPARSEABLE_CONTACT_LABEL
+    }
+
+    /**
      * A shared location (static pin, or a live share via [LocationPreviewDescriptor.liveShareUntilMs]).
      * The coordinate descriptor rides in the header (`appData.content`) — like Event — so editing it
      * (start/stop a live share) goes through the raw-header `updateMessage` path. The map PNG stays a
@@ -167,6 +183,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_DICE_LABEL = "Dice roll"
         const val UNPARSEABLE_GROODLE_LABEL = "Groodle"
         const val UNPARSEABLE_POLL_LABEL = "Poll"
+        const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
         const val UNKNOWN_LABEL = "Unknown message"
     }

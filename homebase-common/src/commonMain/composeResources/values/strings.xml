@@ -925,6 +925,14 @@
     <string name="chat_poll_vote_count">%1$d votes</string>
     <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
 
+    <!-- Shared contact card (vCard shared into the app) -->
+    <string name="chat_contact_unparseable">Unable to display this contact. Please update the app.</string>
+    <string name="contactbook_edit_organization">Organization</string>
+    <string name="contact_share_prompt_title">Add to your contacts?</string>
+    <string name="contact_share_prompt_body">%1$s was shared to your chat. Save them to your contacts too?</string>
+    <string name="contact_share_prompt_add">Review and add</string>
+    <string name="contact_share_prompt_skip">Not now</string>
+
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Poll details</string>
     <string name="chat_poll_question_section">Question</string>
