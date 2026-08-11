@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -142,7 +143,13 @@ fun MessageItem(
     } else null
     val onReport =
         remember(message.id) { { onUiAction(ConversationListUiAction.ReportContent) } }
-
+    // Routed out because the contact editor lives in :homebase-core, like the location share. Both
+    // sides get it: forward a card to yourself and the copy you own must still be savable.
+    val onSaveContactCard = remember(message.id) {
+        { descriptor: ContactCardDescriptor ->
+            onUiAction(ConversationListUiAction.SaveContactCard(descriptor))
+        }
+    }
     if (message.isAuthoredBy(odinId)) {
         val onEdit = if (policy.allowEdit) {
             remember(message.id) {
@@ -192,6 +199,7 @@ fun MessageItem(
                 searchQuery = searchQuery,
                 isCurrentSearchResult = isCurrentSearchResult,
                 chainCap = chainCap,
+                onSaveContactCard = onSaveContactCard,
             )
         }
     } else {
@@ -250,6 +258,7 @@ fun MessageItem(
                 searchQuery = searchQuery,
                 isCurrentSearchResult = isCurrentSearchResult,
                 chainCap = chainCap,
+                onSaveContactCard = onSaveContactCard,
             )
         }
     }

@@ -1565,6 +1565,10 @@ class ConversationListViewModel(
                 stickerHandler.handleDismissStickerOptions()
             is ConversationListUiAction.RemoveStickerFromMessage ->
                 stickerHandler.handleRemoveStickerFromMessage(action)
+
+            is ConversationListUiAction.SaveContactCard -> {
+                sendEvent(ConversationListUiEvent.NavigateToSaveContactCard(action.descriptor))
+            }
         }
     }
 

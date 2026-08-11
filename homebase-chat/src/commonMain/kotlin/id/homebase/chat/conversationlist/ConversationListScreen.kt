@@ -55,6 +55,7 @@ import id.homebase.chat.archivedconversations.ArchivedConversationsUi
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiAction
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
@@ -143,6 +144,7 @@ fun ConversationListScreen(
     onNavigateToCropper: (requestId: Uuid) -> Unit = {},
     onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
+    onSaveContactCard: (ContactCardDescriptor) -> Unit = {},
 ) {
     val conversationsUiState by viewModel.uiState.collectAsStateWithLifecycle()
     val messagesUiState by viewModel.messagesUiState.collectAsStateWithLifecycle()
@@ -323,6 +325,11 @@ fun ConversationListScreen(
             is ConversationListUiEvent.NavigateToDrawer -> {
                 viewModel.eventConsumed()
                 onNavigateToDrawer(event.requestId)
+            }
+
+            is ConversationListUiEvent.NavigateToSaveContactCard -> {
+                viewModel.eventConsumed()
+                onSaveContactCard(event.descriptor)
             }
 
             null -> {}

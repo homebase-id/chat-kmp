@@ -64,6 +64,8 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
+import id.homebase.chat.contactcard.ContactCardBubble
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -165,6 +167,7 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
     // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
     // than as the message itself: typed bubbles must not open their full-screen detail from here.
     displayOnly: Boolean = false,
@@ -228,9 +231,14 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.ContactCard -> {
-            id.homebase.chat.contactcard.ContactCardBubble(
+            ContactCardBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
+                // displayOnly owns the whole action surface, not just the detail: a preview must
+                // not offer Save either, whatever the host handed down.
+                onSaveToContacts = onSaveContactCard?.takeIf { !displayOnly },
+                onLongClick = onLongClick,
+                canOpenDetail = !displayOnly,
             )
             return
         }
