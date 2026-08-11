@@ -184,7 +184,15 @@ fun ConversationListScreen(
 
             is ConversationListUiEvent.ShowErrorMessage -> {
                 viewModel.eventConsumed()
-                scope.launch { snackbarHostState.showSnackbar(message = event.message) }
+                scope.launch {
+                    val text = event.detail?.let { detail ->
+                        TranslationUtil.getString(
+                            event.res,
+                            detail.ifBlank { TranslationUtil.getString(MR.string.error_unknown) },
+                        )
+                    } ?: TranslationUtil.getString(event.res)
+                    snackbarHostState.showSnackbar(message = text)
+                }
             }
 
             is ConversationListUiEvent.ShowInfoMessage -> {
