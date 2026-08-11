@@ -95,6 +95,36 @@ class ArchitectureTest {
             }
     }
 
+    /**
+     * Session-lifetime guard (#1237). Each background reconcile in [AuthConnectionCoordinator] can
+     * mount or prune drives, so one still in flight at logout would act on a session being torn
+     * down — and a second login could inherit the first user's work. The cancels must sit at the
+     * top of `disconnect()`, before `refreshWsSubscription.cancel()` and `driveRegistry.stop()`
+     * remove what those jobs depend on.
+     *
+     * Source-level because [AuthConnectionCoordinator] isn't constructible in a JVM test (its own
+     * `AwaitAuthRestoredTest` documents that). The empty-match guard keeps a renamed field from
+     * turning the rule into a silent pass.
+     */
+    @Test
+    fun `AuthConnectionCoordinator cancels every reconcile job in disconnect`() {
+        Konsist.scopeFromProject()
+            .files
+            .filter { it.hasNameEndingWith("AuthConnectionCoordinator") }
+            .assertTrue(
+                additionalMessage = "Every *ReconcileJob field must be cancelled in disconnect() " +
+                    "(issue #1237), before the collaborators it uses are stopped — otherwise an " +
+                    "in-flight reconcile outlives the session and mounts/prunes drives into a dead one."
+            ) { file ->
+                val jobs = Regex("""\bvar\s+(\w+ReconcileJob)\b""")
+                    .findAll(file.text)
+                    .map { it.groupValues[1] }
+                    .toSet()
+                val disconnect = file.functions().firstOrNull { it.name == "disconnect" }?.text.orEmpty()
+                jobs.isNotEmpty() && jobs.all { disconnect.contains("$it?.cancel()") }
+            }
+    }
+
     @Test
     fun `Do not allow calling close on httpClient`() {
         Konsist.scopeFromProject()
