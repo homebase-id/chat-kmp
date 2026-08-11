@@ -183,7 +183,7 @@ class NotificationSettingsUiTest {
                 )
             }
         }
-        onNodeWithText(NotificationContentLevel.NAME_ONLY.displayName).performClick()
+        onNodeWithText("Name Only").performClick()
         assertEquals(NotificationContentLevel.NAME_ONLY, selected)
     }
 

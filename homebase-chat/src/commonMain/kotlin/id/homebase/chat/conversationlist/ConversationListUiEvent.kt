@@ -11,7 +11,7 @@ sealed interface ConversationListUiEvent {
     data class NavigateToGroupSettings(val conversationId: String) : ConversationListUiEvent
     data class NavigateToConversationSettings(val conversationId: String) : ConversationListUiEvent
     data class NavigateToMessageInfo(val message: MessageUiModel) : ConversationListUiEvent
-    data class ShowErrorMessage(val message: String) : ConversationListUiEvent
+    data class ShowErrorMessage(val res: StringResource, val detail: String? = null) : ConversationListUiEvent
     data class ShowInfoMessage(val res: StringResource) : ConversationListUiEvent
     data class ShareText(val text: String) : ConversationListUiEvent
     data class ShareFile(val filePath: String) : ConversationListUiEvent

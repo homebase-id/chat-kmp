@@ -22,6 +22,13 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.util.extensionForMimeType
 import id.homebase.resources.MR
+import id.homebase.resources.chat_error_convert_video
+import id.homebase.resources.chat_error_download_file
+import id.homebase.resources.chat_error_download_for_sharing
+import id.homebase.resources.chat_error_downloading_file
+import id.homebase.resources.chat_error_downloading_file_detail
+import id.homebase.resources.chat_error_media_click
+import id.homebase.resources.chat_error_share
 import id.homebase.resources.contactbook_self_you
 import io.github.vinceglb.filekit.name
 import kotlinx.collections.immutable.toPersistentList
@@ -88,7 +95,7 @@ internal class MediaDownloadHandler(
                 } else {
                     sendEvent(
                         ShowErrorMessage(
-                            "Failed to download file for sharing"
+                            MR.string.chat_error_download_for_sharing,
                         )
                     )
                 }
@@ -98,7 +105,8 @@ internal class MediaDownloadHandler(
                 }
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to share: ${e.message}"
+                        MR.string.chat_error_share,
+                        e.message ?: "",
                     )
                 )
             }
@@ -168,12 +176,13 @@ internal class MediaDownloadHandler(
                 if (success) {
                     sendEvent(SaveFileToDevice(filePath, fullName))
                 } else {
-                    sendEvent(ShowErrorMessage("Could not download file"))
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_download_file))
                 }
             } catch (e: Exception) {
                 sendEvent(
                     ShowErrorMessage(
-                        "Error downloading file: ${e.message}"
+                        MR.string.chat_error_downloading_file_detail,
+                        e.message ?: "",
                     )
                 )
             } finally {
@@ -206,7 +215,7 @@ internal class MediaDownloadHandler(
                             suggestedBaseName = action.payload.filename(),
                         )
                     } ?: run {
-                        sendEvent(ShowErrorMessage("Could not convert video"))
+                        sendEvent(ShowErrorMessage(MR.string.chat_error_convert_video))
                         return@launch
                     }
                     sendEvent(SaveFileToDevice(mp4Path, mp4Name))
@@ -231,11 +240,11 @@ internal class MediaDownloadHandler(
                     if (success) {
                         sendEvent(SaveFileToDevice(filePath, fullName))
                     } else {
-                        sendEvent(ShowErrorMessage("Could not download file"))
+                        sendEvent(ShowErrorMessage(MR.string.chat_error_download_file))
                     }
                 }
             } catch (e: Exception) {
-                sendEvent(ShowErrorMessage("Error downloading file: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_downloading_file_detail, e.message ?: ""))
             } finally {
                 messagesUiState.update { it.copy(downloadingFiles = it.downloadingFiles - fileKey) }
             }
@@ -286,11 +295,11 @@ internal class MediaDownloadHandler(
                         filePath
                     messagesUiState.update { it.copy(decryptedFiles = decryptedFiles.toPersistentMap()) }
                 } else {
-                    sendEvent(ShowErrorMessage("Error downloading file"))
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_downloading_file))
                 }
             } catch (e: Exception) {
                 sendEvent(
-                    ShowErrorMessage("Error downloading file: ${e.message}")
+                    ShowErrorMessage(MR.string.chat_error_downloading_file_detail, e.message ?: "")
                 )
             } finally {
                 // 4. Remove from downloadingFiles set
@@ -439,7 +448,8 @@ internal class MediaDownloadHandler(
                 Logger.e("Failed to handle media click", e)
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to handle media click: ${e.message}"
+                        MR.string.chat_error_media_click,
+                        e.message ?: "",
                     )
                 )
             }
