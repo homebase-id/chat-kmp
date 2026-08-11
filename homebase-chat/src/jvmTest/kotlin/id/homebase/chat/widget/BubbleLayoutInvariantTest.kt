@@ -385,6 +385,59 @@ class BubbleLayoutInvariantTest {
     }
 
     /**
+     * #1224: an image with a reply quote and NO caption hugs the image — reply, bubble and
+     * image share one width, so no bubble background shows beside the photo.
+     *
+     * The reply-over-media Layout floored the media placeable (so the bubble and the reply too)
+     * to the 240dp CAPTIONED-image min-width, but the image only fills that floor when a caption
+     * is present: TALL_PORTRAIT's height-capped 144dp image sat in a 240dp bubble, leaving the
+     * reported strip. Aspects at or above the floor are the unchanged control.
+     */
+    @Test
+    fun imageWithReply_noCaption_bubbleHugsImage() = runComposeUiTest {
+        // The reply quote's own horizontal insets: 6dp on the reply Row + 8dp on its Column.
+        val replyQuoteInset = 14f
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false))
+            for (aspect in listOf(
+                Aspect.TALL_PORTRAIT, Aspect.PORTRAIT, Aspect.SQUARE, Aspect.LANDSCAPE, Aspect.PANORAMA,
+            )) {
+                val case = Case(
+                    name = "1img/$aspect/reply/${if (sent) "sent" else "recv"}",
+                    sent = sent, images = 1, caption = Caption.NONE, reply = true, aspect = aspect,
+                )
+                render(case)
+                val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+                val media = boundsOf(ChatBubbleTestTags.MEDIA)
+                val quote = quoteTextBounds()
+                val mediaWidth = media.right.value - media.left.value
+                val bubbleWidth = bubble.right.value - bubble.left.value
+
+                if (!approx(mediaWidth, bubbleWidth))
+                    failures += "[${case.name}] bubble is wider than the image (background strip): " +
+                        "media.width=$mediaWidth bubble.width=$bubbleWidth"
+                if (!approx(media.left.value, bubble.left.value))
+                    failures += "[${case.name}] left strip: media.left=${media.left.value} bubble.left=${bubble.left.value}"
+                if (!approx(media.right.value, bubble.right.value))
+                    failures += "[${case.name}] right strip beside the image: " +
+                        "media.right=${media.right.value} bubble.right=${bubble.right.value}"
+                // The quote is measured at the media width, so its text can never reach past
+                // the image's right edge less the reply's own inset.
+                if (quote.right.value > media.right.value - replyQuoteInset + tol)
+                    failures += "[${case.name}] reply quote overhangs the image: " +
+                        "quote.right=${quote.right.value} media.right=${media.right.value}"
+                // Only at TALL_PORTRAIT's width is the fixture quote (182dp intrinsic) wider than
+                // the room it gets, so only there does its ellipsized text prove the exact clamp.
+                if (aspect == Aspect.TALL_PORTRAIT &&
+                    !approx(media.right.value - quote.right.value, replyQuoteInset)
+                )
+                    failures += "[${case.name}] reply quote does not fill the image width: " +
+                        "quote.right=${quote.right.value} media.right=${media.right.value}"
+            }
+        assertTrue(failures.isEmpty(), "reply-over-media hug failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
      * Regression guard: media-only bubbles (no caption, any image count) are UNCHANGED —
      * the media fills the whole bubble, no inset, no gap.
      */

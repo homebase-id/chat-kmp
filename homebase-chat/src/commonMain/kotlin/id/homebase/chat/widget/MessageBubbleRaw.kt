@@ -610,11 +610,10 @@ fun MessageBubbleRaw(
                         }
                     },
                 ) { measurables, constraints ->
-                    val minContentWidth = Dimens.MediaBubble.minWidthWithContent.roundToPx()
-                        .coerceAtMost(constraints.maxWidth)
-                    val mediaPlaceable = measurables[1].measure(
-                        constraints.copy(minWidth = minContentWidth)
-                    )
+                    // No captioned-image min-width floor here: the image itself only fills that
+                    // floor when a caption is present, so flooring the bubble alone left the
+                    // bubble background showing beside a narrow portrait. The quote ellipsizes.
+                    val mediaPlaceable = measurables[1].measure(constraints.copy(minWidth = 0))
                     val width = mediaPlaceable.width
                     val replyPlaceable = measurables[0].measure(
                         constraints.copy(minWidth = width, maxWidth = width)

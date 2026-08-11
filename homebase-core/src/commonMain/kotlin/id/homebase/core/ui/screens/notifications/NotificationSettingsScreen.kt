@@ -227,7 +227,7 @@ fun NotificationSettingsUi(
                 modifier = Modifier.testTag(uiState.notificationContentLevel.code),
                 icon = Icons.Outlined.Visibility,
                 title = stringResource(MR.string.settings_notification_show),
-                supportingText = uiState.notificationContentLevel.displayName,
+                supportingText = stringResource(uiState.notificationContentLevel.label),
                 action = SettingsRowAction.Expand(
                     expanded = uiState.showContentLevelPicker,
                     onExpandedChange = {
@@ -238,7 +238,7 @@ fun NotificationSettingsUi(
             if (uiState.showContentLevelPicker) {
                 NotificationContentLevel.entries.forEach { level ->
                     SettingsOptionRow(
-                        label = level.displayName,
+                        label = stringResource(level.label),
                         selected = level == uiState.notificationContentLevel,
                         onClick = {
                             onAction(NotificationSettingsUiAction.SetContentLevel(level))
