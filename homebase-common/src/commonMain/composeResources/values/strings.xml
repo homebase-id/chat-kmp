@@ -936,6 +936,30 @@
     <string name="contact_share_prompt_body">%1$s was shared to your chat. Save them to your contacts too?</string>
     <string name="contact_share_prompt_add">Review and add</string>
     <string name="contact_share_prompt_skip">Not now</string>
+    <string name="chat_contact_card_open">View contact details</string>
+    <string name="chat_contact_card_more">+%1$d more</string>
+    <string name="chat_contact_card_save">Save to contacts</string>
+    <string name="chat_contact_card_title">Contact</string>
+    <string name="chat_contact_card_call">Call</string>
+    <string name="chat_contact_card_send_email">Send email</string>
+    <string name="chat_contact_card_copy_value">Copy %1$s</string>
+    <string name="chat_contact_card_copied">Copied to clipboard</string>
+    <string name="chat_contact_card_action_unavailable">Nothing on this device can open that.</string>
+    <string name="chat_contact_card_checking">Checking your contacts…</string>
+    <string name="chat_contact_card_exists_title">Already in your contacts</string>
+    <string name="chat_contact_card_exists_body">%1$s already has one of these phone numbers or email addresses.</string>
+    <string name="chat_contact_card_exists_open">View contact</string>
+    <string name="chat_contact_card_add_anyway">Add anyway</string>
+    <string name="chat_contact_card_save_failed_title">Couldn't save</string>
+    <string name="chat_contact_card_save_failed">Something went wrong saving this contact. Your details are still here — try again.</string>
+    <string name="chat_contact_card_retry">Try again</string>
+    <string name="chat_contact_card_saved_title">Contact saved</string>
+    <string name="chat_contact_card_partial_photo">The photo couldn't be uploaded.</string>
+    <string name="chat_contact_card_partial_additions">The extra phone numbers and email addresses couldn't be attached.</string>
+    <string name="chat_contact_card_saved_body">%1$s is now in your contacts.</string>
+    <string name="chat_contact_card_saved_open">Open contact</string>
+    <string name="chat_contact_card_phones">Phone numbers</string>
+    <string name="chat_contact_card_emails">Email addresses</string>
 
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Poll details</string>

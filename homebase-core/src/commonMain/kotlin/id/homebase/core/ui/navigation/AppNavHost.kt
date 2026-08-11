@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -76,6 +77,7 @@ import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
 import id.homebase.api.crypto.Md5
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
@@ -147,6 +149,8 @@ import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ShareContactPickerScreen
+import id.homebase.core.ui.screens.contactbook.components.ContactCardDescriptorSaver
+import id.homebase.core.ui.screens.contactbook.components.ContactCardSaveHost
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
 import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
@@ -992,6 +996,18 @@ fun AppNavHost(
                                         }
                                     }
                                 }
+                                var pendingContactCard by rememberSaveable(
+                                    stateSaver = ContactCardDescriptorSaver,
+                                ) { mutableStateOf<ContactCardDescriptor?>(null) }
+                                ContactCardSaveHost(
+                                    descriptor = pendingContactCard,
+                                    onDismiss = { pendingContactCard = null },
+                                    onOpenContact = { uniqueId, odinId ->
+                                        navController.navigate(
+                                            Route.ContactBookDetail(uniqueId.toString(), odinId)
+                                        )
+                                    },
+                                )
                                 ConversationListScreen(
                                     viewModel = conversationListViewModel,
                                     archivedConversationsViewModel = koinViewModel(),
@@ -1053,6 +1069,7 @@ fun AppNavHost(
                                         @Suppress("AssignedValueIsNeverRead")
                                         showingOnlyDetailPane = it
                                     },
+                                    onSaveContactCard = { pendingContactCard = it },
                                 )
                             }
                         }
