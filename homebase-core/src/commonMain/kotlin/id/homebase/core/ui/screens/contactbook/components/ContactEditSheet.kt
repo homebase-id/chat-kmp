@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -41,6 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
@@ -72,6 +77,7 @@ import id.homebase.resources.contactbook_edit_phone
 import id.homebase.resources.contactbook_edit_remove
 import id.homebase.resources.contactbook_edit_reset
 import id.homebase.resources.contactbook_edit_save
+import id.homebase.resources.contactbook_edit_saving
 import id.homebase.resources.contactbook_edit_synced_banner
 import id.homebase.resources.contactbook_edit_synced_from_profile
 import id.homebase.resources.contactbook_edit_surname
@@ -88,9 +94,10 @@ import io.github.vinceglb.filekit.readBytes
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * [seed] pre-fills a NEW contact (it is ignored when [editing] is non-null) — used by the
- * share-a-vCard flow so the user reviews imported fields before saving. A seeded phone that
- * isn't E.164 stays visible and flagged; Save is gated on it being corrected.
+ * [seed], [seedAdditionalPhones] and [seedAdditionalEmails] pre-fill a NEW contact (all ignored
+ * when [editing] is non-null). A seeded phone that isn't E.164 stays visible and flagged; Save is
+ * gated on it being corrected. [saving] keeps the sheet mounted and inert while the caller's write
+ * is in flight, so a failure can be reported over a sheet that still holds the user's edits.
  */
 @Composable
 fun ContactEditSheet(
@@ -99,16 +106,21 @@ fun ContactEditSheet(
     onDismiss: () -> Unit,
     odinIdLocked: Boolean = false,
     seed: ContactDraft? = null,
+    seedAdditionalPhones: List<String> = emptyList(),
+    seedAdditionalEmails: List<String> = emptyList(),
+    saving: Boolean = false,
 ) {
     var draft by remember { mutableStateOf(editing?.toDraft() ?: seed ?: ContactDraft()) }
     // Extra phones/emails beyond the single canonical slot — app-local additions (see overlay).
     // Phones carry a stable id so the stateful PhoneNumberField rows keep their seeded country/
     // national state when a row above them is removed (index-keying would shuffle that state).
+    val seededPhones = if (editing != null) editing.additionalPhones else seedAdditionalPhones
+    val seededEmails = if (editing != null) editing.additionalEmails else seedAdditionalEmails
     var addPhones by remember {
-        mutableStateOf(editing?.additionalPhones.orEmpty().mapIndexed { i, v -> DraftPhone(i, v) })
+        mutableStateOf(seededPhones.mapIndexed { i, v -> DraftPhone(i, v) })
     }
-    var nextPhoneId by remember { mutableStateOf(editing?.additionalPhones.orEmpty().size) }
-    var addEmails by remember { mutableStateOf(editing?.additionalEmails.orEmpty()) }
+    var nextPhoneId by remember { mutableStateOf(seededPhones.size) }
+    var addEmails by remember { mutableStateOf(seededEmails) }
     // Identity contact (has odinId): fields are synced from the profile and edits become private
     // overrides. `synced` is the pre-override baseline used for the per-field affordance.
     val isIdentity = editing != null && !editing.odinId.isNullOrBlank()
@@ -124,7 +136,8 @@ fun ContactEditSheet(
         type = FileKitType.Image,
     ) { file -> if (file != null) photo = file }
 
-    AdaptiveSheet(onDismiss = onDismiss) {
+    // Pinned open mid-write: a dismissal there strands the result with nowhere to report to.
+    AdaptiveSheet(onDismiss = onDismiss, dismissible = !saving) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -310,8 +323,21 @@ fun ContactEditSheet(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onDismiss) {
+                if (saving) {
+                    val savingLabel = stringResource(MR.string.contactbook_edit_saving)
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .semantics {
+                                liveRegion = LiveRegionMode.Polite
+                                contentDescription = savingLabel
+                            },
+                        strokeWidth = 2.dp,
+                    )
+                }
+                TextButton(onClick = onDismiss, enabled = !saving) {
                     Text(stringResource(MR.string.contactbook_edit_cancel))
                 }
                 // Save requires at least one meaningful field AND every phone/email — primary and
@@ -326,7 +352,7 @@ fun ContactEditSheet(
                     addEmails.all { ContactFieldValidation.isValidEmail(it) }
                 Button(
                     onClick = { onSave(draft, addPhones.map { it.value }, addEmails, photo) },
-                    enabled = hasContent && primaryValid && additionsValid,
+                    enabled = hasContent && primaryValid && additionsValid && !saving,
                 ) {
                     Text(stringResource(MR.string.contactbook_edit_save))
                 }
