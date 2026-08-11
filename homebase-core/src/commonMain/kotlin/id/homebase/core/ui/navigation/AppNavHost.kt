@@ -146,6 +146,7 @@ import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.ShareContactPickerScreen
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
 import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
@@ -1013,6 +1014,9 @@ fun AppNavHost(
                                     onNavigateToShareLocation = { conversationId ->
                                         navController.navigate(Route.LocationShare(conversationId))
                                     },
+                                    onNavigateToShareContact = { conversationId ->
+                                        navController.navigate(Route.ShareContact(conversationId))
+                                    },
                                     onNavigateToContactInfo = {
                                         // 1:1 contact info is the full contact-detail screen
                                         // (keyed by the contact uniqueId = md5(odinId)).
@@ -1544,6 +1548,23 @@ fun AppNavHost(
                                     // Maps-off / enable-location CTA → location setup (dashboard or
                                     // onboarding), reusing the shared nav lambda.
                                     onOpenSetup = openLocation,
+                                )
+                            }
+                        }
+
+                        composable<Route.ShareContact> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.ShareContact>()
+                                ShareContactPickerScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.conversationId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parse(route.conversationId)
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }

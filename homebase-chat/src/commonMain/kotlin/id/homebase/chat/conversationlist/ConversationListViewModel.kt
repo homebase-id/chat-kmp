@@ -1122,6 +1122,10 @@ class ConversationListViewModel(
                 sendEvent(ConversationListUiEvent.NavigateToShareLocation(action.conversationId.toString()))
             }
 
+            is ConversationListUiAction.OpenShareContact -> {
+                sendEvent(ConversationListUiEvent.NavigateToShareContact(action.conversationId.toString()))
+            }
+
             is ConversationListUiAction.OpenLocationSetup -> {
                 sendEvent(ConversationListUiEvent.NavigateToLocationSetup)
             }
