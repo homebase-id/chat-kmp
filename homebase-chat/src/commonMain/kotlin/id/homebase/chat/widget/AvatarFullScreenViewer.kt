@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
+import id.homebase.core.media.subsample.sharedElementKey
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_conversation
 import id.homebase.resources.menu_back
@@ -47,8 +48,7 @@ fun AvatarFullScreenViewer(
     @Suppress("DEPRECATION")
     BackHandler(enabled = true) { onDismiss() }
 
-    val sharedContentStateKey = (source as? SubSamplingImageSource.Remote)?.imageData
-        ?.let { "image-${it.fileId}-${it.payloadKey}" }
+    val sharedContentStateKey = source.sharedElementKey()
 
     Box(
         modifier = Modifier

@@ -1,5 +1,8 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -31,12 +34,17 @@ import org.jetbrains.compose.resources.stringResource
  * [onClick] receives the source of whichever image was actually rendered, so a caller can open it
  * full screen without re-deriving that priority. The initials fallback never calls it, and the
  * public avatar only does once Coil has the image.
+ *
+ * Pass both scopes to morph whichever image branch rendered into the full-screen viewer.
  */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun ContactBookAvatar(
     entry: ContactBookEntry,
     size: Dp = 44.dp,
     onClick: ((SubSamplingImageSource) -> Unit)? = null,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     val options = AvatarOptions(size = size, fontSize = (size.value * 0.4f).sp)
 
@@ -56,6 +64,8 @@ fun ContactBookAvatar(
             contentDescription = stringResource(MR.string.avatar_contact),
             contentScale = ContentScale.Crop,
             onClick = openPhoto,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
         )
         return
     }
@@ -74,6 +84,8 @@ fun ContactBookAvatar(
                     },
                     onClickNeedsImage = true,
                 ),
+                sharedTransitionScope = sharedTransitionScope,
+                animatedVisibilityScope = animatedVisibilityScope,
             )
             return
         }
