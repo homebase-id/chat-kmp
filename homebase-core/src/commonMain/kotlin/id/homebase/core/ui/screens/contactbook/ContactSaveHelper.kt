@@ -2,6 +2,7 @@
 
 package id.homebase.core.ui.screens.contactbook
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.contacts.ContactBirthday
 import id.homebase.api.client.contacts.ContactContent
@@ -17,20 +18,29 @@ import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.util.contentType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.readBytes
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+
+private const val TAG = "ContactSaveHelper"
 
 /** Outcome of [saveContactDraft]. */
 sealed interface ContactSaveResult {
     /**
-     * Saved. [photoFailed] = contact saved but avatar upload failed. [clearedFieldsIgnored] = the
+     * Saved. [photoFailed] = contact saved but avatar upload failed. [additionsFailed] = contact
+     * saved but its extra phones/emails could not be attached. [clearedFieldsIgnored] = the
      * edit blanked a previously-set field, which the V2 server merge can't express (empty = "leave
      * existing alone"), so that field was kept — the UI should tell the user clearing isn't
      * supported yet. The repository already applied the optimistic update, so callers push nothing.
+     * [uniqueId]/[versionTag] let a caller layer a follow-up write without value-matching the
+     * contact back out of the list.
      */
     data class Success(
         val photoFailed: Boolean,
         val clearedFieldsIgnored: Boolean = false,
+        val additionsFailed: Boolean = false,
+        val uniqueId: Uuid? = null,
+        val versionTag: Uuid? = null,
     ) : ContactSaveResult
 
     /** Server rejected the write with 403 — the app token lacks the manage-contacts permission. */
@@ -80,8 +90,91 @@ suspend fun saveContactDraft(
     val photoFailed = photo != null &&
         !uploadContactPhoto(repo, response.uniqueId, response.versionTag, photo)
 
-    return ContactSaveResult.Success(photoFailed, clearedFieldsIgnored)
+    return ContactSaveResult.Success(
+        photoFailed = photoFailed,
+        clearedFieldsIgnored = clearedFieldsIgnored,
+        uniqueId = response.uniqueId,
+        versionTag = response.versionTag,
+    )
 }
+
+/**
+ * Creates a contact from [draft] *with* its extra phones/emails. The contact schema has a single
+ * phone/email slot, so the extras can only live in this app's override blob — which needs the new
+ * contact's id, hence the two writes. Ordered create → overlay → photo so each write carries the
+ * versionTag the one before it produced.
+ */
+suspend fun saveNewContact(
+    store: ContactOverrideStore,
+    repo: ContactRepository,
+    draft: ContactDraft,
+    additionalPhones: List<String>,
+    additionalEmails: List<String>,
+    photo: PlatformFile?,
+): ContactSaveResult = saveNewContact(
+    draft = draft,
+    additionalPhones = additionalPhones,
+    additionalEmails = additionalEmails,
+    photo = photo,
+    createContact = { d, p -> saveContactDraft(repo, d, null, p) },
+    saveOverlay = store::save,
+    uploadPhoto = { uniqueId, versionTag, file -> uploadContactPhoto(repo, uniqueId, versionTag, file) },
+)
+
+// Same ordering with the three writes injected, so the contract is assertable without a
+// ContactRepository.
+internal suspend fun saveNewContact(
+    draft: ContactDraft,
+    additionalPhones: List<String>,
+    additionalEmails: List<String>,
+    photo: PlatformFile?,
+    createContact: suspend (ContactDraft, PlatformFile?) -> ContactSaveResult,
+    saveOverlay: suspend (Uuid, Uuid, ContactFieldOverlay) -> Uuid?,
+    uploadPhoto: suspend (Uuid, Uuid, PlatformFile) -> Boolean,
+): ContactSaveResult {
+    val overlay = additionsOverlay(additionalPhones, additionalEmails)
+    if (overlay.isEmpty) return createContact(draft, photo)
+
+    val created = createContact(draft, null)
+    if (created !is ContactSaveResult.Success) return created
+    val uniqueId = created.uniqueId
+    val versionTag = created.versionTag
+    if (uniqueId == null || versionTag == null) return created.copy(additionsFailed = true)
+
+    // Every failure past this point is partial, never retryable: the contact is already written, so
+    // Failed would invite a retry that creates it twice. Hence nothing narrower than Exception.
+    val overlayTag = try {
+        saveOverlay(uniqueId, versionTag, overlay)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(e, TAG) { "contact $uniqueId created but its extra values could not be attached" }
+        null
+    }
+    val tag = overlayTag ?: versionTag
+    val photoFailed = photo != null && !uploadPhoto(uniqueId, tag, photo)
+    return ContactSaveResult.Success(
+        photoFailed = photoFailed,
+        additionsFailed = overlayTag == null,
+        uniqueId = uniqueId,
+        versionTag = tag,
+    )
+}
+
+/** The extras the contact schema can't hold, cleaned to the same rules the editor validates on. */
+fun additionsOverlay(
+    additionalPhones: List<String>,
+    additionalEmails: List<String>,
+): ContactFieldOverlay = ContactFieldOverlay(
+    additionalPhones = additionalPhones
+        .map { ContactFieldValidation.normalizePhone(it) }
+        .filter { it.isNotBlank() && ContactFieldValidation.isValidPhone(it) }
+        .distinct(),
+    additionalEmails = additionalEmails
+        .map { it.trim() }
+        .filter { it.isNotBlank() && ContactFieldValidation.isValidEmail(it) }
+        .distinct(),
+)
 
 /**
  * Persists an edit, routing each piece to the store that survives:
@@ -108,13 +201,11 @@ suspend fun saveContactEdit(
     additionalEmails: List<String>,
     photo: PlatformFile?,
 ): ContactSaveResult {
-    val cleanPhones = additionalPhones
-        .mapNotNull { p -> p.ifBlank { null }?.let { ContactFieldValidation.normalizePhone(it) } }
-        .distinct()
-    val cleanEmails = additionalEmails
-        .map { it.trim() }
-        .filter { it.isNotBlank() && ContactFieldValidation.isValidEmail(it) }
-        .distinct()
+    // Silently drops an invalid extra. Safe only while ContactEditSheet gates Save on the same
+    // ContactFieldValidation predicates — otherwise a legacy non-E.164 extra is lost on edit.
+    val additions = additionsOverlay(additionalPhones, additionalEmails)
+    val cleanPhones = additions.additionalPhones
+    val cleanEmails = additions.additionalEmails
     val hadOverride = editing.syncedOverlay != null ||
         editing.additionalPhones.isNotEmpty() || editing.additionalEmails.isNotEmpty()
 
@@ -140,12 +231,11 @@ suspend fun saveContactEdit(
     val result = saveContactDraft(repo, draft, synced, photo)
     if (result !is ContactSaveResult.Success) return result
 
-    val addOverlay = ContactFieldOverlay(additionalPhones = cleanPhones, additionalEmails = cleanEmails)
-    if (!addOverlay.isEmpty || hadOverride) {
+    if (!additions.isEmpty || hadOverride) {
         val tag = repo.contacts.value.firstOrNull { it.uniqueId == editing.uniqueId }?.versionTag
         if (tag != null) {
             try {
-                store.save(editing.uniqueId, tag, addOverlay)
+                store.save(editing.uniqueId, tag, additions)
             } catch (e: ForbiddenException) {
                 return ContactSaveResult.Forbidden
             }
@@ -162,7 +252,7 @@ private suspend fun uploadContactPhoto(
 ): Boolean {
     val bytes = try {
         photo.readBytes()
-    } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+    } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
         return false
