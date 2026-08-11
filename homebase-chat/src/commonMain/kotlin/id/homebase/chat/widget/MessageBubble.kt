@@ -443,6 +443,7 @@ fun SentMessageBubbleDisplayOnly(
             downloadingFiles = emptySet(),
             onRequestDecryptedFile = null,
             onLongClick = {},
+            displayOnly = true,
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
@@ -858,6 +859,7 @@ fun ReceivedMessageBubbleDisplayOnly(
             downloadingFiles = emptySet(),
             onRequestDecryptedFile = null,
             onLongClick = {},
+            displayOnly = true,
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
