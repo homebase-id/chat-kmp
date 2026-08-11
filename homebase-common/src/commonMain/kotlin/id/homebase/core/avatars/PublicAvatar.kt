@@ -1,5 +1,10 @@
 package id.homebase.core.avatars
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,17 +24,27 @@ import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.publicImageUrl
+import id.homebase.core.HomebaseConstants
+import id.homebase.core.media.subsample.imageUrlSharedElementKey
 import id.homebase.resources.MR
 import id.homebase.resources.avatar_public
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PublicAvatar(
     odinId: OdinId,
     initials: String?,
     options: AvatarOptions,
     modifier: Modifier = Modifier,
+    /**
+     * Supply both to morph this avatar into (and back out of) the full-screen viewer opened by
+     * [options] `onClick`. The key is derived from the published-avatar URL, so it pairs with a
+     * [id.homebase.core.media.subsample.SubSamplingImageSource.Url] built from the same identity.
+     */
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
     /**
      * Appended as `?v=<cacheBustKey>` so Coil treats a changed value as a distinct request/cache
      * key instead of serving a stale in-memory image — the URL itself never otherwise changes,
@@ -54,7 +69,7 @@ fun PublicAvatar(
     val containerClick = options.onClick?.takeIf { !options.onClickNeedsImage }
     val imageClick = options.onClick?.takeIf { options.onClickNeedsImage }
 
-    val clickableModifier =
+    var containerModifier =
         if (containerClick != null) {
             modifier
                 .size(options.size)
@@ -66,12 +81,33 @@ fun PublicAvatar(
                 .clip(CircleShape)
         }
 
+    // Keyed off the plain published URL, never the cache-busted one: the viewer is opened with
+    // the plain URL and both ends must agree on the key.
+    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+        with(sharedTransitionScope) {
+            containerModifier = containerModifier.sharedBounds(
+                rememberSharedContentState(
+                    key = imageUrlSharedElementKey(odinId.publicImageUrl()),
+                ),
+                animatedVisibilityScope = animatedVisibilityScope,
+                boundsTransform = { _, _ ->
+                    tween(
+                        durationMillis =
+                            HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION,
+                        easing = FastOutSlowInEasing,
+                    )
+                },
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds,
+            )
+        }
+    }
+
     SubcomposeAsyncImage(
         model = imageUrl,
         imageLoader = imageLoader,
         contentDescription = stringResource(MR.string.avatar_public),
         contentScale = options.contentScale,
-        modifier = clickableModifier
+        modifier = containerModifier
     ) {
 
         val state by painter.state.collectAsStateWithLifecycle()
