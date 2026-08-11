@@ -49,6 +49,20 @@ import id.homebase.core.util.resolveContentType
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
+import id.homebase.resources.chat_error_attachment_unavailable
+import id.homebase.resources.chat_error_delete_message_everyone
+import id.homebase.resources.chat_error_delete_message_me
+import id.homebase.resources.chat_error_edit_message
+import id.homebase.resources.chat_error_mark_read
+import id.homebase.resources.chat_error_open_forward_sheet
+import id.homebase.resources.chat_error_send_files
+import id.homebase.resources.chat_error_send_forward
+import id.homebase.resources.chat_error_send_message
+import id.homebase.resources.chat_error_send_reply
+import id.homebase.resources.chat_error_send_shared_content
+import id.homebase.resources.chat_error_shared_content_unreadable
+import id.homebase.resources.chat_error_shared_file_unavailable
+import id.homebase.resources.chat_error_toggle_reaction
 import id.homebase.resources.chat_message_forwarded
 import id.homebase.resources.chat_reactions_limit_reached
 import io.github.vinceglb.filekit.mimeType
@@ -179,7 +193,8 @@ internal class MessageActionsHandler(
                 }
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to edit message: ${e.message}"
+                        MR.string.chat_error_edit_message,
+                        e.message ?: "",
                     )
                 )
             }
@@ -296,7 +311,8 @@ internal class MessageActionsHandler(
             } catch (e: Exception) {
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to delete message for everyone: ${e.message}"
+                        MR.string.chat_error_delete_message_everyone,
+                        e.message ?: "",
                     )
                 )
             }
@@ -312,7 +328,8 @@ internal class MessageActionsHandler(
             } catch (e: Exception) {
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to delete message for me: ${e.message}"
+                        MR.string.chat_error_delete_message_me,
+                        e.message ?: "",
                     )
                 )
             }
@@ -333,7 +350,8 @@ internal class MessageActionsHandler(
             } catch (e: Exception) {
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to mark message as read: ${e.message}"
+                        MR.string.chat_error_mark_read,
+                        e.message ?: "",
                     )
                 )
             }
@@ -435,7 +453,8 @@ internal class MessageActionsHandler(
                 messagesUiState.update { it.copy(messageReactions = previousReactions) }
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to toggle reaction: ${e.message}"
+                        MR.string.chat_error_toggle_reaction,
+                        e.message ?: "",
                     )
                 )
             }
@@ -564,7 +583,8 @@ internal class MessageActionsHandler(
                 Logger.e("Failed to open forward message sheet", e)
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to open forward message sheet: ${e.message}"
+                        MR.string.chat_error_open_forward_sheet,
+                        e.message ?: "",
                     )
                 )
             }
@@ -611,7 +631,8 @@ internal class MessageActionsHandler(
                 Logger.e("Failed to send forward message", e)
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to send forward message: ${e.message}"
+                        MR.string.chat_error_send_forward,
+                        e.message ?: "",
                     )
                 )
             } finally {
@@ -909,15 +930,13 @@ internal class MessageActionsHandler(
                         )
                     }
                     sendEvent(
-                        ShowErrorMessage(
-                            // Fail soft: a disposable pre-encryption source was swept/evicted (or its
-                            // content://`/`ph:// grant revoked) before send. No outbox row was enqueued
-                            // — the right fix is to re-pick, not retry.
-                            if (e is SourceUnavailableException)
-                                "That attachment is no longer available — please pick it again."
-                            else
-                                "Failed to send file(s): ${e.message}"
-                        )
+                        // Fail soft: a disposable pre-encryption source was swept/evicted (or its
+                        // content://`/`ph:// grant revoked) before send. No outbox row was enqueued
+                        // — the right fix is to re-pick, not retry.
+                        if (e is SourceUnavailableException)
+                            ShowErrorMessage(MR.string.chat_error_attachment_unavailable)
+                        else
+                            ShowErrorMessage(MR.string.chat_error_send_files, e.message ?: "")
                     )
                 }
             }
@@ -960,7 +979,7 @@ internal class MessageActionsHandler(
                 Logger.w(tag = "ConversationListViewModel") {
                     "Shared content resolved to nothing (type=${descriptor.contentType}) — not sending"
                 }
-                sendEvent(ShowErrorMessage("Couldn't read the shared content — please try sharing again."))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_shared_content_unreadable))
                 return
             }
 
@@ -1003,10 +1022,10 @@ internal class MessageActionsHandler(
         } catch (e: SourceUnavailableException) {
             // Shared-in source vanished before send (no outbox row enqueued) — re-pick.
             Logger.w(tag = "ConversationListViewModel") { "Shared content source unavailable: ${e.path}" }
-            sendEvent(ShowErrorMessage("That shared file is no longer available — please share it again."))
+            sendEvent(ShowErrorMessage(MR.string.chat_error_shared_file_unavailable))
         } catch (e: Exception) {
             Logger.e(tag = "ConversationListViewModel") { "Failed to send shared content: ${e.message}" }
-            sendEvent(ShowErrorMessage("Failed to send shared content: ${e.message}"))
+            sendEvent(ShowErrorMessage(MR.string.chat_error_send_shared_content, e.message ?: ""))
         } finally {
             shareContentProcessor.cleanup()
         }
@@ -1028,7 +1047,7 @@ internal class MessageActionsHandler(
                 }
                 messageInputTextState.clear()
             } catch (e: Exception) {
-                sendEvent(ShowErrorMessage("Failed to edit message: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_edit_message, e.message ?: ""))
             } finally {
                 messagesUiState.update { it.copy(isSendingMessage = false) }
             }
@@ -1111,7 +1130,7 @@ internal class MessageActionsHandler(
                     throwable = e,
                     tag = TAG
                 ) { "addMessage failed for conversation=$conversationId" }
-                sendEvent(ShowErrorMessage("Failed to send message: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_send_message, e.message ?: ""))
             } finally {
                 messagesUiState.update { it.copy(isSendingMessage = false) }
             }
@@ -1188,7 +1207,7 @@ internal class MessageActionsHandler(
                     throwable = e,
                     tag = TAG
                 ) { "replyToMessage failed for conversation=$conversationId" }
-                sendEvent(ShowErrorMessage("Failed to send reply: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_send_reply, e.message ?: ""))
             } finally {
                 messagesUiState.update { it.copy(isSendingMessage = false) }
             }
