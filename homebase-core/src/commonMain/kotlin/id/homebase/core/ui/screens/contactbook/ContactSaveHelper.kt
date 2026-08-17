@@ -11,6 +11,8 @@ import id.homebase.api.client.contacts.ContactLocation
 import id.homebase.api.client.contacts.ContactName
 import id.homebase.api.client.contacts.ContactPhone
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
@@ -99,10 +101,10 @@ suspend fun saveContactDraft(
 }
 
 /**
- * Creates a contact from [draft] *with* its extra phones/emails. The contact schema has a single
- * phone/email slot, so the extras can only live in this app's override blob — which needs the new
- * contact's id, hence the two writes. Ordered create → overlay → photo so each write carries the
- * versionTag the one before it produced.
+ * Creates a contact from [draft] *with* the values the contact schema can't hold — its extra
+ * phones/emails and its organization. Those can only live in this app's override blob, which needs
+ * the new contact's id, hence the two writes. Ordered create → overlay → photo so each write
+ * carries the versionTag the one before it produced.
  */
 suspend fun saveNewContact(
     store: ContactOverrideStore,
@@ -132,7 +134,7 @@ internal suspend fun saveNewContact(
     saveOverlay: suspend (Uuid, Uuid, ContactFieldOverlay) -> Uuid?,
     uploadPhoto: suspend (Uuid, Uuid, PlatformFile) -> Boolean,
 ): ContactSaveResult {
-    val overlay = additionsOverlay(additionalPhones, additionalEmails)
+    val overlay = additionsOverlay(additionalPhones, additionalEmails, draft.organization)
     if (overlay.isEmpty) return createContact(draft, photo)
 
     val created = createContact(draft, null)
@@ -165,6 +167,7 @@ internal suspend fun saveNewContact(
 fun additionsOverlay(
     additionalPhones: List<String>,
     additionalEmails: List<String>,
+    organization: String = "",
 ): ContactFieldOverlay = ContactFieldOverlay(
     additionalPhones = additionalPhones
         .map { ContactFieldValidation.normalizePhone(it) }
@@ -174,6 +177,11 @@ fun additionsOverlay(
         .map { it.trim() }
         .filter { it.isNotBlank() && ContactFieldValidation.isValidEmail(it) }
         .distinct(),
+    // Capped here, not just on the way out: a stored value over the cap would make the re-shared
+    // card fail ContactCardDescriptor.isValid() and vanish from the picker.
+    organization = organization.trim()
+        .truncateToCodePoints(ContactCardDescriptor.MAX_NAME_CODEPOINTS)
+        .ifBlank { null },
 )
 
 /**
@@ -183,8 +191,9 @@ fun additionsOverlay(
  *    odinId — enriched on every sync, from the peer's ProfileDrive when connected or their public
  *    profile card otherwise) they go into this app's enrichment-proof override; for a pure manual
  *    contact (no odinId, never synced) they go to content as normal.
- *  - **Additional phones / emails** always go into the override — the contact schema has only one
- *    phone/email slot everywhere, so extras can only live in our app-private blob.
+ *  - **Additional phones / emails and the organization** always go into the override — the contact
+ *    schema has one phone/email slot and no organization at all, so these can only live in our
+ *    app-private blob.
  *
  * [synced] is the baseline (no override applied) used to diff primary fields; [editing] is the
  * displayed entry, used to tell whether an override already exists (so we don't issue a no-op
@@ -203,16 +212,19 @@ suspend fun saveContactEdit(
 ): ContactSaveResult {
     // Silently drops an invalid extra. Safe only while ContactEditSheet gates Save on the same
     // ContactFieldValidation predicates — otherwise a legacy non-E.164 extra is lost on edit.
-    val additions = additionsOverlay(additionalPhones, additionalEmails)
+    val additions = additionsOverlay(additionalPhones, additionalEmails, draft.organization)
     val cleanPhones = additions.additionalPhones
     val cleanEmails = additions.additionalEmails
-    val hadOverride = editing.syncedOverlay != null ||
+    val hadOverride = editing.syncedOverlay != null || editing.organization != null ||
         editing.additionalPhones.isNotEmpty() || editing.additionalEmails.isNotEmpty()
 
     if (useOverride) {
         val versionTag = editing.versionTag ?: return ContactSaveResult.Failed
-        val overlay = buildContactOverlay(draft, synced)
-            .copy(additionalPhones = cleanPhones, additionalEmails = cleanEmails)
+        val overlay = buildContactOverlay(draft, synced).copy(
+            additionalPhones = cleanPhones,
+            additionalEmails = cleanEmails,
+            organization = additions.organization,
+        )
         // Nothing to write and no existing override to clear → skip the override write entirely.
         val newTag = if (overlay.isEmpty && !hadOverride) {
             versionTag

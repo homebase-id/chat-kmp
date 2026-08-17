@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -231,6 +232,10 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.ContactCard -> {
+            // Same edited-aware footer text as a regular bubble (see messageInfoText below).
+            val cardInfoText = formatMessageTimestamp(message.userDate).let {
+                if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $it" else it
+            }
             ContactCardBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
@@ -239,6 +244,20 @@ fun MessageBubbleRaw(
                 onSaveToContacts = onSaveContactCard?.takeIf { !displayOnly },
                 onLongClick = onLongClick,
                 canOpenDetail = !displayOnly,
+                footer = {
+                    MessageTimestampFooter(
+                        visible = showMessageFooter,
+                        infoText = cardInfoText,
+                        contentColor = LocalContentColor.current,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .padding(start = 8.dp, end = 12.dp, bottom = 8.dp),
+                    )
+                },
             )
             return
         }

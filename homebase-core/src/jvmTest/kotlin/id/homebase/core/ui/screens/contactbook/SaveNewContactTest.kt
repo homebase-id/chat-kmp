@@ -29,6 +29,7 @@ class SaveNewContactTest {
     }
 
     private val draft = ContactDraft(givenName = "Ada", surname = "Vance", phone = "+14155550123")
+    private val withOrganization = draft.copy(organization = "Contoso GmbH")
     private val photo = PlatformFile("/tmp/contact-avatar.png")
     private val createdId = Uuid.random()
     private val createdTag = Uuid.random()
@@ -40,6 +41,7 @@ class SaveNewContactTest {
 
     private suspend fun save(
         recorder: Recorder,
+        draft: ContactDraft = this.draft,
         additionalPhones: List<String> = listOf("+14155550999"),
         additionalEmails: List<String> = emptyList(),
         photo: PlatformFile? = null,
@@ -176,5 +178,38 @@ class SaveNewContactTest {
         assertTrue(result.photoFailed)
         assertFalse(result.additionsFailed)
         assertEquals(1, recorder.writes.count { it is Write.Create })
+    }
+
+    // The contact schema has no organization slot, so it rides the same override write the extra
+    // phones/emails do — including that write's partial-failure reporting.
+
+    @Test
+    fun `an organization alone is enough to need the override write`() = runTest {
+        val recorder = Recorder()
+
+        save(recorder, draft = withOrganization, additionalPhones = emptyList())
+
+        assertContentEquals(
+            listOf(
+                Write.Create(withOrganization, withPhoto = false),
+                Write.Overlay(createdId, createdTag, ContactFieldOverlay(organization = "Contoso GmbH")),
+            ),
+            recorder.writes,
+        )
+    }
+
+    @Test
+    fun `a failed override write cannot report the organization as saved`() = runTest {
+        val recorder = Recorder()
+
+        val result = save(
+            recorder,
+            draft = withOrganization,
+            additionalPhones = emptyList(),
+            overlay = { _, _, _ -> null },
+        )
+
+        assertTrue(result is ContactSaveResult.Success, "The contact exists; a retry would duplicate it.")
+        assertTrue(result.additionsFailed, "Silent success here is exactly the defect being fixed.")
     }
 }
