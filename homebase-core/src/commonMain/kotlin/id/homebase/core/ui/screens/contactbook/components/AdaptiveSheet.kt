@@ -26,6 +26,8 @@ import androidx.window.core.layout.WindowSizeClass
  * full-width bottom sheet looks wrong. Callers supply the same inner content for
  * both — typically a scrollable Column with its own padding.
  *
+ * @param expandFully opens at full height instead of half — for content whose primary action
+ *   sits below a form the user would otherwise have to scroll to reach.
  * @param dismissible false pins the sheet open while the caller has work in flight. Gating
  *   [onDismiss] would not: `ModalBottomSheet` runs `hide()` *before* consulting `onDismissRequest`,
  *   so a refused dismissal leaves an invisible sheet mounted with no way to bring it back.
@@ -35,6 +37,7 @@ import androidx.window.core.layout.WindowSizeClass
 fun AdaptiveSheet(
     onDismiss: () -> Unit,
     dismissible: Boolean = true,
+    expandFully: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val wide = currentWindowAdaptiveInfo().windowSizeClass
@@ -65,6 +68,7 @@ fun AdaptiveSheet(
         // only thing that stops it. Kept identity-stable — the sheet state is keyed on this lambda.
         val canDismiss = rememberUpdatedState(dismissible)
         val sheetState = rememberModalBottomSheetState(
+            skipPartiallyExpanded = expandFully,
             confirmValueChange = remember { { it != SheetValue.Hidden || canDismiss.value } },
         )
         ModalBottomSheet(

@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -40,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
@@ -55,14 +57,19 @@ import id.homebase.resources.chat_contact_card_call
 import id.homebase.resources.chat_contact_card_close
 import id.homebase.resources.chat_contact_card_copied
 import id.homebase.resources.chat_contact_card_copy_email
+import id.homebase.resources.chat_contact_card_copy_identity
 import id.homebase.resources.chat_contact_card_copy_phone
 import id.homebase.resources.chat_contact_card_detail_pane
 import id.homebase.resources.chat_contact_card_emails
 import id.homebase.resources.chat_contact_card_message
+import id.homebase.resources.chat_contact_card_nothing_else
+import id.homebase.resources.chat_contact_card_open_profile
 import id.homebase.resources.chat_contact_card_phones
 import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_send_email
 import id.homebase.resources.chat_contact_card_title
+import id.homebase.resources.contactbook_detail_message
+import id.homebase.resources.contactbook_edit_odinid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -79,6 +86,9 @@ fun ContactCardDetailDialog(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
+    authorOdinId: String? = null,
+    sentByYou: Boolean = false,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -88,6 +98,9 @@ fun ContactCardDetailDialog(
             descriptor = descriptor,
             onDismiss = onDismiss,
             onSaveToContacts = onSaveToContacts,
+            onMessageIdentity = onMessageIdentity,
+            authorOdinId = authorOdinId,
+            sentByYou = sentByYou,
         )
     }
 }
@@ -98,12 +111,21 @@ private fun ContactCardDetailContent(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)?,
+    onMessageIdentity: ((String) -> Unit)?,
+    authorOdinId: String?,
+    sentByYou: Boolean,
 ) {
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val subtitle = remember(descriptor) { descriptor.subtitleLine() }
+    // Every value, including one the title borrowed: this screen is the whole action surface and
+    // the title is inert text, so a row dropped here is an action the user cannot reach.
+    val values = remember(descriptor) { descriptor.allValues() }
+    val identityValue = values.firstOrNull { it.kind == ContactValueKind.Identity }?.value
+    val phoneValues = values.filter { it.kind == ContactValueKind.Phone }.map { it.value }
+    val emailValues = values.filter { it.kind == ContactValueKind.Email }.map { it.value }
 
     val copiedMessage = stringResource(MR.string.chat_contact_card_copied)
     val copyValue: (String) -> Unit = { value ->
@@ -118,6 +140,18 @@ private fun ContactCardDetailContent(
         if (runCatching { uriHandler.openUri(uri) }.isFailure) {
             scope.launch { snackbarHostState.showSnackbar(unavailableMessage) }
         }
+    }
+
+    val messageLabel = stringResource(MR.string.contactbook_detail_message)
+    val openProfileLabel = stringResource(MR.string.chat_contact_card_open_profile)
+    // The identity IS its host, so its profile is a plain https URL.
+    val openProfile: (String) -> Unit = { identity -> openUri("https://$identity") }
+    val openProfileAction: @Composable (String) -> ValueRowAction = { identity ->
+        ValueRowAction(
+            label = openProfileLabel,
+            icon = Icons.AutoMirrored.Outlined.OpenInNew,
+            onClick = { openProfile(identity) },
+        )
     }
 
     // Pinned, not enterAlways: the close button is the only dismiss affordance and must not scroll
@@ -153,8 +187,14 @@ private fun ContactCardDetailContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
+            Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ContactCardAvatar(descriptor = descriptor, size = 72.dp)
+                ContactCardAvatar(
+                    descriptor = descriptor,
+                    size = 72.dp,
+                    authorOdinId = authorOdinId,
+                    sentByYou = sentByYou,
+                )
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -193,15 +233,29 @@ private fun ContactCardDetailContent(
             }
 
             ValueSection(
+                header = stringResource(MR.string.contactbook_edit_odinid),
+                values = listOfNotNull(identityValue),
+                kind = ContactValueKind.Identity,
+                actionLabel = if (onMessageIdentity != null) messageLabel else openProfileLabel,
+                // Open profile hands the identity to the browser and nothing registers an https
+                // deep link back, so it is only the primary where the host can't route a chat.
+                onAction = onMessageIdentity ?: openProfile,
+                copyLabel = MR.string.chat_contact_card_copy_identity,
+                onCopy = copyValue,
+                secondaryAction = if (onMessageIdentity != null) openProfileAction else null,
+            )
+
+            ValueSection(
                 header = stringResource(MR.string.chat_contact_card_phones),
-                values = descriptor.renderablePhones(),
+                values = phoneValues,
                 kind = ContactValueKind.Phone,
                 actionLabel = stringResource(MR.string.chat_contact_card_call),
                 onAction = { phone -> openUri("tel:${phone.telTarget()}") },
                 copyLabel = MR.string.chat_contact_card_copy_phone,
                 onCopy = copyValue,
-                // An all-Arabic-Indic number builds `tel:` with nothing after it.
-                canAct = { it.dialable().isNotBlank() },
+                // An all-Arabic-Indic number builds `tel:` with nothing after it; a control code
+                // would pre-fill the dialer with someone else's MMI.
+                canAct = { it.dialable().isNotBlank() && !it.isControlCode() },
                 secondaryAction = { phone ->
                     ValueRowAction(
                         label = stringResource(MR.string.chat_contact_card_message, phone),
@@ -213,7 +267,7 @@ private fun ContactCardDetailContent(
 
             ValueSection(
                 header = stringResource(MR.string.chat_contact_card_emails),
-                values = descriptor.renderableEmails(),
+                values = emailValues,
                 kind = ContactValueKind.Email,
                 actionLabel = stringResource(MR.string.chat_contact_card_send_email),
                 onAction = { email -> openUri("mailto:${email.mailtoTarget()}") },
@@ -223,6 +277,15 @@ private fun ContactCardDetailContent(
                 // client on a recipient it cannot use.
                 canAct = { it.looksLikeEmail() },
             )
+
+            if (values.isEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    text = stringResource(MR.string.chat_contact_card_nothing_else),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Spacer(Modifier.height(24.dp))
         }
@@ -305,7 +368,7 @@ private fun ValueRow(
                 imageVector = kind.icon(),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(20.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)),
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {

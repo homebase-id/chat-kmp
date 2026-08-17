@@ -150,6 +150,11 @@ fun MessageItem(
             onUiAction(ConversationListUiAction.SaveContactCard(descriptor))
         }
     }
+    val onMessageIdentity = remember(message.id) {
+        { odinId: String ->
+            onUiAction(ConversationListUiAction.MessageIdentity(odinId))
+        }
+    }
     if (message.isAuthoredBy(odinId)) {
         val onEdit = if (policy.allowEdit) {
             remember(message.id) {
@@ -200,6 +205,7 @@ fun MessageItem(
                 isCurrentSearchResult = isCurrentSearchResult,
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
+                onMessageIdentity = onMessageIdentity,
             )
         }
     } else {
@@ -259,6 +265,7 @@ fun MessageItem(
                 isCurrentSearchResult = isCurrentSearchResult,
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
+                onMessageIdentity = onMessageIdentity,
             )
         }
     }

@@ -429,7 +429,9 @@ class ContactBookViewModel(
                     photo = photo,
                 )
             } else {
-                saveContactDraft(repo, draft, null, photo)
+                // Not saveContactDraft: the organization and the extra phone/email rows this sheet
+                // collects live only in the override blob, and the contact alone drops them.
+                saveNewContact(overrideStore, repo, draft, additionalPhones, additionalEmails, photo)
             }
             when (result) {
                 is ContactSaveResult.Success -> {
@@ -439,6 +441,10 @@ class ContactBookViewModel(
                     }
                     if (result.clearedFieldsIgnored) {
                         _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.ClearUnsupported))
+                    }
+                    // The contact is written but its extras are not; silence reads as a full save.
+                    if (result.additionsFailed) {
+                        _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.AdditionsFailed))
                     }
                 }
                 ContactSaveResult.Forbidden ->

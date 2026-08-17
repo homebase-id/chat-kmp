@@ -952,7 +952,7 @@
     <string name="chat_contact_card_retry">Try again</string>
     <string name="chat_contact_card_saved_title">Contact saved</string>
     <string name="chat_contact_card_partial_photo">The photo couldn't be uploaded.</string>
-    <string name="chat_contact_card_partial_additions">The extra phone numbers and email addresses couldn't be attached.</string>
+    <string name="chat_contact_card_partial_additions">The extra phone numbers, email addresses and company couldn't be attached.</string>
     <string name="chat_contact_card_saved_body">%1$s is now in your contacts.</string>
     <string name="chat_contact_card_saved_open">Open contact</string>
     <string name="chat_contact_card_phones">Phone numbers</string>
@@ -965,7 +965,12 @@
     <string name="chat_contact_card_close">Close</string>
     <string name="chat_contact_card_merge">Add to this contact</string>
     <string name="chat_contact_card_merge_confirm">Anything you have typed here will be replaced by %1$s's details.</string>
-    <string name="chat_contact_card_merge_body">Add the new phone numbers and email addresses to %1$s.</string>
+    <string name="chat_contact_card_open_profile">Open profile</string>
+    <string name="chat_contact_card_copy_identity">Copy Homebase ID %1$s</string>
+    <string name="chat_contact_card_nothing_else">This card has no phone number or email address.</string>
+    <string name="chat_contact_card_exists_identity_body">%1$s is already saved with this Homebase ID.</string>
+    <string name="chat_contact_card_partial_cleared">Clearing a field isn't supported yet, so the old value is still there.</string>
+    <string name="chat_contact_card_merge_body">Add the details on this card to %1$s. Anything %1$s already has is kept.</string>
 
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Poll details</string>

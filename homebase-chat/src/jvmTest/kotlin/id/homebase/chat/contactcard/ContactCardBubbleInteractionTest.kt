@@ -71,10 +71,18 @@ class ContactCardBubbleInteractionTest {
         emails = listOf("ada@example.com"),
     )
 
+    private val identity = "ada.example.com"
+    private val identityCard = card.copy(odinId = identity)
+
     // Rendered strings, so a renamed resource fails here rather than passing vacuously.
     private val saveLabel = "Save to contacts"
+    private val messageLabel = "Message"
+    private val openProfileLabel = "Open profile"
 
-    private fun message(author: OdinId? = null) = MessageUiModel(
+    private fun message(
+        author: OdinId? = null,
+        content: ContactCardDescriptor = card,
+    ) = MessageUiModel(
         id = Uuid.random(),
         globalTransitId = null,
         fileId = Uuid.random(),
@@ -94,7 +102,7 @@ class ContactCardBubbleInteractionTest {
         versionTag = Uuid.random(),
         isPendingSend = false,
         hasMore = false,
-        messageContent = MessageContent.ContactCard(card),
+        messageContent = MessageContent.ContactCard(content),
     )
 
     @Test
@@ -174,6 +182,73 @@ class ContactCardBubbleInteractionTest {
         onNodeWithText(saveLabel).performClick()
 
         assertEquals(ConversationListUiAction.SaveContactCard(card), actions.singleOrNull())
+    }
+
+    @Test
+    fun `the identity row leads with Message and hands back the identity`() = runComposeUiTest {
+        var messaged: String? = null
+        setContent {
+            HomebaseTheme(darkTheme = false) {
+                ContactCardBubble(
+                    descriptor = identityCard,
+                    onMessageIdentity = { messaged = it },
+                )
+            }
+        }
+
+        onNodeWithText("Ada Vance").performClick()
+        onNodeWithText(messageLabel).performClick()
+
+        assertEquals(identity, messaged)
+    }
+
+    // Open profile is the row's only action when nothing can route a chat, so a handler that
+    // stops arriving must not leave the identity inert.
+    @Test
+    fun `an identity row with no message handler keeps Open profile`() = runComposeUiTest {
+        setContent {
+            HomebaseTheme(darkTheme = false) {
+                ContactCardBubble(descriptor = identityCard, onMessageIdentity = null)
+            }
+        }
+
+        onNodeWithText("Ada Vance").performClick()
+
+        onNodeWithText(openProfileLabel).assertIsDisplayed()
+        onNodeWithText(messageLabel).assertDoesNotExist()
+    }
+
+    // Driven through MessageItem, not the bubble: the callback crosses four layers of threading
+    // to reach the card, and a direct ContactCardBubble call cannot see a site that drops it.
+    @Test
+    fun `a received card in the stream routes Message out to the host`() = runComposeUiTest {
+        val actions = mutableListOf<ConversationListUiAction>()
+        setContent {
+            Host {
+                SharedTransitionLayout {
+                    AnimatedVisibility(visible = true) {
+                        MessageItem(
+                            message = message(content = identityCard),
+                            userDefaultReactions = persistentListOf(),
+                            decryptedFiles = persistentMapOf(),
+                            currentOdinId = me.domainName,
+                            animatedVisibilityScope = this@AnimatedVisibility,
+                            sharedTransitionScope = this@SharedTransitionLayout,
+                            onUiAction = { actions += it },
+                            downloadingFiles = emptySet(),
+                        )
+                    }
+                }
+            }
+        }
+
+        onNodeWithText("Ada Vance").performClick()
+        onNodeWithText(messageLabel).performClick()
+
+        assertEquals(
+            ConversationListUiAction.MessageIdentity(identity),
+            actions.singleOrNull(),
+        )
     }
 
     @Test

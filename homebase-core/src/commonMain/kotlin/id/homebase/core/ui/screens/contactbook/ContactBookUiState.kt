@@ -105,13 +105,25 @@ data class ContactDraft(
 
     /** Has at least one meaningful field AND every non-empty field is well-formed. */
     val isSavable: Boolean
+        // Organization deliberately does not qualify: ContactContent has no slot for it, so a
+        // contact with nothing else resolves to no display name at all and is filtered out of
+        // every list — written to the drive and invisible to the user who wrote it.
         get() = (givenName.isNotBlank() || surname.isNotBlank() ||
             phone.isNotBlank() || email.isNotBlank() || odinId.isNotBlank()) &&
             emailValid && phoneValid && odinIdValid && birthdayValid
 }
 
+/**
+ * [ContactBookEntry.displayName] is *resolved* — for a contact with no stored name it falls back to
+ * the odinId, phone or email. Seeding the name field from that puts a rendering fallback in front
+ * of the user and, on save, writes it into the contact's own name.
+ */
+private fun ContactBookEntry.storedDisplayName(): String =
+    displayName.takeIf { it != odinId && it != phone && it != email }.orEmpty()
+
 fun ContactBookEntry.toDraft(): ContactDraft = ContactDraft(
-    givenName = givenName.orEmpty().ifBlank { if (surname.isNullOrBlank()) displayName else "" },
+    givenName = givenName.orEmpty()
+        .ifBlank { if (surname.isNullOrBlank()) storedDisplayName() else "" },
     surname = surname.orEmpty(),
     odinId = odinId.orEmpty(),
     phone = phone.orEmpty(),
@@ -211,5 +223,6 @@ enum class ContactBookError {
     PhotoFailed,
     MessageFailed,
     ClearUnsupported,
+    AdditionsFailed,
     CircleActionFailed,
 }

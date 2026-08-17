@@ -169,6 +169,7 @@ fun MessageBubbleRaw(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
     onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
     // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
     // than as the message itself: typed bubbles must not open their full-screen detail from here.
     displayOnly: Boolean = false,
@@ -232,18 +233,28 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.ContactCard -> {
-            // Same edited-aware footer text as a regular bubble (see messageInfoText below).
-            val cardInfoText = formatMessageTimestamp(message.userDate).let {
-                if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $it" else it
+            // No edited marker: MessageMapper hard-codes isEdited = false for every typed kind.
+            val cardInfoText = formatMessageTimestamp(message.userDate)
+            val cardAuthor = message.originalAuthor?.domainName
+            // Saving is where an attacker-chosen identity would outlive the avatar gate, so the
+            // same provenance test runs on the way out.
+            val onSaveCard = remember(onSaveContactCard, cardAuthor, sentByYou, displayOnly) {
+                onSaveContactCard?.takeIf { !displayOnly }?.let { save ->
+                    { card: ContactCardDescriptor -> save(card.forSaving(cardAuthor, sentByYou)) }
+                }
             }
             ContactCardBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
                 // displayOnly owns the whole action surface, not just the detail: a preview must
                 // not offer Save either, whatever the host handed down.
-                onSaveToContacts = onSaveContactCard?.takeIf { !displayOnly },
+                onSaveToContacts = onSaveCard,
+                onMessageIdentity = onMessageIdentity?.takeIf { !displayOnly },
                 onLongClick = onLongClick,
                 canOpenDetail = !displayOnly,
+                // From the envelope, not the card: the card's own odinId is attacker-controlled.
+                authorOdinId = message.originalAuthor?.domainName,
+                sentByYou = sentByYou,
                 footer = {
                     MessageTimestampFooter(
                         visible = showMessageFooter,

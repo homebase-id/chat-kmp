@@ -63,6 +63,7 @@ import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_error_circle_action
 import id.homebase.resources.contactbook_error_delete
 import id.homebase.resources.contactbook_error_forbidden
+import id.homebase.resources.chat_contact_card_partial_additions
 import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.contactbook_error_photo
@@ -94,6 +95,7 @@ fun ContactBookScreen(
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
     val errMessage = stringResource(MR.string.contactbook_error_message)
     val errClearUnsupported = stringResource(MR.string.contactbook_error_clear_unsupported)
+    val errAdditionsFailed = stringResource(MR.string.chat_contact_card_partial_additions)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
     val errCircleAction = stringResource(MR.string.contactbook_error_circle_action)
 
@@ -112,6 +114,7 @@ fun ContactBookScreen(
                         ContactBookError.PhotoFailed -> errPhoto
                         ContactBookError.MessageFailed -> errMessage
                         ContactBookError.ClearUnsupported -> errClearUnsupported
+                        ContactBookError.AdditionsFailed -> errAdditionsFailed
                         ContactBookError.CircleActionFailed -> errCircleAction
                     }
                     snackbarHostState.showSnackbar(msg)

@@ -165,6 +165,7 @@ class ContactCardImportTest {
         additionalPhones: List<String> = emptyList(),
         additionalEmails: List<String> = emptyList(),
         organization: String? = null,
+        odinId: String? = null,
     ) = ContactBookEntry(
         uniqueId = Uuid.random(),
         fileId = Uuid.random(),
@@ -175,6 +176,7 @@ class ContactCardImportTest {
         additionalPhones = additionalPhones,
         additionalEmails = additionalEmails,
         organization = organization,
+        odinId = odinId,
     )
 
     @Test
@@ -234,7 +236,7 @@ class ContactCardImportTest {
             entry("Ada Vance", phone = "+14155550123"),
         )
 
-        assertEquals("Ada Vance", ContactCardImport.findExisting(descriptor, book)?.displayName)
+        assertEquals("Ada Vance", ContactCardImport.findExisting(descriptor, book)?.entry?.displayName)
     }
 
     @Test
@@ -286,7 +288,7 @@ class ContactCardImportTest {
             "Ada Vance",
             ContactCardImport.resolveExisting(card, { contacts }) {
                 mapOf(id to ContactFieldOverlay(additionalPhones = listOf("+14155550123")))
-            }?.displayName,
+            }?.entry?.displayName,
             "Dropping .withOverride() here is the bug that made this branch unreachable.",
         )
     }
@@ -472,5 +474,137 @@ class ContactCardImportTest {
     @Test
     fun `a contact with no organization leaves the field off the card`() {
         assertEquals("", ContactCardImport.toDescriptor(entry("Ada", phone = "+14155550123"))?.organization)
+    }
+
+    @Test
+    fun `sharing an identity contact carries the identity, which is what renders its avatar`() {
+        val descriptor = assertNotNull(
+            ContactCardImport.toDescriptor(entry("Todd Mitchell", odinId = "samwise.gamgee.demo.rocks")),
+        )
+
+        assertEquals("samwise.gamgee.demo.rocks", descriptor.odinId)
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(descriptor.identity()).domainName,
+            "Without this the card falls back to initials and the contact looks empty.",
+        )
+    }
+
+    @Test
+    fun `an identity-only contact is still shareable`() {
+        // A connection contact commonly stores an identity and no phone or email at all; before
+        // the odinId travelled, such a card carried nothing but a name.
+        val descriptor = assertNotNull(
+            ContactCardImport.toDescriptor(entry("Todd Mitchell", odinId = "samwise.gamgee.demo.rocks")),
+        )
+
+        assertTrue(descriptor.phones.isEmpty() && descriptor.emails.isEmpty())
+        assertTrue(descriptor.isValid())
+    }
+
+    @Test
+    fun `a contact with no identity leaves the field off the card`() {
+        val descriptor = assertNotNull(ContactCardImport.toDescriptor(entry("Ada", phone = "+14155550123")))
+
+        assertEquals("", descriptor.odinId)
+        assertNull(descriptor.identity())
+    }
+
+    // The identity is the whole point of an identity card; dropping it here saved a contact that
+    // no longer resolves to anyone, and left Save disabled on a card with nothing else to offer.
+    @Test
+    fun `saving an identity card keeps the identity`() {
+        val descriptor = ContactCardDescriptor(
+            displayName = "Todd Mitchell",
+            odinId = "samwise.gamgee.demo.rocks",
+        )
+
+        val draft = ContactCardImport.toDraft(descriptor)
+
+        assertEquals("samwise.gamgee.demo.rocks", draft.odinId)
+        assertTrue(draft.isSavable, "An identity is content; without it Save has nothing to enable.")
+    }
+
+    @Test
+    fun `an odinId that is not an identity never reaches the draft`() {
+        val draft = ContactCardImport.toDraft(
+            ContactCardDescriptor(displayName = "Todd", odinId = "https://evil.example.com/pub/image"),
+        )
+
+        assertEquals("", draft.odinId, "The editor would reject it on Save; do not seed it.")
+    }
+
+    @Test
+    fun `an identity card merges into the contact that already holds that identity`() {
+        val other = entry("Ada", phone = "+14155550123")
+        val todd = entry("Todd Mitchell", odinId = "samwise.gamgee.demo.rocks")
+
+        val match = ContactCardImport.findExisting(
+            ContactCardDescriptor(displayName = "T.M.", odinId = " Samwise.Gamgee.Demo.Rocks "),
+            listOf(other, todd),
+        )
+
+        assertEquals(todd.uniqueId, assertNotNull(match).entry.uniqueId)
+    }
+
+    @Test
+    fun `an identity outranks a shared phone number, which two people can have`() {
+        // A landline on a family contact is a weaker signal than a globally unique identity.
+        val household = entry("Home", phone = "+14155550123")
+        val todd = entry("Todd Mitchell", phone = "+14155550123", odinId = "samwise.gamgee.demo.rocks")
+
+        val match = ContactCardImport.findExisting(
+            ContactCardDescriptor(
+                displayName = "Todd",
+                odinId = "samwise.gamgee.demo.rocks",
+                phones = listOf("+14155550123"),
+            ),
+            listOf(household, todd),
+        )
+
+        assertEquals(todd.uniqueId, assertNotNull(match).entry.uniqueId)
+    }
+
+    @Test
+    fun `a card whose identity nobody holds still falls back to phone and email`() {
+        val ada = entry("Ada", phone = "+14155550123")
+
+        val match = ContactCardImport.findExisting(
+            ContactCardDescriptor(
+                displayName = "Ada",
+                odinId = "nobody.demo.rocks",
+                phones = listOf("+14155550123"),
+            ),
+            listOf(ada),
+        )
+
+        assertEquals(ada.uniqueId, assertNotNull(match).entry.uniqueId)
+    }
+
+    // The banner names the reason ("already has one of these phone numbers"), so a match found by
+    // identity on a card carrying no phone or email would state something plainly untrue.
+    @Test
+    fun `the match reports which clause found it`() {
+        val todd = entry("Todd", phone = "+14155550123", odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals(
+            ContactCardImport.ExistingContact.MatchedOn.Identity,
+            assertNotNull(
+                ContactCardImport.findExisting(
+                    ContactCardDescriptor(displayName = "T", odinId = "samwise.gamgee.demo.rocks"),
+                    listOf(todd),
+                ),
+            ).matchedOn,
+        )
+
+        assertEquals(
+            ContactCardImport.ExistingContact.MatchedOn.PhoneOrEmail,
+            assertNotNull(
+                ContactCardImport.findExisting(
+                    ContactCardDescriptor(displayName = "T", phones = listOf("+14155550123")),
+                    listOf(todd),
+                ),
+            ).matchedOn,
+        )
     }
 }

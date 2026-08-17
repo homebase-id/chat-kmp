@@ -2,7 +2,7 @@ package id.homebase.chat.contactcard
 
 import id.homebase.core.util.initials
 
-internal enum class ContactValueKind { Phone, Email }
+internal enum class ContactValueKind { Identity, Phone, Email }
 
 internal data class ContactCardValue(val kind: ContactValueKind, val value: String)
 
@@ -11,25 +11,33 @@ internal data class ContactCardBubbleValues(
     val hiddenCount: Int,
 )
 
-internal const val ContactCardBubbleRowLimit = 2
+internal const val ContactCardBubbleRowLimit = 3
 
 // A card authored by another client can carry a blank entry; it is not a row worth painting.
-internal fun ContactCardDescriptor.renderablePhones(): List<String> = phones.filter { it.isNotBlank() }
+internal fun ContactCardDescriptor.renderablePhones(): List<String> =
+    phones.map { it.scrubbed() }.filter { it.isNotBlank() }
 
-internal fun ContactCardDescriptor.renderableEmails(): List<String> = emails.filter { it.isNotBlank() }
+internal fun ContactCardDescriptor.renderableEmails(): List<String> =
+    emails.map { it.scrubbed() }.filter { it.isNotBlank() }
 
+internal fun ContactCardDescriptor.renderableIdentity(): String? = identity()?.domainName
+
+// Identity first: it is the only globally unique value here, so it is what a nameless card is
+// titled by and the first thing worth showing under a name.
 internal fun ContactCardDescriptor.allValues(): List<ContactCardValue> =
-    renderablePhones().map { ContactCardValue(ContactValueKind.Phone, it) } +
+    listOfNotNull(renderableIdentity()?.let { ContactCardValue(ContactValueKind.Identity, it) }) +
+        renderablePhones().map { ContactCardValue(ContactValueKind.Phone, it) } +
         renderableEmails().map { ContactCardValue(ContactValueKind.Email, it) }
-
-internal fun ContactCardDescriptor.hasTitleOfItsOwn(): Boolean =
-    displayName.isNotBlank() || organization.isNotBlank()
 
 internal fun ContactCardDescriptor.bubbleValues(
     limit: Int = ContactCardBubbleRowLimit,
 ): ContactCardBubbleValues {
-    // A nameless card's first value is already the title (see summaryLine) — don't repeat it.
-    val candidates = if (hasTitleOfItsOwn()) allValues() else allValues().drop(1)
+    val all = allValues()
+    // By value, at any position: displayName is arbitrary text that can equal any of these — a
+    // connection has it resolved from the odinId, and a vCard can put the email in FN — and the
+    // value it matches is not necessarily the first.
+    val title = summaryLine()
+    val candidates = all.filterNot { it.value.equals(title, ignoreCase = true) }
     return ContactCardBubbleValues(
         rows = candidates.take(limit),
         hiddenCount = (candidates.size - limit).coerceAtLeast(0),
@@ -37,15 +45,30 @@ internal fun ContactCardDescriptor.bubbleValues(
 }
 
 internal fun ContactCardDescriptor.subtitleLine(): String =
-    organization.takeIf { it.isNotBlank() && it != summaryLine() }.orEmpty()
+    organization.scrubbed()
+        .takeIf { it.isNotBlank() && !it.equals(summaryLine(), ignoreCase = true) }
+        .orEmpty()
 
-// Blank for a card carrying only a phone/email — the caller falls back to an icon.
+// Blank for a card carrying only a phone/email/identity — the caller falls back to an icon.
 internal fun ContactCardDescriptor.avatarInitials(): String =
-    displayName.ifBlank { organization }.initials()
+    displayName
+        .ifBlank { listOf(givenName, surname).filter { it.isNotBlank() }.joinToString(" ") }
+        .ifBlank { organization }
+        .initials()
 
 // `Char.isDigit()` would let Arabic-Indic and Devanagari digits through, producing a `tel:` URI no
 // dialer can parse.
 internal fun String.dialable(): String = filter { it in '0'..'9' || it in "+*#," }
+
+/**
+ * MMI/USSD control codes (`*21*<number>#` sets up call forwarding) start with `*` or `#`, and a
+ * phone number never does. The card is authored remotely, so a value of that shape is not offered
+ * as callable — `#` mid-number is still a legitimate extension terminator and survives.
+ */
+internal fun String.isControlCode(): Boolean =
+    // After the separators a dialer skips: ",*21*…#" would otherwise pass on its leading pause.
+    dialable().dropWhile { it == ',' || it == '+' }.firstOrNull()
+        ?.let { it == '*' || it == '#' } == true
 
 // RFC 3966: an unescaped '#' is the fragment delimiter, so a dialer parses it as the end of the
 // number. ',' stays — in tel: it is a legitimate DTMF pause.

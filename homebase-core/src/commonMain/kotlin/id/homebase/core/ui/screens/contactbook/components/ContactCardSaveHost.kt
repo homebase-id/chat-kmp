@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContactPage
-import androidx.compose.material.icons.outlined.HowToReg
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -50,12 +50,14 @@ import id.homebase.core.ui.screens.contactbook.saveNewContact
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_contact_card_exists_body
+import id.homebase.resources.chat_contact_card_exists_identity_body
 import id.homebase.resources.chat_contact_card_exists_open
 import id.homebase.resources.chat_contact_card_exists_title
 import id.homebase.resources.chat_contact_card_merge
 import id.homebase.resources.chat_contact_card_merge_body
 import id.homebase.resources.chat_contact_card_merge_confirm
 import id.homebase.resources.chat_contact_card_partial_additions
+import id.homebase.resources.chat_contact_card_partial_cleared
 import id.homebase.resources.chat_contact_card_partial_photo
 import id.homebase.resources.chat_contact_card_retry
 import id.homebase.resources.chat_contact_card_save_failed
@@ -69,8 +71,10 @@ import id.homebase.resources.ok
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -84,6 +88,7 @@ internal sealed interface SaveStage {
         val uniqueId: Uuid?,
         val photoFailed: Boolean,
         val additionsFailed: Boolean,
+        val clearedFieldsIgnored: Boolean = false,
         /** Captured when the write starts: a duplicate banner can still arrive mid-write, and
          *  reading the merge target at render time names the wrong contact. */
         val name: String? = null,
@@ -97,6 +102,7 @@ internal fun saveStageFor(result: ContactSaveResult?): SaveStage = when (result)
         uniqueId = result.uniqueId,
         photoFailed = result.photoFailed,
         additionsFailed = result.additionsFailed,
+        clearedFieldsIgnored = result.clearedFieldsIgnored,
     )
     ContactSaveResult.Forbidden -> SaveStage.Forbidden
     else -> SaveStage.Failed
@@ -117,6 +123,9 @@ fun ContactCardSaveHost(
     descriptor: ContactCardDescriptor?,
     onDismiss: () -> Unit,
     onOpenContact: (uniqueId: Uuid, odinId: String?) -> Unit,
+    // A clean save is expected and non-destructive, so it reports as a snackbar rather than a
+    // second modal. Raised here because it must outlive this host, which unmounts immediately.
+    onSaved: (name: String, uniqueId: Uuid?) -> Unit,
 ) {
     if (descriptor == null) return
 
@@ -126,7 +135,10 @@ fun ContactCardSaveHost(
     // A composition-scoped launch would cancel a half-written contact when the host goes away.
     val appScope: CoroutineScope = koinInject()
     var stage by remember(descriptor) { mutableStateOf<SaveStage>(SaveStage.Editing) }
-    var duplicate by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
+    var duplicate by remember(descriptor) { mutableStateOf<ContactCardImport.ExistingContact?>(null) }
+    // The check is allowed to outlive a fast Save tap, so the write awaits it rather than racing it
+    // — otherwise the first thing a quick user does is create the duplicate this exists to prevent.
+    val checked = remember(descriptor) { CompletableDeferred<ContactCardImport.ExistingContact?>() }
     var mergeInto by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
     var confirmMerge by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
     // Retained so Failed's "Try again" repeats the write instead of just reopening the sheet.
@@ -134,10 +146,11 @@ fun ContactCardSaveHost(
     val cardName = descriptor.summaryLine()
         .ifBlank { stringResource(MR.string.chat_contact_card_title) }
 
-    // Runs to completion rather than under a deadline: nothing is waiting on it, and a time-boxed
-    // hydrate answers from a partial override set, where a match that lives only in an override
-    // reads as "no duplicate".
+    // Runs to completion rather than under a deadline: a time-boxed hydrate answers from a partial
+    // override set, where a match that lives only in an override reads as "no duplicate". A save
+    // that arrives first waits on it, but only up to DupeCheckSaveDeadlineMs.
     LaunchedEffect(descriptor) {
+        try {
         duplicate = try {
             ContactCardImport.resolveExisting(
                 descriptor,
@@ -155,6 +168,12 @@ fun ContactCardSaveHost(
         } catch (e: Throwable) {
             Logger.w(tag = TAG, throwable = e) { "contact load failed; skipping dupe check" }
             null
+        }
+        } finally {
+            // In `finally` because cancellation is rethrown above: a write already suspended on
+            // this deferred would otherwise stay suspended for the life of the process, and the
+            // contact would never be written or reported.
+            checked.complete(duplicate)
         }
     }
 
@@ -177,19 +196,24 @@ fun ContactCardSaveHost(
                         // The check is allowed to land late, so the banner can appear over a write
                         // already in flight; acting on it then would rebuild the sheet mid-save.
                         enabled = !saving,
-                        onMerge = { confirmMerge = match },
+                        onMerge = { confirmMerge = match.entry },
                         onOpen = {
                             onDismiss()
-                            onOpenContact(match.uniqueId, match.odinId)
+                            onOpenContact(match.entry.uniqueId, match.entry.odinId)
                         },
                     )
                 }
             }
             else -> null
         }
-        // Switching to the merge editor re-seeds every field, so the sheet has to start over.
-        key(target?.uniqueId) {
+        // Switching to the merge editor re-seeds every field, so the sheet has to start over. Keyed
+        // on the descriptor too: ContactEditSheet seeds with an unkeyed remember, so a new card
+        // arriving under a mounted sheet would otherwise keep the previous card's draft.
+        key(descriptor, target?.uniqueId) {
             ContactEditSheet(
+                // The unfilled target: it decides whether the sheet calls itself profile-synced,
+                // and it must agree with useOverride below. The card's own values reach the draft
+                // through `seed`, which now fills the gaps a merge target leaves.
                 editing = target,
                 seed = remember(descriptor) { ContactCardImport.toDraft(descriptor) },
                 seedAdditionalPhones = remember(descriptor, target) {
@@ -205,8 +229,24 @@ fun ContactCardSaveHost(
                 onSave = { draft, extraPhones, extraEmails, photo ->
                     val savedName = target?.displayName ?: cardName
                     val attempt: () -> Unit = {
+                        // Read per attempt, not once at the first tap: a retry after the check
+                        // landed has seen the banner, and capturing it outside made every retry
+                        // bounce back to the sheet without ever writing.
+                        val sawBanner = duplicate != null
                     stage = SaveStage.Saving
                     appScope.launch {
+                        // A match that only lands now is one the user was never offered; show it
+                        // rather than silently creating the second contact they'd have declined.
+                        // Bounded: Saving disables Cancel, so an unbounded wait on a cold contact
+                        // book pins the user in a spinner with no way out. A timeout is treated
+                        // like the check failing — proceed, same as the catch above.
+                        if (target == null && !sawBanner) {
+                            val late = withTimeoutOrNull(DupeCheckSaveDeadlineMs) { checked.await() }
+                            if (late != null) {
+                                stage = SaveStage.Editing
+                                return@launch
+                            }
+                        }
                         val result = try {
                             if (target == null) {
                                 saveNewContact(store, repo, draft, extraPhones, extraEmails, photo)
@@ -315,26 +355,41 @@ fun ContactCardSaveHost(
                 val retry = lastAttempt
                 if (retry != null) retry() else stage = SaveStage.Editing
             },
-            onDismiss = onDismiss,
+            // Back to the sheet, not out of the flow: it still holds everything the user typed.
+            onDismiss = { stage = SaveStage.Editing },
         )
 
-        is SaveStage.Saved -> AlertDialog(
+        is SaveStage.Saved -> if (
+            !current.additionsFailed && !current.photoFailed && !current.clearedFieldsIgnored
+        ) {
+            val name = current.name ?: cardName
+            val uniqueId = current.uniqueId
+            LaunchedEffect(current) {
+                onSaved(name, uniqueId)
+                onDismiss()
+            }
+        } else AlertDialog(
             onDismissRequest = onDismiss,
-            icon = { Icon(Icons.Outlined.HowToReg, contentDescription = null) },
+            // Every partial failure, not just the first: two can be true at once, and the
+            // unmentioned one is the data the user thinks they saved.
+            icon = { Icon(Icons.Outlined.ErrorOutline, contentDescription = null) },
             title = { Text(stringResource(MR.string.chat_contact_card_saved_title)) },
             text = {
-                Text(
-                    when {
-                        current.additionsFailed ->
-                            stringResource(MR.string.chat_contact_card_partial_additions)
-                        current.photoFailed ->
-                            stringResource(MR.string.chat_contact_card_partial_photo)
-                        else -> stringResource(
-                            MR.string.chat_contact_card_saved_body,
-                            current.name ?: cardName,
-                        )
-                    }
+                val problems = listOfNotNull(
+                    stringResource(MR.string.chat_contact_card_partial_additions)
+                        .takeIf { current.additionsFailed },
+                    stringResource(MR.string.chat_contact_card_partial_photo)
+                        .takeIf { current.photoFailed },
+                    stringResource(MR.string.chat_contact_card_partial_cleared)
+                        .takeIf { current.clearedFieldsIgnored },
                 )
+                // Which contact it was still leads: a problem list on its own leaves the user
+                // reading about data that failed with no idea what it failed on.
+                val saved = stringResource(
+                    MR.string.chat_contact_card_saved_body,
+                    current.name ?: cardName,
+                )
+                Text((listOf(saved) + problems).joinToString(" "))
             },
             confirmButton = {
                 val uniqueId = current.uniqueId
@@ -386,14 +441,20 @@ private fun ContactCardDescriptor.emailsMissingFrom(entry: ContactBookEntry): Li
 
 @Composable
 private fun DuplicateBanner(
-    match: ContactBookEntry,
+    match: ContactCardImport.ExistingContact,
     enabled: Boolean,
     onMerge: () -> Unit,
     onOpen: () -> Unit,
 ) {
+    val body = when (match.matchedOn) {
+        ContactCardImport.ExistingContact.MatchedOn.Identity ->
+            MR.string.chat_contact_card_exists_identity_body
+        ContactCardImport.ExistingContact.MatchedOn.PhoneOrEmail ->
+            MR.string.chat_contact_card_exists_body
+    }
     SheetBanner(
         title = stringResource(MR.string.chat_contact_card_exists_title),
-        text = stringResource(MR.string.chat_contact_card_exists_body, match.displayName),
+        text = stringResource(body, match.entry.displayName),
         // Adding to the contact you already have is the recommended action, so it carries the
         // emphasis; saving a second contact is the sheet's own Save, one step below.
         actions = {
@@ -481,3 +542,6 @@ val ContactCardDescriptorSaver: Saver<ContactCardDescriptor?, String> = Saver(
 )
 
 private const val TAG = "ContactCardSaveHost"
+
+// Only bounds the case where Save beat the check; the check itself still runs to completion.
+private const val DupeCheckSaveDeadlineMs = 4_000L

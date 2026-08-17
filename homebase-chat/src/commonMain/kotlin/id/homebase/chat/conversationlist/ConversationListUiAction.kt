@@ -437,4 +437,7 @@ sealed interface ConversationListUiAction {
     /** Save a received contact card to the contact book — the editor lives in :homebase-core, so
      *  this leaves the module the same way OpenShareLocation does. */
     data class SaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiAction
+
+    /** Open (creating if needed) the 1:1 conversation with the identity on a shared contact card. */
+    data class MessageIdentity(val odinId: String) : ConversationListUiAction
 }

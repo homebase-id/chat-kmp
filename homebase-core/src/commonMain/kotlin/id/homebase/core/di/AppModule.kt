@@ -1002,6 +1002,7 @@ val appModule = module {
         ShareContactPickerViewModel(
             conversationId = params.get(),
             repo = get(),
+            overrideStore = get(),
             chatMessageSenderService = get(),
         )
     }

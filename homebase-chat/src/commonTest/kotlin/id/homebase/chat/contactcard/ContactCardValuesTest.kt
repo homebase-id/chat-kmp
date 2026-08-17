@@ -4,6 +4,8 @@ import id.homebase.chat.services.content.MessageContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -50,16 +52,17 @@ class ContactCardValuesTest {
 
     @Test
     fun `phones come before emails so the rows the bubble keeps are the callable ones`() {
+        // One more phone than fits, so the email is only kept if ordering fails to push it out.
         val bubble = card(
-            phones = listOf("+14155550123", "+14155550124"),
+            phones = List(ContactCardBubbleRowLimit + 1) { "+1415555012$it" },
             emails = listOf("ada@example.com"),
         ).bubbleValues()
 
         assertEquals(
-            listOf(ContactValueKind.Phone, ContactValueKind.Phone),
+            List(ContactCardBubbleRowLimit) { ContactValueKind.Phone },
             bubble.rows.map { it.kind },
         )
-        assertEquals(1, bubble.hiddenCount)
+        assertEquals(2, bubble.hiddenCount)
     }
 
     @Test
@@ -69,7 +72,9 @@ class ContactCardValuesTest {
         assertEquals("+14155550123", descriptor.summaryLine())
         assertEquals(emptyList(), descriptor.bubbleValues().rows)
         assertEquals(0, descriptor.bubbleValues().hiddenCount)
-        assertEquals(1, descriptor.allValues().size, "The detail view still lists it, actionably.")
+        // allValues() is what the detail dialog renders, so this is the assertion that the row
+        // — and with it Call, Message and Copy — survives where the actions live.
+        assertEquals(1, descriptor.allValues().size)
     }
 
     // Fixtures with an organization carry a value too: isValid() needs a name, phone or email, and
@@ -267,5 +272,281 @@ class ContactCardValuesTest {
         assertFalse("ada@ex.".looksLikeEmail())
         assertFalse("ada@a@b.com".looksLikeEmail())
         assertFalse("ada @example.com".looksLikeEmail())
+    }
+
+    // `identity()` is a parser, not a gate: a bare hostname is exactly what a well-formed odinId
+    // looks like, so an attacker's own domain parses fine. What stops the fetch is
+    // [avatarIdentity]'s author check, pinned below — this only fixes the shape.
+    @Test
+    fun `identity parses a hostname and rejects everything that is not one`() {
+        assertNull(card().copy(odinId = "not a domain").identity())
+        assertNull(card().copy(odinId = "https://evil.example.com/pub/image").identity())
+        assertNull(card().copy(odinId = "").identity())
+        assertNull(card().copy(odinId = "   ").identity())
+
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(card().copy(odinId = " samwise.gamgee.demo.rocks ").identity()).domainName,
+        )
+        // The payload a syntax check cannot catch, spelled out so nobody mistakes the above for one.
+        assertNotNull(card().copy(odinId = "tracker.evil.tld").identity())
+    }
+
+    // Rendering the avatar dials the identity's host, so a card someone else sent naming a third
+    // party is a read receipt they get for free — the case that must stay shut.
+    @Test
+    fun `a card someone else sent does not fetch a third party's avatar`() {
+        val card = card().copy(odinId = "samwise.gamgee.demo.rocks")
+
+        assertNull(
+            card.avatarIdentity(author = "tracker.evil.tld"),
+            "A card may name any identity; fetching it would beacon a third party.",
+        )
+        assertNull(card.avatarIdentity(author = null), "No author means no way to vouch for it.")
+        assertNull(card.avatarIdentity(author = ""))
+        assertNull(card().copy(odinId = "").avatarIdentity(author = "samwise.gamgee.demo.rocks"))
+    }
+
+    @Test
+    fun `a card sent by its own subject fetches, because they already know it arrived`() {
+        val card = card().copy(odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(card.avatarIdentity(author = "samwise.gamgee.demo.rocks")).domainName,
+        )
+        // Hosts are case-insensitive, and the envelope's casing is not the card author's to match.
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(card.avatarIdentity(author = " Samwise.Gamgee.Demo.Rocks ")).domainName,
+        )
+    }
+
+    // The common case, and the one a author-only gate silently turned into a no-op: you share a
+    // contact out of your own book, so the host is one you already resolve in the contact list.
+    @Test
+    fun `a card you sent yourself fetches whoever it names`() {
+        val card = card().copy(odinId = "todd.mitchell.demo.rocks")
+
+        assertEquals(
+            "todd.mitchell.demo.rocks",
+            assertNotNull(card.avatarIdentity(author = "me.demo.rocks", sentByYou = true)).domainName,
+        )
+        assertNull(
+            card.avatarIdentity(author = "me.demo.rocks", sentByYou = false),
+            "Received from someone else, the same card must not resolve.",
+        )
+        assertNull(
+            card().copy(odinId = "not a domain").avatarIdentity(author = null, sentByYou = true),
+            "Sending it yourself does not make a non-identity into a host.",
+        )
+    }
+
+    @Test
+    fun `an over-long identity makes the whole card unrenderable rather than truncating the host`() {
+        val tooLong = "a".repeat(ContactCardDescriptor.MAX_VALUE_CODEPOINTS + 1) + ".example.com"
+
+        assertFalse(card().copy(odinId = tooLong).isValid())
+    }
+
+    // The card is authored remotely: *21*<number># is a call-forwarding MMI, and a phone number
+    // never starts with * or #.
+    @Test
+    fun `a control code is not offered as a callable number`() {
+        assertTrue("*21*+15555550000#".isControlCode())
+        assertTrue("#31#+15555550000".isControlCode())
+        assertFalse("+14155550123".isControlCode())
+        // Mid-number # is a legitimate extension terminator and still escapes rather than truncating.
+        assertFalse("+14155550123,,99#".isControlCode())
+        assertEquals("+14155550123,,99%23", "+14155550123,,99#".telTarget())
+    }
+
+    @Test
+    fun `a nameless card is titled by its identity, and does not repeat it as a row`() {
+        val card = ContactCardDescriptor(displayName = "", odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals("samwise.gamgee.demo.rocks", card.summaryLine())
+        assertTrue(
+            card.bubbleValues().rows.none { it.kind == ContactValueKind.Identity },
+            "In the compact bubble the title already shows it.",
+        )
+        // But the detail dialog must still get it: it carries Open profile and Copy, and this card
+        // has nothing else at all.
+        assertEquals(
+            listOf(ContactValueKind.Identity),
+            card.allValues().map { it.kind },
+        )
+    }
+
+    @Test
+    fun `a card carrying only a structured name is not titled by its phone number`() {
+        val card = ContactCardDescriptor(
+            displayName = "",
+            givenName = "Ada",
+            surname = "Vance",
+            phones = listOf("+14155550123"),
+        )
+
+        assertEquals("Ada Vance", card.summaryLine())
+        assertEquals("AV", card.avatarInitials())
+        assertEquals(
+            listOf("+14155550123"),
+            card.bubbleValues().rows.map { it.value },
+            "The name is its own title, so the phone stays a row.",
+        )
+    }
+
+    @Test
+    fun `an identity leads the values, ahead of phones and emails`() {
+        val card = ContactCardDescriptor(
+            displayName = "Todd",
+            odinId = "samwise.gamgee.demo.rocks",
+            phones = listOf("+14155550123"),
+            emails = listOf("todd@example.com"),
+        )
+
+        assertEquals(
+            listOf(ContactValueKind.Identity, ContactValueKind.Phone, ContactValueKind.Email),
+            card.allValues().map { it.kind },
+        )
+    }
+
+    // ContactBookEntry.displayName is resolved *from* the odinId when a connection has no profile
+    // name, so both fields are set and identical — a field-presence check would keep the row and
+    // print the same line twice.
+    @Test
+    fun `a card whose name was resolved from its identity does not print it twice`() {
+        val card = ContactCardDescriptor(
+            displayName = "samwise.gamgee.demo.rocks",
+            odinId = "samwise.gamgee.demo.rocks",
+        )
+
+        assertEquals("samwise.gamgee.demo.rocks", card.summaryLine())
+        assertEquals(emptyList(), card.bubbleValues().rows)
+    }
+
+    @Test
+    fun `a phone-named card does not print its number twice either`() {
+        val card = ContactCardDescriptor(
+            displayName = "+14155550123",
+            phones = listOf("+14155550123"),
+        )
+
+        assertEquals(emptyList(), card.bubbleValues().rows)
+    }
+
+    @Test
+    fun `a real name is kept alongside its values`() {
+        val card = ContactCardDescriptor(
+            displayName = "Todd Mitchell",
+            odinId = "samwise.gamgee.demo.rocks",
+            phones = listOf("+14155550123"),
+        )
+
+        assertEquals(
+            listOf(ContactValueKind.Identity, ContactValueKind.Phone),
+            card.bubbleValues().rows.map { it.kind },
+            "Nothing was borrowed for the title, so nothing is dropped.",
+        )
+    }
+
+    @Test
+    fun `a control code hiding behind a pause or a plus is still refused`() {
+        assertTrue(",*21*15555550000#".isControlCode())
+        assertTrue("+*21*15555550000#".isControlCode())
+        assertTrue(",,#31#15555550000".isControlCode())
+        assertFalse("+14155550123".isControlCode())
+        assertFalse("+14155550123,,99#".isControlCode())
+    }
+
+    // FN is arbitrary text a vCard exporter chooses; when it equals the email rather than the first
+    // value, a position-based drop leaves the title printed twice.
+    @Test
+    fun `a title matching a value that is not the first is still not repeated`() {
+        val card = ContactCardDescriptor(
+            displayName = "ada@example.com",
+            phones = listOf("+14155550123"),
+            emails = listOf("ada@example.com"),
+        )
+
+        assertEquals("ada@example.com", card.summaryLine())
+        assertEquals(
+            listOf("+14155550123"),
+            card.bubbleValues().rows.map { it.value },
+        )
+        assertEquals(0, card.bubbleValues().hiddenCount)
+    }
+
+    @Test
+    fun `the title is matched without regard to case`() {
+        val card = ContactCardDescriptor(
+            displayName = "Ada@Example.com",
+            emails = listOf("ada@example.com"),
+        )
+
+        assertEquals(emptyList(), card.bubbleValues().rows)
+        assertEquals(
+            "",
+            ContactCardDescriptor(displayName = "acme", organization = "Acme").subtitleLine(),
+            "The subtitle must use the same comparison as the row drop, or both render.",
+        )
+    }
+
+    @Test
+    fun `a bidi override in a name never reaches the title`() {
+        val hostile = card(displayName = "Ada\u202E moc.live")
+
+        assertEquals("Ada moc.live", hostile.summaryLine())
+    }
+
+    @Test
+    fun `zero-width and control characters are dropped from rendered values`() {
+        val hostile = card(
+            displayName = "Ada",
+            phones = listOf("+1415\u200B5550123"),
+            emails = listOf("ada\u0000@example.com"),
+        )
+
+        assertEquals(listOf("+14155550123"), hostile.renderablePhones())
+        assertEquals(listOf("ada@example.com"), hostile.renderableEmails())
+    }
+
+    @Test
+    fun `ordinary text is untouched by the scrub`() {
+        assertEquals("Ada Lovelace \u00C9amonn \uD83C\uDF89", "Ada Lovelace \u00C9amonn \uD83C\uDF89".scrubbed())
+    }
+
+    // Saving is the path that outlives the bubble: a stored contact's odinId is fetched on every
+    // render of its row, with no author to check against any more.
+    @Test
+    fun `saving a card someone else sent does not bind its identity`() {
+        val hostile = card().copy(odinId = "tracker.evil.tld")
+
+        assertEquals("", hostile.forSaving(author = "friend.demo.rocks", sentByYou = false).odinId)
+        assertEquals("", hostile.forSaving(author = null, sentByYou = false).odinId)
+    }
+
+    @Test
+    fun `saving keeps an identity the envelope vouches for`() {
+        val own = card().copy(odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            own.forSaving(author = "samwise.gamgee.demo.rocks", sentByYou = false).odinId,
+        )
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            own.forSaving(author = null, sentByYou = true).odinId,
+        )
+    }
+
+    @Test
+    fun `gating the identity leaves the rest of the card intact`() {
+        val hostile = card(phones = listOf("+14155550123"), emails = listOf("ada@example.com"))
+            .copy(odinId = "tracker.evil.tld")
+
+        val saved = hostile.forSaving(author = "friend.demo.rocks", sentByYou = false)
+
+        assertEquals(hostile.copy(odinId = ""), saved)
     }
 }
