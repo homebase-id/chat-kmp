@@ -64,21 +64,15 @@ data class ContactCardDescriptor(
      * Ceiling: a card you *forwarded* rather than composed counts as [sentByYou] but was named by
      * its original sender. Gating on "is already one of my contacts" would close that too, at the
      * cost of a contact lookup per bubble.
+     *
+     * Saving deliberately has no equivalent gate: this one exists because the bubble fetches
+     * without being asked, whereas a save is an explicit act on a form that shows the identity,
+     * lets you edit it, and says what saving it means.
      */
     fun avatarIdentity(author: String?, sentByYou: Boolean = false): OdinId? =
         identity()?.takeIf {
             sentByYou || it.domainName.equals(author?.trim(), ignoreCase = true)
         }
-
-    /**
-     * The card as it may be *saved*. A stored contact's odinId drives an unconditional
-     * `https://<odinId>/pub/image` on every render of its row, so an identity bound from a card
-     * outlives — and goes around — the bubble's own avatar gate, from one tap. Same test as
-     * [avatarIdentity]; the field stays editable in the sheet, so a user who means to link the
-     * contact still can.
-     */
-    fun forSaving(author: String?, sentByYou: Boolean): ContactCardDescriptor =
-        if (avatarIdentity(author, sentByYou) != null) this else copy(odinId = "")
 
     fun isValid(): Boolean {
         if (displayName.codePointCount() > MAX_NAME_CODEPOINTS) return false

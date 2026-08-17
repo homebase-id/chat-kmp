@@ -49,6 +49,7 @@ import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.saveNewContact
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
+import id.homebase.resources.contactbook_edit_odinid_from_card
 import id.homebase.resources.chat_contact_card_exists_body
 import id.homebase.resources.chat_contact_card_exists_identity_body
 import id.homebase.resources.chat_contact_card_exists_open
@@ -209,6 +210,8 @@ fun ContactCardSaveHost(
         // Switching to the merge editor re-seeds every field, so the sheet has to start over. Keyed
         // on the descriptor too: ContactEditSheet seeds with an unkeyed remember, so a new card
         // arriving under a mounted sheet would otherwise keep the previous card's draft.
+        val odinIdNote = stringResource(MR.string.contactbook_edit_odinid_from_card)
+            .takeIf { descriptor.identity() != null && target?.odinId.isNullOrBlank() }
         key(descriptor, target?.uniqueId) {
             ContactEditSheet(
                 // The unfilled target: it decides whether the sheet calls itself profile-synced,
@@ -226,6 +229,11 @@ fun ContactCardSaveHost(
                 },
                 saving = current is SaveStage.Saving,
                 banner = banner,
+                // The card names an identity we could not attest (any client can put any host in
+                // that field), and a saved odinId is fetched on every render of the contact's row.
+                // Shown rather than stripped: silently emptying a field the bubble just displayed
+                // is the same defect as #1280.
+                odinIdNote = odinIdNote,
                 onSave = { draft, extraPhones, extraEmails, photo ->
                     val savedName = target?.displayName ?: cardName
                     val attempt: () -> Unit = {

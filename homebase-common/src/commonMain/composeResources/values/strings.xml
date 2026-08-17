@@ -1678,6 +1678,7 @@
     <string name="contactbook_edit_surname">Last name</string>
     <string name="contactbook_edit_odinid">Homebase ID</string>
     <string name="contactbook_edit_odinid_locked">Homebase ID can't be changed for a connected contact.</string>
+    <string name="contactbook_edit_odinid_from_card">From the card. Saving it lets this Homebase ID see when you open the contact — clear the field if you don't want that.</string>
     <string name="contactbook_edit_synced_banner">Synced from their Homebase profile. Changes you make are saved only for you and won't change their profile.</string>
     <string name="contactbook_edit_synced_from_profile">From their Homebase profile</string>
     <string name="contactbook_edit_overrides">Overrides their profile value (%1$s) · only you see this</string>
