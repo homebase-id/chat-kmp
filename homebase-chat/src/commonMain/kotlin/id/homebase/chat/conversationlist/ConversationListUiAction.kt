@@ -422,6 +422,11 @@ sealed interface ConversationListUiAction {
     /** Open the full-screen share-location screen (attachment sheet → Location). */
     data class OpenShareLocation(val conversationId: Uuid) : ConversationListUiAction
 
+    /** Open the contact book picker that sends a contact card (attachment sheet → Contact). The
+     *  contact book lives in :homebase-core, which this module can't see — hence a navigation
+     *  event rather than an in-place sheet. */
+    data class OpenShareContact(val conversationId: Uuid) : ConversationListUiAction
+
     /** Open the location setup screen — from the "set up location" prompt shown when a live share
      *  can't start because location isn't ready. */
     data object OpenLocationSetup : ConversationListUiAction

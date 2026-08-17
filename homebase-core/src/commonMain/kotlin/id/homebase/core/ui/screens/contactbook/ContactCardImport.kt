@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.contactbook
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.contactcard.VCardContact
+import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 
 /**
  * Turns a parsed vCard into the two shapes the share flow needs: the wire descriptor for the
@@ -21,8 +22,20 @@ object ContactCardImport {
             givenName = contact.givenName.cap(),
             surname = contact.surname.cap(),
             organization = contact.organization.cap(),
-            phones = contact.normalizedPhones(),
-            emails = contact.normalizedEmails(),
+            phones = contact.phones.normalizedPhones(),
+            emails = contact.emails.normalizedEmails(),
+        )
+        return descriptor.takeIf { it.isValid() }
+    }
+
+    /** [ContactBookEntry] has no organization field, so the descriptor's stays blank. */
+    fun toDescriptor(entry: ContactBookEntry): ContactCardDescriptor? {
+        val descriptor = ContactCardDescriptor(
+            displayName = entry.displayName.cap(),
+            givenName = entry.givenName.orEmpty().cap(),
+            surname = entry.surname.orEmpty().cap(),
+            phones = (listOfNotNull(entry.phone) + entry.additionalPhones).normalizedPhones(),
+            emails = (listOfNotNull(entry.email) + entry.additionalEmails).normalizedEmails(),
         )
         return descriptor.takeIf { it.isValid() }
     }
@@ -36,19 +49,19 @@ object ContactCardImport {
         return ContactDraft(
             givenName = fallbackGiven,
             surname = surname,
-            phone = contact.normalizedPhones().firstOrNull().orEmpty(),
-            email = contact.normalizedEmails().firstOrNull().orEmpty(),
+            phone = contact.phones.normalizedPhones().firstOrNull().orEmpty(),
+            email = contact.emails.normalizedEmails().firstOrNull().orEmpty(),
         )
     }
 
-    private fun VCardContact.normalizedPhones(): List<String> = phones
+    private fun List<String>.normalizedPhones(): List<String> = this
         .map { ContactFieldValidation.normalizePhone(it) }
         .filter { it.isNotBlank() }
         .distinct()
         .take(ContactCardDescriptor.MAX_VALUES_PER_KIND)
         .map { it.truncateToCodePoints(ContactCardDescriptor.MAX_VALUE_CODEPOINTS) }
 
-    private fun VCardContact.normalizedEmails(): List<String> = emails
+    private fun List<String>.normalizedEmails(): List<String> = this
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .distinct()

@@ -72,4 +72,44 @@ class AttachmentOptionsTest {
         onNodeWithTag("attachment_file").performClick()
         assertTrue(clicked)
     }
+
+    @Test
+    fun displaysContactOption() = runComposeUiTest {
+        setContent {
+            MaterialTheme {
+                AttachmentOptions(
+                    onGalleryClick = {},
+                    onFileClick = {},
+                    onContactClick = {},
+                    onLocationClick = {},
+                    onEventClick = {},
+                    onGroodleClick = {},
+                    onDicesClick = {},
+                    onPollClick = {},
+                )
+            }
+        }
+        onNodeWithTag("attachment_contact").assertExists()
+    }
+
+    @Test
+    fun contactClickCallbackFires() = runComposeUiTest {
+        var clicked = false
+        setContent {
+            MaterialTheme {
+                AttachmentOptions(
+                    onGalleryClick = {},
+                    onFileClick = {},
+                    onContactClick = { clicked = true },
+                    onLocationClick = {},
+                    onEventClick = {},
+                    onGroodleClick = {},
+                    onDicesClick = {},
+                    onPollClick = {},
+                )
+            }
+        }
+        onNodeWithTag("attachment_contact").performClick()
+        assertTrue(clicked)
+    }
 }

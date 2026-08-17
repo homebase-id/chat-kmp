@@ -96,6 +96,7 @@ import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
+import id.homebase.core.ui.screens.contactbook.ShareContactPickerViewModel
 import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -994,6 +995,14 @@ val appModule = module {
             circleName = params.get(),
             repo = get(),
             connectionService = get(),
+        )
+    }
+    // Manual block: conversationId arrives as a Koin runtime parameter from the ShareContact route.
+    viewModel { params ->
+        ShareContactPickerViewModel(
+            conversationId = params.get(),
+            repo = get(),
+            chatMessageSenderService = get(),
         )
     }
     viewModelOf(::ContactDetailViewModel)

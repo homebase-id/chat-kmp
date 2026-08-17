@@ -135,6 +135,7 @@ fun ConversationListScreen(
     onNavigateToLiveLocationMap: () -> Unit = {},
     onNavigateToLocationSetup: () -> Unit = {},
     onNavigateToShareLocation: (conversationId: String) -> Unit = {},
+    onNavigateToShareContact: (conversationId: String) -> Unit = {},
     onNavigateToContactInfo: (odinId: String) -> Unit,
     onNavigateToConversationSettings: (conversationId: String) -> Unit,
     onNavigateToGroupSettings: (conversationId: String) -> Unit,
@@ -218,6 +219,11 @@ fun ConversationListScreen(
             is ConversationListUiEvent.NavigateToShareLocation -> {
                 viewModel.eventConsumed()
                 onNavigateToShareLocation(event.conversationId)
+            }
+
+            is ConversationListUiEvent.NavigateToShareContact -> {
+                viewModel.eventConsumed()
+                onNavigateToShareContact(event.conversationId)
             }
 
             is ConversationListUiEvent.NavigateToContactInfo -> {

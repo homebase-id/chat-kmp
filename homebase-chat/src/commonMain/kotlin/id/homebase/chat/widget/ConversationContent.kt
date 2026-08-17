@@ -1745,6 +1745,9 @@ fun ConversationContent(
                         fileLauncher.launch()
                     }, onContactClick = {
                         showAttachmentSheet = false
+                        onUiAction(
+                            ConversationListUiAction.OpenShareContact(conversation.conversation.id)
+                        )
                     }, onLocationClick = {
                         Logger.d(tag = "LocationShare") { "share location clicked" }
                         showAttachmentSheet = false
