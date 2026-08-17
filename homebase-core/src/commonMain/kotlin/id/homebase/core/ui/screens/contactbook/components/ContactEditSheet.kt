@@ -87,14 +87,20 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.readBytes
 import org.jetbrains.compose.resources.stringResource
 
+/**
+ * [seed] pre-fills a NEW contact (it is ignored when [editing] is non-null) — used by the
+ * share-a-vCard flow so the user reviews imported fields before saving. A seeded phone that
+ * isn't E.164 stays visible and flagged; Save is gated on it being corrected.
+ */
 @Composable
 fun ContactEditSheet(
     editing: ContactBookEntry?,
     onSave: (ContactDraft, List<String>, List<String>, PlatformFile?) -> Unit,
     onDismiss: () -> Unit,
     odinIdLocked: Boolean = false,
+    seed: ContactDraft? = null,
 ) {
-    var draft by remember { mutableStateOf(editing?.toDraft() ?: ContactDraft()) }
+    var draft by remember { mutableStateOf(editing?.toDraft() ?: seed ?: ContactDraft()) }
     // Extra phones/emails beyond the single canonical slot — app-local additions (see overlay).
     // Phones carry a stable id so the stateful PhoneNumberField rows keep their seeded country/
     // national state when a row above them is removed (index-keying would shuffle that state).
