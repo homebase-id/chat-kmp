@@ -68,25 +68,7 @@ suspend fun saveContactDraft(
 
     val normalizedPhone = draft.phone.ifBlank { null }
         ?.let { ContactFieldValidation.normalizePhone(it) }
-    // An odinId may be set on a new contact, or kept from the edited one.
-    val odinId = draft.odinId.trim().ifBlank { null } ?: editing?.odinId?.ifBlank { null }
-
-    // The V2 server merges per-leaf with Coalesce(incoming, existing): a blanked field is "leave
-    // alone", never cleared. Mirror that here — keep the old value when an edit blanked a
-    // previously-set field — so the saved/optimistic content matches what the drive will sync back
-    // (no "cleared" field flashing empty then reappearing). `didClear` drives the user warning.
-    fun coalesce(new: String?, old: String?): String? = new?.ifBlank { null } ?: old?.ifBlank { null }
-    fun didClear(new: String?, old: String?): Boolean = !old.isNullOrBlank() && new.isNullOrBlank()
-
-    val mergedDisplay = coalesce(draft.displayName, editing?.displayName)
-    val mergedGiven = coalesce(draft.givenName, editing?.givenName)
-    val mergedSurname = coalesce(draft.surname, editing?.surname)
-    val mergedPhone = coalesce(normalizedPhone, editing?.phone)
-    val mergedEmail = coalesce(draft.email, editing?.email)
-    val mergedCity = coalesce(draft.city, editing?.city)
-    val mergedCountry = coalesce(draft.country, editing?.country)
-    val mergedBirthday = coalesce(draft.birthday, editing?.birthday)
-
+    val content = buildContactContent(draft, editing, normalizedPhone)
     val clearedFieldsIgnored = editing != null && (
         didClear(draft.givenName, editing.givenName) ||
             didClear(draft.surname, editing.surname) ||
@@ -96,35 +78,6 @@ suspend fun saveContactDraft(
             didClear(draft.country, editing.country) ||
             didClear(draft.birthday, editing.birthday)
         )
-
-    val content = ContactContent(
-        odinId = odinId,
-        name = ContactName(
-            displayName = mergedDisplay,
-            givenName = mergedGiven,
-            surname = mergedSurname,
-        ),
-        source = editing?.source ?: ContactBookSource.MANUAL,
-        // The edit form only touches city/country; carry the rest of the address from the edited
-        // contact so the optimistic content matches what the per-leaf server merge syncs back (the
-        // omitted street/postcode/label fields are "leave alone", not "clear").
-        location = if (mergedCity != null || mergedCountry != null ||
-            !editing?.addressLine1.isNullOrBlank() || !editing?.addressLine2.isNullOrBlank() ||
-            !editing?.postcode.isNullOrBlank() || !editing?.locationLabel.isNullOrBlank()
-        ) {
-            ContactLocation(
-                label = editing?.locationLabel?.ifBlank { null },
-                addressLine1 = editing?.addressLine1?.ifBlank { null },
-                addressLine2 = editing?.addressLine2?.ifBlank { null },
-                postcode = editing?.postcode?.ifBlank { null },
-                city = mergedCity,
-                country = mergedCountry,
-            )
-        } else null,
-        phone = mergedPhone?.let { ContactPhone(it) },
-        email = mergedEmail?.let { ContactEmail(it) },
-        birthday = mergedBirthday?.let { ContactBirthday(it) },
-    )
 
     val response = try {
         repo.save(
@@ -345,5 +298,61 @@ private suspend fun uploadContactPhoto(
         bytes = bytes,
         contentType = contentType,
         versionTag = versionTag,
+    )
+}
+
+// The V2 server merges per-leaf with Coalesce(incoming, existing): a blanked field is "leave
+// alone", never cleared. Mirror that here so the optimistic content matches what the drive syncs
+// back, instead of a cleared field flashing empty and reappearing.
+private fun coalesce(new: String?, old: String?): String? =
+    new?.ifBlank { null } ?: old?.ifBlank { null }
+
+private fun didClear(new: String?, old: String?): Boolean = !old.isNullOrBlank() && new.isNullOrBlank()
+
+/** Extracted so a test can assert the JSON that actually goes on the wire. */
+internal fun buildContactContent(
+    draft: ContactDraft,
+    editing: ContactBookEntry?,
+    normalizedPhone: String?,
+): ContactContent {
+    val odinId = draft.odinId.trim().ifBlank { null } ?: editing?.odinId?.ifBlank { null }
+    val mergedDisplay = coalesce(draft.displayName, editing?.displayName)
+    val mergedGiven = coalesce(draft.givenName, editing?.givenName)
+    val mergedSurname = coalesce(draft.surname, editing?.surname)
+    val mergedPhone = coalesce(normalizedPhone, editing?.phone)
+    val mergedEmail = coalesce(draft.email, editing?.email)
+    val mergedCity = coalesce(draft.city, editing?.city)
+    val mergedCountry = coalesce(draft.country, editing?.country)
+    val mergedBirthday = coalesce(draft.birthday, editing?.birthday)
+
+    return ContactContent(
+        odinId = odinId,
+        name = ContactName(
+            displayName = mergedDisplay,
+            givenName = mergedGiven,
+            surname = mergedSurname,
+        ),
+        source = editing?.source ?: ContactBookSource.MANUAL,
+        // The edit form only touches city/country; carry the rest of the address from the edited
+        // contact so the optimistic content matches what the per-leaf server merge syncs back (the
+        // omitted street/postcode/label fields are "leave alone", not "clear").
+        location = if (mergedCity != null || mergedCountry != null ||
+            !editing?.addressLine1.isNullOrBlank() || !editing?.addressLine2.isNullOrBlank() ||
+            !editing?.postcode.isNullOrBlank() || !editing?.locationLabel.isNullOrBlank()
+        ) {
+            ContactLocation(
+                label = editing?.locationLabel?.ifBlank { null },
+                addressLine1 = editing?.addressLine1?.ifBlank { null },
+                addressLine2 = editing?.addressLine2?.ifBlank { null },
+                postcode = editing?.postcode?.ifBlank { null },
+                city = mergedCity,
+                country = mergedCountry,
+            )
+        } else null,
+        // Named, not positional: `label` sits first on all three, so a positional argument files
+        // the number under the label and posts no number at all.
+        phone = mergedPhone?.let { ContactPhone(number = it) },
+        email = mergedEmail?.let { ContactEmail(email = it) },
+        birthday = mergedBirthday?.let { ContactBirthday(date = it) },
     )
 }
