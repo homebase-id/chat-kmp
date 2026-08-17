@@ -65,6 +65,10 @@ import id.homebase.core.util.applyDefaultStyling
 import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
+import id.homebase.resources.chat_error_load_conversations
+import id.homebase.resources.chat_error_load_messages
+import id.homebase.resources.chat_error_load_older_messages
+import id.homebase.resources.chat_error_scroll_to_message
 import id.homebase.resources.chat_introduce_preflight_in_progress
 import id.homebase.resources.chat_location_unavailable
 import id.homebase.resources.chat_search_result_conversations
@@ -1320,7 +1324,7 @@ class ConversationListViewModel(
                             Logger.e(throwable = e, tag = TAG) {
                                 "jump-to-message failed id=$conversationId message=${action.messageId}: ${e.message}"
                             }
-                            sendEvent(ShowErrorMessage("Failed to scroll to message: ${e.message}"))
+                            sendEvent(ShowErrorMessage(MR.string.chat_error_scroll_to_message, e.message ?: ""))
                         }
                     }
                 }
@@ -1342,7 +1346,7 @@ class ConversationListViewModel(
                         Logger.e(throwable = e, tag = TAG) {
                             "load older from server failed id=${action.conversationId}: ${e.message}"
                         }
-                        sendEvent(ShowErrorMessage("Failed to load older messages: ${e.message}"))
+                        sendEvent(ShowErrorMessage(MR.string.chat_error_load_older_messages, e.message ?: ""))
                     }
                 }
             }
@@ -1674,7 +1678,7 @@ class ConversationListViewModel(
                     }
                 }
             } catch (e: Exception) {
-                sendEvent(ShowErrorMessage("Failed to load conversations: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_load_conversations, e.message ?: ""))
             }
         }
     }
@@ -2092,7 +2096,7 @@ class ConversationListViewModel(
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "loadMessagesForConversation failed id=$conversationId trigger=$trigger: ${e.message}"
                 }
-                sendEvent(ShowErrorMessage("Failed to load messages: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_load_messages, e.message ?: ""))
             } finally {
                 watchdog.cancel()
                 // Backstop so the detail pane can never spin forever: the success path

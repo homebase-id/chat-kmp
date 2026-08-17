@@ -745,6 +745,10 @@ class AuthConnectionCoordinator(
         // Before driveRegistry.stop() clears the baseline this job diffs against.
         registryReconcileJob?.cancel()
         registryReconcileJob = null
+        // Before refreshWsSubscription.cancel(): its prune path calls trigger(), which would re-arm
+        // the debouncer — and unmount drives — against a session already being torn down (#1237).
+        grantReconcileJob?.cancel()
+        grantReconcileJob = null
         refreshWsSubscription.cancel()
         driveRegistry.stop()
         // Close every per-owner peer websocket so a second login doesn't inherit the first user's
