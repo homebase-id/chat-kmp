@@ -65,9 +65,7 @@ data class ContactCardDescriptor(
      * its original sender. Gating on "is already one of my contacts" would close that too, at the
      * cost of a contact lookup per bubble.
      *
-     * Saving deliberately has no equivalent gate: this one exists because the bubble fetches
-     * without being asked, whereas a save is an explicit act on a form that shows the identity,
-     * lets you edit it, and says what saving it means.
+     * Saving has no equivalent gate: this one exists because the bubble fetches without being asked.
      */
     fun avatarIdentity(author: String?, sentByYou: Boolean = false): OdinId? =
         identity()?.takeIf {

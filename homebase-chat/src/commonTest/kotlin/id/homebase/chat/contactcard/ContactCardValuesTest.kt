@@ -516,8 +516,7 @@ class ContactCardValuesTest {
         assertEquals("Ada Lovelace \u00C9amonn \uD83C\uDF89", "Ada Lovelace \u00C9amonn \uD83C\uDF89".scrubbed())
     }
 
-    // The bubble's avatar gate stays. Saving is not gated: the strip that used to run here emptied
-    // the identity field the bubble had just shown, with nothing said — the #1280 defect again.
+    // The bubble's avatar gate stays; saving is deliberately not gated.
     @Test
     fun `the avatar of a card someone else sent is not fetched`() {
         val hostile = card().copy(odinId = "tracker.evil.tld")
@@ -545,14 +544,11 @@ class ContactCardValuesTest {
         val hostile = card(phones = listOf("+14155550123"), emails = listOf("ada@example.com"))
             .copy(odinId = "tracker.evil.tld")
 
-        // Ungated on purpose: the sheet shows this, lets the user clear it, and says what
-        // saving it means. What must not happen is the field arriving blank.
         assertEquals("tracker.evil.tld", hostile.identity()?.domainName)
     }
 
     @Test
     fun `a garbage identity never reaches the editor claiming to be one`() {
-        // The gate on the way in is parseability, not provenance.
         assertNull(card().copy(odinId = "not a host!!").identity())
         assertNull(card().copy(odinId = "   ").identity())
     }
