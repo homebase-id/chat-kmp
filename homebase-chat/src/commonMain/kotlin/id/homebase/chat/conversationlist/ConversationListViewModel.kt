@@ -18,6 +18,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.core.emoji.EmojiNormalization.distinctByEmoji
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.chat.contactcard.VCardDescriptorFactory
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateBack
 import id.homebase.chat.conversationlist.ConversationListUiEvent.NavigateToNewConversation
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
@@ -161,6 +162,7 @@ class ConversationListViewModel(
     private val connectionRequestService: ConnectionRequestService,
     private val driveFileProvider: DriveFileProvider,
     private val shareContentProcessor: ShareContentProcessor,
+    private val vCardDescriptorFactory: VCardDescriptorFactory,
     private val localVideoContextStore: LocalAttachmentContextStore,
     private val pendingNotificationTap: PendingNotificationTap,
     private val cropResultBus: id.homebase.imageeditor.ui.CropResultBus,
@@ -263,6 +265,7 @@ class ConversationListViewModel(
         fileOperationsProvider = fileOperationsProvider,
         localVideoContextStore = localVideoContextStore,
         shareContentProcessor = shareContentProcessor,
+        vCardDescriptorFactory = vCardDescriptorFactory,
         userPreferences = userPreferences,
         sendEvent = ::sendEvent,
         dispatch = ::onAction,

@@ -8,6 +8,8 @@ import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.contactcard.SharedVCardDetector
+import id.homebase.chat.contactcard.VCardDescriptorFactory
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DeleteMessage
 import id.homebase.chat.conversationlist.ConversationListUiDialog.DiscardDraft
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
@@ -123,6 +125,7 @@ internal class MessageActionsHandler(
     private val fileOperationsProvider: FileOperationsProvider,
     private val localVideoContextStore: LocalAttachmentContextStore,
     private val shareContentProcessor: ShareContentProcessor,
+    private val vCardDescriptorFactory: VCardDescriptorFactory,
     private val userPreferences: UserPreferences,
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
@@ -980,6 +983,28 @@ internal class MessageActionsHandler(
                     "Shared content resolved to nothing (type=${descriptor.contentType}) — not sending"
                 }
                 sendEvent(ShowErrorMessage(MR.string.chat_error_shared_content_unreadable))
+                return
+            }
+
+            val contactCard = SharedVCardDetector.detect(
+                descriptor = descriptor,
+                fileSize = { fileOperationsProvider.getFileSize(shareContentProcessor.resolveFilePath(it)) },
+                readFileText = {
+                    fileOperationsProvider
+                        .readFileBytes(shareContentProcessor.resolveFilePath(it))
+                        .decodeToString()
+                },
+            )?.let { vCardDescriptorFactory.toDescriptor(it) }
+
+            if (contactCard != null) {
+                val newMessageId = Uuid.random()
+                pendingMessageId = newMessageId
+                chatMessageSenderService.sendNewTypedMessage(
+                    messageUniqueId = newMessageId,
+                    conversationId = conversationId,
+                    content = MessageContent.ContactCard(contactCard),
+                    previousMessageUniqueId = null,
+                )
                 return
             }
 

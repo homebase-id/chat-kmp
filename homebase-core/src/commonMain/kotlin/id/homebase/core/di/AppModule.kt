@@ -23,6 +23,7 @@ import okio.Path.Companion.toPath
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
+import id.homebase.chat.contactcard.VCardDescriptorFactory
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationmedia.ConversationMediaViewModel
@@ -94,6 +95,7 @@ import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.ContactCardImport
 import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -669,6 +671,9 @@ val appModule = module {
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)
+    // Lets chat's descriptor share path normalize a vCard through ContactFieldValidation, which
+    // lives here — homebase-chat must not depend on homebase-core.
+    single<VCardDescriptorFactory> { VCardDescriptorFactory(ContactCardImport::toDescriptor) }
     singleOf(::LocalAttachmentContextStore)
 
     singleOf(::ConnectionCacheRepository)
@@ -875,6 +880,7 @@ val appModule = module {
             connectionRequestService = get(),
             driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             shareContentProcessor = get(),
+            vCardDescriptorFactory = get(),
             localVideoContextStore = get(),
             pendingNotificationTap = get(),
             cropResultBus = get(),
