@@ -1004,6 +1004,7 @@ val appModule = module {
             repo = get(),
             overrideStore = get(),
             chatMessageSenderService = get(),
+            fileOperationsProvider = get(),
         )
     }
     viewModelOf(::ContactDetailViewModel)

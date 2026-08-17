@@ -6,6 +6,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.contacts.ContactRepository
+import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.builder.AttachmentInput
+import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.upload.PayloadBundle
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.services.content.MessageContent
@@ -37,6 +43,7 @@ class ShareContactPickerViewModel(
     private val repo: ContactRepository,
     private val overrideStore: ContactOverrideStore,
     private val chatMessageSenderService: ChatMessageSenderService,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ShareContactPickerUiState())
@@ -107,6 +114,33 @@ class ShareContactPickerViewModel(
         return entry?.let { ContactCardImport.toDescriptor(it) } ?: fallback
     }
 
+    /**
+     * The contact's stored photo, re-uploaded as a payload on the message. It cannot be referenced
+     * in place — it lives on the sender's own contacts drive, which the recipient can't read — and
+     * it cannot ride in the descriptor, which is capped at 7 KB. Best-effort by design: a card that
+     * reaches the conversation without its picture is far better than one that never sends.
+     */
+    private suspend fun photoBundle(uniqueId: Uuid?): PayloadBundle? = runCatching {
+        val contact = repo.contacts.value.firstOrNull { it.uniqueId == uniqueId } ?: return null
+        val image = contact.image ?: return null
+        val bytes = repo.loadPayloadBytes(contact, ContactsProvider.CONTACT_IMAGE_PAYLOAD_KEY)
+        if (bytes == null || bytes.isEmpty()) return null
+        val contentType = image.payload.contentType?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
+        val path = fileOperationsProvider.writeBytesToTempFile(
+            bytes = bytes,
+            prefix = "contact-card-photo",
+            suffix = if (contentType == "image/png") ".png" else ".jpg",
+        )
+        MessageAttachmentBuilder.buildSingle(
+            attachment = AttachmentInput(filePath = path, contentType = contentType),
+            fileOperationsProvider = fileOperationsProvider,
+            payloadKey = ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB + "0",
+        )
+    }.onFailure {
+        if (it is kotlin.coroutines.cancellation.CancellationException) throw it
+        Logger.w(throwable = it, tag = TAG) { "contact card photo skipped" }
+    }.getOrNull()
+
     private fun send() {
         val state = _uiState.value
         if (state.isSending) return
@@ -125,6 +159,7 @@ class ShareContactPickerViewModel(
                     conversationId = conversationId,
                     content = MessageContent.ContactCard(resolvedDescriptor(selectedId, descriptor)),
                     previousMessageUniqueId = null,
+                    payloadBundle = photoBundle(selectedId),
                 )
                 _events.emit(ShareContactPickerUiEvent.MessageSent)
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {

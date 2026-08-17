@@ -90,6 +90,10 @@ fun collectConversationOverview(
             else -> Unit
         }
 
+        // A contact card's photo is the subject's avatar, not a picture shared into the
+        // conversation, so it does not belong in the Media tab.
+        if (message.messageContent is MessageContent.ContactCard) continue
+
         val payloads = message.payloads?.filter {
             it.key != ChatProtocol.DefaultPayloadKey &&
                     !it.key.startsWith(ChatProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY)
