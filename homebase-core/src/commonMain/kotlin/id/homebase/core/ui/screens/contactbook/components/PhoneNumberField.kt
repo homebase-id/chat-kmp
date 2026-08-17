@@ -58,10 +58,7 @@ fun PhoneNumberField(
     var national by remember { mutableStateOf(seeded.second) }
     var pickerOpen by remember { mutableStateOf(false) }
 
-    fun emit(c: Country, n: String) {
-        val digits = n.filter { it.isDigit() }
-        onValueChange(if (digits.isBlank()) "" else "+${c.dialCode}$digits")
-    }
+    fun emit(c: Country, n: String) = onValueChange(composeE164(c, n))
 
     OutlinedTextField(
         value = national,
