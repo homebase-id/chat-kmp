@@ -253,9 +253,7 @@ fun MessageBubbleRaw(
                         isPendingSend = isPendingSend,
                         deliveryStatus = message.messageAppData.deliveryStatus,
                         pendingSince = message.userDate,
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .padding(start = 8.dp, end = 12.dp, bottom = 8.dp),
+                        modifier = Modifier.padding(start = 8.dp),
                     )
                 },
             )
