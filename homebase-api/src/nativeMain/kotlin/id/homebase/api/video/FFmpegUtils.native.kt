@@ -278,11 +278,6 @@ actual object FFmpegUtils {
                 allowTenBit = allowTenBit,
             )
 
-            if (plan.skipReason != null) {
-                println("Docs: compressVideo: AlreadyOptimal — ${plan.skipReason}")
-                return@withContext null
-            }
-
             // When using a VideoToolbox encoder, also HW-decode the input.
             // Without this, HEVC sources are software-decoded which is 3-4x
             // slower on iPhone (18s → 5s for a 15s 1080p60 HEVC clip).

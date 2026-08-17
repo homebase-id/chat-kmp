@@ -184,21 +184,6 @@ actual object FFmpegUtils {
             allowTenBit = allowTenBit,
         )
 
-        if (plan.skipReason != null) {
-            val elapsedMs = System.currentTimeMillis() - t0
-            Log.i(TAG, "compressVideo: ${elapsedMs}ms (AlreadyOptimal) ${plan.skipReason}")
-            // EXIF / GPS / location atoms survive an un-re-encoded pass-through;
-            // strip via mp4parser. Returns null if input had no location atoms
-            // — caller falls back to the original.
-            val sanitized = File(context.cacheDir, "sanitized_${inFile.name}")
-            return@withContext if (Mp4LocationStripper.stripTo(inputPath, sanitized.absolutePath)) {
-                Log.d(TAG, "Stripped location atoms → ${sanitized.absolutePath}")
-                sanitized.absolutePath
-            } else {
-                null
-            }
-        }
-
         val args = plan.args.toTypedArray()
         Log.d(TAG, "compressVideo args: ${args.joinToString(" ")}")
 

@@ -166,11 +166,6 @@ actual object FFmpegUtils {
             allowTenBit = allowTenBit,
         )
 
-        if (plan.skipReason != null) {
-            println("compressVideo: AlreadyOptimal — ${plan.skipReason}")
-            return@withContext null
-        }
-
         // Planner emits "argv after ffmpeg" — Desktop's ProcessBuilder needs
         // the binary path prepended. We also append the JVM-specific progress-
         // wiring flags so `runProcessWithLogs` can parse `-progress pipe:1`.

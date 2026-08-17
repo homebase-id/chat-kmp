@@ -119,11 +119,6 @@ actual object FFmpegUtils {
             allowTenBit = allowTenBit,
         )
 
-        if (plan.skipReason != null) {
-            // Already-optimal / within envelope: skip ffmpeg, let the caller keep the original.
-            return null
-        }
-
         if (isBlob) FFmpegBridge.writeFileFromUrl(MEMFS_INPUT, inputPath)
         else FFmpegBridge.writeFile(MEMFS_INPUT, inputBytes!!)
         val status = FFmpegBridge.exec(plan.args, onProgress)
