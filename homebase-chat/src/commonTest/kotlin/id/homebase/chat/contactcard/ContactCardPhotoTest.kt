@@ -49,7 +49,6 @@ class ContactCardPhotoTest {
 
     @Test
     fun `a non-image payload under the same key is not a photo`() {
-        // The key is shared with other web-ish payloads; only an image is an avatar.
         assertNull(contactCardPhotoPayload(listOf(photo(contentType = "application/json"))))
         assertNull(contactCardPhotoPayload(listOf(photo(contentType = null))))
     }
@@ -76,7 +75,6 @@ class ContactCardPhotoTest {
 
     @Test
     fun `a payload with no IV yields no image data`() {
-        // Undecryptable: rendering it would spin forever rather than fall back to initials.
         assertNull(data(listOf(photo(iv = null))))
         assertNull(data(listOf(photo(iv = "not base64 @@@"))))
     }
@@ -88,8 +86,6 @@ class ContactCardPhotoTest {
 
     @Test
     fun `the loader is told which thumbnail sizes actually exist`() {
-        // Device log, build of 2026-08-18: with this empty the loader guessed 121x121, which the
-        // server never stored, and logged a non-retriable 404 before falling back.
         val withThumbs = photo().copy(
             thumbnails = listOf(
                 ThumbnailDescriptor(pixelWidth = 300, pixelHeight = 300, contentType = "image/jpeg"),

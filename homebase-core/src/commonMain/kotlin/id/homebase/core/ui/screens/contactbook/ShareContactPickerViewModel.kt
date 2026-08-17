@@ -114,12 +114,8 @@ class ShareContactPickerViewModel(
         return entry?.let { ContactCardImport.toDescriptor(it) } ?: fallback
     }
 
-    /**
-     * The contact's stored photo, re-uploaded as a payload on the message. It cannot be referenced
-     * in place — it lives on the sender's own contacts drive, which the recipient can't read — and
-     * it cannot ride in the descriptor, which is capped at 7 KB. Best-effort by design: a card that
-     * reaches the conversation without its picture is far better than one that never sends.
-     */
+    // Re-uploaded rather than referenced: it lives on our own contacts drive, which the recipient
+    // cannot read. Best-effort — a photo failure must never block the card itself.
     private suspend fun photoBundle(uniqueId: Uuid?): PayloadBundle? = runCatching {
         val contact = repo.contacts.value.firstOrNull { it.uniqueId == uniqueId } ?: return null
         val image = contact.image ?: return null

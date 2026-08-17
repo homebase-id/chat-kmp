@@ -261,8 +261,8 @@ internal fun ContactCardAvatar(
     val fontScale = LocalDensity.current.fontScale
     val diameter = size * fontScale.coerceIn(1f, 1.5f)
 
-    // Needs no provenance gate, unlike the identity avatar below: these bytes already arrived on the
-    // message, so rendering them dials nobody.
+    // No provenance gate, unlike the identity avatar below: these bytes are already on the message,
+    // so drawing them dials nobody.
     if (photo != null) {
         HomebaseImage(
             imageData = photo,
