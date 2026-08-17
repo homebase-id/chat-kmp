@@ -54,7 +54,7 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-    ): String? =
+    ): String =
         heavyOpLock.withLock {
             compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality)
         }

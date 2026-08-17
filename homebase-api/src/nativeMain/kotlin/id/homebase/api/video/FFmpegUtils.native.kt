@@ -203,11 +203,11 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-    ): String? = withContext(Dispatchers.IO) {
+    ): String = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
         if (!fileManager.fileExistsAtPath(inputPath)) {
             println("Docs: Input file not found: $inputPath")
-            return@withContext null
+            throw VideoCompressionFailedException(inputPath, "input file not found")
         }
 
         val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
@@ -301,7 +301,7 @@ actual object FFmpegUtils {
 
         // Both encoders failed — delete the partial/empty output (see #5).
         deleteFailedFfmpegOutput(outputPath)
-        null
+        throw VideoCompressionFailedException(inputPath, "all encoders failed (${encoders.joinToString()})")
     }
 
     actual suspend fun segmentVideo(

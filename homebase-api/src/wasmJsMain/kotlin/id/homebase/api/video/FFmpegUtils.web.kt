@@ -82,14 +82,17 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-    ): String? {
+    ): String {
         // Input read strategy:
         //  - blob: URL (web editor's picked File) → probe + writeFile happen entirely in JS
         //    (fetch → mp4box / ffmpeg.writeFile); the original never enters Kotlin and is never
         //    base64'd. Size comes from the probe.
         //  - okio path (e.g. a compressed intermediate, or native) → read bytes into Kotlin as before.
         val isBlob = inputPath.startsWith("blob:")
-        val inputBytes = if (isBlob) null else (readOkioBytes(inputPath) ?: return null)
+        val inputBytes =
+            if (isBlob) null
+            else (readOkioBytes(inputPath)
+                ?: throw VideoCompressionFailedException(inputPath, "input file unreadable"))
 
         val hasTrim = trimStartMs != null && trimEndMs != null
         val effTrimStart = if (hasTrim) trimStartMs else null
@@ -121,7 +124,7 @@ actual object FFmpegUtils {
         if (status != 0) {
             FFmpegBridge.deleteFile(MEMFS_INPUT)
             FFmpegBridge.deleteFile(MEMFS_OUTPUT)
-            return null
+            throw VideoCompressionFailedException(inputPath, "ffmpeg.wasm exited $status")
         }
         val outBytes = FFmpegBridge.readFile(MEMFS_OUTPUT)
         FFmpegBridge.deleteFile(MEMFS_INPUT)

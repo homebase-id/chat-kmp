@@ -19,8 +19,9 @@ import id.homebase.api.client.KeyHeader
 interface VideoCompressor {
     /**
      * Re-encodes [inputPath] to the [quality] envelope, optionally trimming to
-     * `[trimStartMs, trimEndMs]`. Returns the output path, or null if compression
-     * was skipped/failed (callers fall back to the input path).
+     * `[trimStartMs, trimEndMs]`. Returns the path of the re-encoded output — always a new
+     * file, never the input. A failure throws [VideoCompressionFailedException]; there is no
+     * fall-back-to-input, which would defeat the 8-bit pin.
      */
     suspend fun compress(
         inputPath: String,
@@ -28,7 +29,7 @@ interface VideoCompressor {
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
-    ): String?
+    ): String
 
     /** Segments [inputPath] into an unencrypted HLS playlist + `.ts` segments. */
     suspend fun segment(

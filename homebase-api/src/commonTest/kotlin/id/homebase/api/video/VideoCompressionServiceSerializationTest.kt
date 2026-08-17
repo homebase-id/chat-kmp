@@ -47,7 +47,7 @@ class VideoCompressionServiceSerializationTest {
                 trimStartMs: Long?,
                 trimEndMs: Long?,
                 quality: VideoQuality,
-            ): String? {
+            ): String {
                 active++
                 totalEntries++
                 if (active > maxConcurrent) maxConcurrent = active
@@ -92,7 +92,7 @@ private open class NoopVideoCompressor : VideoCompressor {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-    ): String? = null
+    ): String = "out_$inputPath"
 
     override suspend fun segment(
         inputPath: String,

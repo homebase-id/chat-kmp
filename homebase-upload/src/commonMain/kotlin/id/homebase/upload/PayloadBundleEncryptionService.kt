@@ -111,10 +111,11 @@ class PayloadBundleEncryptionService(
 
                 index++;
             }
-        } catch (e: SourceUnavailableException) {
-            // A source vanished between the up-front probe and its read (the
-            // swept-mid-bundle race). Reap the encrypted temps produced so far so the
-            // failed send leaves no orphaned enc*/video temps, then rethrow to fail soft.
+        } catch (e: Throwable) {
+            // Any failure mid-bundle — a source swept between the up-front probe and its read,
+            // or a video whose transcode failed (VideoCompressionFailedException). Reap the
+            // encrypted temps produced so far so the failed send leaves no orphaned
+            // enc*/video temps, then rethrow to fail soft.
             newPayloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
             // The per-file delete above reaps a staged HLS index.ts but leaves its
             // hls_<uuid>/ parent (and sibling playlist). In the durable staging dir that

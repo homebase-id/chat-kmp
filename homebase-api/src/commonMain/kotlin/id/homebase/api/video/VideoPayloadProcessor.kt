@@ -135,7 +135,7 @@ class VideoPayloadProcessor(
                             )
                         }
                     },
-                ) ?: payload.filePath
+                )
             }
 
         // Everything below consumes the compressed scratch — segmentation, encryption,
