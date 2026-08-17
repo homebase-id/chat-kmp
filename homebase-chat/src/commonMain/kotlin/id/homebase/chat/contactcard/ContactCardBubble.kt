@@ -185,6 +185,9 @@ fun ContactCardBubble(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 4.dp, end = 12.dp, bottom = 6.dp),
+                    // SpaceBetween, not a weighted Spacer: a second weighted child would halve the
+                    // button's share and ellipsize the label at ordinary font scale.
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (onSaveToContacts != null) {
@@ -209,7 +212,6 @@ fun ContactCardBubble(
                             )
                         }
                     }
-                    Spacer(Modifier.weight(1f))
                     footer?.invoke()
                 }
             }
