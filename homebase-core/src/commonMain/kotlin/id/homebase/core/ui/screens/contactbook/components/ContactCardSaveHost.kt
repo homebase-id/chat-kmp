@@ -49,12 +49,12 @@ import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.saveNewContact
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.chat_contact_card_add_anyway
 import id.homebase.resources.chat_contact_card_exists_body
 import id.homebase.resources.chat_contact_card_exists_open
 import id.homebase.resources.chat_contact_card_exists_title
 import id.homebase.resources.chat_contact_card_merge
 import id.homebase.resources.chat_contact_card_merge_body
+import id.homebase.resources.chat_contact_card_merge_confirm
 import id.homebase.resources.chat_contact_card_partial_additions
 import id.homebase.resources.chat_contact_card_partial_photo
 import id.homebase.resources.chat_contact_card_retry
@@ -84,6 +84,9 @@ internal sealed interface SaveStage {
         val uniqueId: Uuid?,
         val photoFailed: Boolean,
         val additionsFailed: Boolean,
+        /** Captured when the write starts: a duplicate banner can still arrive mid-write, and
+         *  reading the merge target at render time names the wrong contact. */
+        val name: String? = null,
     ) : SaveStage
 }
 
@@ -125,6 +128,9 @@ fun ContactCardSaveHost(
     var stage by remember(descriptor) { mutableStateOf<SaveStage>(SaveStage.Editing) }
     var duplicate by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
     var mergeInto by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
+    var confirmMerge by remember(descriptor) { mutableStateOf<ContactBookEntry?>(null) }
+    // Retained so Failed's "Try again" repeats the write instead of just reopening the sheet.
+    var lastAttempt by remember(descriptor) { mutableStateOf<(() -> Unit)?>(null) }
     val cardName = descriptor.summaryLine()
         .ifBlank { stringResource(MR.string.chat_contact_card_title) }
 
@@ -159,6 +165,7 @@ fun ContactCardSaveHost(
         current is SaveStage.Forbidden || current is SaveStage.Failed
     ) {
         val match = duplicate
+        val saving = current is SaveStage.Saving
         val banner: (@Composable () -> Unit)? = when {
             target != null -> {
                 { MergeBanner(name = target.displayName) }
@@ -167,7 +174,10 @@ fun ContactCardSaveHost(
                 {
                     DuplicateBanner(
                         match = match,
-                        onMerge = { mergeInto = match },
+                        // The check is allowed to land late, so the banner can appear over a write
+                        // already in flight; acting on it then would rebuild the sheet mid-save.
+                        enabled = !saving,
+                        onMerge = { confirmMerge = match },
                         onOpen = {
                             onDismiss()
                             onOpenContact(match.uniqueId, match.odinId)
@@ -193,6 +203,8 @@ fun ContactCardSaveHost(
                 saving = current is SaveStage.Saving,
                 banner = banner,
                 onSave = { draft, extraPhones, extraEmails, photo ->
+                    val savedName = target?.displayName ?: cardName
+                    val attempt: () -> Unit = {
                     stage = SaveStage.Saving
                     appScope.launch {
                         val result = try {
@@ -220,8 +232,11 @@ fun ContactCardSaveHost(
                         }
                         // An override write reports no id; for a merge we already know it.
                         val next = saveStageFor(result).let {
-                            if (it is SaveStage.Saved && target != null) {
-                                it.copy(uniqueId = it.uniqueId ?: target.uniqueId)
+                            if (it is SaveStage.Saved) {
+                                it.copy(
+                                    uniqueId = it.uniqueId ?: target?.uniqueId,
+                                    name = savedName,
+                                )
                             } else {
                                 it
                             }
@@ -239,24 +254,67 @@ fun ContactCardSaveHost(
                         }
                         stage = next
                     }
+                    }
+                    lastAttempt = attempt
+                    attempt()
                 },
                 onDismiss = onDismiss,
             )
         }
     }
 
+    val pendingMerge = confirmMerge
+    if (pendingMerge != null) {
+        // Merging re-seeds every field from the matched contact, so anything typed here is lost.
+        AlertDialog(
+            onDismissRequest = { confirmMerge = null },
+            title = { Text(stringResource(MR.string.chat_contact_card_merge)) },
+            text = {
+                Text(
+                    stringResource(
+                        MR.string.chat_contact_card_merge_confirm,
+                        pendingMerge.displayName,
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        mergeInto = pendingMerge
+                        confirmMerge = null
+                    },
+                ) {
+                    Text(stringResource(MR.string.chat_contact_card_merge))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmMerge = null }) {
+                    Text(stringResource(MR.string.cancel))
+                }
+            },
+        )
+    }
+
     when (current) {
         SaveStage.Editing, SaveStage.Saving -> Unit
 
-        SaveStage.Forbidden -> RetryableFailure(
-            message = stringResource(MR.string.contactbook_error_forbidden),
-            onRetry = { stage = SaveStage.Editing },
-            onDismiss = onDismiss,
+        // No retry: a 403 is the app token missing manage-contacts, and repeating the write
+        // fails identically.
+        SaveStage.Forbidden -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(stringResource(MR.string.chat_contact_card_save_failed_title)) },
+            text = { Text(stringResource(MR.string.contactbook_error_forbidden)) },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(MR.string.ok)) }
+            },
         )
 
         SaveStage.Failed -> RetryableFailure(
             message = stringResource(MR.string.chat_contact_card_save_failed),
-            onRetry = { stage = SaveStage.Editing },
+            onRetry = {
+                val retry = lastAttempt
+                if (retry != null) retry() else stage = SaveStage.Editing
+            },
             onDismiss = onDismiss,
         )
 
@@ -273,7 +331,7 @@ fun ContactCardSaveHost(
                             stringResource(MR.string.chat_contact_card_partial_photo)
                         else -> stringResource(
                             MR.string.chat_contact_card_saved_body,
-                            target?.displayName ?: cardName,
+                            current.name ?: cardName,
                         )
                     }
                 )
@@ -329,6 +387,7 @@ private fun ContactCardDescriptor.emailsMissingFrom(entry: ContactBookEntry): Li
 @Composable
 private fun DuplicateBanner(
     match: ContactBookEntry,
+    enabled: Boolean,
     onMerge: () -> Unit,
     onOpen: () -> Unit,
 ) {
@@ -338,10 +397,10 @@ private fun DuplicateBanner(
         // Adding to the contact you already have is the recommended action, so it carries the
         // emphasis; saving a second contact is the sheet's own Save, one step below.
         actions = {
-            TextButton(onClick = onOpen) {
+            TextButton(onClick = onOpen, enabled = enabled) {
                 Text(stringResource(MR.string.chat_contact_card_exists_open))
             }
-            FilledTonalButton(onClick = onMerge) {
+            FilledTonalButton(onClick = onMerge, enabled = enabled) {
                 Text(stringResource(MR.string.chat_contact_card_merge))
             }
         },

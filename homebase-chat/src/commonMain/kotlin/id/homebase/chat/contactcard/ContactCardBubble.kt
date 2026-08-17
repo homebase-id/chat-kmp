@@ -91,25 +91,29 @@ fun ContactCardBubble(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
-        Column {
+        Column(
+            // The whole card takes the tap, action row included — a strip that looks like the
+            // message but ignores a press is worse than no affordance. Save still wins its own
+            // press: pointer dispatch reaches the child first.
+            modifier = Modifier
+                .semantics(mergeDescendants = true) {}
+                .let {
+                    // Off-stream the card must not be tappable: the detail dialog would draw
+                    // over the action menu that drew this preview.
+                    if (canOpenDetail) {
+                        it.combinedClickable(
+                            onClick = { showDetail = true },
+                            onClickLabel = openLabel,
+                            onLongClick = onLongClick,
+                            // Long-press is the card's only route to the action menu.
+                            onLongClickLabel = actionsLabel,
+                        )
+                    } else it
+                },
+        ) {
             Row(
-                // One node for the card, not twelve siblings; Save below stays its own target.
                 modifier = Modifier
                     .fillMaxWidth()
-                    .semantics(mergeDescendants = true) {}
-                    .let {
-                        // Off-stream the card must not be tappable: the detail dialog would draw
-                        // over the action menu that drew this preview.
-                        if (canOpenDetail) {
-                            it.combinedClickable(
-                                onClick = { showDetail = true },
-                                onClickLabel = openLabel,
-                                onLongClick = onLongClick,
-                                // Long-press is the card's only route to the action menu.
-                                onLongClickLabel = actionsLabel,
-                            )
-                        } else it
-                    }
                     .padding(
                         start = 12.dp,
                         top = 12.dp,

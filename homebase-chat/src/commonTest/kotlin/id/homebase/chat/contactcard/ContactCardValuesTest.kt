@@ -227,4 +227,45 @@ class ContactCardValuesTest {
     fun `a non-ASCII address is percent-encoded as UTF-8`() {
         assertEquals("z%C3%B6e@example.com", "zöe@example.com".mailtoTarget())
     }
+
+    // RFC 6068 makes ',' a recipient separator in the to component, and Outlook-family clients
+    // read ';' the same way — so leaving either intact silently CCs whoever the card names.
+    @Test
+    fun `an address cannot smuggle in a second recipient`() {
+        val target = "victim@example.com,attacker@evil.tld".mailtoTarget()
+
+        assertFalse(target.contains(','), "A literal , would address the second recipient too.")
+        assertEquals("victim@example.com%2Cattacker@evil.tld", target)
+
+        val semicolon = "victim@example.com;attacker@evil.tld".mailtoTarget()
+        assertFalse(semicolon.contains(';'))
+    }
+
+    // RFC 5724 gives sms: a comma-separated recipient list; tel: does not, and there ',' is a
+    // DTMF pause worth keeping.
+    @Test
+    fun `sms drops the recipient separator that tel keeps`() {
+        assertEquals("+15551234", "+1555,1234".smsTarget())
+        assertEquals("+1555,1234", "+1555,1234".telTarget())
+    }
+
+    // RFC 3966: bare '#' is the fragment delimiter, so the dialer stops reading there.
+    @Test
+    fun `a hash in a number is escaped rather than truncating it`() {
+        assertEquals("*21%23", "*21#".telTarget())
+        assertEquals("*21%23", "*21#".smsTarget())
+    }
+
+    @Test
+    fun `an address that cannot be mailed is not offered as one`() {
+        assertTrue("ada@example.com".looksLikeEmail())
+        assertTrue(" ada@example.co.uk ".looksLikeEmail())
+
+        assertFalse("ada at example.com".looksLikeEmail())
+        assertFalse("ada@example".looksLikeEmail())
+        assertFalse("@example.com".looksLikeEmail())
+        assertFalse("ada@ex.".looksLikeEmail())
+        assertFalse("ada@a@b.com".looksLikeEmail())
+        assertFalse("ada @example.com".looksLikeEmail())
+    }
 }

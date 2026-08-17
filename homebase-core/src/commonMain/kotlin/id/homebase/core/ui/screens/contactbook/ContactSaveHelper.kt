@@ -243,17 +243,39 @@ suspend fun saveContactEdit(
     val result = saveContactDraft(repo, draft, synced, photo)
     if (result !is ContactSaveResult.Success) return result
 
-    if (!additions.isEmpty || hadOverride) {
-        val tag = repo.contacts.value.firstOrNull { it.uniqueId == editing.uniqueId }?.versionTag
-        if (tag != null) {
-            try {
-                store.save(editing.uniqueId, tag, additions)
-            } catch (e: ForbiddenException) {
-                return ContactSaveResult.Forbidden
-            }
-        }
+    return attachEditAdditions(
+        result = result,
+        additions = additions,
+        hadOverride = hadOverride,
+        currentTag = repo.contacts.value.firstOrNull { it.uniqueId == editing.uniqueId }?.versionTag,
+        saveOverlay = { tag, overlay -> store.save(editing.uniqueId, tag, overlay) },
+    )
+}
+
+/**
+ * Layers [additions] onto an already-written contact and folds the outcome into [result]. The
+ * write is injected so the contract is assertable without a [ContactOverrideStore].
+ *
+ * [saveOverlay] reports a generic write failure as null, the same convention as
+ * [ContactOverrideStore.save]; that has to reach the caller as [ContactSaveResult.Success
+ * .additionsFailed], or the UI says "Contact saved" after every extra phone, extra email and the
+ * organization went nowhere. Same for a missing [currentTag] — no tag, no write, same loss.
+ */
+internal suspend fun attachEditAdditions(
+    result: ContactSaveResult.Success,
+    additions: ContactFieldOverlay,
+    hadOverride: Boolean,
+    currentTag: Uuid?,
+    saveOverlay: suspend (Uuid, ContactFieldOverlay) -> Uuid?,
+): ContactSaveResult {
+    if (additions.isEmpty && !hadOverride) return result
+    if (currentTag == null) return result.copy(additionsFailed = true)
+    val written = try {
+        saveOverlay(currentTag, additions)
+    } catch (e: ForbiddenException) {
+        return ContactSaveResult.Forbidden
     }
-    return result
+    return if (written == null) result.copy(additionsFailed = true) else result
 }
 
 private suspend fun uploadContactPhoto(

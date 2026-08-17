@@ -47,6 +47,24 @@ internal fun ContactCardDescriptor.avatarInitials(): String =
 // dialer can parse.
 internal fun String.dialable(): String = filter { it in '0'..'9' || it in "+*#," }
 
+// RFC 3966: an unescaped '#' is the fragment delimiter, so a dialer parses it as the end of the
+// number. ',' stays — in tel: it is a legitimate DTMF pause.
+internal fun String.telTarget(): String = dialable().replace("#", "%23")
+
+// RFC 5724 makes ',' the recipient separator in sms:, so a card value carrying one would silently
+// address a second number.
+internal fun String.smsTarget(): String = dialable().filter { it != ',' }.replace("#", "%23")
+
+// Shape only, and deliberately lenient: this exists to stop a mail client opening on a garbage
+// recipient, not to validate addresses. :homebase-chat cannot see ContactFieldValidation.
+internal fun String.looksLikeEmail(): Boolean {
+    val v = trim()
+    val at = v.indexOf('@')
+    val dot = v.indexOf('.', at + 1)
+    return at > 0 && at == v.lastIndexOf('@') && dot > at + 1 && dot < v.length - 1 &&
+        v.none { it.isWhitespace() }
+}
+
 // RFC 6068: without percent-encoding, a `?` in the address opens the rest of it as mailto headers —
 // subject, cc, even body.
 internal fun String.mailtoTarget(): String {
@@ -64,5 +82,8 @@ internal fun String.mailtoTarget(): String {
     }
 }
 
-private const val MAILTO_SAFE = "-._~!$'()*+,;:@"
+// ',' and ';' are deliberately absent: RFC 6068 makes ',' a recipient separator (and
+// Outlook-family clients treat ';' the same), so leaving them addresses the compose window to
+// whoever the card names after the real recipient.
+private const val MAILTO_SAFE = "-._~!$'()*+:@"
 private const val HEX = "0123456789ABCDEF"

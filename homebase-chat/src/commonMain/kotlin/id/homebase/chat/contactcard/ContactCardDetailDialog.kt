@@ -64,6 +64,7 @@ import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_send_email
 import id.homebase.resources.chat_contact_card_title
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -191,22 +192,21 @@ private fun ContactCardDetailContent(
                 }
             }
 
-            val messageLabel = stringResource(MR.string.chat_contact_card_message)
             ValueSection(
                 header = stringResource(MR.string.chat_contact_card_phones),
                 values = descriptor.renderablePhones(),
                 kind = ContactValueKind.Phone,
                 actionLabel = stringResource(MR.string.chat_contact_card_call),
-                onAction = { phone -> openUri("tel:${phone.dialable()}") },
-                copyLabel = stringResource(MR.string.chat_contact_card_copy_phone),
+                onAction = { phone -> openUri("tel:${phone.telTarget()}") },
+                copyLabel = MR.string.chat_contact_card_copy_phone,
                 onCopy = copyValue,
                 // An all-Arabic-Indic number builds `tel:` with nothing after it.
                 canAct = { it.dialable().isNotBlank() },
                 secondaryAction = { phone ->
                     ValueRowAction(
-                        label = messageLabel,
+                        label = stringResource(MR.string.chat_contact_card_message, phone),
                         icon = Icons.AutoMirrored.Outlined.Message,
-                        onClick = { openUri("sms:${phone.dialable()}") },
+                        onClick = { openUri("sms:${phone.smsTarget()}") },
                     )
                 },
             )
@@ -217,8 +217,11 @@ private fun ContactCardDetailContent(
                 kind = ContactValueKind.Email,
                 actionLabel = stringResource(MR.string.chat_contact_card_send_email),
                 onAction = { email -> openUri("mailto:${email.mailtoTarget()}") },
-                copyLabel = stringResource(MR.string.chat_contact_card_copy_email),
+                copyLabel = MR.string.chat_contact_card_copy_email,
                 onCopy = copyValue,
+                // Otherwise "ada at example.com" still offers Send email and opens the mail
+                // client on a recipient it cannot use.
+                canAct = { it.looksLikeEmail() },
             )
 
             Spacer(Modifier.height(24.dp))
@@ -239,10 +242,12 @@ private fun ValueSection(
     kind: ContactValueKind,
     actionLabel: String,
     onAction: (String) -> Unit,
-    copyLabel: String,
+    // A resource, not a string: every row's button would otherwise carry the same description, so
+    // a three-phone card reads as three identical "Copy phone number" stops.
+    copyLabel: StringResource,
     onCopy: (String) -> Unit,
     canAct: (String) -> Boolean = { true },
-    secondaryAction: ((String) -> ValueRowAction)? = null,
+    secondaryAction: (@Composable (String) -> ValueRowAction)? = null,
 ) {
     if (values.isEmpty()) return
     Spacer(Modifier.height(24.dp))
@@ -261,7 +266,7 @@ private fun ValueSection(
             actionLabel = actionLabel.takeIf { actionable },
             onAction = if (actionable) ({ onAction(value) }) else null,
             secondary = if (actionable) secondaryAction?.invoke(value) else null,
-            copyLabel = copyLabel,
+            copyLabel = stringResource(copyLabel, value),
             onCopy = { onCopy(value) },
         )
     }
