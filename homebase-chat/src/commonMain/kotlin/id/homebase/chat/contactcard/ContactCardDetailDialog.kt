@@ -15,7 +15,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Button
@@ -29,15 +30,19 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,22 +52,25 @@ import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_action_unavailable
 import id.homebase.resources.chat_contact_card_call
+import id.homebase.resources.chat_contact_card_close
 import id.homebase.resources.chat_contact_card_copied
-import id.homebase.resources.chat_contact_card_copy_value
+import id.homebase.resources.chat_contact_card_copy_email
+import id.homebase.resources.chat_contact_card_copy_phone
+import id.homebase.resources.chat_contact_card_detail_pane
 import id.homebase.resources.chat_contact_card_emails
+import id.homebase.resources.chat_contact_card_message
 import id.homebase.resources.chat_contact_card_phones
 import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_send_email
 import id.homebase.resources.chat_contact_card_title
-import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * Full-screen detail for a received contact card, mirroring `EventDetailDialog`: every phone and
- * email the bubble had to leave out, each with an explicit action and its own copy button.
- * Call and Send email are both offered on every platform — a desktop that has no handler for the
- * scheme throws out of openUri and says so, which is the same contract mailto: already had.
+ * Full-screen detail for a received contact card: every phone and email the bubble had to leave
+ * out, each with its actions and its own copy button. Call, Message and Send email are offered on
+ * every platform — a desktop that has no handler for the scheme throws out of openUri and says so,
+ * which is the same contract mailto: already had.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,8 +119,16 @@ private fun ContactCardDetailContent(
         }
     }
 
+    // Pinned, not enterAlways: the close button is the only dismiss affordance and must not scroll
+    // away. It still recolours the container once content sits behind it.
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val paneName = stringResource(MR.string.chat_contact_card_detail_pane)
+
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .semantics { paneTitle = paneName },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -120,11 +136,12 @@ private fun ContactCardDetailContent(
                 navigationIcon = {
                     IconButton(onClick = onDismiss) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(MR.string.chat_contact_card_close),
                         )
                     }
                 },
+                scrollBehavior = scrollBehavior,
             )
         },
     ) { padding ->
@@ -174,15 +191,24 @@ private fun ContactCardDetailContent(
                 }
             }
 
+            val messageLabel = stringResource(MR.string.chat_contact_card_message)
             ValueSection(
                 header = stringResource(MR.string.chat_contact_card_phones),
                 values = descriptor.renderablePhones(),
                 kind = ContactValueKind.Phone,
                 actionLabel = stringResource(MR.string.chat_contact_card_call),
                 onAction = { phone -> openUri("tel:${phone.dialable()}") },
+                copyLabel = stringResource(MR.string.chat_contact_card_copy_phone),
                 onCopy = copyValue,
                 // An all-Arabic-Indic number builds `tel:` with nothing after it.
                 canAct = { it.dialable().isNotBlank() },
+                secondaryAction = { phone ->
+                    ValueRowAction(
+                        label = messageLabel,
+                        icon = Icons.AutoMirrored.Outlined.Message,
+                        onClick = { openUri("sms:${phone.dialable()}") },
+                    )
+                },
             )
 
             ValueSection(
@@ -191,6 +217,7 @@ private fun ContactCardDetailContent(
                 kind = ContactValueKind.Email,
                 actionLabel = stringResource(MR.string.chat_contact_card_send_email),
                 onAction = { email -> openUri("mailto:${email.mailtoTarget()}") },
+                copyLabel = stringResource(MR.string.chat_contact_card_copy_email),
                 onCopy = copyValue,
             )
 
@@ -199,15 +226,23 @@ private fun ContactCardDetailContent(
     }
 }
 
+private class ValueRowAction(
+    val label: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
+
 @Composable
 private fun ValueSection(
     header: String,
     values: List<String>,
     kind: ContactValueKind,
-    actionLabel: String?,
+    actionLabel: String,
     onAction: (String) -> Unit,
+    copyLabel: String,
     onCopy: (String) -> Unit,
     canAct: (String) -> Boolean = { true },
+    secondaryAction: ((String) -> ValueRowAction)? = null,
 ) {
     if (values.isEmpty()) return
     Spacer(Modifier.height(24.dp))
@@ -219,12 +254,14 @@ private fun ValueSection(
     )
     values.forEach { value ->
         Spacer(Modifier.height(8.dp))
-        val actionable = actionLabel != null && canAct(value)
+        val actionable = canAct(value)
         ValueRow(
             kind = kind,
             value = value,
             actionLabel = actionLabel.takeIf { actionable },
             onAction = if (actionable) ({ onAction(value) }) else null,
+            secondary = if (actionable) secondaryAction?.invoke(value) else null,
+            copyLabel = copyLabel,
             onCopy = { onCopy(value) },
         )
     }
@@ -236,6 +273,8 @@ private fun ValueRow(
     value: String,
     actionLabel: String?,
     onAction: (() -> Unit)?,
+    secondary: ValueRowAction?,
+    copyLabel: String,
     onCopy: () -> Unit,
 ) {
     Surface(
@@ -246,7 +285,9 @@ private fun ValueRow(
             .heightIn(min = 56.dp)
             .clip(MaterialTheme.shapes.medium)
             .let {
-                if (onAction != null) it.clickable(onClickLabel = actionLabel, onClick = onAction)
+                // No onClickLabel: the visible action label below is already inside this merged
+                // node, and TalkBack would otherwise read it twice.
+                if (onAction != null) it.clickable(onClick = onAction)
                 else it.semantics(mergeDescendants = true) {}
             },
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -282,10 +323,19 @@ private fun ValueRow(
                 }
             }
             Spacer(Modifier.width(8.dp))
+            if (secondary != null) {
+                IconButton(onClick = secondary.onClick) {
+                    Icon(
+                        imageVector = secondary.icon,
+                        contentDescription = secondary.label,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             IconButton(onClick = onCopy) {
                 Icon(
                     imageVector = Icons.Outlined.ContentCopy,
-                    contentDescription = stringResource(MR.string.chat_contact_card_copy_value, value),
+                    contentDescription = copyLabel,
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }

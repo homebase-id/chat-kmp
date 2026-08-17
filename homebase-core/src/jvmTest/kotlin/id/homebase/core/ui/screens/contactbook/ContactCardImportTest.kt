@@ -88,6 +88,7 @@ class ContactCardImportTest {
 
         assertEquals("Ada", draft.givenName)
         assertEquals("Vance", draft.surname)
+        assertEquals("Homebase", draft.organization)
         assertEquals("+14155550123", draft.phone)
         assertEquals("ada@example.com", draft.email)
         assertTrue(draft.isSavable, "A well-formed card must be savable straight from the prefill.")
@@ -163,6 +164,7 @@ class ContactCardImportTest {
         email: String? = null,
         additionalPhones: List<String> = emptyList(),
         additionalEmails: List<String> = emptyList(),
+        organization: String? = null,
     ) = ContactBookEntry(
         uniqueId = Uuid.random(),
         fileId = Uuid.random(),
@@ -172,6 +174,7 @@ class ContactCardImportTest {
         email = email,
         additionalPhones = additionalPhones,
         additionalEmails = additionalEmails,
+        organization = organization,
     )
 
     @Test
@@ -191,6 +194,23 @@ class ContactCardImportTest {
         assertEquals("+14155550123", draft.phone, "A card from another client is re-normalized here.")
         assertEquals("ada@example.com", draft.email)
         assertTrue(draft.isSavable)
+    }
+
+    @Test
+    fun `a received descriptor seeds the editor with the organization it displayed`() {
+        val draft = ContactCardImport.toDraft(
+            ContactCardDescriptor(
+                displayName = "Ada Vance",
+                organization = "Contoso Fährverkehr 🚢 GmbH",
+                phones = listOf("+14155550123"),
+            ),
+        )
+
+        assertEquals(
+            "Contoso Fährverkehr 🚢 GmbH",
+            draft.organization,
+            "The card renders it as the subtitle; saving must not drop it on the floor.",
+        )
     }
 
     @Test
@@ -390,5 +410,67 @@ class ContactCardImportTest {
     @Test
     fun `a card with nothing extra writes no override at all`() {
         assertTrue(additionsOverlay(listOf("", " "), listOf("")).isEmpty)
+    }
+
+    // --- Organization: displayed on the card, but with no slot in the contact schema ---
+
+    @Test
+    fun `the organization survives the round trip from card to saved contact and back`() {
+        val received = ContactCardDescriptor(
+            displayName = "Ada Vance",
+            organization = "Contoso Fährverkehr 🚢 GmbH",
+            phones = listOf("+14155550123"),
+        )
+
+        val draft = ContactCardImport.toDraft(received)
+        val overlay = additionsOverlay(
+            ContactCardImport.extraPhones(received),
+            ContactCardImport.extraEmails(received),
+            draft.organization,
+        )
+
+        assertEquals(
+            "Contoso Fährverkehr 🚢 GmbH",
+            overlay.organization,
+            "ContactContent has no organization, so the override is the only store that keeps it.",
+        )
+
+        // Through withOverride, not a hand-built entry: that hop is the one that reads the
+        // override back, so seeding organization directly would pass over an inert feature.
+        val saved = entry("Ada Vance", phone = draft.phone).withOverride(overlay)
+
+        assertEquals(
+            received.organization,
+            ContactCardImport.toDescriptor(saved)?.organization,
+            "Re-sharing the saved contact has to put the organization back on the card.",
+        )
+    }
+
+    @Test
+    fun `an organization alone is enough to need an override`() {
+        val overlay = additionsOverlay(emptyList(), emptyList(), "Contoso")
+
+        assertFalse(overlay.isEmpty, "Otherwise the save skips the override write and loses it.")
+        assertEquals("Contoso", overlay.organization)
+    }
+
+    @Test
+    fun `the additions overlay trims a blank organization away and caps a long one`() {
+        assertNull(additionsOverlay(emptyList(), emptyList(), "   ").organization)
+        assertEquals("Contoso", additionsOverlay(emptyList(), emptyList(), " Contoso ").organization)
+
+        val capped = assertNotNull(
+            additionsOverlay(emptyList(), emptyList(), "🚢".repeat(90)).organization,
+        )
+        assertEquals("🚢".repeat(ContactCardDescriptor.MAX_NAME_CODEPOINTS), capped)
+        assertTrue(
+            ContactCardDescriptor(displayName = "Ada", organization = capped).isValid(),
+            "An over-cap organization would make every re-share of this contact unshareable.",
+        )
+    }
+
+    @Test
+    fun `a contact with no organization leaves the field off the card`() {
+        assertEquals("", ContactCardImport.toDescriptor(entry("Ada", phone = "+14155550123"))?.organization)
     }
 }

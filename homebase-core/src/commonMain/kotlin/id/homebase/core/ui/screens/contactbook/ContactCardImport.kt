@@ -35,12 +35,12 @@ object ContactCardImport {
         return descriptor.takeIf { it.isValid() }
     }
 
-    /** [ContactBookEntry] has no organization field, so the descriptor's stays blank. */
     fun toDescriptor(entry: ContactBookEntry): ContactCardDescriptor? {
         val descriptor = ContactCardDescriptor(
             displayName = entry.displayName.cap(),
             givenName = entry.givenName.orEmpty().cap(),
             surname = entry.surname.orEmpty().cap(),
+            organization = entry.organization.orEmpty().cap(),
             phones = (listOfNotNull(entry.phone) + entry.additionalPhones).normalizedPhones(),
             emails = (listOfNotNull(entry.email) + entry.additionalEmails).normalizedEmails(),
         )
@@ -51,6 +51,7 @@ object ContactCardImport {
         givenName = contact.givenName.cap(),
         surname = contact.surname.cap(),
         displayName = contact.displayName.cap(),
+        organization = contact.organization.cap(),
         phones = contact.phones,
         emails = contact.emails,
     )
@@ -61,6 +62,7 @@ object ContactCardImport {
         givenName = descriptor.givenName.cap(),
         surname = descriptor.surname.cap(),
         displayName = descriptor.displayName.cap(),
+        organization = descriptor.organization.cap(),
         phones = descriptor.phones,
         emails = descriptor.emails,
     )
@@ -118,6 +120,7 @@ object ContactCardImport {
         givenName: String,
         surname: String,
         displayName: String,
+        organization: String,
         phones: List<String>,
         emails: List<String>,
     ): ContactDraft {
@@ -127,6 +130,7 @@ object ContactCardImport {
         return ContactDraft(
             givenName = fallbackGiven,
             surname = surname,
+            organization = organization,
             phone = phones.normalizedPhones().firstOrNull().orEmpty(),
             email = emails.normalizedEmails().firstOrNull().orEmpty(),
         )

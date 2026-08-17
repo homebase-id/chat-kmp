@@ -94,6 +94,7 @@ data class ContactDraft(
     val city: String = "",
     val country: String = "",
     val birthday: String = "",
+    val organization: String = "",
 ) {
     val displayName: String get() = listOf(givenName, surname).filter { it.isNotBlank() }.joinToString(" ").trim()
 
@@ -118,6 +119,7 @@ fun ContactBookEntry.toDraft(): ContactDraft = ContactDraft(
     city = city.orEmpty(),
     country = country.orEmpty(),
     birthday = birthday.orEmpty(),
+    organization = organization.orEmpty(),
 )
 
 @Immutable
