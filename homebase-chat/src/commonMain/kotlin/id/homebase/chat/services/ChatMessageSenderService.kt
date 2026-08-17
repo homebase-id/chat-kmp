@@ -5,6 +5,7 @@ import id.homebase.upload.thumbnailDescriptorsFor
 import id.homebase.upload.PayloadBundle
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
@@ -859,8 +860,16 @@ class ChatMessageSenderService(
             // The descriptor IS the header content for these kinds. Round-tripping it through the
             // MessageAppData envelope drops every field the descriptor requires, so the receiver
             // parses the forward into a null descriptor and paints the unsupported-format chip.
-            // No size check either: these bytes already passed MaxHeaderContentBytes on the
-            // original send and are forwarded unchanged.
+            //
+            // Size is re-checked here rather than trusted: a received card passed the *sending*
+            // client's limit, not ours, and the descriptor's own caps are in codepoints — ten
+            // non-BMP phones and ten emails clear isValid() at roughly 11 KB of UTF-8. Without
+            // this the forward throws out of validateMetadata inside a fire-and-forget send and
+            // surfaces as a failed bubble with no reason.
+            val size = content.encodeToByteArray().size
+            require(size <= HomebaseProtocol.MaxHeaderContentBytes) {
+                "forwarded header content is $size bytes, over ${HomebaseProtocol.MaxHeaderContentBytes}"
+            }
             MessageBuildResult(
                 headerContent = content,
                 payloadBundle = buildMediaPayloadBundle(sourceFile),
