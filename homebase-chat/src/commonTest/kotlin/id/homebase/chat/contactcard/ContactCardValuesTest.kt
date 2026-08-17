@@ -52,16 +52,17 @@ class ContactCardValuesTest {
 
     @Test
     fun `phones come before emails so the rows the bubble keeps are the callable ones`() {
+        // One more phone than fits, so the email is only kept if ordering fails to push it out.
         val bubble = card(
-            phones = listOf("+14155550123", "+14155550124"),
+            phones = List(ContactCardBubbleRowLimit + 1) { "+1415555012$it" },
             emails = listOf("ada@example.com"),
         ).bubbleValues()
 
         assertEquals(
-            listOf(ContactValueKind.Phone, ContactValueKind.Phone),
+            List(ContactCardBubbleRowLimit) { ContactValueKind.Phone },
             bubble.rows.map { it.kind },
         )
-        assertEquals(1, bubble.hiddenCount)
+        assertEquals(2, bubble.hiddenCount)
     }
 
     @Test

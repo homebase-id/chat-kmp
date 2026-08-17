@@ -188,6 +188,10 @@ class ContactOverrideStore internal constructor(
         val content = if (overlay.isEmpty) null else json.encodeToString(overlay)
         val newTag = writeOverride(uniqueId, versionTag, content) ?: return null
 
+        // A fetch already in flight read the pre-write blob, and loadInto's guard only compares
+        // tags — which this write leaves untouched on the Contact it captured. Drop it, or it
+        // lands afterwards and reinstates the overlay the user just replaced.
+        mutex.withLock { inFlight.remove(uniqueId) }
         hydratedVersion.update { it + (uniqueId to newTag) }
         _overrides.update { if (overlay.isEmpty) it - uniqueId else it + (uniqueId to overlay) }
         return newTag

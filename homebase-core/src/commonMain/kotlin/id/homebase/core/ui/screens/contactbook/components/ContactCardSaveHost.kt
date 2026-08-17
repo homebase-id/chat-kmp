@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContactPage
-import androidx.compose.material.icons.outlined.HowToReg
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -123,6 +123,9 @@ fun ContactCardSaveHost(
     descriptor: ContactCardDescriptor?,
     onDismiss: () -> Unit,
     onOpenContact: (uniqueId: Uuid, odinId: String?) -> Unit,
+    // A clean save is expected and non-destructive, so it reports as a snackbar rather than a
+    // second modal. Raised here because it must outlive this host, which unmounts immediately.
+    onSaved: (name: String, uniqueId: Uuid?) -> Unit,
 ) {
     if (descriptor == null) return
 
@@ -356,13 +359,22 @@ fun ContactCardSaveHost(
             onDismiss = { stage = SaveStage.Editing },
         )
 
-        is SaveStage.Saved -> AlertDialog(
+        is SaveStage.Saved -> if (
+            !current.additionsFailed && !current.photoFailed && !current.clearedFieldsIgnored
+        ) {
+            val name = current.name ?: cardName
+            val uniqueId = current.uniqueId
+            LaunchedEffect(current) {
+                onSaved(name, uniqueId)
+                onDismiss()
+            }
+        } else AlertDialog(
             onDismissRequest = onDismiss,
-            icon = { Icon(Icons.Outlined.HowToReg, contentDescription = null) },
+            // Every partial failure, not just the first: two can be true at once, and the
+            // unmentioned one is the data the user thinks they saved.
+            icon = { Icon(Icons.Outlined.ErrorOutline, contentDescription = null) },
             title = { Text(stringResource(MR.string.chat_contact_card_saved_title)) },
             text = {
-                // Every partial failure, not just the first: two can be true at once, and the
-                // unmentioned one is the data the user thinks they saved.
                 val problems = listOfNotNull(
                     stringResource(MR.string.chat_contact_card_partial_additions)
                         .takeIf { current.additionsFailed },
@@ -371,16 +383,13 @@ fun ContactCardSaveHost(
                     stringResource(MR.string.chat_contact_card_partial_cleared)
                         .takeIf { current.clearedFieldsIgnored },
                 )
-                Text(
-                    problems.ifEmpty {
-                        listOf(
-                            stringResource(
-                                MR.string.chat_contact_card_saved_body,
-                                current.name ?: cardName,
-                            ),
-                        )
-                    }.joinToString(" ")
+                // Which contact it was still leads: a problem list on its own leaves the user
+                // reading about data that failed with no idea what it failed on.
+                val saved = stringResource(
+                    MR.string.chat_contact_card_saved_body,
+                    current.name ?: cardName,
                 )
+                Text((listOf(saved) + problems).joinToString(" "))
             },
             confirmButton = {
                 val uniqueId = current.uniqueId

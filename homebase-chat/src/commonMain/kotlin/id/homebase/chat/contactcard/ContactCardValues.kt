@@ -11,7 +11,7 @@ internal data class ContactCardBubbleValues(
     val hiddenCount: Int,
 )
 
-internal const val ContactCardBubbleRowLimit = 2
+internal const val ContactCardBubbleRowLimit = 3
 
 // A card authored by another client can carry a blank entry; it is not a row worth painting.
 internal fun ContactCardDescriptor.renderablePhones(): List<String> = phones.filter { it.isNotBlank() }

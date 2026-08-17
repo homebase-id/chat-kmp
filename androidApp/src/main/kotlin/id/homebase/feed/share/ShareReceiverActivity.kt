@@ -401,6 +401,12 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 ContactEditSheet(
                                     editing = null,
                                     seed = remember(contact) { ContactCardImport.toDraft(contact) },
+                                    seedAdditionalPhones = remember(contact) {
+                                        sharedContactDescriptor?.let { ContactCardImport.extraPhones(it) }.orEmpty()
+                                    },
+                                    seedAdditionalEmails = remember(contact) {
+                                        sharedContactDescriptor?.let { ContactCardImport.extraEmails(it) }.orEmpty()
+                                    },
                                     onSave = { draft, addPhones, addEmails, photo ->
                                         showContactEditor = false
                                         saveSharedContact(
@@ -735,11 +741,18 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     )
                 }
             }
-            if (result.getOrNull() !is ContactSaveResult.Success) {
+            val saved = result.getOrNull() as? ContactSaveResult.Success
+            if (saved == null) {
                 Logger.e(tag = "ShareReceiver") { "Failed to save shared contact: ${result.exceptionOrNull()?.message}" }
                 Toast.makeText(
                     this@ShareReceiverActivity,
                     getString(R.string.share_contact_save_failed),
+                    Toast.LENGTH_LONG,
+                ).show()
+            } else if (saved.additionsFailed) {
+                Toast.makeText(
+                    this@ShareReceiverActivity,
+                    getString(R.string.share_contact_save_partial),
                     Toast.LENGTH_LONG,
                 ).show()
             }

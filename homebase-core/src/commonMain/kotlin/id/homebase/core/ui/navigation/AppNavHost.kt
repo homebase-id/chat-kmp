@@ -154,6 +154,8 @@ import id.homebase.core.ui.screens.contactbook.components.ContactCardSaveHost
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
 import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
+import id.homebase.resources.chat_contact_card_saved_body
+import id.homebase.resources.chat_contact_card_saved_open
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
@@ -999,6 +1001,29 @@ fun AppNavHost(
                                 var pendingContactCard by rememberSaveable(
                                     stateSaver = ContactCardDescriptorSaver,
                                 ) { mutableStateOf<ContactCardDescriptor?>(null) }
+                                var savedContact by remember {
+                                    mutableStateOf<Pair<String, Uuid?>?>(null)
+                                }
+                                savedContact?.let { (savedName, savedId) ->
+                                    val message = stringResource(
+                                        MR.string.chat_contact_card_saved_body,
+                                        savedName,
+                                    )
+                                    val open = stringResource(MR.string.chat_contact_card_saved_open)
+                                    LaunchedEffect(savedContact) {
+                                        val result = snackbarHostState.showSnackbar(
+                                            message = message,
+                                            actionLabel = if (savedId != null) open else null,
+                                            duration = SnackbarDuration.Short,
+                                        )
+                                        if (result == SnackbarResult.ActionPerformed && savedId != null) {
+                                            navController.navigate(
+                                                Route.ContactBookDetail(savedId.toString(), null)
+                                            )
+                                        }
+                                        savedContact = null
+                                    }
+                                }
                                 ContactCardSaveHost(
                                     descriptor = pendingContactCard,
                                     onDismiss = { pendingContactCard = null },
@@ -1007,6 +1032,7 @@ fun AppNavHost(
                                             Route.ContactBookDetail(uniqueId.toString(), odinId)
                                         )
                                     },
+                                    onSaved = { name, uniqueId -> savedContact = name to uniqueId },
                                 )
                                 ConversationListScreen(
                                     viewModel = conversationListViewModel,

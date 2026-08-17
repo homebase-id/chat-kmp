@@ -35,14 +35,16 @@ fun mergeSeed(
         base == null -> seed ?: ContactDraft()
         seed == null -> base
         else -> base.copy(
-            // A target holding only a surname keeps it: filling the given name from a card that
-            // has no structured name would put the whole formatted name beside it.
+            // A card with no structured name puts the whole formatted name in givenName, so a
+            // target already holding either part must not gain a second copy of it.
             givenName = if (base.givenName.isBlank() && base.surname.isBlank()) {
                 seed.givenName
             } else {
                 base.givenName
             },
-            surname = base.surname.ifBlank { if (base.givenName.isBlank()) seed.surname else "" },
+            surname = base.surname.ifBlank {
+                seed.surname.takeIf { it.isNotBlank() && !base.givenName.hasWord(it) }.orEmpty()
+            },
             phone = base.phone.ifBlank { seed.phone },
             email = base.email.ifBlank { seed.email },
             organization = base.organization.ifBlank { seed.organization },
@@ -62,3 +64,6 @@ fun mergeSeed(
 
     return MergeSeed(draft = draft, additionalPhones = phones, additionalEmails = emails)
 }
+
+private fun String.hasWord(word: String): Boolean =
+    split(' ').any { it.equals(word, ignoreCase = true) }

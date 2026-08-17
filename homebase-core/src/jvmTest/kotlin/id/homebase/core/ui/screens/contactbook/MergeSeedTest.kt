@@ -150,6 +150,45 @@ class MergeSeedTest {
     }
 
     @Test
+    fun `a card's surname fills a target that has only a given name`() {
+        val seeded = mergeSeed(
+            entry("Ada", givenName = "Ada"),
+            ContactDraft(givenName = "Ada", surname = "Lovelace"),
+            emptyList(),
+            emptyList(),
+        )
+
+        assertEquals("Ada", seeded.draft.givenName)
+        assertEquals("Lovelace", seeded.draft.surname)
+    }
+
+    @Test
+    fun `a target whose given name is the whole name does not gain a duplicate surname`() {
+        val seeded = mergeSeed(
+            entry("Ada Lovelace", givenName = "Ada Lovelace"),
+            ContactDraft(givenName = "Ada Lovelace", surname = "Lovelace"),
+            emptyList(),
+            emptyList(),
+        )
+
+        assertEquals("Ada Lovelace", seeded.draft.givenName)
+        assertEquals("", seeded.draft.surname)
+    }
+
+    // A substring test would read "Ada" out of "Adam" and drop a real surname.
+    @Test
+    fun `a surname that is a substring of the given name still fills`() {
+        val seeded = mergeSeed(
+            entry("Adam", givenName = "Adam"),
+            ContactDraft(givenName = "Adam", surname = "Ada"),
+            emptyList(),
+            emptyList(),
+        )
+
+        assertEquals("Ada", seeded.draft.surname)
+    }
+
+    @Test
     fun `an extra the target already holds is not duplicated by the card`() {
         val target = entry("Ada", phone = "+14155559999", additionalPhones = listOf("+14155550123"))
 

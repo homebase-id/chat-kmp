@@ -187,8 +187,11 @@ fun ContactCardBubble(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (onSaveToContacts != null) {
+                        // Unweighted, the label measures first at large font scale and leaves the
+                        // timestamp and delivery tick nothing.
                         TextButton(
                             onClick = { onSaveToContacts(descriptor) },
+                            modifier = Modifier.weight(1f, fill = false),
                             contentPadding = ButtonDefaults.TextButtonWithIconContentPadding,
                         ) {
                             Icon(
@@ -200,6 +203,8 @@ fun ContactCardBubble(
                             Text(
                                 text = stringResource(MR.string.chat_contact_card_save),
                                 style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
@@ -309,7 +314,8 @@ private fun ValuePreviewRow(
                 ContactValueKind.Email -> emailLabel
             },
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
+            // At 200% text this icon is the only thing telling a phone row from an email row.
+            modifier = Modifier.size(16.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)),
         )
         Spacer(Modifier.width(8.dp))
         Text(
