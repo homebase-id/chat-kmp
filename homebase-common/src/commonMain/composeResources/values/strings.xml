@@ -965,6 +965,11 @@
     <string name="chat_contact_card_close">Close</string>
     <string name="chat_contact_card_merge">Add to this contact</string>
     <string name="chat_contact_card_merge_confirm">Anything you have typed here will be replaced by %1$s's details.</string>
+    <string name="chat_contact_card_open_profile">Open profile</string>
+    <string name="chat_contact_card_copy_identity">Copy Homebase ID %1$s</string>
+    <string name="chat_contact_card_nothing_else">This card has no phone number or email address.</string>
+    <string name="chat_contact_card_exists_identity_body">%1$s is already saved with this Homebase ID.</string>
+    <string name="chat_contact_card_partial_cleared">Clearing a field isn't supported yet, so the old value is still there.</string>
     <string name="chat_contact_card_merge_body">Add the new phone numbers and email addresses to %1$s.</string>
 
     <!-- Poll detail dialog -->

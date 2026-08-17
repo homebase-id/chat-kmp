@@ -55,14 +55,18 @@ import id.homebase.resources.chat_contact_card_call
 import id.homebase.resources.chat_contact_card_close
 import id.homebase.resources.chat_contact_card_copied
 import id.homebase.resources.chat_contact_card_copy_email
+import id.homebase.resources.chat_contact_card_copy_identity
 import id.homebase.resources.chat_contact_card_copy_phone
 import id.homebase.resources.chat_contact_card_detail_pane
 import id.homebase.resources.chat_contact_card_emails
 import id.homebase.resources.chat_contact_card_message
+import id.homebase.resources.chat_contact_card_nothing_else
+import id.homebase.resources.chat_contact_card_open_profile
 import id.homebase.resources.chat_contact_card_phones
 import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_send_email
 import id.homebase.resources.chat_contact_card_title
+import id.homebase.resources.contactbook_edit_odinid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -110,6 +114,14 @@ private fun ContactCardDetailContent(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val subtitle = remember(descriptor) { descriptor.subtitleLine() }
+    // A card with no name of its own is titled by its first value; printing it again as a row
+    // reads as a duplicate.
+    val values = remember(descriptor) {
+        if (descriptor.hasTitleOfItsOwn()) descriptor.allValues() else descriptor.allValues().drop(1)
+    }
+    val identityValue = values.firstOrNull { it.kind == ContactValueKind.Identity }?.value
+    val phoneValues = values.filter { it.kind == ContactValueKind.Phone }.map { it.value }
+    val emailValues = values.filter { it.kind == ContactValueKind.Email }.map { it.value }
 
     val copiedMessage = stringResource(MR.string.chat_contact_card_copied)
     val copyValue: (String) -> Unit = { value ->
@@ -204,15 +216,28 @@ private fun ContactCardDetailContent(
             }
 
             ValueSection(
+                header = stringResource(MR.string.contactbook_edit_odinid),
+                values = listOfNotNull(identityValue),
+                kind = ContactValueKind.Identity,
+                actionLabel = stringResource(MR.string.chat_contact_card_open_profile),
+                // The identity IS its host, so its profile is a plain https URL — no navigation
+                // callback to thread through five layers for the common case.
+                onAction = { openUri("https://$it") },
+                copyLabel = MR.string.chat_contact_card_copy_identity,
+                onCopy = copyValue,
+            )
+
+            ValueSection(
                 header = stringResource(MR.string.chat_contact_card_phones),
-                values = descriptor.renderablePhones(),
+                values = phoneValues,
                 kind = ContactValueKind.Phone,
                 actionLabel = stringResource(MR.string.chat_contact_card_call),
                 onAction = { phone -> openUri("tel:${phone.telTarget()}") },
                 copyLabel = MR.string.chat_contact_card_copy_phone,
                 onCopy = copyValue,
-                // An all-Arabic-Indic number builds `tel:` with nothing after it.
-                canAct = { it.dialable().isNotBlank() },
+                // An all-Arabic-Indic number builds `tel:` with nothing after it; a control code
+                // would pre-fill the dialer with someone else's MMI.
+                canAct = { it.dialable().isNotBlank() && !it.isControlCode() },
                 secondaryAction = { phone ->
                     ValueRowAction(
                         label = stringResource(MR.string.chat_contact_card_message, phone),
@@ -224,7 +249,7 @@ private fun ContactCardDetailContent(
 
             ValueSection(
                 header = stringResource(MR.string.chat_contact_card_emails),
-                values = descriptor.renderableEmails(),
+                values = emailValues,
                 kind = ContactValueKind.Email,
                 actionLabel = stringResource(MR.string.chat_contact_card_send_email),
                 onAction = { email -> openUri("mailto:${email.mailtoTarget()}") },
@@ -234,6 +259,15 @@ private fun ContactCardDetailContent(
                 // client on a recipient it cannot use.
                 canAct = { it.looksLikeEmail() },
             )
+
+            if (values.isEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    text = stringResource(MR.string.chat_contact_card_nothing_else),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Spacer(Modifier.height(24.dp))
         }

@@ -31,7 +31,14 @@ data class ContactCardDescriptor(
 ) {
     /** Blank when a card carries nothing renderable; the caller supplies a localized fallback. */
     fun summaryLine(): String = displayName.ifBlank {
-        organization.ifBlank { (phones + emails).firstOrNull { it.isNotBlank() }.orEmpty() }
+        // A card from another client may carry only the structured name, which would otherwise
+        // title itself with a phone number.
+        listOf(givenName, surname).filter { it.isNotBlank() }.joinToString(" ").ifBlank {
+            organization.ifBlank {
+                identity()?.domainName
+                    ?: (phones + emails).firstOrNull { it.isNotBlank() }.orEmpty()
+            }
+        }
     }
 
     /**

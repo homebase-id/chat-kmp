@@ -2,7 +2,7 @@ package id.homebase.chat.contactcard
 
 import id.homebase.core.util.initials
 
-internal enum class ContactValueKind { Phone, Email }
+internal enum class ContactValueKind { Identity, Phone, Email }
 
 internal data class ContactCardValue(val kind: ContactValueKind, val value: String)
 
@@ -18,12 +18,20 @@ internal fun ContactCardDescriptor.renderablePhones(): List<String> = phones.fil
 
 internal fun ContactCardDescriptor.renderableEmails(): List<String> = emails.filter { it.isNotBlank() }
 
+internal fun ContactCardDescriptor.renderableIdentity(): String? = identity()?.domainName
+
+// Identity first: it is the only globally unique value here, so it is what a nameless card is
+// titled by and the first thing worth showing under a name.
 internal fun ContactCardDescriptor.allValues(): List<ContactCardValue> =
-    renderablePhones().map { ContactCardValue(ContactValueKind.Phone, it) } +
+    listOfNotNull(renderableIdentity()?.let { ContactCardValue(ContactValueKind.Identity, it) }) +
+        renderablePhones().map { ContactCardValue(ContactValueKind.Phone, it) } +
         renderableEmails().map { ContactCardValue(ContactValueKind.Email, it) }
 
+// Must track summaryLine's fallback chain: when none of these is set the title came from the first
+// entry of allValues(), and bubbleValues drops it rather than printing it twice.
 internal fun ContactCardDescriptor.hasTitleOfItsOwn(): Boolean =
-    displayName.isNotBlank() || organization.isNotBlank()
+    displayName.isNotBlank() || givenName.isNotBlank() || surname.isNotBlank() ||
+        organization.isNotBlank()
 
 internal fun ContactCardDescriptor.bubbleValues(
     limit: Int = ContactCardBubbleRowLimit,
@@ -39,13 +47,24 @@ internal fun ContactCardDescriptor.bubbleValues(
 internal fun ContactCardDescriptor.subtitleLine(): String =
     organization.takeIf { it.isNotBlank() && it != summaryLine() }.orEmpty()
 
-// Blank for a card carrying only a phone/email — the caller falls back to an icon.
+// Blank for a card carrying only a phone/email/identity — the caller falls back to an icon.
 internal fun ContactCardDescriptor.avatarInitials(): String =
-    displayName.ifBlank { organization }.initials()
+    displayName
+        .ifBlank { listOf(givenName, surname).filter { it.isNotBlank() }.joinToString(" ") }
+        .ifBlank { organization }
+        .initials()
 
 // `Char.isDigit()` would let Arabic-Indic and Devanagari digits through, producing a `tel:` URI no
 // dialer can parse.
 internal fun String.dialable(): String = filter { it in '0'..'9' || it in "+*#," }
+
+/**
+ * MMI/USSD control codes (`*21*<number>#` sets up call forwarding) start with `*` or `#`, and a
+ * phone number never does. The card is authored remotely, so a value of that shape is not offered
+ * as callable — `#` mid-number is still a legitimate extension terminator and survives.
+ */
+internal fun String.isControlCode(): Boolean =
+    dialable().firstOrNull()?.let { it == '*' || it == '#' } == true
 
 // RFC 3966: an unescaped '#' is the fragment delimiter, so a dialer parses it as the end of the
 // number. ',' stays — in tel: it is a legitimate DTMF pause.

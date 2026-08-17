@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
@@ -40,7 +41,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.resources.MR
@@ -96,9 +99,7 @@ fun ContactCardBubble(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(
-            // The whole card takes the tap, action row included — a strip that looks like the
-            // message but ignores a press is worse than no affordance. Save still wins its own
-            // press: pointer dispatch reaches the child first.
+            // Save still wins its own press: pointer dispatch reaches the child first.
             modifier = Modifier
                 .semantics(mergeDescendants = true) {}
                 .let {
@@ -122,7 +123,9 @@ fun ContactCardBubble(
                         start = 12.dp,
                         top = 12.dp,
                         end = 12.dp,
-                        bottom = if (hasActionRow) 2.dp else 12.dp,
+                        // Not tighter: a TextButton's 48dp target overhangs its 40dp box, so the
+                        // last value row would take the press meant for the card.
+                        bottom = if (hasActionRow) 8.dp else 12.dp,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -173,8 +176,6 @@ fun ContactCardBubble(
                 }
             }
 
-            // Save and the send time share the row: a full-width button under a divider cost the
-            // card two rows and dwarfed a name-only card.
             if (hasActionRow) {
                 Row(
                     modifier = Modifier
@@ -232,7 +233,8 @@ internal fun ContactCardAvatar(
 ) {
     val initials = remember(descriptor) { descriptor.avatarInitials() }
     // Holds sp text, so a fixed dp clips it at a large font scale; capped so 2x doesn't eat the row.
-    val diameter = size * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
+    val fontScale = LocalDensity.current.fontScale
+    val diameter = size * fontScale.coerceIn(1f, 1.5f)
 
     // An identity publishes its avatar at a URL derived from the odinId, so the card shows a real
     // picture without the descriptor carrying one — nothing would fit in the 7 KB header anyway.
@@ -270,7 +272,12 @@ internal fun ContactCardAvatar(
         } else {
             Text(
                 text = initials,
-                style = MaterialTheme.typography.titleMedium,
+                // Tracks the circle rather than the font scale — the circle already grows with it,
+                // and a fixed style left the 72dp detail avatar with initials a fifth its diameter.
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = (diameter.value * 0.36f / fontScale).sp,
+                    lineHeight = TextUnit.Unspecified,
+                ),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         }
@@ -302,6 +309,7 @@ private fun ValuePreviewRow(
 }
 
 internal fun ContactValueKind.icon(): ImageVector = when (this) {
+    ContactValueKind.Identity -> Icons.Outlined.Badge
     ContactValueKind.Phone -> Icons.Outlined.Phone
     ContactValueKind.Email -> Icons.Outlined.AlternateEmail
 }

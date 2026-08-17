@@ -83,11 +83,12 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
-import id.homebase.core.ui.screens.contactbook.saveContactDraft
+import id.homebase.core.ui.screens.contactbook.saveNewContact
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.contentType
 import id.homebase.feed.MainActivity
@@ -134,6 +135,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val drawResultBus: DrawResultBus by inject()
 
     private val contactRepository: ContactRepository by inject()
+    private val contactOverrideStore: ContactOverrideStore by inject()
 
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
@@ -399,9 +401,15 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                 ContactEditSheet(
                                     editing = null,
                                     seed = remember(contact) { ContactCardImport.toDraft(contact) },
-                                    onSave = { draft, _, _, photo ->
+                                    onSave = { draft, addPhones, addEmails, photo ->
                                         showContactEditor = false
-                                        saveSharedContact(draft, photo, state.conversationIds)
+                                        saveSharedContact(
+                                            draft,
+                                            addPhones,
+                                            addEmails,
+                                            photo,
+                                            state.conversationIds,
+                                        )
                                     },
                                     onDismiss = {
                                         showContactEditor = false
@@ -706,13 +714,26 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
     private fun saveSharedContact(
         draft: ContactDraft,
+        additionalPhones: List<String>,
+        additionalEmails: List<String>,
         photo: PlatformFile?,
         conversationIds: Set<Uuid>,
     ) {
         isProcessing = true
         lifecycleScope.launch {
+            // Not saveContactDraft: the organization and the extra phones/emails the sheet collects
+            // live only in the override blob, and writing the contact alone drops them silently.
             val result = withContext(Dispatchers.IO) {
-                runCatching { saveContactDraft(contactRepository, draft, null, photo) }
+                runCatching {
+                    saveNewContact(
+                        contactOverrideStore,
+                        contactRepository,
+                        draft,
+                        additionalPhones,
+                        additionalEmails,
+                        photo,
+                    )
+                }
             }
             if (result.getOrNull() !is ContactSaveResult.Success) {
                 Logger.e(tag = "ShareReceiver") { "Failed to save shared contact: ${result.exceptionOrNull()?.message}" }

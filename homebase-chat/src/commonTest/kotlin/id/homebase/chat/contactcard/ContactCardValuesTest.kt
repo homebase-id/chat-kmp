@@ -345,4 +345,60 @@ class ContactCardValuesTest {
 
         assertFalse(card().copy(odinId = tooLong).isValid())
     }
+
+    // The card is authored remotely: *21*<number># is a call-forwarding MMI, and a phone number
+    // never starts with * or #.
+    @Test
+    fun `a control code is not offered as a callable number`() {
+        assertTrue("*21*+15555550000#".isControlCode())
+        assertTrue("#31#+15555550000".isControlCode())
+        assertFalse("+14155550123".isControlCode())
+        // Mid-number # is a legitimate extension terminator and still escapes rather than truncating.
+        assertFalse("+14155550123,,99#".isControlCode())
+        assertEquals("+14155550123,,99%23", "+14155550123,,99#".telTarget())
+    }
+
+    @Test
+    fun `a nameless card is titled by its identity, and does not repeat it as a row`() {
+        val card = ContactCardDescriptor(displayName = "", odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals("samwise.gamgee.demo.rocks", card.summaryLine())
+        assertTrue(
+            card.bubbleValues().rows.none { it.kind == ContactValueKind.Identity },
+            "The title already shows it; a row under it reads as a duplicate.",
+        )
+    }
+
+    @Test
+    fun `a card carrying only a structured name is not titled by its phone number`() {
+        val card = ContactCardDescriptor(
+            displayName = "",
+            givenName = "Ada",
+            surname = "Vance",
+            phones = listOf("+14155550123"),
+        )
+
+        assertEquals("Ada Vance", card.summaryLine())
+        assertEquals("AV", card.avatarInitials())
+        assertEquals(
+            listOf("+14155550123"),
+            card.bubbleValues().rows.map { it.value },
+            "The name is its own title, so the phone stays a row.",
+        )
+    }
+
+    @Test
+    fun `an identity leads the values, ahead of phones and emails`() {
+        val card = ContactCardDescriptor(
+            displayName = "Todd",
+            odinId = "samwise.gamgee.demo.rocks",
+            phones = listOf("+14155550123"),
+            emails = listOf("todd@example.com"),
+        )
+
+        assertEquals(
+            listOf(ContactValueKind.Identity, ContactValueKind.Phone, ContactValueKind.Email),
+            card.allValues().map { it.kind },
+        )
+    }
 }

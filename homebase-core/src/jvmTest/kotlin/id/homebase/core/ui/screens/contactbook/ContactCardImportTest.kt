@@ -236,7 +236,7 @@ class ContactCardImportTest {
             entry("Ada Vance", phone = "+14155550123"),
         )
 
-        assertEquals("Ada Vance", ContactCardImport.findExisting(descriptor, book)?.displayName)
+        assertEquals("Ada Vance", ContactCardImport.findExisting(descriptor, book)?.entry?.displayName)
     }
 
     @Test
@@ -288,7 +288,7 @@ class ContactCardImportTest {
             "Ada Vance",
             ContactCardImport.resolveExisting(card, { contacts }) {
                 mapOf(id to ContactFieldOverlay(additionalPhones = listOf("+14155550123")))
-            }?.displayName,
+            }?.entry?.displayName,
             "Dropping .withOverride() here is the bug that made this branch unreachable.",
         )
     }
@@ -544,7 +544,7 @@ class ContactCardImportTest {
             listOf(other, todd),
         )
 
-        assertEquals(todd.uniqueId, assertNotNull(match).uniqueId)
+        assertEquals(todd.uniqueId, assertNotNull(match).entry.uniqueId)
     }
 
     @Test
@@ -562,7 +562,7 @@ class ContactCardImportTest {
             listOf(household, todd),
         )
 
-        assertEquals(todd.uniqueId, assertNotNull(match).uniqueId)
+        assertEquals(todd.uniqueId, assertNotNull(match).entry.uniqueId)
     }
 
     @Test
@@ -578,6 +578,33 @@ class ContactCardImportTest {
             listOf(ada),
         )
 
-        assertEquals(ada.uniqueId, assertNotNull(match).uniqueId)
+        assertEquals(ada.uniqueId, assertNotNull(match).entry.uniqueId)
+    }
+
+    // The banner names the reason ("already has one of these phone numbers"), so a match found by
+    // identity on a card carrying no phone or email would state something plainly untrue.
+    @Test
+    fun `the match reports which clause found it`() {
+        val todd = entry("Todd", phone = "+14155550123", odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals(
+            ContactCardImport.ExistingContact.MatchedOn.Identity,
+            assertNotNull(
+                ContactCardImport.findExisting(
+                    ContactCardDescriptor(displayName = "T", odinId = "samwise.gamgee.demo.rocks"),
+                    listOf(todd),
+                ),
+            ).matchedOn,
+        )
+
+        assertEquals(
+            ContactCardImport.ExistingContact.MatchedOn.PhoneOrEmail,
+            assertNotNull(
+                ContactCardImport.findExisting(
+                    ContactCardDescriptor(displayName = "T", phones = listOf("+14155550123")),
+                    listOf(todd),
+                ),
+            ).matchedOn,
+        )
     }
 }

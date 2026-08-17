@@ -232,10 +232,8 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.ContactCard -> {
-            // Same edited-aware footer text as a regular bubble (see messageInfoText below).
-            val cardInfoText = formatMessageTimestamp(message.userDate).let {
-                if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $it" else it
-            }
+            // No edited marker: MessageMapper hard-codes isEdited = false for every typed kind.
+            val cardInfoText = formatMessageTimestamp(message.userDate)
             ContactCardBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,

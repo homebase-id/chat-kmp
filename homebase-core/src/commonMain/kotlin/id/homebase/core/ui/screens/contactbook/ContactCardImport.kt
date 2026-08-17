@@ -86,7 +86,7 @@ object ContactCardImport {
         descriptor: ContactCardDescriptor,
         loadContacts: suspend () -> List<Contact>,
         loadOverrides: suspend (List<Contact>) -> Map<Uuid, ContactFieldOverlay>,
-    ): ContactBookEntry? {
+    ): ExistingContact? {
         val contacts = loadContacts()
         val overrides = loadOverrides(contacts)
         return findExisting(
@@ -95,12 +95,20 @@ object ContactCardImport {
         )
     }
 
+    /**
+     * Which clause matched, because the duplicate banner names it: telling someone a card "already
+     * has one of these phone numbers" is false when the card carries none and matched on identity.
+     */
+    data class ExistingContact(val entry: ContactBookEntry, val matchedOn: MatchedOn) {
+        enum class MatchedOn { Identity, PhoneOrEmail }
+    }
+
     // Value-based on purpose: names collide (two "Mum"s) and a name-only card must not block a
     // legitimate save.
     fun findExisting(
         descriptor: ContactCardDescriptor,
         entries: List<ContactBookEntry>,
-    ): ContactBookEntry? {
+    ): ExistingContact? {
         val phones = descriptor.phones
             .map { ContactFieldValidation.normalizePhone(it) }
             .filter { it.isNotBlank() }
@@ -111,11 +119,13 @@ object ContactCardImport {
         val identity = descriptor.identity()?.domainName
         if (phones.isEmpty() && emails.isEmpty() && identity == null) return null
 
-        return entries.firstOrNull { entry ->
+        entries.firstOrNull { entry ->
             identity != null && entry.odinId?.trim().equals(identity, ignoreCase = true)
-        } ?: entries.firstOrNull { entry ->
+        }?.let { return ExistingContact(it, ExistingContact.MatchedOn.Identity) }
+
+        return entries.firstOrNull { entry ->
             entry.everyPhone().any { it in phones } || entry.everyEmail().any { it in emails }
-        }
+        }?.let { ExistingContact(it, ExistingContact.MatchedOn.PhoneOrEmail) }
     }
 
     private fun ContactBookEntry.everyPhone(): List<String> =
