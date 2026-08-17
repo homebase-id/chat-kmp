@@ -188,19 +188,6 @@ class FfmpegCompressPlannerTest {
     }
 
     @Test
-    fun alreadyOptimal_unknownBitDepth_withTenBitToggle_true() {
-        // Toggle ON: the user opted into 10-bit pass-through, so an undeterminable bit depth no
-        // longer forces a re-encode; only a positively-detected HDR source still would.
-        val ok = FfmpegCompressPlanner.isAlreadyOptimal(
-            codecMime = "video/avc", widthPx = 320, heightPx = 180,
-            inputBytes = 26_000L, durationMs = 6_000L,
-            targets = standardTargets,
-            bitDepth = null, isHdr = false, allowTenBit = true,
-        )
-        assertTrue(ok)
-    }
-
-    @Test
     fun alreadyOptimal_missingProbe_false() {
         // Null codec, zero dim, zero duration → can't decide, fall through.
         assertFalse(FfmpegCompressPlanner.isAlreadyOptimal(
@@ -511,9 +498,7 @@ class FfmpegCompressPlannerTest {
     }
 
     @Test
-    fun plan_allowTenBit_overBudgetTenBit_reencodesToTenBitPixFmt() {
-        // Over-budget (forces a real encode) 10-bit source with the flag on:
-        // output must be pinned to 10-bit yuv420p10le, not downconverted.
+    fun plan_overBudgetTenBit_downconvertsToEightBit() {
         val plan = FfmpegCompressPlanner.plan(
             inputPath = "/in.mp4", outputPath = "/out.mp4",
             quality = VideoQuality.STANDARD,
@@ -522,34 +507,13 @@ class FfmpegCompressPlannerTest {
             probedCodecMime = "video/avc",
             inputDurationMs = 6_000L, inputBytes = 20_000_000L,
             probedBitDepth = 10,
-            allowTenBit = true,
         )
         assertNull(plan.skipReason, "over-budget input must re-encode")
-        assertEquals("yuv420p10le", plan.args[plan.args.indexOf("-pix_fmt") + 1])
+        assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
     }
 
     @Test
-    fun plan_allowTenBit_inBudgetTenBit_shortCircuits() {
-        // With the flag on, an in-budget 10-bit H.264 clip is no longer forced
-        // to re-encode — it passes through untouched (skipReason set).
-        val plan = FfmpegCompressPlanner.plan(
-            inputPath = "/in.mp4", outputPath = "/out.mp4",
-            quality = VideoQuality.STANDARD,
-            trimStartMs = null, trimEndMs = null,
-            probedWidthPx = 320, probedHeightPx = 180,
-            probedCodecMime = "video/avc",
-            inputDurationMs = 6_000L, inputBytes = 26_000L,
-            probedBitDepth = 10,
-            allowTenBit = true,
-        )
-        assertNotNull(plan.skipReason, "allowTenBit must lift the bit-depth gate")
-    }
-
-    @Test
-    fun plan_allowTenBit_hdr10Bit_stillReencodesButKeeps10Bit() {
-        // HDR always forces a re-encode (no tone-map yet). With allowTenBit the
-        // re-encode preserves the source's 10-bit depth (yuv420p10le) rather
-        // than downconverting — so the 10-bit HDR pipeline can be inspected.
+    fun plan_hdrTenBit_reencodesToEightBit() {
         val plan = FfmpegCompressPlanner.plan(
             inputPath = "/in.mp4", outputPath = "/out.mp4",
             quality = VideoQuality.STANDARD,
@@ -558,43 +522,59 @@ class FfmpegCompressPlannerTest {
             probedCodecMime = "video/avc",
             inputDurationMs = 6_000L, inputBytes = 26_000L,
             probedBitDepth = 10, probedIsHdr = true,
-            allowTenBit = true,
-        )
-        assertNull(plan.skipReason, "HDR input must not short-circuit even with allowTenBit")
-        assertEquals("yuv420p10le", plan.args[plan.args.indexOf("-pix_fmt") + 1])
-    }
-
-    @Test
-    fun plan_allowTenBit_hdr8Bit_staysEightBit() {
-        // The pix_fmt branch keys on bit depth, not HDR: an 8-bit HDR source
-        // (e.g. 8-bit HLG) re-encodes but stays 8-bit.
-        val plan = FfmpegCompressPlanner.plan(
-            inputPath = "/in.mp4", outputPath = "/out.mp4",
-            quality = VideoQuality.STANDARD,
-            trimStartMs = null, trimEndMs = null,
-            probedWidthPx = 320, probedHeightPx = 180,
-            probedCodecMime = "video/avc",
-            inputDurationMs = 6_000L, inputBytes = 26_000L,
-            probedBitDepth = 8, probedIsHdr = true,
-            allowTenBit = true,
         )
         assertNull(plan.skipReason, "HDR input must not short-circuit")
         assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
     }
 
     @Test
-    fun plan_allowTenBit_eightBitSource_staysEightBit() {
-        // Flag permits, not forces: an 8-bit source must remain 8-bit.
+    fun plan_hdrSource_retagsOutputAsBt709Sdr() {
+        // -pix_fmt alone leaves the source's BT.2020/PQ tags on the output, which would ship
+        // an 8-bit stream that still advertises HDR.
         val plan = FfmpegCompressPlanner.plan(
             inputPath = "/in.mp4", outputPath = "/out.mp4",
             quality = VideoQuality.STANDARD,
-            trimStartMs = 0L, trimEndMs = 5_000L,
-            probedWidthPx = 1280, probedHeightPx = 720,
+            trimStartMs = null, trimEndMs = null,
+            probedWidthPx = 1920, probedHeightPx = 1080,
             probedCodecMime = "video/avc",
-            inputDurationMs = 5_000L, inputBytes = 5_000_000L,
-            probedBitDepth = 8,
-            allowTenBit = true,
+            inputDurationMs = 6_000L, inputBytes = 20_000_000L,
+            probedBitDepth = 10, probedIsHdr = true,
         )
+        assertEquals("bt709", plan.args[plan.args.indexOf("-colorspace") + 1])
+        assertEquals("bt709", plan.args[plan.args.indexOf("-color_primaries") + 1])
+        assertEquals("bt709", plan.args[plan.args.indexOf("-color_trc") + 1])
+    }
+
+    @Test
+    fun plan_undeterminableHdr_retagsOutputAsBt709Sdr() {
+        // Fail closed, matching the bit-depth gate: an unreadable HDR flag must not leave
+        // the source's colour tags in place.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = null, trimEndMs = null,
+            probedWidthPx = 1920, probedHeightPx = 1080,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 6_000L, inputBytes = 20_000_000L,
+            probedBitDepth = 8, probedIsHdr = null,
+        )
+        assertTrue(plan.args.contains("-colorspace"), "args=${plan.args}")
+    }
+
+    @Test
+    fun plan_confirmedSdrSource_leavesColourTagsAlone() {
+        // Forcing bt709 onto a positively-SDR source would mis-tag legitimately BT.601 SD
+        // footage, so the override is scoped to the not-known-SDR case only.
+        val plan = FfmpegCompressPlanner.plan(
+            inputPath = "/in.mp4", outputPath = "/out.mp4",
+            quality = VideoQuality.STANDARD,
+            trimStartMs = null, trimEndMs = null,
+            probedWidthPx = 1920, probedHeightPx = 1080,
+            probedCodecMime = "video/avc",
+            inputDurationMs = 6_000L, inputBytes = 20_000_000L,
+            probedBitDepth = 8, probedIsHdr = false,
+        )
+        assertFalse(plan.args.contains("-colorspace"), "args=${plan.args}")
         assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
     }
 

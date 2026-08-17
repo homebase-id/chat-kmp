@@ -132,13 +132,12 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val context = ActivityProvider.requireApplicationContext()
         val inFile = File(inputPath)
         if (!inFile.exists()) {
             Log.e(TAG, "File not found: $inputPath")
-            return@withContext null
+            throw VideoCompressionFailedException(inputPath, "input file not found")
         }
 
         if ((trimStartMs == null) != (trimEndMs == null)) {
@@ -181,7 +180,6 @@ actual object FFmpegUtils {
             // FFmpegKit builds); stick with libx264 for predictable behaviour.
             probedBitDepth = probe.bitDepth,
             probedIsHdr = probe.isHdr,
-            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {
@@ -216,7 +214,7 @@ actual object FFmpegUtils {
             val elapsedMs = System.currentTimeMillis() - t0
             Log.e(TAG, "compressVideo crashed after ${elapsedMs}ms", e)
             outFile.delete()
-            return@withContext null
+            throw VideoCompressionFailedException(inputPath, "ffmpeg crashed after ${elapsedMs}ms", e)
         }
 
         val elapsedMs = System.currentTimeMillis() - t0
@@ -228,7 +226,9 @@ actual object FFmpegUtils {
                     "trimDurationMs=$trimDurationMs, quality=$quality): ${session.failStackTrace}"
             )
             outFile.delete()
-            return@withContext null
+            throw VideoCompressionFailedException(
+                inputPath, "ffmpeg returned rc=${session.returnCode}"
+            )
         }
 
         val outBytes = outFile.length()

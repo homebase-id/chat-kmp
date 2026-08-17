@@ -123,12 +123,15 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
-        if (!FFmpegBinaryManager.isAvailable()) return@withContext null
+        if (!FFmpegBinaryManager.isAvailable()) {
+            throw VideoCompressionFailedException(inputPath, "no bundled ffmpeg for this platform")
+        }
 
         val inputFile = File(inputPath)
-        if (!inputFile.exists()) return@withContext null
+        if (!inputFile.exists()) {
+            throw VideoCompressionFailedException(inputPath, "input file not found")
+        }
 
         val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
         val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
@@ -163,7 +166,6 @@ actual object FFmpegUtils {
             rotationDegrees = rotation,
             probedBitDepth = probe.bitDepth,
             probedIsHdr = probe.isHdr,
-            allowTenBit = allowTenBit,
         )
 
         if (plan.skipReason != null) {
@@ -192,7 +194,9 @@ actual object FFmpegUtils {
         } else {
             // FFmpeg failed — delete the partial/empty output (see #5).
             deleteFailedFfmpegOutput(outputPath)
-            null
+            throw VideoCompressionFailedException(
+                inputPath, "ffmpeg exited ${result.exitCode}"
+            )
         }
     }
 

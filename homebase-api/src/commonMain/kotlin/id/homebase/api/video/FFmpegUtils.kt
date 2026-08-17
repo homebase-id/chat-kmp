@@ -32,13 +32,19 @@ expect object FFmpegUtils {
      */
     suspend fun probeVideo(inputPath: String): VideoTrackInfo?
 
+    /**
+     * Returns the output path, or null ONLY when the transcode was deliberately skipped
+     * because the source already satisfies the 8-bit SDR envelope (callers then upload the
+     * source untouched). Any actual failure throws [VideoCompressionFailedException] — never
+     * returns null — because the caller's null-fallback would ship the original 10-bit/HDR
+     * bytes.
+     */
     suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)? = null,
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
-        allowTenBit: Boolean = false,
     ): String?
 
     suspend fun getDurationMs(inputPath: String): Long

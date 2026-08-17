@@ -18,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -64,8 +63,6 @@ import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.dev_menu_allow_ten_bit_video
-import id.homebase.resources.dev_menu_allow_ten_bit_video_description
 import id.homebase.resources.dev_menu_clear_data
 import id.homebase.resources.dev_menu_force_logout
 import id.homebase.resources.dev_menu_force_logout_confirm_action
@@ -89,7 +86,6 @@ import id.homebase.resources.dev_menu_section_database
 import id.homebase.resources.dev_menu_section_misc
 import id.homebase.resources.dev_menu_section_sync
 import id.homebase.resources.dev_menu_section_testing
-import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
 import id.homebase.resources.dev_menu_test_scheduled_push
 import id.homebase.resources.dev_menu_test_temporal_read
@@ -292,17 +288,6 @@ fun DeveloperMenuUi(
                 title = stringResource(MR.string.dev_menu_test_scheduled_push),
                 action = SettingsRowAction.Navigate(onNavigateToScheduledPushTest),
             )
-
-            DevSectionHeader(title = stringResource(MR.string.dev_menu_section_video))
-            SettingsRow(
-                icon = Icons.Outlined.HighQuality,
-                title = stringResource(MR.string.dev_menu_allow_ten_bit_video),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.allowTenBitVideo,
-                    onCheckedChange = { onAction(DeveloperMenuUiAction.ToggleAllowTenBitVideo) },
-                ),
-            )
-            DevFootnote(text = stringResource(MR.string.dev_menu_allow_ten_bit_video_description))
 
             DevSectionHeader(title = stringResource(MR.string.dev_menu_section_crashlytics))
             SettingsRow(

@@ -21,7 +21,6 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
-import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.location.model.LOCATION_POINTS_PAYLOAD_KEY
 import id.homebase.core.ui.screens.location.model.LOCATION_TRACK_FILE_TYPE
 import id.homebase.core.ui.screens.location.model.LocationTrackCodec
@@ -36,7 +35,6 @@ class DeveloperMenuViewModel(
     private val driveSyncManager: DriveSyncManager,
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
-    private val userPreferences: UserPreferences,
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
     private val serverIpStore: ServerIpStore,
     private val youAuthFlowManager: YouAuthFlowManager,
@@ -51,9 +49,7 @@ class DeveloperMenuViewModel(
         private const val TEST_PEER = "frodo.baggins.demo.rocks"
     }
 
-    private val _uiState = MutableStateFlow(
-        DeveloperMenuUiState(allowTenBitVideo = userPreferences.allowTenBitVideo)
-    )
+    private val _uiState = MutableStateFlow(DeveloperMenuUiState())
     val uiState: StateFlow<DeveloperMenuUiState> = _uiState.asStateFlow()
 
     init {
@@ -94,12 +90,6 @@ class DeveloperMenuViewModel(
 
             is DeveloperMenuUiAction.TriggerTestCrash -> {
                 triggerTestCrash()
-            }
-
-            is DeveloperMenuUiAction.ToggleAllowTenBitVideo -> {
-                val isEnabled = !userPreferences.allowTenBitVideo
-                userPreferences.allowTenBitVideo = isEnabled
-                _uiState.update { it.copy(allowTenBitVideo = isEnabled) }
             }
 
             is DeveloperMenuUiAction.ForceReconnectWebSocket -> {
@@ -311,7 +301,6 @@ class DeveloperMenuViewModel(
 
 @Immutable
 data class DeveloperMenuUiState(
-    val allowTenBitVideo: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,
     val networkDiagnostics: NetworkDiagnostics? = null,
@@ -334,5 +323,4 @@ sealed interface DeveloperMenuUiAction {
     data object ForceLogout : DeveloperMenuUiAction
     data object TriggerTestCrash : DeveloperMenuUiAction
     data object ForceReconnectWebSocket : DeveloperMenuUiAction
-    data object ToggleAllowTenBitVideo : DeveloperMenuUiAction
 }

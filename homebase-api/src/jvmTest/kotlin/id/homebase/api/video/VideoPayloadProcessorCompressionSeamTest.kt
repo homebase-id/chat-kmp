@@ -104,7 +104,6 @@ class VideoPayloadProcessorCompressionSeamTest {
             trimStartMs: Long?,
             trimEndMs: Long?,
             quality: VideoQuality,
-            allowTenBit: Boolean,
         ): String? {
             compressInput = inputPath
             compressQuality = quality

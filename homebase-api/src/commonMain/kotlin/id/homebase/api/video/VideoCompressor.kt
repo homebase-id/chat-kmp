@@ -19,8 +19,10 @@ import id.homebase.api.client.KeyHeader
 interface VideoCompressor {
     /**
      * Re-encodes [inputPath] to the [quality] envelope, optionally trimming to
-     * `[trimStartMs, trimEndMs]`. Returns the output path, or null if compression
-     * was skipped/failed (callers fall back to the input path).
+     * `[trimStartMs, trimEndMs]`. Returns the output path, or null when the transcode was
+     * skipped because the source is already within the envelope AND positively probed as
+     * 8-bit SDR — only then may callers fall back to the input path. A failed transcode
+     * throws [VideoCompressionFailedException] rather than returning null.
      */
     suspend fun compress(
         inputPath: String,
@@ -28,10 +30,6 @@ interface VideoCompressor {
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
-        // When true and the source is >8-bit, the backend keeps a 10-bit output
-        // (and drops the H.264 hardware encoder, which can't emit 10-bit). See
-        // FFmpegUtils.compressVideo. Default false = the existing 8-bit-pinned behaviour.
-        allowTenBit: Boolean = false,
     ): String?
 
     /** Segments [inputPath] into an unencrypted HLS playlist + `.ts` segments. */
