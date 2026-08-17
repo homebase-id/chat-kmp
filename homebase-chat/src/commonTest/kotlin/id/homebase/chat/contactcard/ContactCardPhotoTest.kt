@@ -3,7 +3,9 @@ package id.homebase.chat.contactcard
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.core.image.ImageSize
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -82,6 +84,23 @@ class ContactCardPhotoTest {
     @Test
     fun `chat payloads are always treated as encrypted`() {
         assertEquals(true, assertNotNull(data(listOf(photo()))).isEncrypted)
+    }
+
+    @Test
+    fun `the loader is told which thumbnail sizes actually exist`() {
+        // Device log, build of 2026-08-18: with this empty the loader guessed 121x121, which the
+        // server never stored, and logged a non-retriable 404 before falling back.
+        val withThumbs = photo().copy(
+            thumbnails = listOf(
+                ThumbnailDescriptor(pixelWidth = 300, pixelHeight = 300, contentType = "image/jpeg"),
+                ThumbnailDescriptor(pixelWidth = 600, pixelHeight = 600, contentType = "image/jpeg"),
+            ),
+        )
+
+        val built = assertNotNull(data(listOf(withThumbs)))
+
+        assertEquals(listOf(ImageSize(300, 300), ImageSize(600, 600)), built.availableThumbSizes)
+        assertEquals(ImageSize.THUMB_SMALL, built.requestedSize)
     }
 
     private fun assertContentEqualsHex(expected: ByteArray, actual: ByteArray?) {
