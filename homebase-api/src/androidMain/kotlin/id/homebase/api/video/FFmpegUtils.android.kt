@@ -171,15 +171,10 @@ actual object FFmpegUtils {
             trimEndMs = effectiveTrimEnd,
             probedWidthPx = probe.widthPx,
             probedHeightPx = probe.heightPx,
-            probedCodecMime = if (probe.videoTrackCount == 1 && probe.audioTrackCount <= 1) probe.videoMime else null,
-            inputDurationMs = inputDurationMs,
-            inputBytes = inputBytes,
             rotationDegrees = rotation,
             // Default encoder = libx264. Android doesn't expose a hardware
             // libavcodec wrapper (h264_mediacodec exists but is unreliable in
             // FFmpegKit builds); stick with libx264 for predictable behaviour.
-            probedBitDepth = probe.bitDepth,
-            probedIsHdr = probe.isHdr,
         )
 
         val args = plan.args.toTypedArray()

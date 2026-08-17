@@ -139,7 +139,6 @@ actual object FFmpegUtils {
         val outputPath =
             "${scratchDirPath}/compressed_${inputFile.name}"
         val sourceDurationMs = getDurationMs(inputPath)
-        val inputBytes = inputFile.length()
         val probe = probeVideoTrackViaFfprobe(inputPath)
         // ffprobe reports raw container dims; rotation rides on the side-data
         // displaymatrix. Planner needs both so portrait phone captures don't
@@ -160,12 +159,7 @@ actual object FFmpegUtils {
             trimEndMs = effectiveTrimEnd,
             probedWidthPx = probe.widthPx,
             probedHeightPx = probe.heightPx,
-            probedCodecMime = probe.codec,
-            inputDurationMs = sourceDurationMs,
-            inputBytes = inputBytes,
             rotationDegrees = rotation,
-            probedBitDepth = probe.bitDepth,
-            probedIsHdr = probe.isHdr,
         )
 
         // Planner emits "argv after ffmpeg" — Desktop's ProcessBuilder needs

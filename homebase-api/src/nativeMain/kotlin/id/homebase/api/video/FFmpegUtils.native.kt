@@ -219,22 +219,14 @@ actual object FFmpegUtils {
             fileManager.removeItemAtPath(outputPath, null)
         }
 
-        // Probe metadata: prefer FFmpegKit's ffprobe (rich: pix_fmt/bit-depth/HDR), fall
-        // back to AVFoundation when ffprobe can't read the file (modern iPhone captures).
-        // See probeVideoNative. Raw container dims + rotation feed the planner so portrait
-        // captures aren't squished; bit depth/HDR drive the 8-bit-output pin.
+        // Probe metadata: prefer FFmpegKit's ffprobe, fall back to AVFoundation when ffprobe
+        // can't read the file (modern iPhone captures). See probeVideoNative. Only geometry is
+        // consumed — raw container dims + rotation feed the planner so portrait captures aren't
+        // squished. Nothing about the source's codec or bit depth affects the output format.
         val probe = probeVideoNative(inputPath)
         val widthPx = probe?.widthPx ?: 0
         val heightPx = probe?.heightPx ?: 0
-        val codecMime = probe?.codec  // short form, e.g. "h264" / "hevc"; null forces re-encode
         val rotation = probe?.rotation ?: 0
-        // Keep null when the probe couldn't determine these — the planner fails closed and
-        // re-encodes rather than passing a possibly-10-bit source through untouched (#959).
-        val bitDepth = probe?.bitDepth
-        val isHdr = probe?.isHdr
-
-        val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
-        val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
         val durationMs = getDurationMs(inputPath)
 
         // Try hardware encoder first; fall back to libx264 if it fails. The
@@ -262,13 +254,8 @@ actual object FFmpegUtils {
                 trimEndMs = effectiveTrimEnd,
                 probedWidthPx = widthPx,
                 probedHeightPx = heightPx,
-                probedCodecMime = codecMime,
-                inputDurationMs = durationMs,
-                inputBytes = inputBytes,
                 rotationDegrees = rotation,
                 encoder = encoder,
-                probedBitDepth = bitDepth,
-                probedIsHdr = isHdr,
             )
 
             // When using a VideoToolbox encoder, also HW-decode the input.

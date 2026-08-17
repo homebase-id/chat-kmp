@@ -64,10 +64,6 @@ object FfmpegCompressPlanner {
      * @param probedWidthPx source video width as probed by the caller; pass 0 if unknown
      *   (planner will fall through to ffmpeg encoding at source dims)
      * @param probedHeightPx source video height as probed by the caller; pass 0 if unknown
-     * @param probedCodecMime source video codec, in either MediaCodec form
-     *   (`"video/avc"`, `"video/hevc"`) or ffprobe short form (`"h264"`, `"hevc"`).
-     * @param inputDurationMs source video duration in milliseconds (for bitrate calc).
-     * @param inputBytes source file size in bytes (for bitrate calc)
      * @param rotationDegrees source video rotation flag (0/90/180/270 or
      *   ±90/±270). Phone camera captures expose raw container dims to probes
      *   (e.g. 1920×1080 + rotation=90 for a portrait video); FFmpeg's default
@@ -79,9 +75,10 @@ object FfmpegCompressPlanner {
      *   aspect.
      * @param encoder ffmpeg encoder name. Defaults to `"libx264"`; iOS passes
      *   `"h264_videotoolbox"` first and falls back to libx264 on failure
-     * @param probedBitDepth source luma bit depth, for logging only — output is
-     *   pinned to 8-bit regardless.
-     * @param probedIsHdr true when the source is HDR, for logging only.
+     *
+     * Takes no codec/bit-depth/HDR/size input: the output format is unconditional, so
+     * nothing the prober reports can change what is encoded. Geometry is the only
+     * probed value that still matters.
      */
     fun plan(
         inputPath: String,
@@ -91,13 +88,8 @@ object FfmpegCompressPlanner {
         trimEndMs: Long?,
         probedWidthPx: Int,
         probedHeightPx: Int,
-        probedCodecMime: String?,
-        inputDurationMs: Long,
-        inputBytes: Long,
         rotationDegrees: Int = 0,
         encoder: String = "libx264",
-        probedBitDepth: Int? = null,
-        probedIsHdr: Boolean? = null,
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
         // swapped them by the time the scale filter sees the frames.

@@ -100,7 +100,6 @@ actual object FFmpegUtils {
 
         val probe = if (isBlob) FFmpegBridge.probeFromUrl(inputPath) else FFmpegBridge.probe(inputBytes!!)
         val durationMs = probe?.durationMs ?: 0L
-        val inputSizeBytes = if (isBlob) (probe?.sizeBytes ?: 0L) else inputBytes!!.size.toLong()
 
         // MEMFS-relative names so plan.args reference the in-worker files directly.
         val plan = FfmpegCompressPlanner.plan(
@@ -111,9 +110,6 @@ actual object FFmpegUtils {
             trimEndMs = effTrimEnd,
             probedWidthPx = probe?.widthPx ?: 0,
             probedHeightPx = probe?.heightPx ?: 0,
-            probedCodecMime = probe?.codec, // null probe → no short-circuit → transcode
-            inputDurationMs = durationMs,
-            inputBytes = inputSizeBytes,
             rotationDegrees = probe?.rotationDegrees ?: 0,
             // libx264: the single-thread core has no hardware encoder.
         )
