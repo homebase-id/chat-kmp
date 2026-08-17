@@ -4,6 +4,8 @@ import id.homebase.chat.services.content.MessageContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -267,5 +269,56 @@ class ContactCardValuesTest {
         assertFalse("ada@ex.".looksLikeEmail())
         assertFalse("ada@a@b.com".looksLikeEmail())
         assertFalse("ada @example.com".looksLikeEmail())
+    }
+
+    // `identity()` is a parser, not a gate: a bare hostname is exactly what a well-formed odinId
+    // looks like, so an attacker's own domain parses fine. What stops the fetch is
+    // [avatarIdentity]'s author check, pinned below — this only fixes the shape.
+    @Test
+    fun `identity parses a hostname and rejects everything that is not one`() {
+        assertNull(card().copy(odinId = "not a domain").identity())
+        assertNull(card().copy(odinId = "https://evil.example.com/pub/image").identity())
+        assertNull(card().copy(odinId = "").identity())
+        assertNull(card().copy(odinId = "   ").identity())
+
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(card().copy(odinId = " samwise.gamgee.demo.rocks ").identity()).domainName,
+        )
+        // The payload a syntax check cannot catch, spelled out so nobody mistakes the above for one.
+        assertNotNull(card().copy(odinId = "tracker.evil.tld").identity())
+    }
+
+    // Rendering the avatar dials the identity's host, so a card naming someone else's domain is a
+    // read receipt the sender gets for free. Only the sender's own identity is self-evidently safe:
+    // the conversation already told them the message arrived.
+    @Test
+    fun `an avatar is only fetched for the identity that sent the card`() {
+        val card = card().copy(odinId = "samwise.gamgee.demo.rocks")
+
+        assertNull(
+            card.avatarIdentity(author = "tracker.evil.tld"),
+            "A card may name any identity; fetching it would beacon a third party.",
+        )
+        assertNull(card.avatarIdentity(author = null), "No author means no way to vouch for it.")
+        assertNull(card.avatarIdentity(author = ""))
+        assertNull(card().copy(odinId = "").avatarIdentity(author = "samwise.gamgee.demo.rocks"))
+
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(card.avatarIdentity(author = "samwise.gamgee.demo.rocks")).domainName,
+        )
+        // Hosts are case-insensitive, and the envelope's casing is not the card author's to match.
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(card.avatarIdentity(author = " Samwise.Gamgee.Demo.Rocks ")).domainName,
+        )
+    }
+
+    @Test
+    fun `an over-long identity makes the whole card unrenderable rather than truncating the host`() {
+        val tooLong = "a".repeat(ContactCardDescriptor.MAX_VALUE_CODEPOINTS + 1) + ".example.com"
+
+        assertFalse(card().copy(odinId = tooLong).isValid())
     }
 }

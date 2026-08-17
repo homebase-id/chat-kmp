@@ -165,6 +165,7 @@ class ContactCardImportTest {
         additionalPhones: List<String> = emptyList(),
         additionalEmails: List<String> = emptyList(),
         organization: String? = null,
+        odinId: String? = null,
     ) = ContactBookEntry(
         uniqueId = Uuid.random(),
         fileId = Uuid.random(),
@@ -175,6 +176,7 @@ class ContactCardImportTest {
         additionalPhones = additionalPhones,
         additionalEmails = additionalEmails,
         organization = organization,
+        odinId = odinId,
     )
 
     @Test
@@ -472,5 +474,39 @@ class ContactCardImportTest {
     @Test
     fun `a contact with no organization leaves the field off the card`() {
         assertEquals("", ContactCardImport.toDescriptor(entry("Ada", phone = "+14155550123"))?.organization)
+    }
+
+    @Test
+    fun `sharing an identity contact carries the identity, which is what renders its avatar`() {
+        val descriptor = assertNotNull(
+            ContactCardImport.toDescriptor(entry("Todd Mitchell", odinId = "samwise.gamgee.demo.rocks")),
+        )
+
+        assertEquals("samwise.gamgee.demo.rocks", descriptor.odinId)
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(descriptor.identity()).domainName,
+            "Without this the card falls back to initials and the contact looks empty.",
+        )
+    }
+
+    @Test
+    fun `an identity-only contact is still shareable`() {
+        // A connection contact commonly stores an identity and no phone or email at all; before
+        // the odinId travelled, such a card carried nothing but a name.
+        val descriptor = assertNotNull(
+            ContactCardImport.toDescriptor(entry("Todd Mitchell", odinId = "samwise.gamgee.demo.rocks")),
+        )
+
+        assertTrue(descriptor.phones.isEmpty() && descriptor.emails.isEmpty())
+        assertTrue(descriptor.isValid())
+    }
+
+    @Test
+    fun `a contact with no identity leaves the field off the card`() {
+        val descriptor = assertNotNull(ContactCardImport.toDescriptor(entry("Ada", phone = "+14155550123")))
+
+        assertEquals("", descriptor.odinId)
+        assertNull(descriptor.identity())
     }
 }

@@ -41,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_actions
 import id.homebase.resources.chat_contact_card_more
@@ -220,6 +222,21 @@ internal fun ContactCardAvatar(
     val initials = remember(descriptor) { descriptor.avatarInitials() }
     // Holds sp text, so a fixed dp clips it at a large font scale; capped so 2x doesn't eat the row.
     val diameter = size * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
+
+    // An identity publishes its avatar at a URL derived from the odinId, so the card shows a real
+    // picture without the descriptor carrying one — nothing would fit in the 7 KB header anyway.
+    val identity = remember(descriptor) { descriptor.identity() }
+    if (identity != null) {
+        Box(modifier = Modifier.clearAndSetSemantics {}) {
+            PublicAvatar(
+                odinId = identity,
+                initials = initials.ifBlank { null },
+                options = AvatarOptions(size = diameter),
+            )
+        }
+        return
+    }
+
     Box(
         // Decoration: the initials only re-render the name that follows.
         modifier = Modifier

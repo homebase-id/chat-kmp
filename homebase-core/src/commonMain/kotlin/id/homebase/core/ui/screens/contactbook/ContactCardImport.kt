@@ -41,6 +41,7 @@ object ContactCardImport {
             givenName = entry.givenName.orEmpty().cap(),
             surname = entry.surname.orEmpty().cap(),
             organization = entry.organization.orEmpty().cap(),
+            odinId = entry.odinId.orEmpty().trim(),
             phones = (listOfNotNull(entry.phone) + entry.additionalPhones).normalizedPhones(),
             emails = (listOfNotNull(entry.email) + entry.additionalEmails).normalizedEmails(),
         )
