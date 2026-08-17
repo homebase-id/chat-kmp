@@ -164,6 +164,7 @@ sealed interface ContactDetailEvent {
     data object PhotoError : ContactDetailEvent
     /** Edit blanked a previously-set field, which the server merge can't express — field kept. */
     data object ClearUnsupported : ContactDetailEvent
+    data object AdditionsFailed : ContactDetailEvent
     /** Success confirmations for connection actions. */
     data object Blocked : ContactDetailEvent
     data object Unblocked : ContactDetailEvent

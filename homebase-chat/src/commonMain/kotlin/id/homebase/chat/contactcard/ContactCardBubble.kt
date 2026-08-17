@@ -54,6 +54,7 @@ import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_title
 import id.homebase.resources.chat_contact_unparseable
 import id.homebase.resources.contactbook_edit_email
+import id.homebase.resources.contactbook_edit_odinid
 import id.homebase.resources.contactbook_edit_phone
 import org.jetbrains.compose.resources.stringResource
 
@@ -87,6 +88,7 @@ fun ContactCardBubble(
     val preview = remember(descriptor) { descriptor.bubbleValues() }
     val subtitle = remember(descriptor) { descriptor.subtitleLine() }
     val title = descriptor.summaryLine().ifBlank { stringResource(MR.string.chat_contact_card_title) }
+    val identityLabel = stringResource(MR.string.contactbook_edit_odinid)
     val phoneLabel = stringResource(MR.string.contactbook_edit_phone)
     val emailLabel = stringResource(MR.string.contactbook_edit_email)
 
@@ -159,6 +161,7 @@ fun ContactCardBubble(
                     preview.rows.forEach { row ->
                         ValuePreviewRow(
                             value = row,
+                            identityLabel = identityLabel,
                             phoneLabel = phoneLabel,
                             emailLabel = emailLabel,
                         )
@@ -291,13 +294,20 @@ internal fun ContactCardAvatar(
 @Composable
 private fun ValuePreviewRow(
     value: ContactCardValue,
+    identityLabel: String,
     phoneLabel: String,
     emailLabel: String,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = value.kind.icon(),
-            contentDescription = if (value.kind == ContactValueKind.Phone) phoneLabel else emailLabel,
+            // Exhaustive, not a two-way branch: an identity fell into `else` and TalkBack read a
+            // Homebase ID out as an email address.
+            contentDescription = when (value.kind) {
+                ContactValueKind.Identity -> identityLabel
+                ContactValueKind.Phone -> phoneLabel
+                ContactValueKind.Email -> emailLabel
+            },
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(16.dp),
         )

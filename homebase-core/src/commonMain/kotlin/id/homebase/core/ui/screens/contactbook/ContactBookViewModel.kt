@@ -442,6 +442,10 @@ class ContactBookViewModel(
                     if (result.clearedFieldsIgnored) {
                         _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.ClearUnsupported))
                     }
+                    // The contact is written but its extras are not; silence reads as a full save.
+                    if (result.additionsFailed) {
+                        _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.AdditionsFailed))
+                    }
                 }
                 ContactSaveResult.Forbidden ->
                     _events.tryEmit(ContactBookUiEvent.Error(ContactBookError.SaveForbidden))

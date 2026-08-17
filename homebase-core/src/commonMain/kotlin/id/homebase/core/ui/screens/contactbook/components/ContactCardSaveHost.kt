@@ -225,8 +225,11 @@ fun ContactCardSaveHost(
                 banner = banner,
                 onSave = { draft, extraPhones, extraEmails, photo ->
                     val savedName = target?.displayName ?: cardName
-                    val sawBanner = duplicate != null
                     val attempt: () -> Unit = {
+                        // Read per attempt, not once at the first tap: a retry after the check
+                        // landed has seen the banner, and capturing it outside made every retry
+                        // bounce back to the sheet without ever writing.
+                        val sawBanner = duplicate != null
                     stage = SaveStage.Saving
                     appScope.launch {
                         // A match that only lands now is one the user was never offered; show it

@@ -223,5 +223,6 @@ enum class ContactBookError {
     PhotoFailed,
     MessageFailed,
     ClearUnsupported,
+    AdditionsFailed,
     CircleActionFailed,
 }
