@@ -329,6 +329,27 @@ class FfmpegCompressPlannerTest {
     }
 
     @Test
+    fun plan_alwaysTagsOutputBt709Sdr() {
+        // Unconditional, even for a source positively probed as SDR: no probe result may
+        // decide whether HDR tags survive.
+        for (hdr in listOf(true, false, null)) {
+            val plan = FfmpegCompressPlanner.plan(
+                inputPath = "/in.mp4", outputPath = "/out.mp4",
+                quality = VideoQuality.STANDARD,
+                trimStartMs = null, trimEndMs = null,
+                probedWidthPx = 1920, probedHeightPx = 1080,
+                probedCodecMime = "video/avc",
+                inputDurationMs = 6_000L, inputBytes = 20_000_000L,
+                probedBitDepth = if (hdr == true) 10 else 8, probedIsHdr = hdr,
+            )
+            assertEquals("bt709", plan.args[plan.args.indexOf("-colorspace") + 1], "isHdr=$hdr")
+            assertEquals("bt709", plan.args[plan.args.indexOf("-color_primaries") + 1], "isHdr=$hdr")
+            assertEquals("bt709", plan.args[plan.args.indexOf("-color_trc") + 1], "isHdr=$hdr")
+            assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1], "isHdr=$hdr")
+        }
+    }
+
+    @Test
     fun plan_alwaysAddsMovflagsFaststart() {
         val plan = FfmpegCompressPlanner.plan(
             inputPath = "/in.mp4", outputPath = "/out.mp4",

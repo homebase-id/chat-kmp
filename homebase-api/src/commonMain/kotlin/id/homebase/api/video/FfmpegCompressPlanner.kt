@@ -138,9 +138,20 @@ object FfmpegCompressPlanner {
             // High 10, which most Android hardware AVC decoders reject with
             // ERROR_CODE_DECODING_FAILED / NO_EXCEEDS_CAPABILITIES. yuv420p
             // produces a Main/High-profile stream every receiver can decode.
-            // No-op for already-8-bit 4:2:0 sources. (No tone-map yet — HDR
-            // colours may look flat until the zscale/tonemap follow-up.)
+            // No-op for already-8-bit 4:2:0 sources.
             add("-pix_fmt"); add("yuv420p")
+            // Output is SDR BT.709, always. -pix_fmt fixes depth and subsampling but not
+            // colour metadata: ffmpeg copies the source's primaries/transfer onto the
+            // output, so an HDR source would come out 8-bit yet still tagged BT.2020
+            // PQ/HLG and be treated as HDR downstream. Unconditional, like the pix_fmt
+            // pin — no probe gates it, so nothing the prober gets wrong can leak HDR.
+            //
+            // Ceiling: this retags, it does not tone-map. PQ/HLG pixels relabelled BT.709
+            // decode everywhere but look flat. A real tone-map needs zscale to linearise,
+            // and zscale is absent from the Android and iOS ffmpeg builds (desktop has it).
+            add("-colorspace"); add("bt709")
+            add("-color_primaries"); add("bt709")
+            add("-color_trc"); add("bt709")
             add("-c:a"); add("aac")
             add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
             add("-movflags"); add("+faststart")
