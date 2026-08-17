@@ -4,6 +4,8 @@ import id.homebase.chat.services.content.MessageContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -226,5 +228,27 @@ class ContactCardValuesTest {
     @Test
     fun `a non-ASCII address is percent-encoded as UTF-8`() {
         assertEquals("z%C3%B6e@example.com", "zöe@example.com".mailtoTarget())
+    }
+
+    // The odinId becomes the host of the avatar URL the card fetches, and a card can be authored
+    // by any client, so a value that is not really an identity must never reach that URL.
+    @Test
+    fun `only a real identity survives to the avatar URL`() {
+        assertNull(card().copy(odinId = "not a domain").identity())
+        assertNull(card().copy(odinId = "https://evil.example.com/pub/image").identity())
+        assertNull(card().copy(odinId = "").identity())
+        assertNull(card().copy(odinId = "   ").identity())
+
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            assertNotNull(card().copy(odinId = " samwise.gamgee.demo.rocks ").identity()).domainName,
+        )
+    }
+
+    @Test
+    fun `an over-long identity makes the whole card unrenderable rather than truncating the host`() {
+        val tooLong = "a".repeat(ContactCardDescriptor.MAX_VALUE_CODEPOINTS + 1) + ".example.com"
+
+        assertFalse(card().copy(odinId = tooLong).isValid())
     }
 }
