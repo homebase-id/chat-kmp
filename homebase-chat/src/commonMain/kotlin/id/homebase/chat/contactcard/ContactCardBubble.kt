@@ -71,6 +71,8 @@ fun ContactCardBubble(
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     canOpenDetail: Boolean = true,
+    authorOdinId: String? = null,
+    sentByYou: Boolean = false,
     footer: (@Composable () -> Unit)? = null,
 ) {
     if (descriptor == null || !descriptor.isValid()) {
@@ -124,7 +126,12 @@ fun ContactCardBubble(
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ContactCardAvatar(descriptor = descriptor, size = 44.dp)
+                ContactCardAvatar(
+                    descriptor = descriptor,
+                    size = 44.dp,
+                    authorOdinId = authorOdinId,
+                    sentByYou = sentByYou,
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(
                     modifier = Modifier.weight(1f),
@@ -202,6 +209,8 @@ fun ContactCardBubble(
     if (showDetail) {
         ContactCardDetailDialog(
             descriptor = descriptor,
+            authorOdinId = authorOdinId,
+            sentByYou = sentByYou,
             onDismiss = { showDetail = false },
             // Close first: the editor is hosted above the nav graph and this dialog would outlive it.
             onSaveToContacts = onSaveToContacts?.let { save ->
@@ -218,6 +227,8 @@ fun ContactCardBubble(
 internal fun ContactCardAvatar(
     descriptor: ContactCardDescriptor,
     size: Dp,
+    authorOdinId: String?,
+    sentByYou: Boolean,
 ) {
     val initials = remember(descriptor) { descriptor.avatarInitials() }
     // Holds sp text, so a fixed dp clips it at a large font scale; capped so 2x doesn't eat the row.
@@ -225,7 +236,10 @@ internal fun ContactCardAvatar(
 
     // An identity publishes its avatar at a URL derived from the odinId, so the card shows a real
     // picture without the descriptor carrying one — nothing would fit in the 7 KB header anyway.
-    val identity = remember(descriptor) { descriptor.identity() }
+    // Gated on the sender: see ContactCardDescriptor.avatarIdentity.
+    val identity = remember(descriptor, authorOdinId, sentByYou) {
+        descriptor.avatarIdentity(authorOdinId, sentByYou)
+    }
     if (identity != null) {
         Box(modifier = Modifier.clearAndSetSemantics {}) {
             PublicAvatar(

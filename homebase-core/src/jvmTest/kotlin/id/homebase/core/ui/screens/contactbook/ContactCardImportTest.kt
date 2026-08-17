@@ -509,4 +509,75 @@ class ContactCardImportTest {
         assertEquals("", descriptor.odinId)
         assertNull(descriptor.identity())
     }
+
+    // The identity is the whole point of an identity card; dropping it here saved a contact that
+    // no longer resolves to anyone, and left Save disabled on a card with nothing else to offer.
+    @Test
+    fun `saving an identity card keeps the identity`() {
+        val descriptor = ContactCardDescriptor(
+            displayName = "Todd Mitchell",
+            odinId = "samwise.gamgee.demo.rocks",
+        )
+
+        val draft = ContactCardImport.toDraft(descriptor)
+
+        assertEquals("samwise.gamgee.demo.rocks", draft.odinId)
+        assertTrue(draft.isSavable, "An identity is content; without it Save has nothing to enable.")
+    }
+
+    @Test
+    fun `an odinId that is not an identity never reaches the draft`() {
+        val draft = ContactCardImport.toDraft(
+            ContactCardDescriptor(displayName = "Todd", odinId = "https://evil.example.com/pub/image"),
+        )
+
+        assertEquals("", draft.odinId, "The editor would reject it on Save; do not seed it.")
+    }
+
+    @Test
+    fun `an identity card merges into the contact that already holds that identity`() {
+        val other = entry("Ada", phone = "+14155550123")
+        val todd = entry("Todd Mitchell", odinId = "samwise.gamgee.demo.rocks")
+
+        val match = ContactCardImport.findExisting(
+            ContactCardDescriptor(displayName = "T.M.", odinId = " Samwise.Gamgee.Demo.Rocks "),
+            listOf(other, todd),
+        )
+
+        assertEquals(todd.uniqueId, assertNotNull(match).uniqueId)
+    }
+
+    @Test
+    fun `an identity outranks a shared phone number, which two people can have`() {
+        // A landline on a family contact is a weaker signal than a globally unique identity.
+        val household = entry("Home", phone = "+14155550123")
+        val todd = entry("Todd Mitchell", phone = "+14155550123", odinId = "samwise.gamgee.demo.rocks")
+
+        val match = ContactCardImport.findExisting(
+            ContactCardDescriptor(
+                displayName = "Todd",
+                odinId = "samwise.gamgee.demo.rocks",
+                phones = listOf("+14155550123"),
+            ),
+            listOf(household, todd),
+        )
+
+        assertEquals(todd.uniqueId, assertNotNull(match).uniqueId)
+    }
+
+    @Test
+    fun `a card whose identity nobody holds still falls back to phone and email`() {
+        val ada = entry("Ada", phone = "+14155550123")
+
+        val match = ContactCardImport.findExisting(
+            ContactCardDescriptor(
+                displayName = "Ada",
+                odinId = "nobody.demo.rocks",
+                phones = listOf("+14155550123"),
+            ),
+            listOf(ada),
+        )
+
+        assertEquals(ada.uniqueId, assertNotNull(match).uniqueId)
+    }
 }

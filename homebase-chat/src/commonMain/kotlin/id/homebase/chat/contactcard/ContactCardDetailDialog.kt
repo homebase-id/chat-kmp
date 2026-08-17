@@ -79,6 +79,8 @@ fun ContactCardDetailDialog(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
+    authorOdinId: String? = null,
+    sentByYou: Boolean = false,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -88,6 +90,8 @@ fun ContactCardDetailDialog(
             descriptor = descriptor,
             onDismiss = onDismiss,
             onSaveToContacts = onSaveToContacts,
+            authorOdinId = authorOdinId,
+            sentByYou = sentByYou,
         )
     }
 }
@@ -98,6 +102,8 @@ private fun ContactCardDetailContent(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)?,
+    authorOdinId: String?,
+    sentByYou: Boolean,
 ) {
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboard.current
@@ -154,7 +160,12 @@ private fun ContactCardDetailContent(
                 .padding(horizontal = 20.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ContactCardAvatar(descriptor = descriptor, size = 72.dp)
+                ContactCardAvatar(
+                    descriptor = descriptor,
+                    size = 72.dp,
+                    authorOdinId = authorOdinId,
+                    sentByYou = sentByYou,
+                )
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

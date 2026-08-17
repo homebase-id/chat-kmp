@@ -289,11 +289,10 @@ class ContactCardValuesTest {
         assertNotNull(card().copy(odinId = "tracker.evil.tld").identity())
     }
 
-    // Rendering the avatar dials the identity's host, so a card naming someone else's domain is a
-    // read receipt the sender gets for free. Only the sender's own identity is self-evidently safe:
-    // the conversation already told them the message arrived.
+    // Rendering the avatar dials the identity's host, so a card someone else sent naming a third
+    // party is a read receipt they get for free — the case that must stay shut.
     @Test
-    fun `an avatar is only fetched for the identity that sent the card`() {
+    fun `a card someone else sent does not fetch a third party's avatar`() {
         val card = card().copy(odinId = "samwise.gamgee.demo.rocks")
 
         assertNull(
@@ -303,6 +302,11 @@ class ContactCardValuesTest {
         assertNull(card.avatarIdentity(author = null), "No author means no way to vouch for it.")
         assertNull(card.avatarIdentity(author = ""))
         assertNull(card().copy(odinId = "").avatarIdentity(author = "samwise.gamgee.demo.rocks"))
+    }
+
+    @Test
+    fun `a card sent by its own subject fetches, because they already know it arrived`() {
+        val card = card().copy(odinId = "samwise.gamgee.demo.rocks")
 
         assertEquals(
             "samwise.gamgee.demo.rocks",
@@ -312,6 +316,26 @@ class ContactCardValuesTest {
         assertEquals(
             "samwise.gamgee.demo.rocks",
             assertNotNull(card.avatarIdentity(author = " Samwise.Gamgee.Demo.Rocks ")).domainName,
+        )
+    }
+
+    // The common case, and the one a author-only gate silently turned into a no-op: you share a
+    // contact out of your own book, so the host is one you already resolve in the contact list.
+    @Test
+    fun `a card you sent yourself fetches whoever it names`() {
+        val card = card().copy(odinId = "todd.mitchell.demo.rocks")
+
+        assertEquals(
+            "todd.mitchell.demo.rocks",
+            assertNotNull(card.avatarIdentity(author = "me.demo.rocks", sentByYou = true)).domainName,
+        )
+        assertNull(
+            card.avatarIdentity(author = "me.demo.rocks", sentByYou = false),
+            "Received from someone else, the same card must not resolve.",
+        )
+        assertNull(
+            card().copy(odinId = "not a domain").avatarIdentity(author = null, sentByYou = true),
+            "Sending it yourself does not make a non-identity into a host.",
         )
     }
 

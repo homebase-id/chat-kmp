@@ -42,6 +42,27 @@ data class ContactCardDescriptor(
     fun identity(): OdinId? =
         odinId.trim().ifBlank { null }?.let { runCatching { OdinId(it) }.getOrNull() }
 
+    /**
+     * The identity whose avatar this card may fetch, or null to fall back to initials.
+     *
+     * Drawing the avatar dials `https://<odinId>/pub/image`, and any client can author a card
+     * naming any host — so an ungated fetch is a tracking pixel: open the chat and the named host
+     * learns your IP and the moment you read it. Two cases disclose nothing new:
+     *
+     * - [author] (the envelope's `originalAuthor`, which the card's author cannot forge) equals the
+     *   card's identity: the sender already knows their message reached you.
+     * - [sentByYou]: you picked this contact out of your own book, so it is a host you already
+     *   resolve in the contact list.
+     *
+     * Ceiling: a card you *forwarded* rather than composed counts as [sentByYou] but was named by
+     * its original sender. Gating on "is already one of my contacts" would close that too, at the
+     * cost of a contact lookup per bubble.
+     */
+    fun avatarIdentity(author: String?, sentByYou: Boolean = false): OdinId? =
+        identity()?.takeIf {
+            sentByYou || it.domainName.equals(author?.trim(), ignoreCase = true)
+        }
+
     fun isValid(): Boolean {
         if (displayName.codePointCount() > MAX_NAME_CODEPOINTS) return false
         if (odinId.codePointCount() > MAX_VALUE_CODEPOINTS) return false

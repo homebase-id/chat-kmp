@@ -244,6 +244,9 @@ fun MessageBubbleRaw(
                 onSaveToContacts = onSaveContactCard?.takeIf { !displayOnly },
                 onLongClick = onLongClick,
                 canOpenDetail = !displayOnly,
+                // From the envelope, not the card: the card's own odinId is attacker-controlled.
+                authorOdinId = message.originalAuthor?.domainName,
+                sentByYou = sentByYou,
                 footer = {
                     MessageTimestampFooter(
                         visible = showMessageFooter,

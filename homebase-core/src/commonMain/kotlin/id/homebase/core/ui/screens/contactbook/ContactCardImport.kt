@@ -57,6 +57,10 @@ object ContactCardImport {
         emails = contact.emails,
     )
 
+    /** Only the parsed form: a garbage odinId would fail the editor's own validation on Save. */
+    private fun ContactCardDescriptor.identityOrBlank(): String =
+        identity()?.domainName.orEmpty()
+
     // Receiver side. Capped and normalized like the vCard overload: a card authored by another
     // client never went through toDescriptor, so nothing upstream has enforced the limits.
     fun toDraft(descriptor: ContactCardDescriptor): ContactDraft = draft(
@@ -64,6 +68,7 @@ object ContactCardImport {
         surname = descriptor.surname.cap(),
         displayName = descriptor.displayName.cap(),
         organization = descriptor.organization.cap(),
+        odinId = descriptor.identityOrBlank(),
         phones = descriptor.phones,
         emails = descriptor.emails,
     )
@@ -101,9 +106,14 @@ object ContactCardImport {
             .filter { it.isNotBlank() }
             .toSet()
         val emails = descriptor.emails.mapNotNull { it.trim().lowercase().ifBlank { null } }.toSet()
-        if (phones.isEmpty() && emails.isEmpty()) return null
+        // Unlike a phone or an address, an identity is globally unique — two contacts holding it
+        // are the same person, so it matches first and rescues the name-only identity card.
+        val identity = descriptor.identity()?.domainName
+        if (phones.isEmpty() && emails.isEmpty() && identity == null) return null
 
         return entries.firstOrNull { entry ->
+            identity != null && entry.odinId?.trim().equals(identity, ignoreCase = true)
+        } ?: entries.firstOrNull { entry ->
             entry.everyPhone().any { it in phones } || entry.everyEmail().any { it in emails }
         }
     }
@@ -124,6 +134,7 @@ object ContactCardImport {
         organization: String,
         phones: List<String>,
         emails: List<String>,
+        odinId: String = "",
     ): ContactDraft {
         // No structured N: the whole formatted name goes in the first-name slot, matching what
         // ContactBookEntry.toDraft does for a contact that only has a display name.
@@ -132,6 +143,7 @@ object ContactCardImport {
             givenName = fallbackGiven,
             surname = surname,
             organization = organization,
+            odinId = odinId,
             phone = phones.normalizedPhones().firstOrNull().orEmpty(),
             email = emails.normalizedEmails().firstOrNull().orEmpty(),
         )
