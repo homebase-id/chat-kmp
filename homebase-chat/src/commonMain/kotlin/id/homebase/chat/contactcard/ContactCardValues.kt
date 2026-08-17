@@ -31,15 +31,11 @@ internal fun ContactCardDescriptor.bubbleValues(
     limit: Int = ContactCardBubbleRowLimit,
 ): ContactCardBubbleValues {
     val all = allValues()
-    // Compare the rendered strings, not which fields are set: a connection with no profile name
-    // has its displayName resolved *from* the odinId, so both are populated and identical, and a
-    // field-presence test would print the same line as title and row.
+    // By value, at any position: displayName is arbitrary text that can equal any of these — a
+    // connection has it resolved from the odinId, and a vCard can put the email in FN — and the
+    // value it matches is not necessarily the first.
     val title = summaryLine()
-    val candidates = if (all.firstOrNull()?.value.equals(title, ignoreCase = true)) {
-        all.drop(1)
-    } else {
-        all
-    }
+    val candidates = all.filterNot { it.value.equals(title, ignoreCase = true) }
     return ContactCardBubbleValues(
         rows = candidates.take(limit),
         hiddenCount = (candidates.size - limit).coerceAtLeast(0),
@@ -47,7 +43,8 @@ internal fun ContactCardDescriptor.bubbleValues(
 }
 
 internal fun ContactCardDescriptor.subtitleLine(): String =
-    organization.takeIf { it.isNotBlank() && it != summaryLine() }.orEmpty()
+    organization.takeIf { it.isNotBlank() && !it.equals(summaryLine(), ignoreCase = true) }
+        .orEmpty()
 
 // Blank for a card carrying only a phone/email/identity — the caller falls back to an icon.
 internal fun ContactCardDescriptor.avatarInitials(): String =

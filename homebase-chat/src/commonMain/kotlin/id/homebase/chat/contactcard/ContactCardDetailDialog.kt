@@ -114,9 +114,8 @@ private fun ContactCardDetailContent(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val subtitle = remember(descriptor) { descriptor.subtitleLine() }
-    // Every value, including one the title borrowed: this screen is the whole action surface, and
-    // the title is inert text. Dropping the row here is what left an identity-only card with no
-    // Open profile and no Copy.
+    // Every value, including one the title borrowed: this screen is the whole action surface and
+    // the title is inert text, so a row dropped here is an action the user cannot reach.
     val values = remember(descriptor) { descriptor.allValues() }
     val identityValue = values.firstOrNull { it.kind == ContactValueKind.Identity }?.value
     val phoneValues = values.filter { it.kind == ContactValueKind.Phone }.map { it.value }

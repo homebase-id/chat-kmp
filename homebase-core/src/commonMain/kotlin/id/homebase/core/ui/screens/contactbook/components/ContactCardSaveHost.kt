@@ -208,9 +208,10 @@ fun ContactCardSaveHost(
         // arriving under a mounted sheet would otherwise keep the previous card's draft.
         key(descriptor, target?.uniqueId) {
             ContactEditSheet(
-                // A merge seeds its scalars from the target, so a field the target lacks and the
-                // card has — most importantly the identity — was being dropped on the floor.
-                editing = remember(descriptor, target) { target?.filledFrom(descriptor) },
+                // The unfilled target: it decides whether the sheet calls itself profile-synced,
+                // and it must agree with useOverride below. The card's own values reach the draft
+                // through `seed`, which now fills the gaps a merge target leaves.
+                editing = target,
                 seed = remember(descriptor) { ContactCardImport.toDraft(descriptor) },
                 seedAdditionalPhones = remember(descriptor, target) {
                     if (target == null) ContactCardImport.extraPhones(descriptor)
@@ -348,8 +349,7 @@ fun ContactCardSaveHost(
                 val retry = lastAttempt
                 if (retry != null) retry() else stage = SaveStage.Editing
             },
-            // Back to the sheet, not out of the flow: it is still mounted with everything the user
-            // typed, and tearing the host down here is what threw that away.
+            // Back to the sheet, not out of the flow: it still holds everything the user typed.
             onDismiss = { stage = SaveStage.Editing },
         )
 
@@ -405,16 +405,6 @@ fun ContactCardSaveHost(
 // existing primary overrides, so the merge writes against the pre-override contact.
 private fun ContactRepository.syncedBaselineOf(entry: ContactBookEntry): ContactBookEntry =
     contacts.value.firstOrNull { it.uniqueId == entry.uniqueId }?.toContactBookEntry() ?: entry
-
-/**
- * Additive only: a field the target already holds always wins, so a merge never overwrites what is
- * on the contact. It only fills a gap the card can close — chiefly the identity, which the target
- * cannot have if the match was made on a phone or an email.
- */
-private fun ContactBookEntry.filledFrom(card: ContactCardDescriptor): ContactBookEntry = copy(
-    odinId = odinId?.takeIf { it.isNotBlank() } ?: card.identity()?.domainName,
-    organization = organization?.takeIf { it.isNotBlank() } ?: card.organization.ifBlank { null },
-)
 
 private fun ContactCardDescriptor.phonesMissingFrom(entry: ContactBookEntry): List<String> {
     val held = (listOfNotNull(entry.phone) + entry.additionalPhones)

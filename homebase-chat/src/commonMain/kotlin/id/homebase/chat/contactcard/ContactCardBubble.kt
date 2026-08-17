@@ -277,8 +277,7 @@ internal fun ContactCardAvatar(
         } else {
             Text(
                 text = initials,
-                // Tracks the circle rather than the font scale — the circle already grows with it,
-                // and a fixed style left the 72dp detail avatar with initials a fifth its diameter.
+                // Tracks the circle, not the font scale: the circle already grows with it.
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontSize = (diameter.value * 0.36f / fontScale).sp,
                     lineHeight = TextUnit.Unspecified,

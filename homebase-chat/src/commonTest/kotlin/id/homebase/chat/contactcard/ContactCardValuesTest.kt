@@ -457,4 +457,37 @@ class ContactCardValuesTest {
         assertFalse("+14155550123".isControlCode())
         assertFalse("+14155550123,,99#".isControlCode())
     }
+
+    // FN is arbitrary text a vCard exporter chooses; when it equals the email rather than the first
+    // value, a position-based drop leaves the title printed twice.
+    @Test
+    fun `a title matching a value that is not the first is still not repeated`() {
+        val card = ContactCardDescriptor(
+            displayName = "ada@example.com",
+            phones = listOf("+14155550123"),
+            emails = listOf("ada@example.com"),
+        )
+
+        assertEquals("ada@example.com", card.summaryLine())
+        assertEquals(
+            listOf("+14155550123"),
+            card.bubbleValues().rows.map { it.value },
+        )
+        assertEquals(0, card.bubbleValues().hiddenCount)
+    }
+
+    @Test
+    fun `the title is matched without regard to case`() {
+        val card = ContactCardDescriptor(
+            displayName = "Ada@Example.com",
+            emails = listOf("ada@example.com"),
+        )
+
+        assertEquals(emptyList(), card.bubbleValues().rows)
+        assertEquals(
+            "",
+            ContactCardDescriptor(displayName = "acme", organization = "Acme").subtitleLine(),
+            "The subtitle must use the same comparison as the row drop, or both render.",
+        )
+    }
 }

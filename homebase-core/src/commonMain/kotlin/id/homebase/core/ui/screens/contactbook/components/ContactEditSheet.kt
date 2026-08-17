@@ -101,7 +101,9 @@ import io.github.vinceglb.filekit.readBytes
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * [seed] pre-fills a NEW contact (ignored when [editing] is non-null); [seedAdditionalPhones] and
+ * [seed] pre-fills a new contact, and fills any field [editing] leaves blank — a contact-card merge
+ * has to be able to give its match the name, identity or company the match doesn't have, and a
+ * field the target holds always wins. [seedAdditionalPhones] and
  * [seedAdditionalEmails] add extra rows in both cases, on top of what [editing] already holds — the
  * contact-card merge seeds the values its match doesn't have yet. A seeded phone that isn't E.164
  * stays visible and flagged; Save is gated on it being corrected. [saving] pins the sheet open and
@@ -120,7 +122,7 @@ fun ContactEditSheet(
     saving: Boolean = false,
     banner: (@Composable () -> Unit)? = null,
 ) {
-    var draft by remember { mutableStateOf(editing?.toDraft() ?: seed ?: ContactDraft()) }
+    var draft by remember { mutableStateOf(editing?.toDraft()?.fillBlanksFrom(seed) ?: seed ?: ContactDraft()) }
     // Extra phones/emails beyond the single canonical slot — app-local additions (see overlay).
     // Phones carry a stable id so the stateful PhoneNumberField rows keep their seeded country/
     // national state when a row above them is removed (index-keying would shuffle that state).
@@ -415,9 +417,9 @@ fun ContactEditSheet(
                 // Save requires at least one meaningful field AND every phone/email — primary and
                 // additional — plus the birthday to be well-formed (E.164 / valid email /
                 // ISO date). Legacy bad data stays visible but blocks Save until corrected.
+                // Organization is not on this list on purpose — see ContactDraft.isSavable.
                 val hasContent = draft.givenName.isNotBlank() || draft.surname.isNotBlank() ||
                     draft.phone.isNotBlank() || draft.email.isNotBlank() || draft.odinId.isNotBlank() ||
-                    draft.organization.isNotBlank() ||
                     addPhones.any { it.value.isNotBlank() } || addEmails.any { it.value.isNotBlank() }
                 val primaryValid = draft.phoneValid && draft.emailValid && draft.odinIdValid &&
                     draft.birthdayValid
@@ -574,6 +576,18 @@ private fun syncedSupportingText(value: String, synced: String?): String? {
 
 /** An additional phone row with a stable id, so the stateful [PhoneNumberField] keeps its seeded
  *  country/national state across insertions and removals of sibling rows. */
+private fun ContactDraft.fillBlanksFrom(seed: ContactDraft?): ContactDraft {
+    if (seed == null) return this
+    return copy(
+        givenName = givenName.ifBlank { seed.givenName },
+        surname = surname.ifBlank { seed.surname },
+        odinId = odinId.ifBlank { seed.odinId },
+        phone = phone.ifBlank { seed.phone },
+        email = email.ifBlank { seed.email },
+        organization = organization.ifBlank { seed.organization },
+    )
+}
+
 private data class DraftPhone(val id: Int, val value: String)
 
 /** Same reason as [DraftPhone]: a text field holds cursor and IME state that must not move to
