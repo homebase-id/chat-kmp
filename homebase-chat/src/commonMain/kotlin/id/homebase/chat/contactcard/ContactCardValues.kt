@@ -27,17 +27,19 @@ internal fun ContactCardDescriptor.allValues(): List<ContactCardValue> =
         renderablePhones().map { ContactCardValue(ContactValueKind.Phone, it) } +
         renderableEmails().map { ContactCardValue(ContactValueKind.Email, it) }
 
-// Must track summaryLine's fallback chain: when none of these is set the title came from the first
-// entry of allValues(), and bubbleValues drops it rather than printing it twice.
-internal fun ContactCardDescriptor.hasTitleOfItsOwn(): Boolean =
-    displayName.isNotBlank() || givenName.isNotBlank() || surname.isNotBlank() ||
-        organization.isNotBlank()
-
 internal fun ContactCardDescriptor.bubbleValues(
     limit: Int = ContactCardBubbleRowLimit,
 ): ContactCardBubbleValues {
-    // A nameless card's first value is already the title (see summaryLine) — don't repeat it.
-    val candidates = if (hasTitleOfItsOwn()) allValues() else allValues().drop(1)
+    val all = allValues()
+    // Compare the rendered strings, not which fields are set: a connection with no profile name
+    // has its displayName resolved *from* the odinId, so both are populated and identical, and a
+    // field-presence test would print the same line as title and row.
+    val title = summaryLine()
+    val candidates = if (all.firstOrNull()?.value.equals(title, ignoreCase = true)) {
+        all.drop(1)
+    } else {
+        all
+    }
     return ContactCardBubbleValues(
         rows = candidates.take(limit),
         hiddenCount = (candidates.size - limit).coerceAtLeast(0),
@@ -64,7 +66,9 @@ internal fun String.dialable(): String = filter { it in '0'..'9' || it in "+*#,"
  * as callable — `#` mid-number is still a legitimate extension terminator and survives.
  */
 internal fun String.isControlCode(): Boolean =
-    dialable().firstOrNull()?.let { it == '*' || it == '#' } == true
+    // After the separators a dialer skips: ",*21*…#" would otherwise pass on its leading pause.
+    dialable().dropWhile { it == ',' || it == '+' }.firstOrNull()
+        ?.let { it == '*' || it == '#' } == true
 
 // RFC 3966: an unescaped '#' is the fragment delimiter, so a dialer parses it as the end of the
 // number. ',' stays — in tel: it is a legitimate DTMF pause.

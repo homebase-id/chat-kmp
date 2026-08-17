@@ -247,7 +247,12 @@ internal fun ContactCardAvatar(
             PublicAvatar(
                 odinId = identity,
                 initials = initials.ifBlank { null },
-                options = AvatarOptions(size = diameter),
+                // Without this the shared fallback derives sp from the already-scaled diameter and
+                // scales it a second time, overflowing the circle at 2x.
+                options = AvatarOptions(
+                    size = diameter,
+                    fontSize = (diameter.value * 0.36f / fontScale).sp,
+                ),
             )
         }
         return

@@ -114,11 +114,10 @@ private fun ContactCardDetailContent(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val subtitle = remember(descriptor) { descriptor.subtitleLine() }
-    // A card with no name of its own is titled by its first value; printing it again as a row
-    // reads as a duplicate.
-    val values = remember(descriptor) {
-        if (descriptor.hasTitleOfItsOwn()) descriptor.allValues() else descriptor.allValues().drop(1)
-    }
+    // Every value, including one the title borrowed: this screen is the whole action surface, and
+    // the title is inert text. Dropping the row here is what left an identity-only card with no
+    // Open profile and no Copy.
+    val values = remember(descriptor) { descriptor.allValues() }
     val identityValue = values.firstOrNull { it.kind == ContactValueKind.Identity }?.value
     val phoneValues = values.filter { it.kind == ContactValueKind.Phone }.map { it.value }
     val emailValues = values.filter { it.kind == ContactValueKind.Email }.map { it.value }
@@ -171,6 +170,7 @@ private fun ContactCardDetailContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
+            Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ContactCardAvatar(
                     descriptor = descriptor,

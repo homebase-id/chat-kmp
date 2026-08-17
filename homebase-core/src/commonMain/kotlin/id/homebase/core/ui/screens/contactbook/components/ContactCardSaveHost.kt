@@ -74,6 +74,7 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
@@ -142,10 +143,11 @@ fun ContactCardSaveHost(
     val cardName = descriptor.summaryLine()
         .ifBlank { stringResource(MR.string.chat_contact_card_title) }
 
-    // Runs to completion rather than under a deadline: nothing is waiting on it, and a time-boxed
-    // hydrate answers from a partial override set, where a match that lives only in an override
-    // reads as "no duplicate".
+    // Runs to completion rather than under a deadline: a time-boxed hydrate answers from a partial
+    // override set, where a match that lives only in an override reads as "no duplicate". A save
+    // that arrives first waits on it, but only up to DupeCheckSaveDeadlineMs.
     LaunchedEffect(descriptor) {
+        try {
         duplicate = try {
             ContactCardImport.resolveExisting(
                 descriptor,
@@ -164,8 +166,12 @@ fun ContactCardSaveHost(
             Logger.w(tag = TAG, throwable = e) { "contact load failed; skipping dupe check" }
             null
         }
-        // Completed even on failure: a save must never wait forever on a check that already gave up.
-        checked.complete(duplicate)
+        } finally {
+            // In `finally` because cancellation is rethrown above: a write already suspended on
+            // this deferred would otherwise stay suspended for the life of the process, and the
+            // contact would never be written or reported.
+            checked.complete(duplicate)
+        }
     }
 
     // Mounted across Saving and both failures so a retry resumes on the user's own edits.
@@ -202,7 +208,9 @@ fun ContactCardSaveHost(
         // arriving under a mounted sheet would otherwise keep the previous card's draft.
         key(descriptor, target?.uniqueId) {
             ContactEditSheet(
-                editing = target,
+                // A merge seeds its scalars from the target, so a field the target lacks and the
+                // card has — most importantly the identity — was being dropped on the floor.
+                editing = remember(descriptor, target) { target?.filledFrom(descriptor) },
                 seed = remember(descriptor) { ContactCardImport.toDraft(descriptor) },
                 seedAdditionalPhones = remember(descriptor, target) {
                     if (target == null) ContactCardImport.extraPhones(descriptor)
@@ -222,9 +230,15 @@ fun ContactCardSaveHost(
                     appScope.launch {
                         // A match that only lands now is one the user was never offered; show it
                         // rather than silently creating the second contact they'd have declined.
-                        if (target == null && !sawBanner && checked.await() != null) {
-                            stage = SaveStage.Editing
-                            return@launch
+                        // Bounded: Saving disables Cancel, so an unbounded wait on a cold contact
+                        // book pins the user in a spinner with no way out. A timeout is treated
+                        // like the check failing — proceed, same as the catch above.
+                        if (target == null && !sawBanner) {
+                            val late = withTimeoutOrNull(DupeCheckSaveDeadlineMs) { checked.await() }
+                            if (late != null) {
+                                stage = SaveStage.Editing
+                                return@launch
+                            }
                         }
                         val result = try {
                             if (target == null) {
@@ -344,19 +358,25 @@ fun ContactCardSaveHost(
             icon = { Icon(Icons.Outlined.HowToReg, contentDescription = null) },
             title = { Text(stringResource(MR.string.chat_contact_card_saved_title)) },
             text = {
+                // Every partial failure, not just the first: two can be true at once, and the
+                // unmentioned one is the data the user thinks they saved.
+                val problems = listOfNotNull(
+                    stringResource(MR.string.chat_contact_card_partial_additions)
+                        .takeIf { current.additionsFailed },
+                    stringResource(MR.string.chat_contact_card_partial_photo)
+                        .takeIf { current.photoFailed },
+                    stringResource(MR.string.chat_contact_card_partial_cleared)
+                        .takeIf { current.clearedFieldsIgnored },
+                )
                 Text(
-                    when {
-                        current.additionsFailed ->
-                            stringResource(MR.string.chat_contact_card_partial_additions)
-                        current.photoFailed ->
-                            stringResource(MR.string.chat_contact_card_partial_photo)
-                        current.clearedFieldsIgnored ->
-                            stringResource(MR.string.chat_contact_card_partial_cleared)
-                        else -> stringResource(
-                            MR.string.chat_contact_card_saved_body,
-                            current.name ?: cardName,
+                    problems.ifEmpty {
+                        listOf(
+                            stringResource(
+                                MR.string.chat_contact_card_saved_body,
+                                current.name ?: cardName,
+                            ),
                         )
-                    }
+                    }.joinToString(" ")
                 )
             },
             confirmButton = {
@@ -385,6 +405,16 @@ fun ContactCardSaveHost(
 // existing primary overrides, so the merge writes against the pre-override contact.
 private fun ContactRepository.syncedBaselineOf(entry: ContactBookEntry): ContactBookEntry =
     contacts.value.firstOrNull { it.uniqueId == entry.uniqueId }?.toContactBookEntry() ?: entry
+
+/**
+ * Additive only: a field the target already holds always wins, so a merge never overwrites what is
+ * on the contact. It only fills a gap the card can close — chiefly the identity, which the target
+ * cannot have if the match was made on a phone or an email.
+ */
+private fun ContactBookEntry.filledFrom(card: ContactCardDescriptor): ContactBookEntry = copy(
+    odinId = odinId?.takeIf { it.isNotBlank() } ?: card.identity()?.domainName,
+    organization = organization?.takeIf { it.isNotBlank() } ?: card.organization.ifBlank { null },
+)
 
 private fun ContactCardDescriptor.phonesMissingFrom(entry: ContactBookEntry): List<String> {
     val held = (listOfNotNull(entry.phone) + entry.additionalPhones)
@@ -510,3 +540,6 @@ val ContactCardDescriptorSaver: Saver<ContactCardDescriptor?, String> = Saver(
 )
 
 private const val TAG = "ContactCardSaveHost"
+
+// Only bounds the case where Save beat the check; the check itself still runs to completion.
+private const val DupeCheckSaveDeadlineMs = 4_000L

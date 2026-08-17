@@ -71,7 +71,9 @@ class ContactCardValuesTest {
         assertEquals("+14155550123", descriptor.summaryLine())
         assertEquals(emptyList(), descriptor.bubbleValues().rows)
         assertEquals(0, descriptor.bubbleValues().hiddenCount)
-        assertEquals(1, descriptor.allValues().size, "The detail view still lists it, actionably.")
+        // allValues() is what the detail dialog renders, so this is the assertion that the row
+        // — and with it Call, Message and Copy — survives where the actions live.
+        assertEquals(1, descriptor.allValues().size)
     }
 
     // Fixtures with an organization carry a value too: isValid() needs a name, phone or email, and
@@ -365,7 +367,13 @@ class ContactCardValuesTest {
         assertEquals("samwise.gamgee.demo.rocks", card.summaryLine())
         assertTrue(
             card.bubbleValues().rows.none { it.kind == ContactValueKind.Identity },
-            "The title already shows it; a row under it reads as a duplicate.",
+            "In the compact bubble the title already shows it.",
+        )
+        // But the detail dialog must still get it: it carries Open profile and Copy, and this card
+        // has nothing else at all.
+        assertEquals(
+            listOf(ContactValueKind.Identity),
+            card.allValues().map { it.kind },
         )
     }
 
@@ -400,5 +408,53 @@ class ContactCardValuesTest {
             listOf(ContactValueKind.Identity, ContactValueKind.Phone, ContactValueKind.Email),
             card.allValues().map { it.kind },
         )
+    }
+
+    // ContactBookEntry.displayName is resolved *from* the odinId when a connection has no profile
+    // name, so both fields are set and identical — a field-presence check would keep the row and
+    // print the same line twice.
+    @Test
+    fun `a card whose name was resolved from its identity does not print it twice`() {
+        val card = ContactCardDescriptor(
+            displayName = "samwise.gamgee.demo.rocks",
+            odinId = "samwise.gamgee.demo.rocks",
+        )
+
+        assertEquals("samwise.gamgee.demo.rocks", card.summaryLine())
+        assertEquals(emptyList(), card.bubbleValues().rows)
+    }
+
+    @Test
+    fun `a phone-named card does not print its number twice either`() {
+        val card = ContactCardDescriptor(
+            displayName = "+14155550123",
+            phones = listOf("+14155550123"),
+        )
+
+        assertEquals(emptyList(), card.bubbleValues().rows)
+    }
+
+    @Test
+    fun `a real name is kept alongside its values`() {
+        val card = ContactCardDescriptor(
+            displayName = "Todd Mitchell",
+            odinId = "samwise.gamgee.demo.rocks",
+            phones = listOf("+14155550123"),
+        )
+
+        assertEquals(
+            listOf(ContactValueKind.Identity, ContactValueKind.Phone),
+            card.bubbleValues().rows.map { it.kind },
+            "Nothing was borrowed for the title, so nothing is dropped.",
+        )
+    }
+
+    @Test
+    fun `a control code hiding behind a pause or a plus is still refused`() {
+        assertTrue(",*21*15555550000#".isControlCode())
+        assertTrue("+*21*15555550000#".isControlCode())
+        assertTrue(",,#31#15555550000".isControlCode())
+        assertFalse("+14155550123".isControlCode())
+        assertFalse("+14155550123,,99#".isControlCode())
     }
 }

@@ -130,7 +130,10 @@ fun ContactEditSheet(
         mutableStateOf(seededPhones.mapIndexed { i, v -> DraftPhone(i, v) })
     }
     var nextPhoneId by remember { mutableStateOf(seededPhones.size) }
-    var addEmails by remember { mutableStateOf(seededEmails) }
+    var addEmails by remember {
+        mutableStateOf(seededEmails.mapIndexed { i, v -> DraftEmail(i, v) })
+    }
+    var nextEmailId by remember { mutableStateOf(seededEmails.size) }
     // Identity contact (has odinId): fields are synced from the profile and edits become private
     // overrides. `synced` is the pre-override baseline used for the per-field affordance.
     val isIdentity = editing != null && !editing.odinId.isNullOrBlank()
@@ -151,12 +154,18 @@ fun ContactEditSheet(
     val focusManager = LocalFocusManager.current
     LaunchedEffect(saving) { if (saving) focusManager.clearFocus() }
 
+    // The banner sits at the top of a form whose Save button is a dozen fields below it, so a
+    // banner that arrives while the user is reading Save is one they never see.
+    val scroll = rememberScrollState()
+    val hasBanner = banner != null
+    LaunchedEffect(hasBanner) { if (hasBanner) scroll.animateScrollTo(0) }
+
     // Pinned open mid-write: a dismissal there strands the result with nowhere to report to.
     AdaptiveSheet(onDismiss = onDismiss, dismissible = !saving) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .imePadding()
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp),
@@ -331,29 +340,31 @@ fun ContactEditSheet(
                     onReset = { draft = draft.copy(email = synced?.email.orEmpty()) },
                 ) { draft = draft.copy(email = it) }
                 val emailErrorText = stringResource(MR.string.contactbook_error_email)
-                addEmails.forEachIndexed { i, value ->
-                    Field(
-                        value = value,
-                        label = stringResource(MR.string.contactbook_edit_email),
-                        isError = !ContactFieldValidation.isValidEmail(value),
-                        errorText = emailErrorText,
-                        keyboardType = KeyboardType.Email,
-                        enabled = !saving,
-                        trailingIcon = {
-                            IconButton(
-                                onClick = { addEmails = addEmails.removeAt(i) },
-                                enabled = !saving,
-                            ) {
-                                Icon(Icons.Outlined.Close, contentDescription = removeDesc)
-                            }
-                        },
-                    ) { addEmails = addEmails.replaceAt(i, it) }
+                addEmails.forEachIndexed { i, entry ->
+                    key(entry.id) {
+                        Field(
+                            value = entry.value,
+                            label = stringResource(MR.string.contactbook_edit_email),
+                            isError = !ContactFieldValidation.isValidEmail(entry.value),
+                            errorText = emailErrorText,
+                            keyboardType = KeyboardType.Email,
+                            enabled = !saving,
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { addEmails = addEmails.filterNot { it.id == entry.id } },
+                                    enabled = !saving,
+                                ) {
+                                    Icon(Icons.Outlined.Close, contentDescription = removeDesc)
+                                }
+                            },
+                        ) { addEmails = addEmails.replaceAt(i, entry.copy(value = it)) }
+                    }
                 }
                 AddMoreButton(
                     label = stringResource(MR.string.contactbook_edit_add_email),
                     enabled = !saving,
                 ) {
-                    addEmails = addEmails + ""
+                    addEmails = addEmails + DraftEmail(nextEmailId++, "")
                 }
                 SyncedField(
                     value = draft.city,
@@ -406,13 +417,14 @@ fun ContactEditSheet(
                 // ISO date). Legacy bad data stays visible but blocks Save until corrected.
                 val hasContent = draft.givenName.isNotBlank() || draft.surname.isNotBlank() ||
                     draft.phone.isNotBlank() || draft.email.isNotBlank() || draft.odinId.isNotBlank() ||
-                    addPhones.any { it.value.isNotBlank() } || addEmails.any { it.isNotBlank() }
+                    draft.organization.isNotBlank() ||
+                    addPhones.any { it.value.isNotBlank() } || addEmails.any { it.value.isNotBlank() }
                 val primaryValid = draft.phoneValid && draft.emailValid && draft.odinIdValid &&
                     draft.birthdayValid
                 val additionsValid = addPhones.all { ContactFieldValidation.isValidPhone(it.value) } &&
-                    addEmails.all { ContactFieldValidation.isValidEmail(it) }
+                    addEmails.all { ContactFieldValidation.isValidEmail(it.value) }
                 Button(
-                    onClick = { onSave(draft, addPhones.map { it.value }, addEmails, photo) },
+                    onClick = { onSave(draft, addPhones.map { it.value }, addEmails.map { it.value }, photo) },
                     enabled = hasContent && primaryValid && additionsValid && !saving,
                 ) {
                     Text(stringResource(MR.string.contactbook_edit_save))
@@ -564,14 +576,15 @@ private fun syncedSupportingText(value: String, synced: String?): String? {
  *  country/national state across insertions and removals of sibling rows. */
 private data class DraftPhone(val id: Int, val value: String)
 
+/** Same reason as [DraftPhone]: a text field holds cursor and IME state that must not move to
+ *  another row when a sibling above it is removed. */
+private data class DraftEmail(val id: Int, val value: String)
+
+private fun List<DraftEmail>.replaceAt(index: Int, value: DraftEmail): List<DraftEmail> =
+    toMutableList().also { it[index] = value }
+
 private fun List<DraftPhone>.replaceAt(index: Int, value: DraftPhone): List<DraftPhone> =
     toMutableList().also { it[index] = value }
-
-private fun List<String>.replaceAt(index: Int, value: String): List<String> =
-    toMutableList().also { it[index] = value }
-
-private fun List<String>.removeAt(index: Int): List<String> =
-    filterIndexed { i, _ -> i != index }
 
 @Composable
 private fun Field(

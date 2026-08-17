@@ -106,7 +106,8 @@ data class ContactDraft(
     /** Has at least one meaningful field AND every non-empty field is well-formed. */
     val isSavable: Boolean
         get() = (givenName.isNotBlank() || surname.isNotBlank() ||
-            phone.isNotBlank() || email.isNotBlank() || odinId.isNotBlank()) &&
+            phone.isNotBlank() || email.isNotBlank() || odinId.isNotBlank() ||
+            organization.isNotBlank()) &&
             emailValid && phoneValid && odinIdValid && birthdayValid
 }
 
