@@ -1661,6 +1661,7 @@
     <string name="contactbook_edit_birthday">Birthday</string>
     <string name="contactbook_edit_change_photo">Add photo</string>
     <string name="contactbook_edit_save">Save</string>
+    <string name="contactbook_edit_saving">Saving…</string>
     <string name="contactbook_edit_cancel">Cancel</string>
     <string name="contactbook_error_email">Enter a valid email address</string>
     <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>

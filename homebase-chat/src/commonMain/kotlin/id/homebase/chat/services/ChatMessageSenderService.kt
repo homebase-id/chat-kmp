@@ -846,32 +846,6 @@ class ChatMessageSenderService(
         val content = sourceFile.fileMetadata.appData.content
             ?: throw IllegalArgumentException("source message has no content")
 
-        val messageAppData = try {
-            OdinSystemSerializer.deserialize<MessageAppData>(content)
-        } catch (e: Exception) {
-            throw IllegalArgumentException("Failed to deserialize source message content for $sourceMessageUniqueId: ${content.take(200)}", e)
-        }
-
-        val fullText = chatMessageStream.loadFullMessage(
-            conversationId = sourceFile.fileMetadata.appData.groupId!!,
-            messageId = sourceMessageUniqueId
-        ) ?: messageAppData.getMessage()
-
-        val forwardData = messageAppData.copy(
-            replyPreview = null,
-            message = JsonPrimitive(fullText),
-            deliveryStatus = ChatDeliveryStatus.Sent.value,
-            isEdited = false,
-        )
-
-        val mediaBundle = buildMediaPayloadBundle(sourceFile)
-
-        val built = buildMessageContentAndBundle(
-            preVersionedMessageData = forwardData,
-            payloadBundle = mediaBundle,
-            fileOperationsProvider = fileOperationsProvider
-        )
-
         // Preserve the source's dataType so a forwarded Location stays
         // header-tagged as a Location (and any future payload-bearing kind
         // does the same automatically). Sources that pre-date the kind
@@ -880,12 +854,47 @@ class ChatMessageSenderService(
         // wire-level messages.
         val forwardedDataType = sourceFile.fileMetadata.appData.dataType ?: 0
 
+        val typed = MessageContentParser.parse(forwardedDataType, content)
+        val built = if (MessageContentParser.usesRawHeaderContent(typed)) {
+            // The descriptor IS the header content for these kinds. Round-tripping it through the
+            // MessageAppData envelope drops every field the descriptor requires, so the receiver
+            // parses the forward into a null descriptor and paints the unsupported-format chip.
+            // No size check either: these bytes already passed MaxHeaderContentBytes on the
+            // original send and are forwarded unchanged.
+            MessageBuildResult(
+                headerContent = content,
+                payloadBundle = buildMediaPayloadBundle(sourceFile),
+            )
+        } else {
+            val messageAppData = try {
+                OdinSystemSerializer.deserialize<MessageAppData>(content)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("Failed to deserialize source message content for $sourceMessageUniqueId: ${content.take(200)}", e)
+            }
+
+            val fullText = chatMessageStream.loadFullMessage(
+                conversationId = sourceFile.fileMetadata.appData.groupId!!,
+                messageId = sourceMessageUniqueId
+            ) ?: messageAppData.getMessage()
+
+            buildMessageContentAndBundle(
+                preVersionedMessageData = messageAppData.copy(
+                    replyPreview = null,
+                    message = JsonPrimitive(fullText),
+                    deliveryStatus = ChatDeliveryStatus.Sent.value,
+                    isEdited = false,
+                ),
+                payloadBundle = buildMediaPayloadBundle(sourceFile),
+                fileOperationsProvider = fileOperationsProvider
+            )
+        }
+
         return targetConversationIds.map { conversationId ->
             sendMessageInternal(
                 messageUniqueId = Uuid.random(),
                 conversationId = conversationId,
                 content = built.headerContent,
-                notificationText = "You have a new message",
+                notificationText = typed?.notificationLabel ?: "You have a new message",
                 previousMessageUniqueId = null,
                 payloadBundle = built.payloadBundle,
                 dataType = forwardedDataType,
