@@ -6,11 +6,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,7 +19,7 @@ import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Phone
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -72,7 +69,7 @@ fun ContactCardBubble(
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     canOpenDetail: Boolean = true,
-    footer: (@Composable ColumnScope.() -> Unit)? = null,
+    footer: (@Composable () -> Unit)? = null,
 ) {
     if (descriptor == null || !descriptor.isValid()) {
         UnparseableContactCardBubble(modifier = modifier, footer = footer)
@@ -88,6 +85,7 @@ fun ContactCardBubble(
 
     val openLabel = stringResource(MR.string.chat_contact_card_open)
     val actionsLabel = stringResource(MR.string.chat_contact_card_actions)
+    val hasActionRow = onSaveToContacts != null || footer != null
     Surface(
         modifier = modifier.widthIn(min = 240.dp, max = 320.dp),
         shape = MaterialTheme.shapes.large,
@@ -112,8 +110,13 @@ fun ContactCardBubble(
                             )
                         } else it
                     }
-                    .padding(12.dp),
-                verticalAlignment = Alignment.Top,
+                    .padding(
+                        start = 12.dp,
+                        top = 12.dp,
+                        end = 12.dp,
+                        bottom = if (hasActionRow) 2.dp else 12.dp,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 ContactCardAvatar(descriptor = descriptor, size = 44.dp)
                 Spacer(Modifier.width(12.dp))
@@ -157,27 +160,36 @@ fun ContactCardBubble(
                 }
             }
 
-            if (onSaveToContacts != null) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                TextButton(
-                    onClick = { onSaveToContacts(descriptor) },
-                    shape = RectangleShape,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            // Save and the send time share the row: a full-width button under a divider cost the
+            // card two rows and dwarfed a name-only card.
+            if (hasActionRow) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp, end = 12.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.PersonAdd,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(MR.string.chat_contact_card_save),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    if (onSaveToContacts != null) {
+                        TextButton(
+                            onClick = { onSaveToContacts(descriptor) },
+                            contentPadding = ButtonDefaults.TextButtonWithIconContentPadding,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.PersonAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(MR.string.chat_contact_card_save),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    footer?.invoke()
                 }
             }
-
-            footer?.invoke(this)
         }
     }
 
@@ -262,7 +274,7 @@ internal fun ContactValueKind.icon(): ImageVector = when (this) {
 @Composable
 private fun UnparseableContactCardBubble(
     modifier: Modifier,
-    footer: (@Composable ColumnScope.() -> Unit)? = null,
+    footer: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier,
@@ -271,7 +283,12 @@ private fun UnparseableContactCardBubble(
     ) {
         Column {
             Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                modifier = Modifier.padding(
+                    start = 14.dp,
+                    top = 10.dp,
+                    end = 14.dp,
+                    bottom = if (footer != null) 2.dp else 10.dp,
+                ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -288,7 +305,14 @@ private fun UnparseableContactCardBubble(
                 )
             }
 
-            footer?.invoke(this)
+            if (footer != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(end = 12.dp, bottom = 6.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    footer()
+                }
+            }
         }
     }
 }
