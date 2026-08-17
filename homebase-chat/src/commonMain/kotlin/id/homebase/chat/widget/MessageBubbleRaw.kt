@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -64,6 +65,8 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
+import id.homebase.chat.contactcard.ContactCardBubble
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -165,6 +168,7 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
     // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
     // than as the message itself: typed bubbles must not open their full-screen detail from here.
     displayOnly: Boolean = false,
@@ -228,9 +232,30 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.ContactCard -> {
-            id.homebase.chat.contactcard.ContactCardBubble(
+            // Same edited-aware footer text as a regular bubble (see messageInfoText below).
+            val cardInfoText = formatMessageTimestamp(message.userDate).let {
+                if (message.isEdited) "${stringResource(MR.string.chat_message_edited)} $it" else it
+            }
+            ContactCardBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
+                // displayOnly owns the whole action surface, not just the detail: a preview must
+                // not offer Save either, whatever the host handed down.
+                onSaveToContacts = onSaveContactCard?.takeIf { !displayOnly },
+                onLongClick = onLongClick,
+                canOpenDetail = !displayOnly,
+                footer = {
+                    MessageTimestampFooter(
+                        visible = showMessageFooter,
+                        infoText = cardInfoText,
+                        contentColor = LocalContentColor.current,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                },
             )
             return
         }

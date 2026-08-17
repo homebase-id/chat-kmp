@@ -21,8 +21,9 @@ data class ContactCardDescriptor(
     val emails: List<String> = emptyList(),
     val schemaVersion: Int = 1,
 ) {
+    /** Blank when a card carries nothing renderable; the caller supplies a localized fallback. */
     fun summaryLine(): String = displayName.ifBlank {
-        organization.ifBlank { phones.firstOrNull() ?: emails.firstOrNull() ?: FALLBACK_SUMMARY }
+        organization.ifBlank { (phones + emails).firstOrNull { it.isNotBlank() }.orEmpty() }
     }
 
     fun isValid(): Boolean {
@@ -40,6 +41,5 @@ data class ContactCardDescriptor(
         const val MAX_NAME_CODEPOINTS = 80
         const val MAX_VALUE_CODEPOINTS = 120
         const val MAX_VALUES_PER_KIND = 10
-        const val FALLBACK_SUMMARY = "Contact"
     }
 }

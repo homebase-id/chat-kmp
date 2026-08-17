@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -432,4 +433,8 @@ sealed interface ConversationListUiAction {
     data object OpenLocationSetup : ConversationListUiAction
 
     // endregion
+
+    /** Save a received contact card to the contact book — the editor lives in :homebase-core, so
+     *  this leaves the module the same way OpenShareLocation does. */
+    data class SaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiAction
 }

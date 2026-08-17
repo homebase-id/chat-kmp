@@ -1,9 +1,16 @@
+@file:OptIn(ExperimentalUuidApi::class)
+
 package id.homebase.core.ui.screens.contactbook
 
+import id.homebase.api.client.contacts.Contact
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.contactcard.VCardContact
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
+import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Turns a parsed vCard into the two shapes the share flow needs: the wire descriptor for the
@@ -28,29 +35,104 @@ object ContactCardImport {
         return descriptor.takeIf { it.isValid() }
     }
 
-    /** [ContactBookEntry] has no organization field, so the descriptor's stays blank. */
     fun toDescriptor(entry: ContactBookEntry): ContactCardDescriptor? {
         val descriptor = ContactCardDescriptor(
             displayName = entry.displayName.cap(),
             givenName = entry.givenName.orEmpty().cap(),
             surname = entry.surname.orEmpty().cap(),
+            organization = entry.organization.orEmpty().cap(),
             phones = (listOfNotNull(entry.phone) + entry.additionalPhones).normalizedPhones(),
             emails = (listOfNotNull(entry.email) + entry.additionalEmails).normalizedEmails(),
         )
         return descriptor.takeIf { it.isValid() }
     }
 
-    fun toDraft(contact: VCardContact): ContactDraft {
-        val given = contact.givenName.cap()
-        val surname = contact.surname.cap()
+    fun toDraft(contact: VCardContact): ContactDraft = draft(
+        givenName = contact.givenName.cap(),
+        surname = contact.surname.cap(),
+        displayName = contact.displayName.cap(),
+        organization = contact.organization.cap(),
+        phones = contact.phones,
+        emails = contact.emails,
+    )
+
+    // Receiver side. Capped and normalized like the vCard overload: a card authored by another
+    // client never went through toDescriptor, so nothing upstream has enforced the limits.
+    fun toDraft(descriptor: ContactCardDescriptor): ContactDraft = draft(
+        givenName = descriptor.givenName.cap(),
+        surname = descriptor.surname.cap(),
+        displayName = descriptor.displayName.cap(),
+        organization = descriptor.organization.cap(),
+        phones = descriptor.phones,
+        emails = descriptor.emails,
+    )
+
+    /** Everything past the single canonical slot [toDraft] fills. */
+    fun extraPhones(descriptor: ContactCardDescriptor): List<String> =
+        descriptor.phones.normalizedPhones().drop(1)
+
+    fun extraEmails(descriptor: ContactCardDescriptor): List<String> =
+        descriptor.emails.normalizedEmails().drop(1)
+
+    // [loadOverrides] is not optional: the contact schema is single-valued, so extra phones/emails —
+    // and any edited primary — live only in the override blob, invisible to the synced contacts.
+    suspend fun resolveExisting(
+        descriptor: ContactCardDescriptor,
+        loadContacts: suspend () -> List<Contact>,
+        loadOverrides: suspend (List<Contact>) -> Map<Uuid, ContactFieldOverlay>,
+    ): ContactBookEntry? {
+        val contacts = loadContacts()
+        val overrides = loadOverrides(contacts)
+        return findExisting(
+            descriptor,
+            contacts.mapNotNull { it.toContactBookEntry()?.withOverride(overrides[it.uniqueId]) },
+        )
+    }
+
+    // Value-based on purpose: names collide (two "Mum"s) and a name-only card must not block a
+    // legitimate save.
+    fun findExisting(
+        descriptor: ContactCardDescriptor,
+        entries: List<ContactBookEntry>,
+    ): ContactBookEntry? {
+        val phones = descriptor.phones
+            .map { ContactFieldValidation.normalizePhone(it) }
+            .filter { it.isNotBlank() }
+            .toSet()
+        val emails = descriptor.emails.mapNotNull { it.trim().lowercase().ifBlank { null } }.toSet()
+        if (phones.isEmpty() && emails.isEmpty()) return null
+
+        return entries.firstOrNull { entry ->
+            entry.everyPhone().any { it in phones } || entry.everyEmail().any { it in emails }
+        }
+    }
+
+    private fun ContactBookEntry.everyPhone(): List<String> =
+        (listOfNotNull(phone) + additionalPhones)
+            .map { ContactFieldValidation.normalizePhone(it) }
+            .filter { it.isNotBlank() }
+
+    private fun ContactBookEntry.everyEmail(): List<String> =
+        (listOfNotNull(email) + additionalEmails)
+            .mapNotNull { it.trim().lowercase().ifBlank { null } }
+
+    private fun draft(
+        givenName: String,
+        surname: String,
+        displayName: String,
+        organization: String,
+        phones: List<String>,
+        emails: List<String>,
+    ): ContactDraft {
         // No structured N: the whole formatted name goes in the first-name slot, matching what
         // ContactBookEntry.toDraft does for a contact that only has a display name.
-        val fallbackGiven = if (given.isBlank() && surname.isBlank()) contact.displayName.cap() else given
+        val fallbackGiven = if (givenName.isBlank() && surname.isBlank()) displayName else givenName
         return ContactDraft(
             givenName = fallbackGiven,
             surname = surname,
-            phone = contact.phones.normalizedPhones().firstOrNull().orEmpty(),
-            email = contact.emails.normalizedEmails().firstOrNull().orEmpty(),
+            organization = organization,
+            phone = phones.normalizedPhones().firstOrNull().orEmpty(),
+            email = emails.normalizedEmails().firstOrNull().orEmpty(),
         )
     }
 
