@@ -6,6 +6,7 @@ import id.homebase.api.client.contacts.Contact
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.contactcard.VCardContact
+import id.homebase.chat.contactcard.scrubbed
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
@@ -160,19 +161,21 @@ object ContactCardImport {
     }
 
     private fun List<String>.normalizedPhones(): List<String> = this
-        .map { ContactFieldValidation.normalizePhone(it) }
+        .map { ContactFieldValidation.normalizePhone(it).scrubbed() }
         .filter { it.isNotBlank() }
         .distinct()
         .take(ContactCardDescriptor.MAX_VALUES_PER_KIND)
         .map { it.truncateToCodePoints(ContactCardDescriptor.MAX_VALUE_CODEPOINTS) }
 
     private fun List<String>.normalizedEmails(): List<String> = this
-        .map { it.trim() }
+        .map { it.trim().scrubbed() }
         .filter { it.isNotBlank() }
         .distinct()
         .take(ContactCardDescriptor.MAX_VALUES_PER_KIND)
         .map { it.truncateToCodePoints(ContactCardDescriptor.MAX_VALUE_CODEPOINTS) }
 
+    // Scrub before truncating: a bidi override dropped afterwards would still have spent budget,
+    // and this text becomes the stored contact name on save.
     private fun String.cap(): String =
-        truncateToCodePoints(ContactCardDescriptor.MAX_NAME_CODEPOINTS)
+        scrubbed().truncateToCodePoints(ContactCardDescriptor.MAX_NAME_CODEPOINTS)
 }

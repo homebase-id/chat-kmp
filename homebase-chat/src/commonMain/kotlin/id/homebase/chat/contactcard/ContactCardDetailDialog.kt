@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -67,6 +68,7 @@ import id.homebase.resources.chat_contact_card_phones
 import id.homebase.resources.chat_contact_card_save
 import id.homebase.resources.chat_contact_card_send_email
 import id.homebase.resources.chat_contact_card_title
+import id.homebase.resources.contactbook_detail_message
 import id.homebase.resources.contactbook_edit_odinid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
@@ -84,6 +86,7 @@ fun ContactCardDetailDialog(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
     authorOdinId: String? = null,
     sentByYou: Boolean = false,
 ) {
@@ -95,6 +98,7 @@ fun ContactCardDetailDialog(
             descriptor = descriptor,
             onDismiss = onDismiss,
             onSaveToContacts = onSaveToContacts,
+            onMessageIdentity = onMessageIdentity,
             authorOdinId = authorOdinId,
             sentByYou = sentByYou,
         )
@@ -107,6 +111,7 @@ private fun ContactCardDetailContent(
     descriptor: ContactCardDescriptor,
     onDismiss: () -> Unit,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)?,
+    onMessageIdentity: ((String) -> Unit)?,
     authorOdinId: String?,
     sentByYou: Boolean,
 ) {
@@ -135,6 +140,18 @@ private fun ContactCardDetailContent(
         if (runCatching { uriHandler.openUri(uri) }.isFailure) {
             scope.launch { snackbarHostState.showSnackbar(unavailableMessage) }
         }
+    }
+
+    val messageLabel = stringResource(MR.string.contactbook_detail_message)
+    val openProfileLabel = stringResource(MR.string.chat_contact_card_open_profile)
+    // The identity IS its host, so its profile is a plain https URL.
+    val openProfile: (String) -> Unit = { identity -> openUri("https://$identity") }
+    val openProfileAction: @Composable (String) -> ValueRowAction = { identity ->
+        ValueRowAction(
+            label = openProfileLabel,
+            icon = Icons.AutoMirrored.Outlined.OpenInNew,
+            onClick = { openProfile(identity) },
+        )
     }
 
     // Pinned, not enterAlways: the close button is the only dismiss affordance and must not scroll
@@ -219,12 +236,13 @@ private fun ContactCardDetailContent(
                 header = stringResource(MR.string.contactbook_edit_odinid),
                 values = listOfNotNull(identityValue),
                 kind = ContactValueKind.Identity,
-                actionLabel = stringResource(MR.string.chat_contact_card_open_profile),
-                // The identity IS its host, so its profile is a plain https URL — no navigation
-                // callback to thread through five layers for the common case.
-                onAction = { openUri("https://$it") },
+                actionLabel = if (onMessageIdentity != null) messageLabel else openProfileLabel,
+                // Open profile hands the identity to the browser and nothing registers an https
+                // deep link back, so it is only the primary where the host can't route a chat.
+                onAction = onMessageIdentity ?: openProfile,
                 copyLabel = MR.string.chat_contact_card_copy_identity,
                 onCopy = copyValue,
+                secondaryAction = if (onMessageIdentity != null) openProfileAction else null,
             )
 
             ValueSection(

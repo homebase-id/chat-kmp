@@ -73,6 +73,7 @@ fun ContactCardBubble(
     descriptor: ContactCardDescriptor?,
     modifier: Modifier = Modifier,
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     canOpenDetail: Boolean = true,
     authorOdinId: String? = null,
@@ -226,6 +227,13 @@ fun ContactCardBubble(
                 { card ->
                     showDetail = false
                     save(card)
+                }
+            },
+            // Same: the conversation this swaps to would otherwise open behind the dialog.
+            onMessageIdentity = onMessageIdentity?.let { message ->
+                { identity ->
+                    showDetail = false
+                    message(identity)
                 }
             },
         )

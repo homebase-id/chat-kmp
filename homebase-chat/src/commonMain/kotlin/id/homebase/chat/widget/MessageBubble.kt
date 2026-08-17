@@ -188,6 +188,7 @@ fun SentMessageBubble(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
     onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -380,6 +381,7 @@ fun SentMessageBubble(
                         isCurrentSearchResult = isCurrentSearchResult,
                         chainCap = chainCap,
                         onSaveContactCard = onSaveContactCard,
+                        onMessageIdentity = onMessageIdentity,
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
@@ -516,6 +518,7 @@ fun ReceivedMessageBubble(
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
     onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -648,6 +651,7 @@ fun ReceivedMessageBubble(
                             isCurrentSearchResult = isCurrentSearchResult,
                             chainCap = chainCap,
                             onSaveContactCard = onSaveContactCard,
+                            onMessageIdentity = onMessageIdentity,
                         )
                         message.reactionPreview?.let { reactionSummary ->
                             ReactionList(

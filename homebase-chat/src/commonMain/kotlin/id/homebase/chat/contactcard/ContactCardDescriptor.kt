@@ -39,7 +39,7 @@ data class ContactCardDescriptor(
                     ?: (phones + emails).firstOrNull { it.isNotBlank() }.orEmpty()
             }
         }
-    }
+    }.scrubbed()
 
     /**
      * The identity, only when it really parses as one. A card authored elsewhere can put anything
@@ -70,6 +70,16 @@ data class ContactCardDescriptor(
             sentByYou || it.domainName.equals(author?.trim(), ignoreCase = true)
         }
 
+    /**
+     * The card as it may be *saved*. A stored contact's odinId drives an unconditional
+     * `https://<odinId>/pub/image` on every render of its row, so an identity bound from a card
+     * outlives — and goes around — the bubble's own avatar gate, from one tap. Same test as
+     * [avatarIdentity]; the field stays editable in the sheet, so a user who means to link the
+     * contact still can.
+     */
+    fun forSaving(author: String?, sentByYou: Boolean): ContactCardDescriptor =
+        if (avatarIdentity(author, sentByYou) != null) this else copy(odinId = "")
+
     fun isValid(): Boolean {
         if (displayName.codePointCount() > MAX_NAME_CODEPOINTS) return false
         if (odinId.codePointCount() > MAX_VALUE_CODEPOINTS) return false
@@ -88,4 +98,14 @@ data class ContactCardDescriptor(
         const val MAX_VALUE_CODEPOINTS = 120
         const val MAX_VALUES_PER_KIND = 10
     }
+}
+
+/**
+ * Drops control and bidi-override characters. A card is authored by a remote client and its text
+ * reaches the bubble, the conversation-list preview and — once saved — the stored contact name, so
+ * a U+202E in a display name reverses everything after it everywhere that contact is shown.
+ */
+fun String.scrubbed(): String = filterNot { c ->
+    c < ' ' || c == '\u007F' || c == '\uFEFF' ||
+        c in '\u200B'..'\u200F' || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069'
 }

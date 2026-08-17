@@ -491,4 +491,62 @@ class ContactCardValuesTest {
             "The subtitle must use the same comparison as the row drop, or both render.",
         )
     }
+
+    @Test
+    fun `a bidi override in a name never reaches the title`() {
+        val hostile = card(displayName = "Ada\u202E moc.live")
+
+        assertEquals("Ada moc.live", hostile.summaryLine())
+    }
+
+    @Test
+    fun `zero-width and control characters are dropped from rendered values`() {
+        val hostile = card(
+            displayName = "Ada",
+            phones = listOf("+1415\u200B5550123"),
+            emails = listOf("ada\u0000@example.com"),
+        )
+
+        assertEquals(listOf("+14155550123"), hostile.renderablePhones())
+        assertEquals(listOf("ada@example.com"), hostile.renderableEmails())
+    }
+
+    @Test
+    fun `ordinary text is untouched by the scrub`() {
+        assertEquals("Ada Lovelace \u00C9amonn \uD83C\uDF89", "Ada Lovelace \u00C9amonn \uD83C\uDF89".scrubbed())
+    }
+
+    // Saving is the path that outlives the bubble: a stored contact's odinId is fetched on every
+    // render of its row, with no author to check against any more.
+    @Test
+    fun `saving a card someone else sent does not bind its identity`() {
+        val hostile = card().copy(odinId = "tracker.evil.tld")
+
+        assertEquals("", hostile.forSaving(author = "friend.demo.rocks", sentByYou = false).odinId)
+        assertEquals("", hostile.forSaving(author = null, sentByYou = false).odinId)
+    }
+
+    @Test
+    fun `saving keeps an identity the envelope vouches for`() {
+        val own = card().copy(odinId = "samwise.gamgee.demo.rocks")
+
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            own.forSaving(author = "samwise.gamgee.demo.rocks", sentByYou = false).odinId,
+        )
+        assertEquals(
+            "samwise.gamgee.demo.rocks",
+            own.forSaving(author = null, sentByYou = true).odinId,
+        )
+    }
+
+    @Test
+    fun `gating the identity leaves the rest of the card intact`() {
+        val hostile = card(phones = listOf("+14155550123"), emails = listOf("ada@example.com"))
+            .copy(odinId = "tracker.evil.tld")
+
+        val saved = hostile.forSaving(author = "friend.demo.rocks", sentByYou = false)
+
+        assertEquals(hostile.copy(odinId = ""), saved)
+    }
 }

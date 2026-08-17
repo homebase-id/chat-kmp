@@ -14,9 +14,11 @@ internal data class ContactCardBubbleValues(
 internal const val ContactCardBubbleRowLimit = 3
 
 // A card authored by another client can carry a blank entry; it is not a row worth painting.
-internal fun ContactCardDescriptor.renderablePhones(): List<String> = phones.filter { it.isNotBlank() }
+internal fun ContactCardDescriptor.renderablePhones(): List<String> =
+    phones.map { it.scrubbed() }.filter { it.isNotBlank() }
 
-internal fun ContactCardDescriptor.renderableEmails(): List<String> = emails.filter { it.isNotBlank() }
+internal fun ContactCardDescriptor.renderableEmails(): List<String> =
+    emails.map { it.scrubbed() }.filter { it.isNotBlank() }
 
 internal fun ContactCardDescriptor.renderableIdentity(): String? = identity()?.domainName
 
@@ -43,7 +45,8 @@ internal fun ContactCardDescriptor.bubbleValues(
 }
 
 internal fun ContactCardDescriptor.subtitleLine(): String =
-    organization.takeIf { it.isNotBlank() && !it.equals(summaryLine(), ignoreCase = true) }
+    organization.scrubbed()
+        .takeIf { it.isNotBlank() && !it.equals(summaryLine(), ignoreCase = true) }
         .orEmpty()
 
 // Blank for a card carrying only a phone/email/identity — the caller falls back to an icon.
