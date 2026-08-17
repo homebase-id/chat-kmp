@@ -72,6 +72,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
+import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
@@ -164,6 +165,9 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
+    // than as the message itself: typed bubbles must not open their full-screen detail from here.
+    displayOnly: Boolean = false,
 ) {
 
     // #814: render the timestamp + delivery footer only on the last bubble of a
@@ -188,8 +192,8 @@ fun MessageBubbleRaw(
             EventBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
@@ -214,8 +218,8 @@ fun MessageBubbleRaw(
             GroodleBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
@@ -238,11 +242,11 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.Poll -> {
-            id.homebase.chat.poll.PollBubble(
+            PollBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -114,6 +115,10 @@ fun PollBubble(
             messageId to conversationId
         } else null
     val canVote = voteTarget != null
+    // Off-stream (action-menu preview, message info, reply quote) both ids are null: nothing here
+    // may take a pointer, because a handler that can't act still eats the tap the action-menu
+    // scrim needs to dismiss.
+    val canOpenDetail = messageId != null && conversationId != null
     val actionService: ChatMessageActionService = koinInject()
     val scope = rememberCoroutineScope()
 
@@ -124,7 +129,7 @@ fun PollBubble(
         .clip(RoundedCornerShape(16.dp))
         .background(containerColor)
         .let {
-            if (canVote || onLongClick != null) {
+            if (canOpenDetail) {
                 it.combinedClickable(
                     onClick = {},
                     onLongClick = onLongClick,
@@ -214,18 +219,23 @@ fun PollBubble(
             )
         } else {
             val footerLabel = if (descriptor.closed) viewResultsText else viewVotesText
-            TextButton(
-                onClick = { showDetail = true },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary,
-                ),
-            ) {
-                Text(
-                    text = footerLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
+            if (canOpenDetail) {
+                TextButton(
+                    onClick = { showDetail = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    ),
+                ) {
+                    PollFooterLabel(footerLabel)
+                }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PollFooterLabel(footerLabel, MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
@@ -241,6 +251,16 @@ fun PollBubble(
             onDismiss = { showDetail = false },
         )
     }
+}
+
+@Composable
+private fun PollFooterLabel(text: String, color: Color = Color.Unspecified) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = color,
+    )
 }
 
 @Composable
