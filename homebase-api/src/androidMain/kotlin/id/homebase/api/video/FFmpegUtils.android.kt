@@ -132,7 +132,6 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val context = ActivityProvider.requireApplicationContext()
         val inFile = File(inputPath)
@@ -181,7 +180,6 @@ actual object FFmpegUtils {
             // FFmpegKit builds); stick with libx264 for predictable behaviour.
             probedBitDepth = probe.bitDepth,
             probedIsHdr = probe.isHdr,
-            allowTenBit = allowTenBit,
         )
 
         val args = plan.args.toTypedArray()

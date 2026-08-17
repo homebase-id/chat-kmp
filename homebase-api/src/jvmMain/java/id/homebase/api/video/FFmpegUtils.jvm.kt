@@ -123,7 +123,6 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         if (!FFmpegBinaryManager.isAvailable()) return@withContext null
 
@@ -163,7 +162,6 @@ actual object FFmpegUtils {
             rotationDegrees = rotation,
             probedBitDepth = probe.bitDepth,
             probedIsHdr = probe.isHdr,
-            allowTenBit = allowTenBit,
         )
 
         // Planner emits "argv after ffmpeg" — Desktop's ProcessBuilder needs

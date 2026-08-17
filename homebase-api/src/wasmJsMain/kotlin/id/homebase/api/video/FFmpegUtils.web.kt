@@ -82,7 +82,6 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
     ): String? {
         // Input read strategy:
         //  - blob: URL (web editor's picked File) → probe + writeFile happen entirely in JS
@@ -114,9 +113,6 @@ actual object FFmpegUtils {
             inputBytes = inputSizeBytes,
             rotationDegrees = probe?.rotationDegrees ?: 0,
             // libx264: the single-thread core has no hardware encoder.
-            // No-op here: the web probe doesn't report bit depth, so output
-            // stays 8-bit yuv420p regardless of the flag.
-            allowTenBit = allowTenBit,
         )
 
         if (isBlob) FFmpegBridge.writeFileFromUrl(MEMFS_INPUT, inputPath)

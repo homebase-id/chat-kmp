@@ -19,6 +19,7 @@ class FfmpegCompressPlannerTest {
 
     // --- QualityTargets mapping ---
 
+    @Test
     fun targets_low_480p_125Mbps() {
         val t = VideoQuality.LOW.targets()
         assertEquals(480, t.shortEdgePx)
@@ -323,74 +324,6 @@ class FfmpegCompressPlannerTest {
             probedCodecMime = "video/avc",
             inputDurationMs = 6_000L, inputBytes = 26_000L,
             probedIsHdr = true,
-        )
-        assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
-    }
-
-    @Test
-    fun plan_allowTenBit_overBudgetTenBit_reencodesToTenBitPixFmt() {
-        // Over-budget (forces a real encode) 10-bit source with the flag on:
-        // output must be pinned to 10-bit yuv420p10le, not downconverted.
-        val plan = FfmpegCompressPlanner.plan(
-            inputPath = "/in.mp4", outputPath = "/out.mp4",
-            quality = VideoQuality.STANDARD,
-            trimStartMs = null, trimEndMs = null,
-            probedWidthPx = 1920, probedHeightPx = 1080,
-            probedCodecMime = "video/avc",
-            inputDurationMs = 6_000L, inputBytes = 20_000_000L,
-            probedBitDepth = 10,
-            allowTenBit = true,
-        )
-        assertEquals("yuv420p10le", plan.args[plan.args.indexOf("-pix_fmt") + 1])
-    }
-
-    @Test
-    fun plan_allowTenBit_hdr10Bit_stillReencodesButKeeps10Bit() {
-        // HDR always forces a re-encode (no tone-map yet). With allowTenBit the
-        // re-encode preserves the source's 10-bit depth (yuv420p10le) rather
-        // than downconverting — so the 10-bit HDR pipeline can be inspected.
-        val plan = FfmpegCompressPlanner.plan(
-            inputPath = "/in.mp4", outputPath = "/out.mp4",
-            quality = VideoQuality.STANDARD,
-            trimStartMs = null, trimEndMs = null,
-            probedWidthPx = 320, probedHeightPx = 180,
-            probedCodecMime = "video/avc",
-            inputDurationMs = 6_000L, inputBytes = 26_000L,
-            probedBitDepth = 10, probedIsHdr = true,
-            allowTenBit = true,
-        )
-        assertEquals("yuv420p10le", plan.args[plan.args.indexOf("-pix_fmt") + 1])
-    }
-
-    @Test
-    fun plan_allowTenBit_hdr8Bit_staysEightBit() {
-        // The pix_fmt branch keys on bit depth, not HDR: an 8-bit HDR source
-        // (e.g. 8-bit HLG) re-encodes but stays 8-bit.
-        val plan = FfmpegCompressPlanner.plan(
-            inputPath = "/in.mp4", outputPath = "/out.mp4",
-            quality = VideoQuality.STANDARD,
-            trimStartMs = null, trimEndMs = null,
-            probedWidthPx = 320, probedHeightPx = 180,
-            probedCodecMime = "video/avc",
-            inputDurationMs = 6_000L, inputBytes = 26_000L,
-            probedBitDepth = 8, probedIsHdr = true,
-            allowTenBit = true,
-        )
-        assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
-    }
-
-    @Test
-    fun plan_allowTenBit_eightBitSource_staysEightBit() {
-        // Flag permits, not forces: an 8-bit source must remain 8-bit.
-        val plan = FfmpegCompressPlanner.plan(
-            inputPath = "/in.mp4", outputPath = "/out.mp4",
-            quality = VideoQuality.STANDARD,
-            trimStartMs = 0L, trimEndMs = 5_000L,
-            probedWidthPx = 1280, probedHeightPx = 720,
-            probedCodecMime = "video/avc",
-            inputDurationMs = 5_000L, inputBytes = 5_000_000L,
-            probedBitDepth = 8,
-            allowTenBit = true,
         )
         assertEquals("yuv420p", plan.args[plan.args.indexOf("-pix_fmt") + 1])
     }

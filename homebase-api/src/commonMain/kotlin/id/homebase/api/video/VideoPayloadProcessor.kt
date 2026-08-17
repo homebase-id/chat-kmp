@@ -33,7 +33,6 @@ class VideoPayloadProcessor(
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         videoQuality: VideoQuality = VideoQuality.STANDARD,
-        allowTenBit: Boolean = false,
         inputBlobUrl: String? = null,
     ): VideoProcessResult =
         // Resolve content URIs (Android copies the gallery pick into cacheDir as
@@ -51,7 +50,6 @@ class VideoPayloadProcessor(
                 trimStartMs = trimStartMs,
                 trimEndMs = trimEndMs,
                 videoQuality = videoQuality,
-                allowTenBit = allowTenBit,
                 inputBlobUrl = inputBlobUrl,
             )
         }
@@ -64,7 +62,6 @@ class VideoPayloadProcessor(
         trimStartMs: Long?,
         trimEndMs: Long?,
         videoQuality: VideoQuality,
-        allowTenBit: Boolean,
         // Web only: a blob: URL for the original. When present it's the ffmpeg/decoder INPUT read
         // (poster + compress), so the original is read in JS — never copied into Kotlin or base64'd.
         // null on native → falls back to the okio path. Read-only here; revoked by writeFileFromUrl.
@@ -127,7 +124,6 @@ class VideoPayloadProcessor(
                     trimStartMs = trimStartMs,
                     trimEndMs = trimEndMs,
                     quality = videoQuality,
-                    allowTenBit = allowTenBit,
                     onProgress = {
                         if (compressGate.admit(it * 100f) != null) {
                             onProgress?.invoke(

@@ -21,7 +21,6 @@ class PayloadBundleEncryptionService(
     private val fileOps: FileOperationsProvider,
     private val videoProcessor: VideoPayloadProcessor,
     private val eventBus: EventBus,
-    private val videoEncodePolicy: VideoEncodePolicy,
 ) : PayloadBundleEncryptor {
 
     override suspend fun encryptBundle(
@@ -89,7 +88,6 @@ class PayloadBundleEncryptionService(
                         descriptorContentPayloadKey = "${UploadProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index",
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
-                        allowTenBit = videoEncodePolicy.allowTenBitVideo,
                         inputBlobUrl = payload.inputBlobUrl,
                     )
 

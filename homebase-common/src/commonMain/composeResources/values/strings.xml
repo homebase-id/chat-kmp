@@ -1282,7 +1282,6 @@
     <string name="dev_menu_section_sync">Sync &amp; Connection</string>
     <string name="dev_menu_section_database">Database &amp; Storage</string>
     <string name="dev_menu_section_testing">Testing Tools</string>
-    <string name="dev_menu_section_video">Video</string>
     <string name="dev_menu_section_network">Network Status</string>
     <string name="dev_menu_run_network_diagnostics">Run network diagnostics</string>
     <string name="dev_menu_network_copy">Copy diagnostics</string>
@@ -1314,8 +1313,6 @@
     <string name="scheduled_push_test_cancel_confirm_message_one_shot">This scheduled notification will be cancelled.</string>
     <string name="scheduled_push_test_cancel_confirm_message_recurring">This notification repeats indefinitely. Cancelling is the only way to stop it.</string>
     <string name="scheduled_push_test_cancel_confirm_action">Cancel notification</string>
-    <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
-    <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
     <string name="dev_menu_trigger_test_crash">Trigger test crash</string>
     <string name="dev_menu_trigger_test_crash_description">Intentionally crashes the app right now to verify crash reporting. The app will close immediately — reopen it afterward to let the crash report upload to Crashlytics.</string>

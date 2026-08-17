@@ -203,7 +203,6 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
     ): String? = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
         if (!fileManager.fileExistsAtPath(inputPath)) {
@@ -242,12 +241,7 @@ actual object FFmpegUtils {
         // planner takes the encoder name and emits libx264-only flags
         // (-preset veryfast) only when appropriate.
         //
-        // When emitting 10-bit (allowTenBit + >8-bit source), skip
-        // h264_videotoolbox entirely: Apple's H.264 hardware encoder cannot
-        // produce 10-bit (High 10) output, so only libx264 can honour the
-        // yuv420p10le pin.
-        //
-        // Also skip the hardware encoder when dimensions are unknown (probe == null
+        // Skip the hardware encoder when dimensions are unknown (probe == null
         // → widthPx/heightPx == 0). That only happens when BOTH ffprobe and the
         // AVFoundation fallback fail to read the file (audio-only, DRM, or a container
         // neither can open). With no dims the planner emits no `-vf scale` filter, and
@@ -257,7 +251,7 @@ actual object FFmpegUtils {
         // unreadable file), so the hardware encoder is never handed a degenerate command.
         val dimensionsUnknown = widthPx <= 0 || heightPx <= 0
         val encoders =
-            if ((allowTenBit && (bitDepth ?: 0) > 8) || dimensionsUnknown) listOf("libx264")
+            if (dimensionsUnknown) listOf("libx264")
             else listOf("h264_videotoolbox", "libx264")
         for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(
@@ -275,7 +269,6 @@ actual object FFmpegUtils {
                 encoder = encoder,
                 probedBitDepth = bitDepth,
                 probedIsHdr = isHdr,
-                allowTenBit = allowTenBit,
             )
 
             // When using a VideoToolbox encoder, also HW-decode the input.

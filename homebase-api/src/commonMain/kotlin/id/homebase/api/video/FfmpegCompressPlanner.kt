@@ -82,12 +82,6 @@ object FfmpegCompressPlanner {
      * @param probedBitDepth source luma bit depth, for logging only — output is
      *   pinned to 8-bit regardless.
      * @param probedIsHdr true when the source is HDR, for logging only.
-     * @param allowTenBit developer/test escape hatch (default false). When true, a
-     *   >8-bit source re-encodes to `yuv420p10le` (High 10) instead of `yuv420p`.
-     *   That output fails on most receivers' hardware AVC decoders — it exists purely
-     *   to inspect 10-bit output locally, and is the ONLY way a non-8-bit stream can
-     *   now leave this planner. Callers driving 10-bit must also use a 10-bit-capable
-     *   encoder (libx264) — `h264_videotoolbox` cannot emit 10-bit H.264.
      */
     fun plan(
         inputPath: String,
@@ -104,7 +98,6 @@ object FfmpegCompressPlanner {
         encoder: String = "libx264",
         probedBitDepth: Int? = null,
         probedIsHdr: Boolean? = null,
-        allowTenBit: Boolean = false,
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
         // swapped them by the time the scale filter sees the frames.
@@ -145,15 +138,9 @@ object FfmpegCompressPlanner {
             // High 10, which most Android hardware AVC decoders reject with
             // ERROR_CODE_DECODING_FAILED / NO_EXCEEDS_CAPABILITIES. yuv420p
             // produces a Main/High-profile stream every receiver can decode.
-            // No-op for already-8-bit 4:2:0 sources. (Tier 1: no tone-map yet —
-            // HDR colours may look flat until the zscale/tonemap follow-up.)
-            //
-            // allowTenBit (dev/test only): keep a >8-bit source at 10-bit
-            // (yuv420p10le → High 10) so the 10-bit pipeline can be inspected.
-            // 8-bit sources stay 8-bit regardless — the flag permits, not forces.
-            val outputPixFmt =
-                if (allowTenBit && (probedBitDepth ?: 0) > 8) "yuv420p10le" else "yuv420p"
-            add("-pix_fmt"); add(outputPixFmt)
+            // No-op for already-8-bit 4:2:0 sources. (No tone-map yet — HDR
+            // colours may look flat until the zscale/tonemap follow-up.)
+            add("-pix_fmt"); add("yuv420p")
             add("-c:a"); add("aac")
             add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
             add("-movflags"); add("+faststart")
