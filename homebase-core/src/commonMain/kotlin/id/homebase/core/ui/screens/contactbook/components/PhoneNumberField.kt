@@ -17,6 +17,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +60,10 @@ fun PhoneNumberField(
     var pickerOpen by remember { mutableStateOf(false) }
 
     fun emit(c: Country, n: String) = onValueChange(composeE164(c, n))
+
+    // Once per row lifetime — rows are rendered under a stable key(id), so this neither re-emits
+    // on recomposition nor reseeds a sibling.
+    LaunchedEffect(Unit) { seededE164(e164Value, country)?.let(onValueChange) }
 
     OutlinedTextField(
         value = national,
