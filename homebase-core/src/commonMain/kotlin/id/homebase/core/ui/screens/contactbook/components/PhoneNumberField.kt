@@ -61,8 +61,7 @@ fun PhoneNumberField(
 
     fun emit(c: Country, n: String) = onValueChange(composeE164(c, n))
 
-    // Once per row lifetime — rows are rendered under a stable key(id), so this neither re-emits
-    // on recomposition nor reseeds a sibling.
+    // Once per row lifetime: rows are keyed, so this never re-emits or reseeds a sibling.
     LaunchedEffect(Unit) { seededE164(e164Value, country)?.let(onValueChange) }
 
     OutlinedTextField(
