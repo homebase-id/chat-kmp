@@ -40,17 +40,6 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(hapticsEnabled = value)
         }
 
-    /**
-     * Developer/test escape hatch (default off). When on, uploaded 10-bit
-     * videos keep their 10-bit depth (High 10) instead of being downconverted
-     * to 8-bit `yuv420p`. High 10 output fails on most receivers' hardware AVC
-     * decoders, so this is for locally inspecting the 10-bit pipeline only —
-     * not a shippable default. See FfmpegCompressPlanner.plan's `allowTenBit`.
-     */
-    var allowTenBitVideo: Boolean
-        get() = settings.getBoolean("allow_ten_bit_video", false)
-        set(value) = settings.putBoolean("allow_ten_bit_video", value)
-
     var preferredUserReactions: List<String>
         get() = settings.getStringOrNull("preferred_user_reactions")?.split(",") ?: listOf()
         set(value) = settings.putString("preferred_user_reactions", value.joinToString(","))

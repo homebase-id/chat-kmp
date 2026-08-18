@@ -75,6 +75,7 @@ import id.homebase.resources.chat_location_unavailable
 import id.homebase.resources.chat_search_result_conversations
 import id.homebase.resources.chat_search_result_messages
 import id.homebase.resources.chat_search_result_pinned
+import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.conversation_jump_message_after_exit
 import id.homebase.resources.conversation_jump_message_unavailable
 import id.homebase.resources.live_share_ended
@@ -885,6 +886,15 @@ class ConversationListViewModel(
                 }
         }
 
+        viewModelScope.launch {
+            contactService.contacts
+                .map { contacts -> contacts.mapTo(mutableSetOf()) { it.odinId } }
+                .distinctUntilChanged()
+                .collect { identities ->
+                    _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+                }
+        }
+
         // Set connected state
         viewModelScope.launch {
             authConnectionCoordinator.connectionState
@@ -1042,6 +1052,30 @@ class ConversationListViewModel(
 
         ActiveConversation.selectConversation(conversationId)
         loadMessagesForConversation(conversationId, messageId, scrollToBottom, trigger)
+    }
+
+    /**
+     * Opens (creating if needed) the 1:1 conversation with the identity on a contact card, the
+     * same call the contact book's Message action makes. Stays inside this VM rather than routing
+     * out through AppNavHost: the user is already on ChatList, and [selectConversation] is what
+     * that round trip ends in anyway — the detail pane swaps itself off selectedConversationId.
+     */
+    private fun messageIdentity(odinId: String) {
+        val identity = runCatching { OdinId(odinId.trim()) }.getOrNull() ?: return
+        viewModelScope.launch {
+            val conversationId = try {
+                conversationService.createConversation(listOf(identity), "", null).conversationId
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(throwable = e, tag = "ConversationListViewModel") {
+                    "messageIdentity failed for ${identity.domainName}"
+                }
+                sendEvent(ShowErrorMessage(MR.string.contactbook_error_message))
+                return@launch
+            }
+            selectConversation(conversationId)
+        }
     }
 
     /**
@@ -1565,6 +1599,14 @@ class ConversationListViewModel(
                 stickerHandler.handleDismissStickerOptions()
             is ConversationListUiAction.RemoveStickerFromMessage ->
                 stickerHandler.handleRemoveStickerFromMessage(action)
+
+            is ConversationListUiAction.SaveContactCard -> {
+                sendEvent(ConversationListUiEvent.NavigateToSaveContactCard(action.descriptor))
+            }
+
+            is ConversationListUiAction.MessageIdentity -> {
+                messageIdentity(action.odinId)
+            }
         }
     }
 

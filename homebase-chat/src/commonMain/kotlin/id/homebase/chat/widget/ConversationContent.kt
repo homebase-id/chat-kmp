@@ -119,6 +119,7 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
+import id.homebase.chat.contactcard.LocalSavedContactIdentities
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import co.touchlab.kermit.Logger
@@ -718,6 +719,7 @@ fun ConversationContent(
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
         LocalUploadConnected provides uiState.isConnected,
+        LocalSavedContactIdentities provides uiState.savedContactIdentities,
     ) {
     Scaffold(
         modifier = Modifier,

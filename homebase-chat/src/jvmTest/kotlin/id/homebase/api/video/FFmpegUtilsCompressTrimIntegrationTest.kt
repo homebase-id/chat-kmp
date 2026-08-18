@@ -8,7 +8,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import org.junit.Assume.assumeTrue
@@ -58,10 +57,11 @@ class FFmpegUtilsCompressTrimIntegrationTest {
     }
 
     @Test
-    fun nullTrim_skipsCompression_whenAlreadyOptimal() = runTest {
-        // The fixture is 6 s, 320×180, h264, ~26 KB → avg ~35 kbps. Far below
-        // MAX_WIDTH (1280) and MAX_BITRATE (3 Mbps). With no trim requested,
-        // compressVideo must short-circuit to null rather than re-encoding.
+    fun nullTrim_stillReencodes_whenAlreadyWithinEnvelope() = runTest {
+        // The fixture is 6 s, 320×180, h264, ~26 KB → avg ~35 kbps, i.e. comfortably
+        // inside the quality envelope. It used to short-circuit to null; the skip path
+        // is gone, so even this must re-encode — that is what guarantees 8-bit output
+        // regardless of what the probe believes about the source (#1278).
         assumeTrue(
             "FFmpeg binaries not bundled in this test classpath",
             FFmpegBinaryManager.isAvailable(),
@@ -73,7 +73,12 @@ class FFmpegUtilsCompressTrimIntegrationTest {
                 trimStartMs = null,
                 trimEndMs = null,
             )
-            assertNull(result, "Already-optimal video without trim must skip compression")
+            assertNotNull(result, "in-envelope video must still be re-encoded, not passed through")
+            try {
+                assertTrue(File(result).exists(), "re-encoded output must exist")
+            } finally {
+                File(result).delete()
+            }
         } finally {
             File(fixturePath).delete()
         }

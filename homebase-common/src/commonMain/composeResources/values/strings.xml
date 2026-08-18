@@ -936,6 +936,41 @@
     <string name="contact_share_prompt_body">%1$s was shared to your chat. Save them to your contacts too?</string>
     <string name="contact_share_prompt_add">Review and add</string>
     <string name="contact_share_prompt_skip">Not now</string>
+    <string name="chat_contact_card_open">View contact details</string>
+    <string name="chat_contact_card_more">+%1$d more</string>
+    <string name="chat_contact_card_save">Save to contacts</string>
+    <string name="chat_contact_card_title">Contact</string>
+    <string name="chat_contact_card_call">Call</string>
+    <string name="chat_contact_card_send_email">Send email</string>
+    <string name="chat_contact_card_copied">Copied to clipboard</string>
+    <string name="chat_contact_card_action_unavailable">Nothing on this device can open that.</string>
+    <string name="chat_contact_card_exists_title">Already in your contacts</string>
+    <string name="chat_contact_card_exists_body">%1$s already has one of these phone numbers or email addresses.</string>
+    <string name="chat_contact_card_exists_open">View contact</string>
+    <string name="chat_contact_card_save_failed_title">Couldn't save</string>
+    <string name="chat_contact_card_save_failed">Something went wrong saving this contact. Your details are still here — try again.</string>
+    <string name="chat_contact_card_retry">Try again</string>
+    <string name="chat_contact_card_saved_title">Contact saved</string>
+    <string name="chat_contact_card_partial_photo">The photo couldn't be uploaded.</string>
+    <string name="chat_contact_card_partial_additions">The extra phone numbers, email addresses and company couldn't be attached.</string>
+    <string name="chat_contact_card_saved_body">%1$s is now in your contacts.</string>
+    <string name="chat_contact_card_saved_open">Open contact</string>
+    <string name="chat_contact_card_phones">Phone numbers</string>
+    <string name="chat_contact_card_emails">Email addresses</string>
+    <string name="chat_contact_card_message">Message %1$s</string>
+    <string name="chat_contact_card_copy_phone">Copy phone number %1$s</string>
+    <string name="chat_contact_card_copy_email">Copy email address %1$s</string>
+    <string name="chat_contact_card_actions">Message options</string>
+    <string name="chat_contact_card_detail_pane">Contact details</string>
+    <string name="chat_contact_card_close">Close</string>
+    <string name="chat_contact_card_merge">Add to this contact</string>
+    <string name="chat_contact_card_merge_confirm">Anything you have typed here will be replaced by %1$s's details.</string>
+    <string name="chat_contact_card_open_profile">Open profile</string>
+    <string name="chat_contact_card_copy_identity">Copy Homebase ID %1$s</string>
+    <string name="chat_contact_card_nothing_else">This card has no phone number or email address.</string>
+    <string name="chat_contact_card_exists_identity_body">%1$s is already saved with this Homebase ID.</string>
+    <string name="chat_contact_card_partial_cleared">Clearing a field isn't supported yet, so the old value is still there.</string>
+    <string name="chat_contact_card_merge_body">Add the details on this card to %1$s. Anything %1$s already has is kept.</string>
 
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Poll details</string>
@@ -1282,7 +1317,6 @@
     <string name="dev_menu_section_sync">Sync &amp; Connection</string>
     <string name="dev_menu_section_database">Database &amp; Storage</string>
     <string name="dev_menu_section_testing">Testing Tools</string>
-    <string name="dev_menu_section_video">Video</string>
     <string name="dev_menu_section_network">Network Status</string>
     <string name="dev_menu_run_network_diagnostics">Run network diagnostics</string>
     <string name="dev_menu_network_copy">Copy diagnostics</string>
@@ -1314,8 +1348,6 @@
     <string name="scheduled_push_test_cancel_confirm_message_one_shot">This scheduled notification will be cancelled.</string>
     <string name="scheduled_push_test_cancel_confirm_message_recurring">This notification repeats indefinitely. Cancelling is the only way to stop it.</string>
     <string name="scheduled_push_test_cancel_confirm_action">Cancel notification</string>
-    <string name="dev_menu_allow_ten_bit_video">Allow 10-bit video</string>
-    <string name="dev_menu_allow_ten_bit_video_description">Keep uploaded 10-bit videos at 10-bit (High 10) instead of downconverting to 8-bit. For testing only — the result may not play on all devices.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
     <string name="dev_menu_trigger_test_crash">Trigger test crash</string>
     <string name="dev_menu_trigger_test_crash_description">Intentionally crashes the app right now to verify crash reporting. The app will close immediately — reopen it afterward to let the crash report upload to Crashlytics.</string>
@@ -1643,6 +1675,7 @@
     <string name="contactbook_edit_surname">Last name</string>
     <string name="contactbook_edit_odinid">Homebase ID</string>
     <string name="contactbook_edit_odinid_locked">Homebase ID can't be changed for a connected contact.</string>
+    <string name="contactbook_edit_odinid_from_card">From the card. Saving it lets this Homebase ID see when you open the contact — clear the field if you don't want that.</string>
     <string name="contactbook_edit_synced_banner">Synced from their Homebase profile. Changes you make are saved only for you and won't change their profile.</string>
     <string name="contactbook_edit_synced_from_profile">From their Homebase profile</string>
     <string name="contactbook_edit_overrides">Overrides their profile value (%1$s) · only you see this</string>
@@ -1661,6 +1694,7 @@
     <string name="contactbook_edit_birthday">Birthday</string>
     <string name="contactbook_edit_change_photo">Add photo</string>
     <string name="contactbook_edit_save">Save</string>
+    <string name="contactbook_edit_saving">Saving…</string>
     <string name="contactbook_edit_cancel">Cancel</string>
     <string name="contactbook_error_email">Enter a valid email address</string>
     <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>
