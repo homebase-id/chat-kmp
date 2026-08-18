@@ -287,11 +287,8 @@ class DriveRegistry(
         }
     }
 
-    /**
-     * [addDrive] where a transport failure is logged instead of thrown — the cold-start case
-     * where the identity host has no DNS yet. [drive] stays out of the cross-device list until
-     * a later activation re-registers it; every other failure still propagates.
-     */
+    // Transport failure only: the drive stays out of the cross-device list until a later
+    // activation re-registers it. Every other failure still propagates.
     suspend fun addDriveBestEffort(drive: LabeledDrive) {
         try {
             addDrive(drive)

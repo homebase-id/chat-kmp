@@ -245,13 +245,8 @@ class DriveRegistryTest {
         db.close()
     }
 
-    /**
-     * The offline cold start: the read-before-write can't reach the identity host. Ktor CIO
-     * surfaces that as `UnresolvedAddressException` — an `IllegalArgumentException`, not an
-     * `IOException` — wrapped by the API layer into [NetworkException]. `mountDrive` calls
-     * this variant so the throw can't escape an add-on ViewModel's handler-less
-     * `viewModelScope` and reach the platform uncaught handler.
-     */
+    // CIO throws UnresolvedAddressException, an IllegalArgumentException — a catch on IOException
+    // misses it.
     @Test
     fun addDriveBestEffortSwallowsOfflineTransportFailure() = runTest {
         val db = createTestDatabaseManager()

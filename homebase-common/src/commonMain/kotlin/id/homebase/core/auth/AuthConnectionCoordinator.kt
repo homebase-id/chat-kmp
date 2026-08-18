@@ -648,9 +648,7 @@ class AuthConnectionCoordinator(
      * it locally) — persisting again would just churn the file with the same content.
      */
     suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
-        // Best-effort: an add-on activating during an offline cold start still mounts locally
-        // (and re-registers on a later activation) instead of throwing out of the caller's
-        // viewModelScope, which carries no CoroutineExceptionHandler.
+        // Must not throw: callers activate add-ons from a viewModelScope with no handler.
         if (persist) driveRegistry.addDriveBestEffort(drive)
         val owner = drive.ownerOdinId
         val newlyMounted = driveSyncManager.mountDrive(drive.drive.alias, drive.label, owner)
