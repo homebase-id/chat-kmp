@@ -1,5 +1,6 @@
 package id.homebase.chat.contactcard
 
+import id.homebase.api.common.OdinId
 import id.homebase.chat.services.content.MessageContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -322,23 +323,24 @@ class ContactCardValuesTest {
         )
     }
 
-    // The common case, and the one a author-only gate silently turned into a no-op: you share a
-    // contact out of your own book, so the host is one you already resolve in the contact list.
     @Test
-    fun `a card you sent yourself fetches whoever it names`() {
+    fun `a card naming someone in your book fetches whoever sent it`() {
         val card = card().copy(odinId = "todd.mitchell.demo.rocks")
+        val book = setOf(OdinId("todd.mitchell.demo.rocks"))
 
         assertEquals(
             "todd.mitchell.demo.rocks",
-            assertNotNull(card.avatarIdentity(author = "me.demo.rocks", sentByYou = true)).domainName,
+            assertNotNull(card.avatarIdentity(author = "me.demo.rocks", savedContacts = book))
+                .domainName,
         )
         assertNull(
-            card.avatarIdentity(author = "me.demo.rocks", sentByYou = false),
-            "Received from someone else, the same card must not resolve.",
+            card.avatarIdentity(author = "me.demo.rocks", savedContacts = emptySet()),
+            "Off your book, the same card must not resolve however it got here.",
         )
         assertNull(
-            card().copy(odinId = "not a domain").avatarIdentity(author = null, sentByYou = true),
-            "Sending it yourself does not make a non-identity into a host.",
+            card().copy(odinId = "not a domain")
+                .avatarIdentity(author = null, savedContacts = book),
+            "Having them in your book does not make a non-identity into a host.",
         )
     }
 
@@ -521,8 +523,8 @@ class ContactCardValuesTest {
     fun `the avatar of a card someone else sent is not fetched`() {
         val hostile = card().copy(odinId = "tracker.evil.tld")
 
-        assertNull(hostile.avatarIdentity(author = "friend.demo.rocks", sentByYou = false))
-        assertNull(hostile.avatarIdentity(author = null, sentByYou = false))
+        assertNull(hostile.avatarIdentity(author = "friend.demo.rocks"))
+        assertNull(hostile.avatarIdentity(author = null))
     }
 
     @Test
@@ -531,11 +533,14 @@ class ContactCardValuesTest {
 
         assertEquals(
             "samwise.gamgee.demo.rocks",
-            own.avatarIdentity(author = "samwise.gamgee.demo.rocks", sentByYou = false)?.domainName,
+            own.avatarIdentity(author = "samwise.gamgee.demo.rocks")?.domainName,
         )
         assertEquals(
             "samwise.gamgee.demo.rocks",
-            own.avatarIdentity(author = null, sentByYou = true)?.domainName,
+            own.avatarIdentity(
+                author = null,
+                savedContacts = setOf(OdinId("samwise.gamgee.demo.rocks")),
+            )?.domainName,
         )
     }
 
