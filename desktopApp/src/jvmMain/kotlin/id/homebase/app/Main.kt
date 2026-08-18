@@ -297,7 +297,8 @@ private fun setupCrashHandler() {
                     "Transient network failure"
                 }
                 "$kind leaked to '${thread.name}' (no local handler); " +
-                    "app not crashing: ${throwable.message}"
+                    "app not crashing: ${throwable.message}\n" +
+                    throwable.stackTraceToString()
             }
             return@setDefaultUncaughtExceptionHandler
         }

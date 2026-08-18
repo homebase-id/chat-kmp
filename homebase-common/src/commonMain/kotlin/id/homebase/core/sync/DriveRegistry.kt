@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -283,6 +284,24 @@ class DriveRegistry(
         updateRegistry { current ->
             if (current.any { it.drive.alias == drive.drive.alias }) current
             else current + drive
+        }
+    }
+
+    /**
+     * [addDrive] where a transport failure is logged instead of thrown — the cold-start case
+     * where the identity host has no DNS yet. [drive] stays out of the cross-device list until
+     * a later activation re-registers it; every other failure still propagates.
+     */
+    suspend fun addDriveBestEffort(drive: LabeledDrive) {
+        try {
+            addDrive(drive)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (!e.isTransientNetworkFailure()) throw e
+            Logger.w(tag = TAG, throwable = e) {
+                "addDrive(${drive.label}) hit a transport failure — not registered this session"
+            }
         }
     }
 
