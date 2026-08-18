@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -145,6 +147,22 @@ private fun SingleImageLayout(
     // clamp only extreme panoramas to [MaxFeedPhotoAspect] so a very wide shot
     // doesn't collapse into a thin strip. Tall portraits keep their height.
     val aspect = (aspectRatioFor(payload) ?: 1f).coerceAtMost(MaxFeedPhotoAspect)
+
+    // TEMPORARY (#1128-adjacent): a portrait photo renders correctly on web and then
+    // re-crops. The cell height is locked from thumbnail metadata, so log which source
+    // supplied it and what it resolved to. Keyed on `aspect`, so this fires on the initial
+    // value and again on every CHANGE — a second line for one payload is the bug reproducing.
+    LaunchedEffect(payload.key, aspect) {
+        val preview = payload.previewThumbnail
+        val largest = payload.thumbnails?.lastOrNull()
+        Logger.i(tag = "MomentAspect") {
+            "key=${payload.key} aspect=$aspect " +
+                "preview=${preview?.pixelWidth}x${preview?.pixelHeight} " +
+                "largestThumb=${largest?.pixelWidth}x${largest?.pixelHeight} " +
+                "thumbCount=${payload.thumbnails?.size ?: 0} " +
+                "source=${if (preview != null) "preview" else if (largest != null) "thumbnail" else "FALLBACK_1:1"}"
+        }
+    }
 
     MomentMediaItem(
         payload = payload,
