@@ -299,9 +299,6 @@ class FfmpegCompressPlannerTest {
                 quality = VideoQuality.STANDARD,
                 trimStartMs = trim.first, trimEndMs = trim.second,
                 probedWidthPx = 1920, probedHeightPx = 1080,
-                probedCodecMime = "video/avc",
-                inputDurationMs = 10_000L, inputBytes = 10_000_000L,
-                probedBitDepth = 8, probedIsHdr = false,
             )
             val idx = plan.args.indexOf("-map_metadata")
             assertTrue(idx >= 0, "must strip source metadata; args=${plan.args}")
