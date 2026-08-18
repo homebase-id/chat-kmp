@@ -160,10 +160,15 @@ fun HomebaseTheme(
 
         UpdateEdgeToEdge(darkTheme, followsSystemTheme)
 
+        // Web has no system emoji font for Skia to fall back on, so it supplies a bundled one
+        // and every text style routes through it. Null on every other platform (the OS already
+        // provides emoji), where this is a no-op and typography is unchanged.
+        val typography = HomebaseTypography.withFontFamily(emojiFontFamily())
+
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
                 MaterialTheme(
                         colorScheme = colorScheme,
-                        typography = HomebaseTypography,
+                        typography = typography,
                         content = content
                 )
         }

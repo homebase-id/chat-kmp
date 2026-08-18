@@ -272,3 +272,22 @@ object HomebaseTextStyles {
                         lineHeight = 20.sp
                 )
 }
+
+/**
+ * Returns this typography with [family] applied to every text style, or unchanged when
+ * [family] is null.
+ *
+ * Only the web build passes a non-null family (see [emojiFontFamily]), so on every other
+ * platform this is identity and typography is untouched.
+ */
+internal fun Typography.withFontFamily(family: FontFamily?): Typography {
+    if (family == null) return this
+    fun TextStyle.f() = copy(fontFamily = family)
+    return copy(
+        displayLarge = displayLarge.f(), displayMedium = displayMedium.f(), displaySmall = displaySmall.f(),
+        headlineLarge = headlineLarge.f(), headlineMedium = headlineMedium.f(), headlineSmall = headlineSmall.f(),
+        titleLarge = titleLarge.f(), titleMedium = titleMedium.f(), titleSmall = titleSmall.f(),
+        bodyLarge = bodyLarge.f(), bodyMedium = bodyMedium.f(), bodySmall = bodySmall.f(),
+        labelLarge = labelLarge.f(), labelMedium = labelMedium.f(), labelSmall = labelSmall.f(),
+    )
+}
