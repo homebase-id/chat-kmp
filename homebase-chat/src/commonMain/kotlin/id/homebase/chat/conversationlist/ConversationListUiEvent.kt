@@ -1,6 +1,7 @@
 package id.homebase.chat.conversationlist
 
 import id.homebase.api.common.OdinId
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.data.MessageUiModel
 import org.jetbrains.compose.resources.StringResource
 
@@ -43,4 +44,7 @@ sealed interface ConversationListUiEvent {
 
     /** Open the location setup screen (from the "set up location" prompt before a live share). */
     data object NavigateToLocationSetup : ConversationListUiEvent
+
+    /** Hand a received contact card to the contact editor in :homebase-core. */
+    data class NavigateToSaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiEvent
 }

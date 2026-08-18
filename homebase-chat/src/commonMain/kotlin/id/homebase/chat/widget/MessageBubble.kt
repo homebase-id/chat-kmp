@@ -67,6 +67,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -186,6 +187,8 @@ fun SentMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -377,6 +380,8 @@ fun SentMessageBubble(
                         searchQuery = searchQuery,
                         isCurrentSearchResult = isCurrentSearchResult,
                         chainCap = chainCap,
+                        onSaveContactCard = onSaveContactCard,
+                        onMessageIdentity = onMessageIdentity,
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
@@ -443,6 +448,7 @@ fun SentMessageBubbleDisplayOnly(
             downloadingFiles = emptySet(),
             onRequestDecryptedFile = null,
             onLongClick = {},
+            displayOnly = true,
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
@@ -511,6 +517,8 @@ fun ReceivedMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -642,6 +650,8 @@ fun ReceivedMessageBubble(
                             searchQuery = searchQuery,
                             isCurrentSearchResult = isCurrentSearchResult,
                             chainCap = chainCap,
+                            onSaveContactCard = onSaveContactCard,
+                            onMessageIdentity = onMessageIdentity,
                         )
                         message.reactionPreview?.let { reactionSummary ->
                             ReactionList(
@@ -858,6 +868,7 @@ fun ReceivedMessageBubbleDisplayOnly(
             downloadingFiles = emptySet(),
             onRequestDecryptedFile = null,
             onLongClick = {},
+            displayOnly = true,
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
