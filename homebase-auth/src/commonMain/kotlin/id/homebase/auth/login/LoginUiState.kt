@@ -10,6 +10,9 @@ data class LoginUiState(
     val homebaseId: String = "",
     val isLoading: Boolean = false,
     val isPinging: Boolean = false,
+    /** The YouAuth authorize page is open in the user's browser and we're waiting for
+     *  the confirmation callback — the loading screen says "check your browser". */
+    val isAwaitingAuthConfirmation: Boolean = false,
     val isAuthenticated: Boolean = false,
     val error: LoginError? = null,
     // Raw technical detail for the current [error] (exception type + message, or HTTP

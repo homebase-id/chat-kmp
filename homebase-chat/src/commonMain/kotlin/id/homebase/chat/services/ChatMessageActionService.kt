@@ -116,10 +116,13 @@ class ChatMessageActionService(
         // one that ever reached the window. Marking that read (#1135) clears the badge
         // that is the only signal the tail is missing.
         val newReadTime = viewedRecords.maxOf { it.sqlUserDate }
-        val convoLatest = participantLookup.getConversationById(conversationId)?.latestMessageTimestamp
+        val convoLatest =
+            participantLookup.getConversationById(conversationId)?.latestMessageTimestamp
         Logger.d(tag = TAG) {
             "newReadTime(ms)=${newReadTime.toEpochMilliseconds()} " +
-                    "(clampedViewedMax=${viewedRecords.maxOf { it.userDate }.toEpochMilliseconds()} " +
+                    "(clampedViewedMax=${
+                        viewedRecords.maxOf { it.userDate }.toEpochMilliseconds()
+                    } " +
                     "convoLatest=${convoLatest?.toEpochMilliseconds()} " +
                     "viewed=${viewedRecords.size} receipt-eligible=${unreadRecords.size})"
         }
@@ -163,9 +166,9 @@ class ChatMessageActionService(
         if (convo != null && convo.resolveLastReadAdvance(newReadTime) == null) {
             Logger.d(tag = TAG) {
                 "convo=$conversationId resolveLastReadAdvance suppressed " +
-                    "(currentMs=${convo.lastRead.toEpochMilliseconds()} " +
-                    "latestMs=${convo.latestMessageTimestamp.toEpochMilliseconds()} " +
-                    "newMs=${newReadTime.toEpochMilliseconds()}) — skipping upsert + enrich"
+                        "(currentMs=${convo.lastRead.toEpochMilliseconds()} " +
+                        "latestMs=${convo.latestMessageTimestamp.toEpochMilliseconds()} " +
+                        "newMs=${newReadTime.toEpochMilliseconds()}) — skipping upsert + enrich"
             }
             return
         }
@@ -227,6 +230,7 @@ class ChatMessageActionService(
 
     private companion object {
         const val TAG = "MarkAsRead"
+        const val REACTIONS_TAG = "ChatReactions"
     }
 
     suspend fun toggleReaction(conversationId: Uuid, messageId: Uuid, emoji: String):
@@ -367,18 +371,34 @@ class ChatMessageActionService(
         }
     }
 
+    
     suspend fun getReactions(messageId: Uuid): List<EmojiReaction> {
         val fileId = requireFileId(messageId)
         val response = reactionProvider.listReactions(chatDrive, fileId)
 
-        return response.reactions.map {
+        // Decode per row, not all-or-nothing: one malformed reactionContent used
+        // to throw out of the map() and wipe the entire roster. Same guarded
+        // decode the count path (PollVote.counts) already goes through.
+        val decoded = response.reactions.mapNotNull { item ->
+            val emoji = decodeReactionCode(item.reactionContent)
+            if (emoji == null) {
+                Logger.w(tag = REACTIONS_TAG) {
+                    "getReactions: skipping undecodable reactionContent from ${item.odinId} on message=$messageId"
+                }
+                return@mapNotNull null
+            }
             EmojiReaction(
                 messageId = messageId,
-                odinId = it.odinId,
-                created = UnixTimeUtc(it.created),
-                emoji = OdinSystemSerializer.deserialize<ReactionContent>(it.reactionContent).emoji
+                odinId = item.odinId,
+                created = UnixTimeUtc(item.created),
+                emoji = emoji,
             )
         }
+
+        Logger.d(tag = REACTIONS_TAG) {
+            "getReactions: message=$messageId fileId=$fileId rows=${response.reactions.size} decoded=${decoded.size}"
+        }
+        return decoded
     }
 
     suspend fun requireFileId(messageId: Uuid): Uuid {
@@ -498,7 +518,11 @@ class ChatMessageActionService(
      * [localOnly] = true keeps the change on this device only (no outbox). Auto-expiry
      * pruning now syncs, so this defaults false; kept for any purely-local unpin.
      */
-    suspend fun unpinMessage(messageId: Uuid, localOnly: Boolean = false, dismiss: Boolean = false) {
+    suspend fun unpinMessage(
+        messageId: Uuid,
+        localOnly: Boolean = false,
+        dismiss: Boolean = false
+    ) {
         updateMessageTags(messageId, localOnly = localOnly) { tags ->
             val cleared = tags - ChatProtocol.MessagePinnedTag - ChatProtocol.ManualPinnedTag
             if (dismiss) cleared + ChatProtocol.AutoPinDismissedTag else cleared

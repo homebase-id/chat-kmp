@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.PauseCircle
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
@@ -302,6 +304,15 @@ fun MomentInlineVideoTile(
     // every isPlaying flip so a fresh play / swipe-back never starts paused.
     var heldPaused by remember(payload.key, isPlaying) { mutableStateOf(false) }
 
+    // Playback failure reported by [VideoPlayerSurface] (decode error,
+    // unsupported codec, content-resolution failure). The surface renders the
+    // same message centred in its own bounds, but it sits at the BOTTOM of this
+    // Box — under the thumbnail, which never drops because a failed playback
+    // never reaches onFirstFrame — so the message is invisible unless we raise
+    // it above the thumbnail ourselves (#959). Cleared on every isPlaying flip
+    // so a retry starts from a clean state.
+    var playbackError by remember(payload.key, isPlaying) { mutableStateOf<String?>(null) }
+
     // Auto-hide the centred pause affordance ~2.5 s into playback so it doesn't
     // sit over the video the whole time — long-press still pauses (see the
     // surface's pointerInput below). Re-shown briefly on each fresh play and on
@@ -434,6 +445,12 @@ fun MomentInlineVideoTile(
                 },
                 replayToken = replayToken,
                 paused = heldPaused,
+                onError = { message ->
+                    playbackError = message
+                    Logger.w(tag = "MomentVideo") {
+                        "tile playback error: fileId=$fileId key=${payload.key} message=$message"
+                    }
+                },
             )
         }
 
@@ -477,7 +494,38 @@ fun MomentInlineVideoTile(
 
         // Layer 3: state-specific overlays.
         if (isPlaying) {
-            if (ended) {
+            val error = playbackError
+            if (error != null) {
+                // Playback failed. The thumbnail above the surface stays put
+                // (there's no video frame to reveal), so the message goes here
+                // — over the poster, dimmed so it stays legible on a bright
+                // frame (#959).
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = Color.White,
+                        )
+                        Text(
+                            text = error,
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
+            } else if (ended) {
                 // End-of-clip: the player is paused on its last frame. Offer a
                 // centred "Watch again" pill (both feed and reels) that seeks
                 // back to 0 and resumes in place via [replayToken]. We do not

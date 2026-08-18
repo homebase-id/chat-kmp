@@ -671,6 +671,9 @@ class ContactDetailViewModel(
                     if (result.clearedFieldsIgnored) {
                         _events.tryEmit(ContactDetailEvent.ClearUnsupported)
                     }
+                    if (result.additionsFailed) {
+                        _events.tryEmit(ContactDetailEvent.AdditionsFailed)
+                    }
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)
                 ContactSaveResult.Failed -> _events.tryEmit(ContactDetailEvent.Error)

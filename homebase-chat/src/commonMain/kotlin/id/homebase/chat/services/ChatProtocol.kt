@@ -32,8 +32,8 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. Poll is 214; pick the next free
-     * integer when adding one.
+     * off `appData.dataType` to choose a renderer. ContactCard is 215; pick the next
+     * free integer when adding one.
      */
     const val ChatEventMessageDataType = 210
 
@@ -74,6 +74,13 @@ object ChatProtocol {
      * [id.homebase.chat.poll.PollDescriptor] and ADDING_TYPED_MESSAGE_KIND.md.
      */
     const val ChatPollMessageDataType = 214
+
+    /**
+     * Shared contact card — name, organization, phones, emails parsed from a vCard the user
+     * shared into the app. The full descriptor lives in `appData.content` — no payloads, no
+     * fetch on scroll. See [id.homebase.chat.contactcard.ContactCardDescriptor].
+     */
+    const val ChatContactCardMessageDataType = 215
 
     const val MessageFileType = 7878
 

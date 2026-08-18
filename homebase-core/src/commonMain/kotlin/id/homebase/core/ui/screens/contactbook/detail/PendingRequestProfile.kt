@@ -1,5 +1,8 @@
 package id.homebase.core.ui.screens.contactbook.detail
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -33,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.ui.screens.contactbook.components.CirclePickerChips
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -54,6 +58,7 @@ import org.jetbrains.compose.resources.stringResource
  * offers Accept/Reject, since the header renders only once the request is gone. Accepting flips
  * the parent screen to the full connected detail in place — no navigation.
  */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun PendingRequestProfile(
     entry: ContactBookEntry,
@@ -61,7 +66,10 @@ fun PendingRequestProfile(
     onAccept: (selectedCircleIds: List<String>) -> Unit,
     onReject: () -> Unit,
     actionInProgress: Boolean,
+    onAvatarClick: (SubSamplingImageSource) -> Unit,
     modifier: Modifier = Modifier,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
 ) {
     // Circle ids the user has ticked to add this contact to on Accept. Keyed by the contact so it
     // resets when viewing a different request (a transient picker — no need to survive process death).
@@ -74,7 +82,13 @@ fun PendingRequestProfile(
             .padding(horizontal = 24.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ContactBookAvatar(entry = entry, size = 112.dp)
+        ContactBookAvatar(
+            entry = entry,
+            size = 112.dp,
+            onClick = onAvatarClick,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 

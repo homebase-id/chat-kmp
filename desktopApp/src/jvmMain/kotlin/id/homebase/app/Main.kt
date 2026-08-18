@@ -92,6 +92,8 @@ fun main() {
     setupCrashHandler()
     StartupLogger.checkpoint("main() entered, file logger online")
 
+    installSwingDoubleBufferSizeGuard()
+
     // Detect UI-thread (AWT EDT) stalls and log the EDT stack to homebase.log. Desktop has no
     // OS-level ANR, so without this a freeze leaves no evidence at all.
     MainThreadWatchdog().start()
@@ -295,7 +297,8 @@ private fun setupCrashHandler() {
                     "Transient network failure"
                 }
                 "$kind leaked to '${thread.name}' (no local handler); " +
-                    "app not crashing: ${throwable.message}"
+                    "app not crashing: ${throwable.message}\n" +
+                    throwable.stackTraceToString()
             }
             return@setDefaultUncaughtExceptionHandler
         }

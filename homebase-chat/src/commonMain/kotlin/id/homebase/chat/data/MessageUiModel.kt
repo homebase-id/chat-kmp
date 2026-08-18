@@ -114,6 +114,10 @@ data class MessageUiModel(
 ) {
     fun isAuthoredBy(domain: OdinId?): Boolean = (originalAuthor == domain)
 
+    // The exit cutoff, asked by the rendered list, the pinned bar and the jump
+    // coordinator alike — three copies of `userDate <= exitedAt` would drift.
+    fun isHiddenByExit(exitedAt: Instant?): Boolean = exitedAt != null && userDate > exitedAt
+
     // null author == self (the server doesn't stamp originalAuthor on own messages).
     fun isFromActiveUser(activeDomain: OdinId?): Boolean =
         originalAuthor == null || originalAuthor == activeDomain

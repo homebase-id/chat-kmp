@@ -134,13 +134,13 @@ fun EventBubble(
         .clip(RoundedCornerShape(16.dp))
         .background(containerColor)
         .let {
-            // combinedClickable (not clickable) so the parent message bubble's
-            // own combinedClickable.onLongClick still fires on mobile —
-            // Modifier.clickable consumes pointer events and otherwise swallows
-            // the long-press, leaving Events with no action menu on mobile.
-            if (canOpenDetail || onLongClick != null) {
+            // Off-stream (action-menu preview, message info, reply quote) the bubble must take no
+            // pointer at all — a handler that can't open the detail still eats the tap the
+            // action-menu scrim needs to dismiss. combinedClickable, not clickable, so the parent
+            // message bubble's long-press survives.
+            if (canOpenDetail) {
                 it.combinedClickable(
-                    onClick = { if (canOpenDetail) showDetail = true },
+                    onClick = { showDetail = true },
                     onLongClick = onLongClick,
                 )
             } else it
@@ -161,8 +161,8 @@ fun EventBubble(
                 imageSize = ImageSize.THUMB_MEDIUM,
                 preserveAspectRatio = true,
                 shape = RoundedCornerShape(0.dp),
-                onClick = { if (canOpenDetail) showDetail = true },
-                onLongPress = onLongClick?.let { lc -> { _ -> lc() } },
+                onClick = if (canOpenDetail) ({ showDetail = true }) else null,
+                onLongPress = onLongClick?.takeIf { canOpenDetail }?.let { lc -> { _ -> lc() } },
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 modifier = Modifier.fillMaxWidth(),

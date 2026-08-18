@@ -2,11 +2,13 @@ package id.homebase.core.ui.screens.moments
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.chat.conversationlist.ExtendPermissionUiState
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.util.isWeb
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -96,13 +98,32 @@ class MomentsViewModel(
         }
     }
 
+    private suspend fun activateFromSetup() {
+        activationKicked = true
+        try {
+            optionalDriveActivation.activate(momentsLabeledDrive)
+            _uiState.update { it.copy(isCheckingPermissions = false, setupInitiated = false) }
+            _events.tryEmit(MomentsUiEvent.Activated)
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) { "Moments activation failed" }
+            activationKicked = false
+            _uiState.update { it.copy(isCheckingPermissions = false, setupInitiated = false) }
+        }
+    }
+
     fun onAction(action: MomentsUiAction) {
         when (action) {
             MomentsUiAction.SetupClicked -> {
                 _uiState.update {
                     it.copy(isCheckingPermissions = true, setupInitiated = true)
                 }
-                momentsPermissionViewModel.recheckPermissions()
+                // Web grants the drive at login, so the recheck yields no false->true edge
+                // for the init collector — activate directly instead of awaiting a transition.
+                if (isWeb() && momentsPermissionViewModel.permissionsGranted.value) {
+                    viewModelScope.launch { activateFromSetup() }
+                } else {
+                    momentsPermissionViewModel.recheckPermissions()
+                }
             }
 
             MomentsUiAction.DismissOnboardingClicked -> {
@@ -112,5 +133,9 @@ class MomentsViewModel(
                 }
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "MomentsViewModel"
     }
 }

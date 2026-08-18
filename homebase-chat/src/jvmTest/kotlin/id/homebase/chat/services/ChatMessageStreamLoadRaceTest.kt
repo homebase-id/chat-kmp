@@ -18,6 +18,7 @@ import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.identity.PublicIdentityRepository
@@ -392,6 +393,11 @@ class ChatMessageStreamLoadRaceTest {
                 dbm = dbm,
                 eventBus = eventBus,
                 outboxSync = outboxSync,
+            ),
+            serverHistory = ChatServerHistory(
+                credentialsManager = credentialsManager,
+                dbm = dbm,
+                driveQueryProvider = DriveQueryProvider(httpClient, credentialsManager),
             ),
         )
         return Fixture(dbm, eventBus, gate, stream)
