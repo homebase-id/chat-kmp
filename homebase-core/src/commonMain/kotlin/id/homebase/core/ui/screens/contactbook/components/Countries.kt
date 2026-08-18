@@ -31,11 +31,8 @@ fun splitE164(value: String): Pair<Country?, String> {
     return country to national.filter { it.isDigit() }
 }
 
-/**
- * The E.164 that a non-E.164 [value] is already being displayed as, or `null` when there is
- * nothing to publish. A seed like `4155553695` renders as 🇺🇸 +1 | 4155553695 while the caller
- * still holds the raw digits, so the field looks right and Save stays disabled.
- */
+// A seed like `4155553695` renders as 🇺🇸 +1 | 4155553695 while the caller still holds the raw
+// digits — the field looks right and Save stays disabled until this is published.
 fun seededE164(value: String, fallback: Country): String? {
     val (country, national) = splitE164(value)
     if (country != null || national.isBlank()) return null

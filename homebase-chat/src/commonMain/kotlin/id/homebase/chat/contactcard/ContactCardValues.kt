@@ -22,8 +22,7 @@ internal fun ContactCardDescriptor.renderableEmails(): List<String> =
 
 internal fun ContactCardDescriptor.renderableIdentity(): String? = identity()?.domainName
 
-// Identity first: it is the only globally unique value here, so it is what a nameless card is
-// titled by and the first thing worth showing under a name.
+// Identity first: it is the only globally unique value here.
 internal fun ContactCardDescriptor.allValues(): List<ContactCardValue> =
     listOfNotNull(renderableIdentity()?.let { ContactCardValue(ContactValueKind.Identity, it) }) +
         renderablePhones().map { ContactCardValue(ContactValueKind.Phone, it) } +
@@ -33,9 +32,7 @@ internal fun ContactCardDescriptor.bubbleValues(
     limit: Int = ContactCardBubbleRowLimit,
 ): ContactCardBubbleValues {
     val all = allValues()
-    // By value, at any position: displayName is arbitrary text that can equal any of these — a
-    // connection has it resolved from the odinId, and a vCard can put the email in FN — and the
-    // value it matches is not necessarily the first.
+    // By value, at any position: a vCard can put the email in FN, and the match need not be first.
     val title = summaryLine()
     val candidates = all.filterNot { it.value.equals(title, ignoreCase = true) }
     return ContactCardBubbleValues(
@@ -60,11 +57,8 @@ internal fun ContactCardDescriptor.avatarInitials(): String =
 // dialer can parse.
 internal fun String.dialable(): String = filter { it in '0'..'9' || it in "+*#," }
 
-/**
- * MMI/USSD control codes (`*21*<number>#` sets up call forwarding) start with `*` or `#`, and a
- * phone number never does. The card is authored remotely, so a value of that shape is not offered
- * as callable — `#` mid-number is still a legitimate extension terminator and survives.
- */
+// MMI/USSD codes (`*21*<number>#` sets up call forwarding) start with `*` or `#` and a phone number
+// never does, so a remotely-authored value of that shape is not offered as callable.
 internal fun String.isControlCode(): Boolean =
     // After the separators a dialer skips: ",*21*…#" would otherwise pass on its leading pause.
     dialable().dropWhile { it == ',' || it == '+' }.firstOrNull()
@@ -105,8 +99,7 @@ internal fun String.mailtoTarget(): String {
     }
 }
 
-// ',' and ';' are deliberately absent: RFC 6068 makes ',' a recipient separator (and
-// Outlook-family clients treat ';' the same), so leaving them addresses the compose window to
-// whoever the card names after the real recipient.
+// ',' and ';' deliberately absent: RFC 6068 makes ',' a recipient separator (Outlook treats ';'
+// the same), so leaving them in addresses whoever the card names after the real recipient.
 private const val MAILTO_SAFE = "-._~!$'()*+:@"
 private const val HEX = "0123456789ABCDEF"
