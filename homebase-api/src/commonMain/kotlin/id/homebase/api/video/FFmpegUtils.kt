@@ -13,8 +13,11 @@ data class VideoTrackInfo(
     val codec: String?,
     val widthPx: Int,
     val heightPx: Int,
-    val bitDepth: Int,
-    val isHdr: Boolean,
+    /** Luma bit depth, or null when the probe couldn't determine it. Null must be treated as
+     *  "possibly 10-bit" (fail closed) — see [FfmpegCompressPlanner.isAlreadyOptimal] (#959). */
+    val bitDepth: Int?,
+    /** HDR flag, or null when the probe couldn't determine it (fail closed, as with [bitDepth]). */
+    val isHdr: Boolean?,
 )
 
 @LowLevelFfmpegApi

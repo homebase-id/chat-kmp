@@ -3,9 +3,8 @@ package id.homebase.chat.services.builder
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.convertHeicToJpeg
 import id.homebase.chat.conversationlist.toUploadPath
-import id.homebase.core.util.resolveContentType
+import id.homebase.core.util.contentType
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 
 /**
@@ -14,10 +13,18 @@ import io.github.vinceglb.filekit.name
  * of MessageActionsHandler.addMessageWithFiles: real upload path + content-type
  * detection + HEIC->JPEG transcode (iPhone photos default to HEIC). Caller adds
  * forceSticker via copy() if needed.
+ *
+ * [sourceContentType] is the type read off the ORIGINAL picked handle (see
+ * [PlatformFile.contentType]). Pass it whenever the receiver is a pick-time sandbox
+ * copy: the copy's name may carry no extension, and this receiver can otherwise only be
+ * typed from that name (#1149).
  */
-suspend fun PlatformFile.toImageAttachmentInput(fileOps: FileOperationsProvider): AttachmentInput {
+suspend fun PlatformFile.toImageAttachmentInput(
+    fileOps: FileOperationsProvider,
+    sourceContentType: String? = null,
+): AttachmentInput {
     var filePath = toUploadPath(fileOps)
-    var contentType = resolveContentType(fileName = name, platformMimeType = mimeType()?.toString())
+    var contentType = sourceContentType ?: contentType()
     if (contentType == "image/heic" || contentType == "image/heif") {
         val heicBytes = fileOps.readFileBytes(filePath)
         val jpegBytes = convertHeicToJpeg(heicBytes)

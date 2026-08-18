@@ -138,6 +138,7 @@
     <string name="avatar_conversation">Conversation avatar</string>
     <string name="avatar_default">Default avatar</string>
     <string name="avatar_public">Public avatar</string>
+    <string name="avatar_contact">Contact avatar</string>
 
     <!-- Language options -->
     <string name="language">Language</string>
@@ -181,6 +182,7 @@
     <string name="login_try_again_button">Try again</string>
     <string name="login_create_account_button">Create account</string>
     <string name="login_authenticating">Authenticating…</string>
+    <string name="login_waiting_for_browser">Waiting for login confirmation — check your browser</string>
     <string name="login_successful">Login successful</string>
     <string name="login_progress_sync">Syncing drive %1$s</string>
     <string name="login_progress_sync_count">Records %1$s / %2$s synced</string>
@@ -198,7 +200,6 @@
     <!-- Settings screen -->
     <string name="settings_appearance">Appearance</string>
     <string name="settings_haptic_feedback">Haptic Feedback</string>
-    <string name="settings_connections">Connections</string>
     <string name="connections_already_sent_title">Request already sent</string>
     <string name="connections_already_sent_text">A connection request to %1$s already exists. Open the owner console to view or manage it.</string>
     <string name="connections_refresh">Refresh</string>
@@ -220,8 +221,7 @@
     <string name="connections_empty_outgoing_subtitle">Tap the + button to send a connection request.</string>
     <string name="connections_send_request">Send Request</string>
     <string name="settings_notifications">Notifications</string>
-    <string name="settings_profile_info">Profile Info</string>
-    <string name="settings_security_setup">Security Setup</string>
+    <string name="settings_security_setup">Security setup</string>
     <string name="settings_help">Help</string>
     <string name="settings_storage">Storage</string>
     <string name="settings_logout">Log out</string>
@@ -308,11 +308,13 @@
     <string name="help_ffmpeg_version">FFmpeg</string>
     <string name="help_terms_privacy">Terms &amp; Privacy Policy</string>
     <string name="help_copyright">Copyright © 2024–2026 Homebase</string>
+    <string name="help_share_log_failed">Couldn't share the log: %1$s</string>
+    <string name="help_no_log_files">No log files found.</string>
+    <string name="help_logging_not_initialized">Logging isn't ready yet. Try again in a moment.</string>
+    <string name="help_developer_menu_enabled">Developer menu enabled.</string>
     <string name="settings_delete_account_dialog_title">Delete your account?</string>
     <string name="settings_delete_account_dialog_text">Your account is much more than only this app. If you want to remove your account, you can do so in the owner console.</string>
     <string name="settings_open_owner_console">Open owner console</string>
-    <string name="settings_notifications_active">Notifications active</string>
-    <string name="settings_notifications_issue">Notifications issue</string>
 
     <!-- Notification settings screen -->
     <string name="settings_notifications_disabled_title">Push Notifications are disabled</string>
@@ -448,6 +450,8 @@
     <string name="moments_audience_to_myself_only">To myself only</string>
     <string name="moments_audience_section_recent">Recent</string>
     <string name="moments_audience_section_groups">Groups</string>
+    <string name="moments_audience_section_circles">Circles</string>
+    <string name="moments_audience_view_circle_members">View circle members</string>
     <string name="moments_audience_section_contacts">Contacts</string>
     <string name="moments_audience_post">Post</string>
     <string name="moments_audience_save_privately">Save privately</string>
@@ -565,16 +569,34 @@
     <string name="chat_introduce_preflight_body">Some recipients may not receive an introduction:</string>
     <string name="chat_introduce_preflight_send_anyway">Send anyway</string>
     <string name="chat_introduce_preflight_skip_and_send">Skip these and send to the rest</string>
+    <!-- Shown under the list when at least one recipient failed for a transient
+         reason (server busy, updating, timed out) — re-runs the preflight check. -->
+    <string name="chat_introduce_preflight_check_again">Check again</string>
     <!-- Bullet-prefixed line in the preflight dialog body. %1$s is a per-status reason. -->
     <string name="chat_introduce_preflight_bullet">• %1$s</string>
-    <!-- Per-status reasons. %1$s is the recipient's display name. -->
+    <!-- Per-status reasons. %1$s is the recipient's display name.
+         Exactly ONE of these may say the recipient doesn't allow introductions:
+         chat_introduce_preflight_reason_not_permitted (IntroductionsNotPermitted).
+         Every other status is a setup gap, a broken connection record or a
+         transport failure — never phrase those as a refusal. Nothing here may
+         reveal that a recipient has blocked the user. -->
     <string name="chat_introduce_preflight_reason_ready">%1$s is ready.</string>
     <string name="chat_introduce_preflight_reason_not_connected">You're not connected to %1$s.</string>
-    <string name="chat_introduce_preflight_reason_not_configured">%1$s's identity isn't set up yet.</string>
-    <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s's server needs an update.</string>
+    <string name="chat_introduce_preflight_reason_not_configured">%1$s hasn't finished setting up their identity — ask them to sign in and complete it.</string>
+    <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s's server needs an update before it can accept introductions.</string>
     <string name="chat_introduce_preflight_reason_not_permitted">%1$s doesn't allow introductions from you.</string>
-    <string name="chat_introduce_preflight_reason_rejected">%1$s declined the request.</string>
-    <string name="chat_introduce_preflight_reason_unreachable">Couldn't reach %1$s's server right now.</string>
+    <string name="chat_introduce_preflight_reason_rejected">%1$s's server didn't accept the request.</string>
+    <string name="chat_introduce_preflight_reason_unreachable">Couldn't reach %1$s right now.</string>
+    <string name="chat_introduce_preflight_reason_not_confirmed">%1$s hasn't confirmed your connection yet — introductions work once they do.</string>
+    <string name="chat_introduce_preflight_reason_not_recognized">Your connection with %1$s isn't active on their side.</string>
+    <string name="chat_introduce_preflight_reason_needs_repair">Your connection with %1$s is damaged and needs to be set up again.</string>
+    <string name="chat_introduce_preflight_reason_sender_connection_invalid">Your saved connection details for %1$s aren't usable.</string>
+    <string name="chat_introduce_preflight_reason_not_supported">%1$s's server is too old to check ahead of time — the introduction may still go through.</string>
+    <string name="chat_introduce_preflight_reason_upgrade_in_progress">%1$s's server is updating right now.</string>
+    <string name="chat_introduce_preflight_reason_unresolvable">%1$s's address couldn't be found — it may have changed or no longer exist.</string>
+    <string name="chat_introduce_preflight_reason_certificate_invalid">%1$s's server has a security certificate problem.</string>
+    <string name="chat_introduce_preflight_reason_timed_out">%1$s's server didn't respond in time.</string>
+    <string name="chat_introduce_preflight_reason_connection_refused">%1$s's server appears to be offline.</string>
     <string name="chat_introduce_preflight_reason_unknown">Something went wrong with %1$s.</string>
     <string name="chat_leave_and_delete">Leave &amp; delete</string>
     <string name="chat_leave_and_delete_conversation_title">Leave and delete this group?</string>
@@ -657,6 +679,7 @@
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
+    <string name="chat_load_older_messages">Load more</string>
     <string name="chat_new_messages">New messages</string>
     <string name="chat_connection_invited">Invited</string>
     <string name="chat_connection_wants_to_connect">Wants to connect</string>
@@ -718,6 +741,7 @@
 
     <!-- Event attachment -->
     <string name="chat_event_share">Event</string>
+    <string name="chat_event_reminder_push">Upcoming event reminder</string>
     <string name="chat_event_create_title">New event</string>
     <string name="chat_event_field_title">Title</string>
     <string name="chat_event_field_description">Description</string>
@@ -901,6 +925,53 @@
     <string name="chat_poll_vote_count">%1$d votes</string>
     <string name="chat_poll_unparseable">Unable to display this poll. Please update the app.</string>
 
+    <!-- Shared contact card (vCard shared into the app) -->
+    <string name="chat_contact_unparseable">Unable to display this contact. Please update the app.</string>
+    <string name="chat_contact_share">Contact</string>
+    <string name="chat_contact_share_title">Send a contact</string>
+    <string name="chat_contact_share_no_contacts">No contacts to send.</string>
+    <string name="chat_contact_share_unshareable">No phone number or email to share</string>
+    <string name="contactbook_edit_organization">Organization</string>
+    <string name="contact_share_prompt_title">Add to your contacts?</string>
+    <string name="contact_share_prompt_body">%1$s was shared to your chat. Save them to your contacts too?</string>
+    <string name="contact_share_prompt_add">Review and add</string>
+    <string name="contact_share_prompt_skip">Not now</string>
+    <string name="chat_contact_card_open">View contact details</string>
+    <string name="chat_contact_card_more">+%1$d more</string>
+    <string name="chat_contact_card_save">Save to contacts</string>
+    <string name="chat_contact_card_title">Contact</string>
+    <string name="chat_contact_card_call">Call</string>
+    <string name="chat_contact_card_send_email">Send email</string>
+    <string name="chat_contact_card_copied">Copied to clipboard</string>
+    <string name="chat_contact_card_action_unavailable">Nothing on this device can open that.</string>
+    <string name="chat_contact_card_exists_title">Already in your contacts</string>
+    <string name="chat_contact_card_exists_body">%1$s already has one of these phone numbers or email addresses.</string>
+    <string name="chat_contact_card_exists_open">View contact</string>
+    <string name="chat_contact_card_save_failed_title">Couldn't save</string>
+    <string name="chat_contact_card_save_failed">Something went wrong saving this contact. Your details are still here — try again.</string>
+    <string name="chat_contact_card_retry">Try again</string>
+    <string name="chat_contact_card_saved_title">Contact saved</string>
+    <string name="chat_contact_card_partial_photo">The photo couldn't be uploaded.</string>
+    <string name="chat_contact_card_partial_additions">The extra phone numbers, email addresses and company couldn't be attached.</string>
+    <string name="chat_contact_card_saved_body">%1$s is now in your contacts.</string>
+    <string name="chat_contact_card_saved_open">Open contact</string>
+    <string name="chat_contact_card_phones">Phone numbers</string>
+    <string name="chat_contact_card_emails">Email addresses</string>
+    <string name="chat_contact_card_message">Message %1$s</string>
+    <string name="chat_contact_card_copy_phone">Copy phone number %1$s</string>
+    <string name="chat_contact_card_copy_email">Copy email address %1$s</string>
+    <string name="chat_contact_card_actions">Message options</string>
+    <string name="chat_contact_card_detail_pane">Contact details</string>
+    <string name="chat_contact_card_close">Close</string>
+    <string name="chat_contact_card_merge">Add to this contact</string>
+    <string name="chat_contact_card_merge_confirm">Anything you have typed here will be replaced by %1$s's details.</string>
+    <string name="chat_contact_card_open_profile">Open profile</string>
+    <string name="chat_contact_card_copy_identity">Copy Homebase ID %1$s</string>
+    <string name="chat_contact_card_nothing_else">This card has no phone number or email address.</string>
+    <string name="chat_contact_card_exists_identity_body">%1$s is already saved with this Homebase ID.</string>
+    <string name="chat_contact_card_partial_cleared">Clearing a field isn't supported yet, so the old value is still there.</string>
+    <string name="chat_contact_card_merge_body">Add the details on this card to %1$s. Anything %1$s already has is kept.</string>
+
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Poll details</string>
     <string name="chat_poll_question_section">Question</string>
@@ -909,6 +980,9 @@
     <string name="chat_poll_end_failed">Couldn't end the poll. Please try again.</string>
     <string name="chat_poll_ended_self">You ended the poll: "%1$s"</string>
     <string name="chat_poll_ended_other">%1$s ended the poll: "%2$s"</string>
+    <string name="chat_poll_roster_loading">Loading votes…</string>
+    <string name="chat_poll_roster_error">Couldn't load who voted.</string>
+    <string name="chat_poll_roster_partial">Showing %1$d of %2$d voters</string>
 
     <string name="chat_unknown_message_type">Unknown message type — please update the app.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
@@ -932,6 +1006,8 @@
     <string name="moment_video_watch_again">Watch again</string>
     <string name="moment_video_fill_screen">Fill screen</string>
     <string name="moment_video_fit_screen">Fit to screen</string>
+    <string name="video_error_generic">Unable to play this video on this device</string>
+    <string name="video_error_ten_bit">Unable to play 10-bit video on this device</string>
     <string name="chat_message_download_file">Download file</string>
     <string name="chat_message_file_type_icon">File type icon</string>
     <string name="chat_message_pdf_preview">PDF preview</string>
@@ -1204,9 +1280,26 @@
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
-    <!-- Settings section headers -->
-    <string name="settings_section_general">General</string>
-    <string name="settings_section_danger_zone">Danger Zone</string>
+    <!-- Settings hub -->
+    <string name="settings_section_preferences">Preferences</string>
+    <string name="settings_section_apps">Apps</string>
+    <string name="settings_section_device">Device</string>
+    <string name="settings_section_account_actions">Account actions</string>
+    <string name="settings_edit_profile">Edit profile</string>
+    <string name="settings_security_setup_desc">Password and recovery key</string>
+    <string name="settings_notifications_status_checking">Checking…</string>
+    <string name="settings_notifications_status_on">Push notifications are working</string>
+    <string name="settings_notifications_status_error">Push notifications aren't working</string>
+    <string name="settings_appearance_theme">Theme: %1$s</string>
+    <string name="settings_moments_desc">Photos, clips and notes</string>
+    <string name="settings_vault_desc">Encrypted document storage</string>
+    <string name="settings_location_desc">Private location history</string>
+    <string name="settings_contactbook_desc">Your address book and circles</string>
+    <string name="settings_storage_desc">Caches, database and media</string>
+    <string name="settings_storage_used">%1$s used on this device</string>
+    <string name="settings_help_desc">Logs and diagnostics</string>
+    <string name="settings_logout_desc">Your data stays on your identity</string>
+    <string name="settings_delete_account_desc">Permanent, in your owner console</string>
 
     <!-- Audio player -->
     <string name="audio_pause">Pause</string>
@@ -1313,6 +1406,9 @@
     <string name="conversation_media_tab_locations">Locations</string>
     <string name="conversation_media_go_to_message">Go to message</string>
     <string name="conversation_jump_message_unavailable">That message is no longer available</string>
+    <string name="conversation_jump_message_after_exit">That message was sent after you left this conversation</string>
+    <string name="conversation_jump_message_not_arrived">This message hasn't arrived yet</string>
+    <string name="conversation_jump_waiting_for_message">Waiting for the message to arrive</string>
 
     <!-- Error states -->
     <string name="error_no_group_loaded">No group could be loaded</string>
@@ -1540,6 +1636,7 @@
     <string name="contactbook_detail_request_outgoing">Connection request sent</string>
     <string name="contactbook_detail_accept">Accept</string>
     <string name="contactbook_detail_reject">Reject</string>
+    <string name="contactbook_detail_add_to_circles">Add to circles (optional)</string>
     <string name="contactbook_detail_cancel_request">Cancel request</string>
     <string name="contactbook_detail_blocked">Blocked</string>
     <string name="contactbook_detail_recent_media">Recent media</string>
@@ -1581,6 +1678,7 @@
     <string name="contactbook_edit_surname">Last name</string>
     <string name="contactbook_edit_odinid">Homebase ID</string>
     <string name="contactbook_edit_odinid_locked">Homebase ID can't be changed for a connected contact.</string>
+    <string name="contactbook_edit_odinid_from_card">From the card. Saving it lets this Homebase ID see when you open the contact — clear the field if you don't want that.</string>
     <string name="contactbook_edit_synced_banner">Synced from their Homebase profile. Changes you make are saved only for you and won't change their profile.</string>
     <string name="contactbook_edit_synced_from_profile">From their Homebase profile</string>
     <string name="contactbook_edit_overrides">Overrides their profile value (%1$s) · only you see this</string>
@@ -1599,10 +1697,12 @@
     <string name="contactbook_edit_birthday">Birthday</string>
     <string name="contactbook_edit_change_photo">Add photo</string>
     <string name="contactbook_edit_save">Save</string>
+    <string name="contactbook_edit_saving">Saving…</string>
     <string name="contactbook_edit_cancel">Cancel</string>
     <string name="contactbook_error_email">Enter a valid email address</string>
     <string name="contactbook_error_phone">Use international format, e.g. +14155550123</string>
     <string name="contactbook_error_odinid">Enter a valid Homebase ID (e.g. sam.homebase.id)</string>
+    <string name="contactbook_error_birthday">Use the format YYYY-MM-DD, e.g. 1969-02-22</string>
 
     <string name="contactbook_settings_section">Contacts</string>
     <string name="contactbook_settings_open">Open Contacts</string>
@@ -1710,4 +1810,50 @@
     <string name="profile_avatar_edit_error_too_large">That photo is too large — please choose a smaller one.</string>
     <string name="profile_avatar_edit_error_delete">Couldn't remove your photo. Please try again.</string>
 
+    <string name="chat_error_toggle_pin">Failed to toggle pinned conversation: %1$s</string>
+    <string name="chat_error_no_ready_recipients">No ready recipients to send to.</string>
+    <string name="chat_error_archive_conversation">Failed to archive conversation: %1$s</string>
+    <string name="chat_error_unarchive_conversation">Failed to unarchive conversation: %1$s</string>
+    <string name="chat_error_clear_conversation">Failed to clear conversation: %1$s</string>
+    <string name="chat_error_accept_rejoin">Failed to accept rejoin: %1$s</string>
+    <string name="chat_error_decline_rejoin">Failed to decline rejoin: %1$s</string>
+    <string name="chat_error_delete_conversation">Failed to delete conversation: %1$s</string>
+    <string name="chat_error_download_for_sharing">Failed to download file for sharing</string>
+    <string name="chat_error_share">Failed to share: %1$s</string>
+    <string name="chat_error_download_file">Could not download file</string>
+    <string name="chat_error_downloading_file">Error downloading file</string>
+    <string name="chat_error_downloading_file_detail">Error downloading file: %1$s</string>
+    <string name="chat_error_convert_video">Could not convert video</string>
+    <string name="chat_error_media_click">Failed to handle media click: %1$s</string>
+    <string name="chat_error_unattach_file">Failed to unattach file: %1$s</string>
+    <string name="chat_error_paste_image">Failed to paste image: %1$s</string>
+    <string name="chat_error_cannot_crop">Cannot crop this attachment</string>
+    <string name="chat_error_open_cropper">Failed to open cropper: %1$s</string>
+    <string name="chat_error_apply_crop">Failed to apply crop: %1$s</string>
+    <string name="chat_error_cannot_draw">Cannot draw on this attachment</string>
+    <string name="chat_error_open_draw_editor">Failed to open draw editor: %1$s</string>
+    <string name="chat_error_apply_drawing">Failed to apply drawing: %1$s</string>
+    <string name="chat_error_start_recording">Failed to start recording: %1$s</string>
+    <string name="chat_error_send_recording">Failed to send recording: %1$s</string>
+    <string name="chat_error_edit_message">Failed to edit message: %1$s</string>
+    <string name="chat_error_delete_message_everyone">Failed to delete message for everyone: %1$s</string>
+    <string name="chat_error_delete_message_me">Failed to delete message for me: %1$s</string>
+    <string name="chat_error_mark_read">Failed to mark message as read: %1$s</string>
+    <string name="chat_error_toggle_reaction">Failed to toggle reaction: %1$s</string>
+    <string name="chat_error_open_forward_sheet">Failed to open forward message sheet: %1$s</string>
+    <string name="chat_error_send_forward">Failed to send forward message: %1$s</string>
+    <string name="chat_error_attachment_unavailable">That attachment is no longer available — please pick it again.</string>
+    <string name="chat_error_send_files">Failed to send file(s): %1$s</string>
+    <string name="chat_error_shared_content_unreadable">Couldn't read the shared content — please try sharing again.</string>
+    <string name="chat_error_shared_file_unavailable">That shared file is no longer available — please share it again.</string>
+    <string name="chat_error_send_shared_content">Failed to send shared content: %1$s</string>
+    <string name="chat_error_send_message">Failed to send message: %1$s</string>
+    <string name="chat_error_send_reply">Failed to send reply: %1$s</string>
+    <string name="chat_error_scroll_to_message">Failed to scroll to message: %1$s</string>
+    <string name="chat_error_load_older_messages">Failed to load older messages: %1$s</string>
+    <string name="chat_error_load_conversations">Failed to load conversations: %1$s</string>
+    <string name="chat_error_load_messages">Failed to load messages: %1$s</string>
+    <string name="settings_notification_content_name_content_actions">Name, Content, and Actions</string>
+    <string name="settings_notification_content_name_only">Name Only</string>
+    <string name="settings_notification_content_no_name_or_content">No Name or Content</string>
 </resources>

@@ -35,6 +35,11 @@ WHERE identityId = ? AND fileType = 8888;
 -- This is needed at boot-time to efficiently load the full list of conversations
 -- and their corresponding last message.
 -- Only fetches the 1 latest message per conversation via index seek.
+-- `dataType != 202` skips status messages; its twin is the `isStatusMessage`
+-- gate in applyIncomingMessageBump — both own the row's last-message fields and
+-- must stay in step (#1153). Don't drop it: status visibility depends on
+-- decrypted content SQL can't read, so a row returned here can fail to map and
+-- blank the preview (#1148).
 selectAllConversationPlusLastMessage:
 SELECT
   d.jsonHeader AS convJsonHeader,

@@ -15,6 +15,7 @@ import id.homebase.core.config.COMMUNITY_APP_ID
 import id.homebase.core.config.FEED_APP_ID
 import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
+import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.sync.awaitAuthRestored
@@ -93,6 +94,30 @@ internal fun buildCompanionAppUrlEvent(
 
 /** Apps whose notifications open the logged-in identity's own web app in the browser. */
 internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_ID, FEED_APP_ID)
+
+/**
+ * Routes a tapped owner-app connection-request notification to the in-app contact detail for the
+ * requester, where it can be reviewed and accepted (with the add-to-circles picker) — instead of
+ * the owner web console in the browser, which is where every other owner notification goes via
+ * [buildCompanionAppUrlEvent].
+ *
+ * Unlike the companion URLs, this one is keyed on the *sender*: they're the identity asking to
+ * connect, so their contact detail is the thing to open. Their host is never contacted for a
+ * session — the screen reads our own pending-request list and their public profile.
+ *
+ * @return the event to emit, or null when this isn't an owner connection-request tap or the
+ *   payload carries no sender — both fall through to the normal companion-URL handling, since
+ *   without a domain there is no contact screen to open.
+ */
+internal fun buildConnectionRequestTapEvent(
+    appId: String,
+    typeId: String,
+    senderId: String?,
+): NotificationNavigationEvent.OpenConnectionRequest? {
+    if (appId != OWNER_APP_ID || typeId != OWNER_CONNECTION_REQUEST_TYPE_ID) return null
+    val sender = senderId?.trim()?.lowercase()?.ifBlank { null } ?: return null
+    return NotificationNavigationEvent.OpenConnectionRequest(sender)
+}
 
 /**
  * How long a companion-app tap waits for credentials to be restored before
@@ -590,6 +615,8 @@ class NotificationService(
             val momentsTap = if (appId == Uuid.parse(AppConfig.APP_ID).toString()) {
                 resolveMomentsTap(typeId, tagId)
             } else null
+            val connectionRequestTap =
+                buildConnectionRequestTapEvent(appId, typeId, notification.senderId)
             when {
                 // Moments posts/comments ride on the chat appId but are routed to the
                 // moments detail (reels) screen, not ChatList. A post carries
@@ -632,6 +659,20 @@ class NotificationService(
                     // leaving other senders' notifications in the tray.
                     clearConversationNotifications(typeId)
                     emitNavigationEvent(NotificationNavigationEvent.OpenConversation(typeId))
+                }
+
+                // An incoming connection request is reviewable in-app (contact detail shows the
+                // requester's public profile with Accept/Reject + the circle picker), so it opens
+                // there instead of bouncing to the owner web console like the owner app's other
+                // notifications. Sits ahead of the companion branch, which OWNER_APP_ID would
+                // otherwise claim; a payload with no sender leaves this null and falls through to
+                // it unchanged, since without a domain there's no contact to open.
+                connectionRequestTap != null -> {
+                    Logger.i(tag = "NotificationService") {
+                        "Connection-request tap — opening contact detail for " +
+                                connectionRequestTap.odinId
+                    }
+                    emitNavigationEvent(connectionRequestTap)
                 }
 
                 appId in COMPANION_APP_IDS -> {

@@ -133,6 +133,12 @@ data class MessageListUiState(
     val isLoadingOlder: Boolean = false,
     /** A loadNewer fetch is in flight; suppresses re-entry. */
     val isLoadingNewer: Boolean = false,
+    /** Windowed sync (#1223): the server may hold messages older than local EOS;
+     *  drives the "Load more" row at the top once local paging is exhausted. */
+    val serverHasMoreOlder: Boolean = false,
+    /** A loadOlderMessagesFromServer fetch is in flight; renders the top row as a
+     *  spinner and suppresses re-entry. */
+    val isLoadingOlderFromServer: Boolean = false,
     /** Set when the user taps a reply-preview that points at an Event message;
      *  the screen renders [id.homebase.chat.event.EventDetailDialog] keyed off
      *  this state. Null means no host-level event detail is open. */
@@ -147,6 +153,7 @@ data class MessageListUiState(
      *  clear it. Null once consumed, so unrelated remounts (closing the image
      *  viewer) don't re-scroll. */
     val scrollToLatestRequest: Uuid? = null,
+    val awaitingJumpMessageId: Uuid? = null,
 )
 
 /**
@@ -277,6 +284,10 @@ sealed class MessageListContentModel(val id: String) {
     /** Spinner row at the top of the list while older messages are loading. */
     data object LoadingOlder : MessageListContentModel("loading-older")
 
+    /** "Load more" row at the top of the list when local history is exhausted but
+     *  the server may hold older messages (windowed sync, #1223). */
+    data object LoadServerHistory : MessageListContentModel("load-server-history")
+
     /** Spinner row at the bottom of the list while newer messages are loading. */
     data object LoadingNewer : MessageListContentModel("loading-newer")
 }
@@ -377,6 +388,8 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
          * from the tray; threaded into [AttachmentInput.forceSticker] at send time.
          */
         val forceSticker: Boolean = false,
+        /** See [File.sourceContentType]. */
+        val sourceContentType: String? = null,
     ) : AttachmentPendingFile(id)
     data class FileVideo(
         val id: Uuid,
@@ -396,8 +409,20 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
         // (a browser-picked PlatformFile has no path, so file.toString() isn't readable); on
         // native it equals file.toString(). Populated by AttachmentHandler.extractThumbnailAsync.
         val playablePath: String? = null,
+        /** See [File.sourceContentType]. */
+        val sourceContentType: String? = null,
     ) : AttachmentPendingFile(id)
-    data class File(val id: Uuid, val file: PlatformFile) : AttachmentPendingFile(id)
+    data class File(
+        val id: Uuid,
+        val file: PlatformFile,
+        // Content type read from the ORIGINAL picked handle (see PlatformFile.contentType),
+        // before the pick-time sandbox copy dropped it. [file] here is that copy: a plain file whose
+        // type can only come from its name, and Android's photo picker vends extension-less names
+        // ("photopicker-1000022602") that resolve to application/octet-stream — which ships the
+        // message as a thumbnail-less generic file chip (#1149). Null falls back to resolving from
+        // [file] (share-received / already-local files, whose names carry extensions).
+        val sourceContentType: String? = null,
+    ) : AttachmentPendingFile(id)
     data class Gallery(
         val id: Uuid,
         val image: GalleryImage,

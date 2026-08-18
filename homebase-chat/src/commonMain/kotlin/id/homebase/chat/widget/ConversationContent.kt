@@ -80,6 +80,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -187,6 +188,7 @@ import id.homebase.resources.chat_unpin_message
 import id.homebase.resources.chat_message_search_no_results
 import id.homebase.resources.chat_message_search_result_count
 import id.homebase.resources.chat_next_result
+import id.homebase.resources.chat_load_older_messages
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_not_connected_description
 import id.homebase.resources.chat_not_connected_incoming_description
@@ -936,6 +938,8 @@ fun ConversationContent(
                     onUiAction = onUiAction,
                 )
 
+                JumpTargetWaitingBar(isWaiting = uiState.awaitingJumpMessageId != null)
+
                 if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
@@ -996,6 +1000,43 @@ fun ConversationContent(
                         }
                         result.addAll(pending)
                         result.toList()
+                    }
+                }
+
+                // Prepend compensation (#1223): when an older page lands while the viewport
+                // is parked on a top marker row, key-based anchoring can't hold a message
+                // steady — the "Load more" pill's key vanishes and the spinner row sits
+                // ABOVE the insertion point — so the viewport teleports to the top of the
+                // prepended block and the proximity trigger chain-loads from there. Pin the
+                // first visible message row at its previous pixel offset instead; only
+                // Message/pending rows are stable anchors (a date Section moves up when
+                // older same-day messages land above it). requestScrollToItem applies at
+                // the next measure, so there is no intermediate frame.
+                var prevMergedItems by remember(conversation.conversation.id) {
+                    mutableStateOf(mergedItems)
+                }
+                SideEffect {
+                    if (prevMergedItems === mergedItems) return@SideEffect
+                    prevMergedItems = mergedItems
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    val firstKey = visible.firstOrNull()?.key
+                    if (firstKey != MessageListContentModel.LoadServerHistory.id &&
+                        firstKey != MessageListContentModel.LoadingOlder.id
+                    ) return@SideEffect
+                    val indexByKey = HashMap<String, Int>(mergedItems.size)
+                    mergedItems.forEachIndexed { i, item ->
+                        when (item) {
+                            is MessageListContentModel.Message -> indexByKey[item.id] = i
+                            is PendingOutgoingMessage -> indexByKey["pending-${item.id}"] = i
+                            else -> {}
+                        }
+                    }
+                    val anchor = visible.firstOrNull {
+                        (it.key as? String)?.let(indexByKey::containsKey) == true
+                    } ?: return@SideEffect
+                    val newIndex = indexByKey.getValue(anchor.key as String)
+                    if (newIndex > anchor.index) {
+                        listState.requestScrollToItem(newIndex, -anchor.offset)
                     }
                 }
 
@@ -1212,16 +1253,54 @@ fun ConversationContent(
 
                                     is MessageListContentModel.LoadingOlder,
                                     is MessageListContentModel.LoadingNewer -> {
+                                        // The row is a "more exists" placeholder keeping the Header
+                                        // honest; it only animates while a fetch is in flight — an
+                                        // idle perpetual spinner reads as a hang.
+                                        val isFetching =
+                                            if (item is MessageListContentModel.LoadingOlder) uiState.isLoadingOlder
+                                            else uiState.isLoadingNewer
                                         Box(
                                             modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
                                                 .fillMaxWidth()
                                                 .padding(vertical = 16.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(24.dp),
-                                                strokeWidth = 2.dp,
-                                            )
+                                            Box(modifier = Modifier.size(24.dp)) {
+                                                if (isFetching) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(24.dp),
+                                                        strokeWidth = 2.dp,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    is MessageListContentModel.LoadServerHistory -> {
+                                        Box(
+                                            modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            if (uiState.isLoadingOlderFromServer) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(24.dp),
+                                                    strokeWidth = 2.dp,
+                                                )
+                                            } else {
+                                                TextButton(
+                                                    onClick = {
+                                                        onUiAction(
+                                                            ConversationListUiAction.LoadOlderMessagesFromServer(
+                                                                conversation.conversation.id
+                                                            )
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text(stringResource(MR.string.chat_load_older_messages))
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1666,6 +1745,9 @@ fun ConversationContent(
                         fileLauncher.launch()
                     }, onContactClick = {
                         showAttachmentSheet = false
+                        onUiAction(
+                            ConversationListUiAction.OpenShareContact(conversation.conversation.id)
+                        )
                     }, onLocationClick = {
                         Logger.d(tag = "LocationShare") { "share location clicked" }
                         showAttachmentSheet = false

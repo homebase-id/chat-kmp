@@ -7,6 +7,9 @@ import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
+import id.homebase.api.client.notifications.CancelScheduledPushRequest
+import id.homebase.api.client.notifications.ScheduledPushOutboxUploader
+import id.homebase.api.client.notifications.SchedulePushNotificationRequest
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
@@ -497,6 +500,49 @@ class OutboxSync(
      *  is queued. Lets a caller branch on create-vs-update before enqueuing. */
     public suspend fun pendingUploadType(driveId: Uuid, uniqueId: Uuid): Long? =
         databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)?.uploadType
+
+    /**
+     * Durably enqueue a **scheduled push** (see [ScheduledPushOutboxUploader]). `replaceEnqueue`
+     * gives last-writer-wins for a given (driveId, uniqueId): re-scheduling with a new `sendAt`
+     * supersedes a still-queued schedule for the same key rather than colliding with it.
+     */
+    public suspend fun enqueueScheduledPush(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        request: SchedulePushNotificationRequest,
+        priority: Long = 100,
+        sendNow: Boolean = true,
+    ): EnqueueResult = kickIfEnqueued(
+        replaceEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = priority,
+            uploadType = ScheduledPushOutboxUploader.SchedulePush,
+            json = OdinSystemSerializer.serialize(request),
+        ),
+        sendNow,
+    )
+
+    /** Durably enqueue a **cancel** of a previously scheduled push. Replaces any pending push row
+     *  for the same (driveId, uniqueId) — e.g. a still-queued schedule you're now retracting. */
+    public suspend fun enqueueCancelScheduledPush(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        request: CancelScheduledPushRequest,
+        priority: Long = 100,
+        sendNow: Boolean = true,
+    ): EnqueueResult = kickIfEnqueued(
+        replaceEnqueue(
+            driveId = driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = null,
+            priority = priority,
+            uploadType = ScheduledPushOutboxUploader.CancelPush,
+            json = OdinSystemSerializer.serialize(request),
+        ),
+        sendNow,
+    )
 
     /** The pending row deserialized as an [UploadFileRequest], or null when there
      *  is no pending row or it isn't an `UploadNewFile`. Lets an edit amend a

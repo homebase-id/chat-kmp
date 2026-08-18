@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -54,6 +55,7 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.Event -> ContentLabel(messageContent.displayLabel, Icons.Default.Event)
     is MessageContent.DiceRoll -> ContentLabel(messageContent.displayLabel, Icons.Default.Casino)
     is MessageContent.Groodle -> ContentLabel(messageContent.displayLabel, Icons.Default.CalendarMonth)
+    is MessageContent.ContactCard -> ContentLabel(messageContent.displayLabel, Icons.Outlined.ContactPage)
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)
     null -> null

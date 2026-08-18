@@ -13,12 +13,17 @@ import id.homebase.api.file.wipeOutboxStaging
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.core.config.dataUpgradeReturnUrl
 
+import id.homebase.api.client.drives.SystemDriveConstants
+import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.sync.DriveSyncPolicy
+import kotlin.time.Duration.Companion.days
 import id.homebase.api.youauth.YouAuthFlowManager
 import okio.Path.Companion.toPath
 import id.homebase.auth.login.LoginViewModel
 import id.homebase.chat.addgroupmembers.AddGroupMembersViewModel
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
+import id.homebase.chat.contactcard.VCardDescriptorFactory
 import id.homebase.chat.conversationlist.ConversationListViewModel
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.conversationmedia.ConversationMediaViewModel
@@ -29,6 +34,8 @@ import id.homebase.chat.createconversation.CreateConversationViewModel
 import id.homebase.chat.createconversationgroup.CreateConversationGroupViewModel
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.dice.DiceRollPreferences
+import id.homebase.chat.event.EventReminderPreferences
+import id.homebase.chat.event.EventReminderService
 import id.homebase.chat.editconversationgroup.EditConversationGroupViewModel
 import id.homebase.chat.groupsettings.GroupSettingsViewModel
 import id.homebase.chat.messageinfo.MessageInfoViewModel
@@ -47,6 +54,7 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.ChatServerHistory
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.content.MessageContentParser
@@ -87,6 +95,8 @@ import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.ContactCardImport
+import id.homebase.core.ui.screens.contactbook.ShareContactPickerViewModel
 import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
@@ -116,6 +126,8 @@ import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
+import id.homebase.core.config.chatLabeledDrive
+import id.homebase.core.config.feedLabeledDrive
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.moments.services.MomentsUserStateStore
 import id.homebase.core.sync.DriveRegistry
@@ -253,7 +265,7 @@ val appModule = module {
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
     // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
-    singleOf(::ContactOverrideStore)
+    single { ContactOverrideStore(get(), get(), get()) }
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -405,28 +417,25 @@ val appModule = module {
         DriveSyncManager(
             get(), get(), get(), get(), get(),
             mandatoryDrives = mandatorySyncDrives.associate { it.drive.alias to it.label },
-            // Per-drive fresh-sync policy (sync-back window + custom initial queries) is
-            // wired and tested, but no drive opts in yet — chat behaves like every other
-            // drive (sync everything). Part 2 re-enables the chat policy below together
-            // with the "load older messages when scrolling to the top" feature; until
-            // then a fresh login would only see the last N days, which is confusing
-            // without that scroll-to-load path. Diagnostics confirmed the window itself
-            // is correct (cursor: zero duplicates / no floor breaches at 7/30/60 days).
-            //
-            // To re-enable, add the imports
-            //   id.homebase.api.client.drives.SystemDriveConstants
-            //   id.homebase.api.client.drives.query.FileQueryParams
-            //   id.homebase.api.sync.DriveSyncPolicy
-            //   kotlin.time.Duration.Companion.days
-            // and pass:
-            // driveSyncPolicies = mapOf(
-            //     SystemDriveConstants.chatDrive.alias to DriveSyncPolicy(
-            //         fullSyncWindow = 30.days,
-            //         initialQueries = listOf(
-            //             FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
-            //         ),
-            //     ),
-            // ),
+            // Windowed fresh sync (#1223): first login pulls only the last 14 days of
+            // chat plus the FULL conversation list (initialQueries); older history is
+            // reachable per conversation via ChatMessageStream.loadOlderMessagesFromServer
+            // (the "Load more" row at the top of a conversation).
+            driveSyncPolicies = mapOf(
+                SystemDriveConstants.chatDrive.alias to DriveSyncPolicy(
+                    fullSyncWindow = 14.days,
+                    initialQueries = listOf(
+                        FileQueryParams(fileType = listOf(ChatProtocol.ConversationFileType)),
+                    ),
+                ),
+            ),
+            // Likely-large drives go LAST in the syncAll batch-collection so the greedy budget
+            // serves every small drive first; chat is expected largest and goes very last.
+            collectionTail = listOf(
+                feedLabeledDrive.drive.alias,
+                momentsLabeledDrive.drive.alias,
+                chatLabeledDrive.drive.alias,
+            ),
         )
     }
 
@@ -663,6 +672,9 @@ val appModule = module {
 
     singleOf(::ShareConversationCacheWriter)
     singleOf(::ShareContentProcessor)
+    // Lets chat's descriptor share path normalize a vCard through ContactFieldValidation, which
+    // lives here — homebase-chat must not depend on homebase-core.
+    single<VCardDescriptorFactory> { VCardDescriptorFactory(ContactCardImport::toDescriptor) }
     singleOf(::LocalAttachmentContextStore)
 
     singleOf(::ConnectionCacheRepository)
@@ -703,9 +715,10 @@ val appModule = module {
     // emits after successful group creation, ConversationListViewModel collects and
     // surfaces the IntroducePreflight dialog if any recipient is non-Ready.
     singleOf(::PostCreateIntroductionPreflightBus)
+    singleOf(::ChatServerHistory)
     single {
         ChatMessageStream(
-            get(), get(), get(), get(), get(), get(), get(), get(),
+            get(), get(), get(), get(), get(), get(), get(), get(), get(),
         ).also { stream ->
             // #887: wire auto-pin at construction, NOT in onPostAuthenticated. That
             // post-auth block is deferred and frequently never runs on a warm
@@ -725,6 +738,10 @@ val appModule = module {
     singleOf(::HomebaseImageLoader)
     singleOf(::ChatMessageActionService)
     singleOf(::DiceRollPreferences)
+    singleOf(::EventReminderPreferences)
+    // Explicit `single` (not `singleOf`) — the ctor's `now` clock arg is an intentional Kotlin
+    // default the container can't resolve reflectively.
+    single { EventReminderService(get(), get()) }
     // singleOf(::PendingNotificationTap) would force Koin to resolve every
     // constructor parameter from the container — including the Duration TTL
     // and the CoroutineScope, which are intentionally Kotlin-default args.
@@ -864,6 +881,7 @@ val appModule = module {
             connectionRequestService = get(),
             driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
             shareContentProcessor = get(),
+            vCardDescriptorFactory = get(),
             localVideoContextStore = get(),
             pendingNotificationTap = get(),
             cropResultBus = get(),
@@ -876,6 +894,7 @@ val appModule = module {
             liveLocationReceiveStore = get(),
             liveShareReadiness = get(),
             locationService = get(),
+            driveSyncManager = get(),
         )
     }
     viewModelOf(::ArchivedConversationsViewModel)
@@ -976,6 +995,16 @@ val appModule = module {
             circleName = params.get(),
             repo = get(),
             connectionService = get(),
+        )
+    }
+    // Manual block: conversationId arrives as a Koin runtime parameter from the ShareContact route.
+    viewModel { params ->
+        ShareContactPickerViewModel(
+            conversationId = params.get(),
+            repo = get(),
+            overrideStore = get(),
+            chatMessageSenderService = get(),
+            fileOperationsProvider = get(),
         )
     }
     viewModelOf(::ContactDetailViewModel)

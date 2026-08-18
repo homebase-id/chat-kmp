@@ -2,7 +2,9 @@ package id.homebase.core.util
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.view.ViewGroup
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -34,12 +36,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
+import id.homebase.core.config.AppConfig
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.close
@@ -74,7 +76,6 @@ class InAppBrowserActivity : ComponentActivity() {
             HomebaseTheme {
                 var pageTitle by remember { mutableStateOf(host) }
                 var progress by remember { mutableFloatStateOf(0f) }
-                val surface = MaterialTheme.colorScheme.surface
 
                 Scaffold(
                     topBar = {
@@ -136,8 +137,39 @@ class InAppBrowserActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize().padding(innerPadding),
                         factory = { context ->
                             WebView(context).apply {
-                                setBackgroundColor(surface.toArgb())
-                                webViewClient = WebViewClient()
+                                // Without explicit MATCH_PARENT, WebView resolves every vh unit to 0 — a page laid out with min-h-screen collapses to its content height.
+                                layoutParams = ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                )
+                                // Default white canvas, not the app's surface — a page shorter than the viewport shows it below the document.
+                                webViewClient = object : WebViewClient() {
+                                    // Sign-up ends by navigating at our own scheme. A WebView
+                                    // can't load that and doesn't need to — this activity is
+                                    // the thing being addressed, so read it here and close,
+                                    // rather than bouncing out through the system.
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView,
+                                        request: WebResourceRequest,
+                                    ): Boolean {
+                                        val target = request.url
+                                        if (!target.scheme.equals(
+                                                AppConfig.DEEP_LINK_SCHEME,
+                                                ignoreCase = true,
+                                            )
+                                        ) {
+                                            return false
+                                        }
+
+                                        if (target.host == AppConfig.CREATE_ACCOUNT_CALLBACK_HOST) {
+                                            target.getQueryParameter("domain")
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?.let { CreatedIdentityRelay.deliver(it) }
+                                        }
+                                        this@InAppBrowserActivity.finish()
+                                        return true
+                                    }
+                                }
                                 webChromeClient = object : WebChromeClient() {
                                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                         progress = newProgress / 100f

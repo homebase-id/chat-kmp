@@ -1,5 +1,6 @@
 package id.homebase.chat.services.content
 
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
 import id.homebase.chat.groodle.GroodleDescriptor
@@ -124,6 +125,28 @@ sealed interface MessageContent {
     }
 
     /**
+     * A shared contact card (name, organization, phones, emails) — produced by sharing a vCard
+     * into the app. [descriptor] follows the same nullability contract as [Event.descriptor].
+     */
+    data class ContactCard(val descriptor: ContactCardDescriptor?) : MessageContent {
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,            // it is a snapshot of someone else's details, not your text
+            allowReply = true,            // "is this the right number?"
+            allowForward = true,          // passing a contact on is what you do with one, and the
+                                          // card is self-contained — no conversation to lose
+            allowShare = false,           // the detail view copies each value on its own
+            allowInlineReactions = true,
+            allowReactionDetails = true,  // reactions are on, so who-reacted must be too
+        )
+        override val displayLabel: String
+            get() = descriptor?.summaryLine()?.ifBlank { null } ?: UNPARSEABLE_CONTACT_LABEL
+
+        // A contact's name is somebody else's PII; it must not reach the recipient's push
+        // provider. Generic wire label — the real card renders from the decrypted header.
+        override val notificationLabel: String get() = UNPARSEABLE_CONTACT_LABEL
+    }
+
+    /**
      * A shared location (static pin, or a live share via [LocationPreviewDescriptor.liveShareUntilMs]).
      * The coordinate descriptor rides in the header (`appData.content`) — like Event — so editing it
      * (start/stop a live share) goes through the raw-header `updateMessage` path. The map PNG stays a
@@ -167,6 +190,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_DICE_LABEL = "Dice roll"
         const val UNPARSEABLE_GROODLE_LABEL = "Groodle"
         const val UNPARSEABLE_POLL_LABEL = "Poll"
+        const val UNPARSEABLE_CONTACT_LABEL = "Contact"
         const val UNPARSEABLE_LOCATION_LABEL = "Location"
         const val UNKNOWN_LABEL = "Unknown message"
     }
