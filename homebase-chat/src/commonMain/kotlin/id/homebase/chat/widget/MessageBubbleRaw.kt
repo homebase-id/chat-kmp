@@ -236,13 +236,8 @@ fun MessageBubbleRaw(
         is MessageContent.ContactCard -> {
             // No edited marker: MessageMapper hard-codes isEdited = false for every typed kind.
             val cardInfoText = formatMessageTimestamp(message.userDate)
-            val cardAuthor = message.originalAuthor?.domainName
-            // Saving is where an attacker-chosen identity would outlive the avatar gate, so the
-            // same provenance test runs on the way out.
-            val onSaveCard = remember(onSaveContactCard, cardAuthor, sentByYou, displayOnly) {
-                onSaveContactCard?.takeIf { !displayOnly }?.let { save ->
-                    { card: ContactCardDescriptor -> save(card.forSaving(cardAuthor, sentByYou)) }
-                }
+            val onSaveCard = remember(onSaveContactCard, displayOnly) {
+                onSaveContactCard?.takeIf { !displayOnly }
             }
             val cardPhoto = remember(message.fileId, message.payloads, message.keyHeader) {
                 contactCardPhotoData(

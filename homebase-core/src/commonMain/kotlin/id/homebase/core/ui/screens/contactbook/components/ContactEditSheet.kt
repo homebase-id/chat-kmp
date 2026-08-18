@@ -116,6 +116,7 @@ fun ContactEditSheet(
     onSave: (ContactDraft, List<String>, List<String>, PlatformFile?) -> Unit,
     onDismiss: () -> Unit,
     odinIdLocked: Boolean = false,
+    odinIdNote: String? = null,
     seed: ContactDraft? = null,
     seedAdditionalPhones: List<String> = emptyList(),
     seedAdditionalEmails: List<String> = emptyList(),
@@ -261,6 +262,7 @@ fun ContactEditSheet(
                         supportingText = when {
                             odinIdShowError -> { { Text(odinIdErrorText) } }
                             odinIdLockNote != null -> { { Text(odinIdLockNote) } }
+                            odinIdNote != null -> { { Text(odinIdNote) } }
                             else -> null
                         },
                         trailingIcon = if (odinIdLocked) {

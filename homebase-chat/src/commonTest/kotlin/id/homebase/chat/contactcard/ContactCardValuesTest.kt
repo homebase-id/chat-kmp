@@ -516,37 +516,40 @@ class ContactCardValuesTest {
         assertEquals("Ada Lovelace \u00C9amonn \uD83C\uDF89", "Ada Lovelace \u00C9amonn \uD83C\uDF89".scrubbed())
     }
 
-    // Saving is the path that outlives the bubble: a stored contact's odinId is fetched on every
-    // render of its row, with no author to check against any more.
+    // The bubble's avatar gate stays; saving is deliberately not gated.
     @Test
-    fun `saving a card someone else sent does not bind its identity`() {
+    fun `the avatar of a card someone else sent is not fetched`() {
         val hostile = card().copy(odinId = "tracker.evil.tld")
 
-        assertEquals("", hostile.forSaving(author = "friend.demo.rocks", sentByYou = false).odinId)
-        assertEquals("", hostile.forSaving(author = null, sentByYou = false).odinId)
+        assertNull(hostile.avatarIdentity(author = "friend.demo.rocks", sentByYou = false))
+        assertNull(hostile.avatarIdentity(author = null, sentByYou = false))
     }
 
     @Test
-    fun `saving keeps an identity the envelope vouches for`() {
+    fun `the avatar is fetched for an identity the envelope vouches for`() {
         val own = card().copy(odinId = "samwise.gamgee.demo.rocks")
 
         assertEquals(
             "samwise.gamgee.demo.rocks",
-            own.forSaving(author = "samwise.gamgee.demo.rocks", sentByYou = false).odinId,
+            own.avatarIdentity(author = "samwise.gamgee.demo.rocks", sentByYou = false)?.domainName,
         )
         assertEquals(
             "samwise.gamgee.demo.rocks",
-            own.forSaving(author = null, sentByYou = true).odinId,
+            own.avatarIdentity(author = null, sentByYou = true)?.domainName,
         )
     }
 
     @Test
-    fun `gating the identity leaves the rest of the card intact`() {
+    fun `an unattested identity still reaches the editor, so nothing is dropped silently`() {
         val hostile = card(phones = listOf("+14155550123"), emails = listOf("ada@example.com"))
             .copy(odinId = "tracker.evil.tld")
 
-        val saved = hostile.forSaving(author = "friend.demo.rocks", sentByYou = false)
+        assertEquals("tracker.evil.tld", hostile.identity()?.domainName)
+    }
 
-        assertEquals(hostile.copy(odinId = ""), saved)
+    @Test
+    fun `a garbage identity never reaches the editor claiming to be one`() {
+        assertNull(card().copy(odinId = "not a host!!").identity())
+        assertNull(card().copy(odinId = "   ").identity())
     }
 }
