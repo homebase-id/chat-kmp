@@ -82,15 +82,17 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
-    ): String? {
+    ): String {
         // Input read strategy:
         //  - blob: URL (web editor's picked File) → probe + writeFile happen entirely in JS
         //    (fetch → mp4box / ffmpeg.writeFile); the original never enters Kotlin and is never
         //    base64'd. Size comes from the probe.
         //  - okio path (e.g. a compressed intermediate, or native) → read bytes into Kotlin as before.
         val isBlob = inputPath.startsWith("blob:")
-        val inputBytes = if (isBlob) null else (readOkioBytes(inputPath) ?: return null)
+        val inputBytes =
+            if (isBlob) null
+            else (readOkioBytes(inputPath)
+                ?: throw VideoCompressionFailedException(inputPath, "input file unreadable"))
 
         val hasTrim = trimStartMs != null && trimEndMs != null
         val effTrimStart = if (hasTrim) trimStartMs else null
@@ -98,7 +100,6 @@ actual object FFmpegUtils {
 
         val probe = if (isBlob) FFmpegBridge.probeFromUrl(inputPath) else FFmpegBridge.probe(inputBytes!!)
         val durationMs = probe?.durationMs ?: 0L
-        val inputSizeBytes = if (isBlob) (probe?.sizeBytes ?: 0L) else inputBytes!!.size.toLong()
 
         // MEMFS-relative names so plan.args reference the in-worker files directly.
         val plan = FfmpegCompressPlanner.plan(
@@ -109,20 +110,9 @@ actual object FFmpegUtils {
             trimEndMs = effTrimEnd,
             probedWidthPx = probe?.widthPx ?: 0,
             probedHeightPx = probe?.heightPx ?: 0,
-            probedCodecMime = probe?.codec, // null probe → no short-circuit → transcode
-            inputDurationMs = durationMs,
-            inputBytes = inputSizeBytes,
             rotationDegrees = probe?.rotationDegrees ?: 0,
             // libx264: the single-thread core has no hardware encoder.
-            // No-op here: the web probe doesn't report bit depth, so output
-            // stays 8-bit yuv420p regardless of the flag.
-            allowTenBit = allowTenBit,
         )
-
-        if (plan.skipReason != null) {
-            // Already-optimal / within envelope: skip ffmpeg, let the caller keep the original.
-            return null
-        }
 
         if (isBlob) FFmpegBridge.writeFileFromUrl(MEMFS_INPUT, inputPath)
         else FFmpegBridge.writeFile(MEMFS_INPUT, inputBytes!!)
@@ -130,7 +120,7 @@ actual object FFmpegUtils {
         if (status != 0) {
             FFmpegBridge.deleteFile(MEMFS_INPUT)
             FFmpegBridge.deleteFile(MEMFS_OUTPUT)
-            return null
+            throw VideoCompressionFailedException(inputPath, "ffmpeg.wasm exited $status")
         }
         val outBytes = FFmpegBridge.readFile(MEMFS_OUTPUT)
         FFmpegBridge.deleteFile(MEMFS_INPUT)
