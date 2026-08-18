@@ -203,12 +203,11 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
-    ): String? = withContext(Dispatchers.IO) {
+    ): String = withContext(Dispatchers.IO) {
         val fileManager = NSFileManager.defaultManager
         if (!fileManager.fileExistsAtPath(inputPath)) {
             println("Docs: Input file not found: $inputPath")
-            return@withContext null
+            throw VideoCompressionFailedException(inputPath, "input file not found")
         }
 
         val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
@@ -220,34 +219,21 @@ actual object FFmpegUtils {
             fileManager.removeItemAtPath(outputPath, null)
         }
 
-        // Probe metadata: prefer FFmpegKit's ffprobe (rich: pix_fmt/bit-depth/HDR), fall
-        // back to AVFoundation when ffprobe can't read the file (modern iPhone captures).
-        // See probeVideoNative. Raw container dims + rotation feed the planner so portrait
-        // captures aren't squished; bit depth/HDR drive the 8-bit-output pin.
+        // Probe metadata: prefer FFmpegKit's ffprobe, fall back to AVFoundation when ffprobe
+        // can't read the file (modern iPhone captures). See probeVideoNative. Only geometry is
+        // consumed — raw container dims + rotation feed the planner so portrait captures aren't
+        // squished. Nothing about the source's codec or bit depth affects the output format.
         val probe = probeVideoNative(inputPath)
         val widthPx = probe?.widthPx ?: 0
         val heightPx = probe?.heightPx ?: 0
-        val codecMime = probe?.codec  // short form, e.g. "h264" / "hevc"; null forces re-encode
         val rotation = probe?.rotation ?: 0
-        // Keep null when the probe couldn't determine these — the planner fails closed and
-        // re-encodes rather than passing a possibly-10-bit source through untouched (#959).
-        val bitDepth = probe?.bitDepth
-        val isHdr = probe?.isHdr
-
-        val attrs = fileManager.attributesOfItemAtPath(inputPath, null)
-        val inputBytes = (attrs?.get(NSFileSize) as? NSNumber)?.longValue ?: 0L
         val durationMs = getDurationMs(inputPath)
 
         // Try hardware encoder first; fall back to libx264 if it fails. The
         // planner takes the encoder name and emits libx264-only flags
         // (-preset veryfast) only when appropriate.
         //
-        // When emitting 10-bit (allowTenBit + >8-bit source), skip
-        // h264_videotoolbox entirely: Apple's H.264 hardware encoder cannot
-        // produce 10-bit (High 10) output, so only libx264 can honour the
-        // yuv420p10le pin.
-        //
-        // Also skip the hardware encoder when dimensions are unknown (probe == null
+        // Skip the hardware encoder when dimensions are unknown (probe == null
         // → widthPx/heightPx == 0). That only happens when BOTH ffprobe and the
         // AVFoundation fallback fail to read the file (audio-only, DRM, or a container
         // neither can open). With no dims the planner emits no `-vf scale` filter, and
@@ -257,7 +243,7 @@ actual object FFmpegUtils {
         // unreadable file), so the hardware encoder is never handed a degenerate command.
         val dimensionsUnknown = widthPx <= 0 || heightPx <= 0
         val encoders =
-            if ((allowTenBit && (bitDepth ?: 0) > 8) || dimensionsUnknown) listOf("libx264")
+            if (dimensionsUnknown) listOf("libx264")
             else listOf("h264_videotoolbox", "libx264")
         for ((index, encoder) in encoders.withIndex()) {
             val plan = FfmpegCompressPlanner.plan(
@@ -268,20 +254,9 @@ actual object FFmpegUtils {
                 trimEndMs = effectiveTrimEnd,
                 probedWidthPx = widthPx,
                 probedHeightPx = heightPx,
-                probedCodecMime = codecMime,
-                inputDurationMs = durationMs,
-                inputBytes = inputBytes,
                 rotationDegrees = rotation,
                 encoder = encoder,
-                probedBitDepth = bitDepth,
-                probedIsHdr = isHdr,
-                allowTenBit = allowTenBit,
             )
-
-            if (plan.skipReason != null) {
-                println("Docs: compressVideo: AlreadyOptimal — ${plan.skipReason}")
-                return@withContext null
-            }
 
             // When using a VideoToolbox encoder, also HW-decode the input.
             // Without this, HEVC sources are software-decoded which is 3-4x
@@ -313,7 +288,7 @@ actual object FFmpegUtils {
 
         // Both encoders failed — delete the partial/empty output (see #5).
         deleteFailedFfmpegOutput(outputPath)
-        null
+        throw VideoCompressionFailedException(inputPath, "all encoders failed (${encoders.joinToString()})")
     }
 
     actual suspend fun segmentVideo(
