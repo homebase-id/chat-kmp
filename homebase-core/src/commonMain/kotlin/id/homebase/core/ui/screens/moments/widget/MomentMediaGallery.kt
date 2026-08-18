@@ -3,7 +3,6 @@ package id.homebase.core.ui.screens.moments.widget
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -12,6 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
@@ -21,16 +21,17 @@ import kotlin.uuid.Uuid
 /**
  * Moments-specific clone of `id.homebase.chat.widget.MediaGallery`.
  *
- * Sizing is aspect-ratio driven so the gallery always fills the parent
- * container's width — unlike the chat version, which clamps to a fixed
- * chat-bubble width and height. Per-count layouts:
+ * Sizing follows one rule (see [MomentMediaFrame]): the media is as large as it
+ * can be while staying fully visible — full card width unless that would make it
+ * taller than [momentMediaMaxHeight], in which case it shrinks at its own aspect
+ * ratio. Nothing is ever cropped or letterboxed to hit a fixed shape.
  *
  *  - **1**: full-width cell whose aspect ratio matches the payload's preview
  *    thumbnail (falls back to 1:1 when no thumbnail metadata is available).
  *  - **2+**: Instagram-style horizontal swipe carousel via [MomentMediaCarousel].
- *    Each payload is a swipeable page; videos play in place. The whole
- *    carousel is locked to the first payload's aspect (later items crop to
- *    fit), matching Instagram's multi-image post behaviour.
+ *    Each payload is a swipeable page; videos play in place. All pages share ONE
+ *    frame (a per-page height would make the pager jump), sized from the tallest
+ *    page so no page has to be cropped.
  *
  * Default `shape` is [RectangleShape] — the parent (e.g. moment post card) is
  * expected to clip its own outer rounded corners. Pass a [Shape] explicitly
@@ -70,6 +71,9 @@ fun MomentMediaGallery(
     // Force carousel videos to show the whole frame (fit) — set while the host
     // card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
+    // Height budget for the media cell. Defaults to the viewport rule; injected
+    // explicitly by the layout tests so they don't depend on the host window.
+    maxMediaHeight: Dp = momentMediaMaxHeight(),
 ) {
     if (payloads.isEmpty()) return
 
@@ -90,6 +94,7 @@ fun MomentMediaGallery(
                 downloadingFiles = downloadingFiles,
                 isUploading = isUploading,
                 fitToContent = fitToContent,
+                maxMediaHeight = maxMediaHeight,
             )
         } else {
             MomentMediaCarousel(
@@ -111,6 +116,7 @@ fun MomentMediaGallery(
                 autoplayActive = autoplayActive,
                 onVisiblePayloadChanged = onVisiblePayloadChanged,
                 fitToContent = fitToContent,
+                maxMediaHeight = maxMediaHeight,
             )
         }
     }
@@ -130,75 +136,83 @@ private fun SingleImageLayout(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     isUploading: Boolean,
-    // When true, show the whole image (fit) filling the host box instead of the
-    // aspect-locked crop — used while the card is shrunk to a band above the
-    // comments sheet so the entire photo is visible.
+    // When true, fit the whole image into the host box instead of laying out a
+    // frame of our own — used while the card is shrunk to a band above the
+    // comments sheet, where the host dictates the height.
     fitToContent: Boolean = false,
+    maxMediaHeight: Dp = momentMediaMaxHeight(),
 ) {
-    // Compute aspect from the payload's thumbnail metadata so the cell sizes
-    // before the (possibly remote, encrypted) full image is decoded. Falls
-    // back to 1:1 when no thumbnail data is present. The photo is drawn
-    // ContentScale.Fit by the inline zoom wrapper (enableZoom below), so the
-    // cell must match the photo's real aspect or Fit leaves blank bars — the
-    // landscape letterbox of #873 (and the mirror-image side-crop of #818 back
-    // when this was Crop into a fixed-tall cell). Size to the natural aspect;
-    // clamp only extreme panoramas to [MaxFeedPhotoAspect] so a very wide shot
-    // doesn't collapse into a thin strip. Tall portraits keep their height.
-    val aspect = (aspectRatioFor(payload) ?: 1f).coerceAtMost(MaxFeedPhotoAspect)
+    // Aspect comes from the payload's thumbnail metadata so the cell sizes before
+    // the (possibly remote, encrypted) full image is decoded. The photo is drawn
+    // ContentScale.Fit by the inline zoom wrapper (enableZoom below), so the cell
+    // must match the photo's real aspect or Fit leaves blank bars — the landscape
+    // letterbox of #873 (and the mirror-image side-crop of #818 back when this was
+    // Crop into a fixed-tall cell). How tall the cell may get is bounded by the
+    // viewport, not by a ratio (#1128).
+    val aspect = momentFrameAspect(payload)
 
-    MomentMediaItem(
-        payload = payload,
-        fileId = fileId,
-        driveId = driveId,
-        keyHeader = keyHeader,
-        previewThumbnail = previewThumbnail,
-        // Fit-into-host (whole image) when shrunk for comments; otherwise the
-        // aspect-locked crop the feed cell normally uses.
-        modifier = if (fitToContent) Modifier.fillMaxSize()
-        else Modifier.fillMaxWidth().aspectRatio(aspect),
-        imageSize = ImageSize.THUMB_LARGE,
-        // Aspect set on the modifier — let the image fill it (Crop is a no-op
-        // when source aspect matches the box). When shrunk for the comments
-        // band, fill the host box (Fit, whole image) instead of re-imposing the
-        // image's own aspect ratio — without this the intrinsic `.aspectRatio()`
-        // keeps the image at its natural ratio and it never collapses into the
-        // 1/3 band (same fix the carousel and reels detail pager use).
-        preserveAspectRatio = fitToContent,
-        fitBounds = fitToContent,
-        shape = RectangleShape,
-        // Preserve nullability so MomentMediaItem only installs its inner
-        // pointerInput when there's an actual click/long-press handler.
-        // Wrapping a nullable handler in a non-null `{ onMediaClick?.invoke(...) }`
-        // lambda made the item *always* register a pointer detector that
-        // silently consumed taps — which broke the feed's card-level
-        // multi-tap detector. Same pattern at the other layout call sites.
-        onClick = onMediaClick?.let { handler -> { handler(payload) } },
-        onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
-        sharedTransitionScope = sharedTransitionScope,
-        animatedVisibilityScope = animatedVisibilityScope,
-        isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
-        messageId = messageId,
-        isUploading = isUploading,
-        // Inline pinch-zoom for the timeline photo. No pager here (single
-        // image), so no page-swipe to coordinate; at base scale taps still
-        // reach the card's click handler via [onClick]/onTap.
-        enableZoom = true,
-    )
+    val cell: @Composable () -> Unit = {
+        MomentMediaItem(
+            payload = payload,
+            fileId = fileId,
+            driveId = driveId,
+            keyHeader = keyHeader,
+            previewThumbnail = previewThumbnail,
+            // The frame (or the comments band) owns the geometry — fill it.
+            modifier = Modifier.fillMaxSize(),
+            imageSize = ImageSize.THUMB_LARGE,
+            // Outside the comments band the frame is already at the photo's own
+            // aspect, so filling it is exact. When shrunk for the comments band
+            // the host box is a short strip of arbitrary shape, so fit into it
+            // (whole image) instead of re-imposing the image's aspect — without
+            // this the intrinsic `.aspectRatio()` keeps the image at its natural
+            // ratio and it never collapses into the band (same fix the carousel
+            // and reels detail pager use).
+            preserveAspectRatio = fitToContent,
+            fitBounds = fitToContent,
+            shape = RectangleShape,
+            // Preserve nullability so MomentMediaItem only installs its inner
+            // pointerInput when there's an actual click/long-press handler.
+            // Wrapping a nullable handler in a non-null `{ onMediaClick?.invoke(...) }`
+            // lambda made the item *always* register a pointer detector that
+            // silently consumed taps — which broke the feed's card-level
+            // multi-tap detector. Same pattern at the other layout call sites.
+            onClick = onMediaClick?.let { handler -> { handler(payload) } },
+            onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+            isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
+            messageId = messageId,
+            isUploading = isUploading,
+            // Inline pinch-zoom for the timeline photo. No pager here (single
+            // image), so no page-swipe to coordinate; at base scale taps still
+            // reach the card's click handler via [onClick]/onTap.
+            enableZoom = true,
+        )
+    }
+
+    if (fitToContent) {
+        cell()
+    } else {
+        MomentMediaFrame(aspect = aspect, maxHeight = maxMediaHeight) { cell() }
+    }
 }
 
-/**
- * Best-effort aspect ratio (`width / height`) from a payload's thumbnail
- * metadata. Returns `null` when no thumbnail with sane dimensions is
- * available — caller decides the fallback.
- */
 /**
  * Crop cap for the single-**video** feed tile (width/height). 0.8 == a 4:5
  * portrait frame: a video at least as wide as 4:5 is sized to this tall frame
  * and center-cropped (ContentScale.Crop) so it reads as a substantial card
  * instead of a short horizontal strip; tap-to-play then shows the whole frame.
- * Taller portrait videos (ratio < 0.8) keep their natural height. Photos use
- * [MaxFeedPhotoAspect] instead (they're drawn Fit, so the cell tracks the real
- * aspect). Detail/full-screen views size media independently.
+ * Taller portrait videos (ratio < 0.8) keep their natural height.
+ *
+ * The divergence from [MaxFeedPhotoAspect] is deliberate and is about *how the
+ * pixels are drawn*, not about the sizing rule: a video tile is a poster frame
+ * drawn ContentScale.Crop, so a wide video can be cropped into a taller card and
+ * still read correctly (the whole frame appears on play). A photo is drawn
+ * ContentScale.Fit by the zoom wrapper, so the same clamp would show as blank
+ * bars instead of a crop — that is exactly the #873 letterbox. Both paths share
+ * the viewport height bound ([MomentMediaFrame]); only this crop cap differs.
+ * Detail/full-screen views size media independently.
  */
 internal const val MaxFeedMediaAspect = 0.8f
 
@@ -208,11 +222,17 @@ internal const val MaxFeedMediaAspect = 0.8f
  * ContentScale.Fit by the inline zoom wrapper, so the cell is sized to the
  * photo's real aspect and Fit fills it exactly — no letterbox (#873), no
  * side-crop (#818). Only panoramas wider than this clamp letterbox slightly
- * (by design, so they don't render as a sliver); tall portraits are never
- * clamped and keep their natural height.
+ * (by design, so they don't render as a sliver). Tall portraits are never
+ * clamped by ratio — their bound is the viewport height budget instead, so
+ * they fill the card width whenever they fit (#1128).
  */
 internal const val MaxFeedPhotoAspect = 1.91f
 
+/**
+ * Best-effort aspect ratio (`width / height`) from a payload's thumbnail
+ * metadata. Returns `null` when no thumbnail with sane dimensions is
+ * available — caller decides the fallback.
+ */
 internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
     val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()
     val w = thumb?.pixelWidth
