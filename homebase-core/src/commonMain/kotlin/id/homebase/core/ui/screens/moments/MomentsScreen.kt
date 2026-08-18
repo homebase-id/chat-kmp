@@ -54,7 +54,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -88,7 +87,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import coil3.compose.AsyncImage
-import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.initials
 import id.homebase.api.common.OdinId
@@ -116,6 +114,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.resources.MR
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -199,15 +198,7 @@ fun MomentsScreen(
     // Self-renders only when the VM transitions to ShowDialog. No-op otherwise.
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
-    // Desktop wide-screen split: feed on the left, embedded detail pane on the
-    // right. Gated on `isDesktop()` so wide phones/tablets stay on the single
-    // column — the touch targets and FAB placement on mobile assume one
-    // viewport, and the chat module gates its split the same way.
-    val adaptiveInfo = currentWindowAdaptiveInfo()
-    val isWide = isDesktop() &&
-        adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
-            WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-        )
+    val isWide = isExpandedLayout()
 
     // Reels is omitted from the desktop view menu; coerce a persisted/synced Reels
     // preference to Timeline on desktop (wide or narrow window) so a pointer user
