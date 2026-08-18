@@ -117,6 +117,16 @@ object FfmpegCompressPlanner {
                 add("-ss"); add(formatSeconds(trimStartMs))
                 add("-to"); add(formatSeconds(trimEndMs))
             }
+            // Drop the source's global metadata. ffmpeg's default is -map_metadata 0, which
+            // copies the camera's `location` atom (and creation_time) straight into the
+            // output — a sent clip carried the sender's GPS coordinates to the recipient.
+            // Mp4LocationStripper only ever ran on the already-optimal skip path, so any
+            // video that was actually re-encoded was never scrubbed.
+            //
+            // Rotation is unaffected: it rides the display matrix (stream side data), not
+            // the metadata dictionary this operates on. Verified — a rotation=90 source
+            // still decodes to the correct display dims with this set.
+            add("-map_metadata"); add("-1")
             add("-c:v"); add(encoder)
             // -preset is a libx264 option. h264_videotoolbox ignores it with a
             // warning — skip on non-libx264 to keep stderr clean.

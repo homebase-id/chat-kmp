@@ -290,6 +290,28 @@ class FfmpegCompressPlannerTest {
     }
 
     @Test
+    fun plan_alwaysStripsSourceMetadata() {
+        // ffmpeg defaults to -map_metadata 0, which copies the camera's location atom into
+        // the output. Every encode must disable it, trim or not (#1294).
+        for (trim in listOf(null to null, 0L to 5_000L)) {
+            val plan = FfmpegCompressPlanner.plan(
+                inputPath = "/in.mp4", outputPath = "/out.mp4",
+                quality = VideoQuality.STANDARD,
+                trimStartMs = trim.first, trimEndMs = trim.second,
+                probedWidthPx = 1920, probedHeightPx = 1080,
+                probedCodecMime = "video/avc",
+                inputDurationMs = 10_000L, inputBytes = 10_000_000L,
+                probedBitDepth = 8, probedIsHdr = false,
+            )
+            val idx = plan.args.indexOf("-map_metadata")
+            assertTrue(idx >= 0, "must strip source metadata; args=${plan.args}")
+            assertEquals("-1", plan.args[idx + 1])
+            // Must precede the output path, or ffmpeg treats it as an input option.
+            assertTrue(idx < plan.args.lastIndex, "-map_metadata must come before the output")
+        }
+    }
+
+    @Test
     fun plan_alwaysAddsMovflagsFaststart() {
         val plan = FfmpegCompressPlanner.plan(
             inputPath = "/in.mp4", outputPath = "/out.mp4",
