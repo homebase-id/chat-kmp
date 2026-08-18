@@ -73,7 +73,7 @@ fun EmergencyLocateSheet(
     var ambush by remember { mutableStateOf(false) }
     var windowMenuOpen by remember { mutableStateOf(false) }
 
-    AdaptiveSheet(onDismiss = { if (!submitting) onDismiss() }) {
+    AdaptiveSheet(onDismiss = onDismiss, dismissible = !submitting) {
         Column(
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
