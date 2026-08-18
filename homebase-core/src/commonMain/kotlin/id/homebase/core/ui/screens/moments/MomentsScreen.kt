@@ -113,7 +113,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.resources.MR
 import kotlin.time.Instant
@@ -200,10 +200,9 @@ fun MomentsScreen(
 
     val isWide = isExpandedLayout()
 
-    // Reels is omitted from the desktop view menu; coerce a persisted/synced Reels
-    // preference to Timeline on desktop (wide or narrow window) so a pointer user
-    // never lands in the touch-first reels view with no menu entry to leave it.
-    val effectiveViewMode = if (isDesktop() && uiState.viewMode == MomentsViewMode.Reels) {
+    // Reels has no menu entry on pointer targets, so a persisted/synced Reels
+    // preference must be coerced or the user lands there with no way back out.
+    val effectiveViewMode = if (isDesktopOrWeb() && uiState.viewMode == MomentsViewMode.Reels) {
         MomentsViewMode.Timeline
     } else {
         uiState.viewMode
@@ -625,7 +624,7 @@ private fun MomentsFeedList(
     // Disabled on desktop: on a pointer-driven window the feed shouldn't start
     // playing videos on its own as the user scrolls — playback stays manual
     // (tap a card's play button, which sets playingMomentId via onToggleVideoPlay).
-    val feedAutoplayEnabled = !isDesktop()
+    val feedAutoplayEnabled = !isDesktopOrWeb()
     LaunchedEffect(listState, videoMomentIds, feedAutoplayEnabled) {
         if (!feedAutoplayEnabled) return@LaunchedEffect
         snapshotFlow {
@@ -1507,9 +1506,9 @@ private fun MomentsViewModeMenu(
                     onSelect(MomentsViewMode.Album)
                 },
             )
-            // Reels is a touch-first, full-screen vertical-swipe mode — omit it
-            // from the desktop menu so pointer users only see Timeline / Album.
-            if (!isDesktop()) {
+            // Reels is a touch-first, full-screen vertical-swipe mode — pointer
+            // targets only see Timeline / Album.
+            if (!isDesktopOrWeb()) {
                 MomentsViewModeMenuItem(
                     label = stringResource(MR.string.moments_view_reels),
                     icon = Icons.Outlined.Slideshow,
