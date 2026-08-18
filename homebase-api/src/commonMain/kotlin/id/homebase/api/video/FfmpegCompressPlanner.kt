@@ -21,36 +21,34 @@ fun VideoQuality.targets(): QualityTargets = when (this) {
 }
 
 /**
- * The output of [FfmpegCompressPlanner.plan]. Either tells the caller to skip
- * ffmpeg ([skipReason] non-null — input was already within the quality envelope)
- * or provides the [args] to invoke ffmpeg with.
+ * The output of [FfmpegCompressPlanner.plan] — the [args] to invoke ffmpeg with.
+ *
+ * There is no "skip ffmpeg" outcome: every video is re-encoded so the output is
+ * unconditionally 8-bit. A pass-through would ship whatever the source was, and no
+ * probe is trustworthy enough to gate that on (#1278).
  */
 data class FfmpegCompressPlan(
-    /** ffmpeg argv (after the ffmpeg-binary name itself). Empty when [skipReason] is non-null. */
+    /** ffmpeg argv (after the ffmpeg-binary name itself). */
     val args: List<String>,
-    /** Non-null = caller should skip ffmpeg invocation and return null. Description for logs. */
-    val skipReason: String?,
-    /** Resolved output dimensions, for logging. Null when [skipReason] is non-null. */
+    /** Resolved output dimensions, for logging. */
     val outputDims: Pair<Int, Int>?,
 )
 
 /**
  * Pure-function planner for ffmpeg `compressVideo` invocations. Caller supplies
- * probed input metadata + caller-driven params; planner decides whether to
- * short-circuit (already-optimal) and assembles the full ffmpeg argv list when
- * not skipping.
+ * probed input metadata + caller-driven params; planner assembles the full
+ * ffmpeg argv list. Every input is re-encoded — there is no skip path.
  *
  * Lives in commonMain so Android, iOS, and Desktop actuals share one
  * implementation of:
  *  - the quality → bitrate/dimension mapping ([QualityTargets])
- *  - the already-optimal predicate ([isAlreadyOptimal])
  *  - output-dimension computation ([computeOutputDims])
  *  - ffmpeg arg assembly (this object's [plan] method)
  *
  * Each platform's `FFmpegUtils.compressVideo` actual then reduces to: probe
  * the input via the platform-native API (MediaExtractor / Swift bridge /
- * ffprobe), call [plan], and either short-circuit or hand `plan.args` to the
- * platform-native ffmpeg invoker. No I/O or platform dependencies in this file.
+ * ffprobe), call [plan], and hand `plan.args` to the platform-native ffmpeg
+ * invoker. No I/O or platform dependencies in this file.
  */
 object FfmpegCompressPlanner {
 
@@ -61,18 +59,11 @@ object FfmpegCompressPlanner {
      * @param outputPath where ffmpeg should write the result
      * @param quality target quality preset → resolved via [VideoQuality.targets]
      * @param trimStartMs trim start in milliseconds; if both trim ends are non-null,
-     *   trim args (`-ss`/`-to`) are appended and the already-optimal short-circuit is
-     *   disabled (trim always re-encodes)
+     *   trim args (`-ss`/`-to`) are appended
      * @param trimEndMs trim end in milliseconds; same semantics as [trimStartMs]
      * @param probedWidthPx source video width as probed by the caller; pass 0 if unknown
      *   (planner will fall through to ffmpeg encoding at source dims)
      * @param probedHeightPx source video height as probed by the caller; pass 0 if unknown
-     * @param probedCodecMime source video codec, in either MediaCodec form
-     *   (`"video/avc"`, `"video/hevc"`) or ffprobe short form (`"h264"`, `"hevc"`).
-     *   Pass null when probe failed — already-optimal short-circuit will not fire.
-     * @param inputDurationMs source video duration in milliseconds (for bitrate calc).
-     *   Pass ≤0 if unknown — already-optimal short-circuit will not fire.
-     * @param inputBytes source file size in bytes (for bitrate calc)
      * @param rotationDegrees source video rotation flag (0/90/180/270 or
      *   ±90/±270). Phone camera captures expose raw container dims to probes
      *   (e.g. 1920×1080 + rotation=90 for a portrait video); FFmpeg's default
@@ -84,24 +75,10 @@ object FfmpegCompressPlanner {
      *   aspect.
      * @param encoder ffmpeg encoder name. Defaults to `"libx264"`; iOS passes
      *   `"h264_videotoolbox"` first and falls back to libx264 on failure
-     * @param probedBitDepth source luma bit depth (8/10/12). Pass 8 when the
-     *   probe couldn't determine it. >8 forces a re-encode (disables the
-     *   already-optimal short-circuit) so the output can be pinned to 8-bit.
-     * @param probedIsHdr true when the source is HDR (BT2020 primaries with a
-     *   PQ/HLG transfer, or HDR static/dynamic metadata). Forces a re-encode for
-     *   the same reason. Note: Tier 1 only pins output to 8-bit SDR-decodable
-     *   `yuv420p` (no tone-map yet), which is enough to make every receiver's
-     *   hardware AVC decoder accept the stream.
-     * @param allowTenBit developer/test escape hatch (default false). When true,
-     *   a >8-bit source is no longer force-downconverted: the bit-depth gate on
-     *   the already-optimal short-circuit is dropped (an in-budget 10-bit H.264
-     *   clip passes through untouched) and any re-encode pins `yuv420p10le`
-     *   (High 10) instead of `yuv420p`. The resulting stream is High 10 and will
-     *   fail on most receivers' hardware AVC decoders — this exists purely to
-     *   inspect 10-bit output locally. HDR is unaffected (still forces a
-     *   re-encode; no tone-map yet). Callers driving 10-bit output must also use
-     *   a 10-bit-capable encoder (libx264) — `h264_videotoolbox` cannot emit
-     *   10-bit H.264.
+     *
+     * Takes no codec/bit-depth/HDR/size input: the output format is unconditional, so
+     * nothing the prober reports can change what is encoded. Geometry is the only
+     * probed value that still matters.
      */
     fun plan(
         inputPath: String,
@@ -111,16 +88,8 @@ object FfmpegCompressPlanner {
         trimEndMs: Long?,
         probedWidthPx: Int,
         probedHeightPx: Int,
-        probedCodecMime: String?,
-        inputDurationMs: Long,
-        inputBytes: Long,
         rotationDegrees: Int = 0,
         encoder: String = "libx264",
-        // Null = the probe couldn't determine this; treated as "possibly 10-bit/HDR" and re-encoded
-        // (fail closed) rather than passed through. See [isAlreadyOptimal] (#959).
-        probedBitDepth: Int? = null,
-        probedIsHdr: Boolean? = null,
-        allowTenBit: Boolean = false,
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
         // swapped them by the time the scale filter sees the frames.
@@ -128,24 +97,6 @@ object FfmpegCompressPlanner {
         val displayWidthPx = if (swapDims) probedHeightPx else probedWidthPx
         val displayHeightPx = if (swapDims) probedWidthPx else probedHeightPx
         val targets = quality.targets()
-        val hasTrim = trimStartMs != null && trimEndMs != null
-
-        // Already-optimal short-circuit: skip ffmpeg entirely. Trim forces
-        // re-encode (the trim points are precise only with a real encode pass).
-        if (!hasTrim && isAlreadyOptimal(
-                probedCodecMime, displayWidthPx, displayHeightPx,
-                inputBytes, inputDurationMs, targets,
-                probedBitDepth, probedIsHdr, allowTenBit,
-            )
-        ) {
-            return FfmpegCompressPlan(
-                args = emptyList(),
-                skipReason = "input already optimal " +
-                    "(codec=$probedCodecMime, ${displayWidthPx}x${displayHeightPx}, " +
-                    "${inputDurationMs}ms, ${inputBytes}B, quality=$quality)",
-                outputDims = null,
-            )
-        }
 
         val outDims = computeOutputDims(displayWidthPx, displayHeightPx, targets.shortEdgePx)
         val scaleArgs = if (outDims != null) {
@@ -166,6 +117,16 @@ object FfmpegCompressPlanner {
                 add("-ss"); add(formatSeconds(trimStartMs))
                 add("-to"); add(formatSeconds(trimEndMs))
             }
+            // Drop the source's global metadata. ffmpeg's default is -map_metadata 0, which
+            // copies the camera's `location` atom (and creation_time) straight into the
+            // output — a sent clip carried the sender's GPS coordinates to the recipient.
+            // Mp4LocationStripper only ever ran on the already-optimal skip path, so any
+            // video that was actually re-encoded was never scrubbed.
+            //
+            // Rotation is unaffected: it rides the display matrix (stream side data), not
+            // the metadata dictionary this operates on. Verified — a rotation=90 source
+            // still decodes to the correct display dims with this set.
+            add("-map_metadata"); add("-1")
             add("-c:v"); add(encoder)
             // -preset is a libx264 option. h264_videotoolbox ignores it with a
             // warning — skip on non-libx264 to keep stderr clean.
@@ -179,15 +140,20 @@ object FfmpegCompressPlanner {
             // High 10, which most Android hardware AVC decoders reject with
             // ERROR_CODE_DECODING_FAILED / NO_EXCEEDS_CAPABILITIES. yuv420p
             // produces a Main/High-profile stream every receiver can decode.
-            // No-op for already-8-bit 4:2:0 sources. (Tier 1: no tone-map yet —
-            // HDR colours may look flat until the zscale/tonemap follow-up.)
+            // No-op for already-8-bit 4:2:0 sources.
+            add("-pix_fmt"); add("yuv420p")
+            // Output is SDR BT.709, always. -pix_fmt fixes depth and subsampling but not
+            // colour metadata: ffmpeg copies the source's primaries/transfer onto the
+            // output, so an HDR source would come out 8-bit yet still tagged BT.2020
+            // PQ/HLG and be treated as HDR downstream. Unconditional, like the pix_fmt
+            // pin — no probe gates it, so nothing the prober gets wrong can leak HDR.
             //
-            // allowTenBit (dev/test only): keep a >8-bit source at 10-bit
-            // (yuv420p10le → High 10) so the 10-bit pipeline can be inspected.
-            // 8-bit sources stay 8-bit regardless — the flag permits, not forces.
-            val outputPixFmt =
-                if (allowTenBit && (probedBitDepth ?: 0) > 8) "yuv420p10le" else "yuv420p"
-            add("-pix_fmt"); add(outputPixFmt)
+            // Ceiling: this retags, it does not tone-map. PQ/HLG pixels relabelled BT.709
+            // decode everywhere but look flat. A real tone-map needs zscale to linearise,
+            // and zscale is absent from the Android and iOS ffmpeg builds (desktop has it).
+            add("-colorspace"); add("bt709")
+            add("-color_primaries"); add("bt709")
+            add("-color_trc"); add("bt709")
             add("-c:a"); add("aac")
             add("-b:a"); add("${targets.audioBitrateBps / 1000}k")
             add("-movflags"); add("+faststart")
@@ -196,59 +162,10 @@ object FfmpegCompressPlanner {
 
         return FfmpegCompressPlan(
             args = args,
-            skipReason = null,
             // Encoded frames come out post-rotation, so the reported output
             // dims are the display ones (not the pre-rotation probe values).
             outputDims = outDims ?: (displayWidthPx to displayHeightPx),
         )
-    }
-
-    /**
-     * Already-optimal predicate. True iff the source is H.264 single-video-track
-     * within both the short-edge and the average-bitrate budget (×1.2 slack),
-     * and is 8-bit SDR.
-     *
-     * Mirrors the Android v2 SPEC §7 logic. Returns false on any probe
-     * gap (null codec, zero dim, zero duration) — caller falls through to a
-     * real transcode in that case. Also returns false for 10-bit/HDR sources:
-     * even an otherwise-in-budget clip must re-encode so the output can be
-     * pinned to 8-bit `yuv420p` (else the original 10-bit High 10 bytes would
-     * pass through untouched and fail on hardware AVC decoders). When
-     * [allowTenBit] is set, the bit-depth disqualifier is lifted (a 10-bit
-     * source may short-circuit and pass through untouched); HDR still
-     * disqualifies regardless.
-     */
-    internal fun isAlreadyOptimal(
-        codecMime: String?,
-        widthPx: Int,
-        heightPx: Int,
-        inputBytes: Long,
-        durationMs: Long,
-        targets: QualityTargets,
-        bitDepth: Int? = null,
-        isHdr: Boolean? = null,
-        allowTenBit: Boolean = false,
-    ): Boolean {
-        if (codecMime == null || widthPx <= 0 || heightPx <= 0 || durationMs <= 0) return false
-        // Fail closed on the 8-bit-SDR pin. Pass-through requires the probe to POSITIVELY confirm
-        // 8-bit AND not-HDR; a null (undeterminable) bit depth or HDR flag means the probe could
-        // not rule out a 10-bit/HDR source — Android's MediaExtractor omits KEY_PROFILE /
-        // color-transfer for many in-app camera captures — so we re-encode (the encode leg pins
-        // yuv420p) rather than ship the original 10-bit High-10 bytes untouched (#959).
-        if (!allowTenBit) {
-            if (bitDepth != 8) return false      // null or >8 → re-encode
-            if (isHdr != false) return false     // null or true → re-encode
-        } else {
-            // Toggle on: the user opted into 10-bit pass-through, but a positively-detected HDR
-            // source still re-encodes (HDR is a decode problem beyond bit depth).
-            if (isHdr == true) return false
-        }
-        if (!isH264(codecMime)) return false
-        val shortEdgePx = minOf(widthPx, heightPx)
-        if (shortEdgePx > targets.shortEdgePx) return false
-        val avgBitrateBps = inputBytes * 8L * 1000L / durationMs
-        val budgetBps = (1.2 * (targets.videoBitrateBps + targets.audioBitrateBps)).toLong()
-        return avgBitrateBps <= budgetBps
     }
 
     /**
@@ -271,16 +188,6 @@ object FfmpegCompressPlanner {
             (srcW * shortEdgePx / srcH) to shortEdgePx
         }
         return outW.toEven() to outH.toEven()
-    }
-
-    /**
-     * H.264 codec detection. Accepts both Android MediaExtractor's MIME form
-     * (`"video/avc"`) and ffprobe / iOS bridge's short form (`"h264"`).
-     * Case-insensitive.
-     */
-    private fun isH264(codecMime: String): Boolean {
-        val lower = codecMime.lowercase()
-        return lower == "video/avc" || lower == "h264" || lower == "avc"
     }
 
     private fun Int.toEven(): Int = if (this and 1 == 0) this else this + 1

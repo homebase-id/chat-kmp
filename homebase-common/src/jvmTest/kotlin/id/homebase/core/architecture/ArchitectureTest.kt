@@ -67,6 +67,64 @@ class ArchitectureTest {
             }
     }
 
+    /**
+     * Efficacy guard for the non-blocking login (#1231). The connect sequence must resolve the
+     * drive registry from the local index and let [AuthConnectionCoordinator]'s background
+     * reconcile do the server half — otherwise every login, warm restores included, queues the
+     * WebSocket connect and profile load behind a `getFileHeaderByUid` round-trip.
+     *
+     * This is a source-level rule because the invariant lives in a call-site ARGUMENT, and the
+     * first attempt at this fix passed `deferServerReconcile = !headless` — which is `false` for
+     * an ordinary Android launcher launch (`startsHeadless = supportsBackgroundWake`, corrected
+     * only once `promoteToForeground()` runs) and so blocked exactly as before. Every unit test
+     * still passed against that no-op. Any condition here reintroduces that bug.
+     */
+    @Test
+    fun `AuthConnectionCoordinator never blocks the connect sequence on the registry server fetch`() {
+        Konsist.scopeFromProject()
+            .files
+            .filter { it.hasNameEndingWith("AuthConnectionCoordinator") }
+            .assertFalse(
+                additionalMessage = "The connect sequence must call " +
+                    "driveRegistry.bootstrap(deferServerReconcile = true) unconditionally (issue #1231). " +
+                    "A bare bootstrap() or a conditional argument blocks login on a server round-trip; " +
+                    "`headless` in particular cannot distinguish a launcher launch from an FCM wake at " +
+                    "this point. Callers needing the authoritative set use awaitRegistryReconcile()."
+            ) { file ->
+                file.text.contains(Regex("""bootstrap\s*\((?!\s*deferServerReconcile\s*=\s*true\s*\))"""))
+            }
+    }
+
+    /**
+     * Session-lifetime guard (#1237). Each background reconcile in [AuthConnectionCoordinator] can
+     * mount or prune drives, so one still in flight at logout would act on a session being torn
+     * down — and a second login could inherit the first user's work. The cancels must sit at the
+     * top of `disconnect()`, before `refreshWsSubscription.cancel()` and `driveRegistry.stop()`
+     * remove what those jobs depend on.
+     *
+     * Source-level because [AuthConnectionCoordinator] isn't constructible in a JVM test (its own
+     * `AwaitAuthRestoredTest` documents that). The empty-match guard keeps a renamed field from
+     * turning the rule into a silent pass.
+     */
+    @Test
+    fun `AuthConnectionCoordinator cancels every reconcile job in disconnect`() {
+        Konsist.scopeFromProject()
+            .files
+            .filter { it.hasNameEndingWith("AuthConnectionCoordinator") }
+            .assertTrue(
+                additionalMessage = "Every *ReconcileJob field must be cancelled in disconnect() " +
+                    "(issue #1237), before the collaborators it uses are stopped — otherwise an " +
+                    "in-flight reconcile outlives the session and mounts/prunes drives into a dead one."
+            ) { file ->
+                val jobs = Regex("""\bvar\s+(\w+ReconcileJob)\b""")
+                    .findAll(file.text)
+                    .map { it.groupValues[1] }
+                    .toSet()
+                val disconnect = file.functions().firstOrNull { it.name == "disconnect" }?.text.orEmpty()
+                jobs.isNotEmpty() && jobs.all { disconnect.contains("$it?.cancel()") }
+            }
+    }
+
     @Test
     fun `Do not allow calling close on httpClient`() {
         Konsist.scopeFromProject()

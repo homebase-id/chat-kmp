@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AlternateEmail
+import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Cake
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Email
@@ -86,6 +87,7 @@ import id.homebase.resources.contactbook_detail_name
 import id.homebase.resources.contactbook_detail_override_none
 import id.homebase.resources.contactbook_detail_override_synced
 import id.homebase.resources.contactbook_edit_birthday
+import id.homebase.resources.contactbook_edit_organization
 import id.homebase.resources.contactbook_edit_email
 import id.homebase.resources.contactbook_edit_phone
 import id.homebase.resources.contactbook_detail_groups_connect
@@ -313,6 +315,7 @@ fun ContactFieldsSection(
     val lblEmail = stringResource(MR.string.contactbook_edit_email)
     val lblLocation = stringResource(MR.string.contactbook_detail_location)
     val lblBirthday = stringResource(MR.string.contactbook_edit_birthday)
+    val lblOrganization = stringResource(MR.string.contactbook_edit_organization)
 
     // Each field carries its synced original ([DetailFieldRow.synced]) when the user has overridden
     // it, so a small peek icon can reveal "their profile says …". The full name comes first so an
@@ -361,6 +364,10 @@ fun ContactFieldsSection(
         }
         entry.birthday?.takeIf { it.isNotBlank() }
             ?.let { add(DetailFieldRow(Icons.Outlined.Cake, lblBirthday, it, o?.birthday)) }
+        // App-local like the additional rows: ContactContent has no organization leaf, so there is
+        // no synced counterpart to compare against.
+        entry.organization?.takeIf { it.isNotBlank() }
+            ?.let { add(DetailFieldRow(Icons.Outlined.Business, lblOrganization, it, null)) }
     }
     if (fields.isEmpty()) {
         Text(

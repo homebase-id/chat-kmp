@@ -172,7 +172,18 @@ private fun EventDetailContent(
         key1 = messageId,
         key2 = ownReactions,
     ) {
-        value = runCatching { actionService.getReactions(messageId) }.getOrDefault(emptyList())
+        value = runCatching { actionService.getReactions(messageId) }
+            .onFailure { t ->
+                // The RSVP roster is *omitted* when empty rather than rendered as
+                // "nobody" (see the `takeIf { it.isNotEmpty() }` below), so a failure
+                // here degrades to a missing section, not a wrong answer. Still log
+                // it — this was silently swallowed, which is how #1178 stayed
+                // undiagnosable on the Poll screen for so long.
+                Logger.w(tag = "EventDetailDialog", throwable = t) {
+                    "RSVP roster load failed for messageId=$messageId"
+                }
+            }
+            .getOrDefault(emptyList())
     }
 
     val times = rememberEventTimes(descriptor)

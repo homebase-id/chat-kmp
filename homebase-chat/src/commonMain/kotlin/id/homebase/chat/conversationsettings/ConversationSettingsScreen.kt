@@ -40,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.common.publicImageUrl
+import id.homebase.chat.widget.AvatarFullScreenViewer
 import id.homebase.chat.widget.AvatarNameDisplay
 import id.homebase.chat.widget.ChatMediaFullScreenHost
 import id.homebase.chat.widget.ErrorInfoItem
@@ -50,6 +52,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.util.formatMediumDate
 import id.homebase.resources.MR
 import id.homebase.resources.contact_info_recent_media
@@ -104,13 +107,24 @@ fun ConversationSettingsUi(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     var fullScreenItem by remember { mutableStateOf<SharedMediaItem?>(null) }
+    // The contact's photo opened full-screen. Kept out of [fullScreenItem]: that
+    // one is a chat attachment, this is a profile image. Null = closed.
+    var fullScreenAvatarUrl by remember { mutableStateOf<String?>(null) }
+
+    val isWithSelf = uiState.conversation?.isWithSelf == true
+    // Larger primary line = resolved full name; smaller line = the raw odinId.
+    // For a 1:1 the conversation name IS the odinId (contact resolution is
+    // UI-side), so show the resolved contactName above it.
+    val displayName = uiState.conversation?.let {
+        if (isWithSelf) uiState.ownerSession?.displayName ?: it.name else uiState.contactName ?: it.name
+    }.orEmpty()
 
     Scaffold(
         topBar = {
             // Suppress this screen's app bar while the full-screen viewer is open
             // so the viewer's own top bar doesn't stack under it (see
             // ChatMediaFullScreenHost / ConversationMediaScreen).
-            if (fullScreenItem == null) {
+            if (fullScreenItem == null && fullScreenAvatarUrl == null) {
                 TopAppBar(
                     title = {},
                     navigationIcon = {
@@ -146,17 +160,8 @@ fun ConversationSettingsUi(
                 }
 
                 uiState.conversation?.let { conversation ->
-                    val isWithSelf = conversation.isWithSelf
-                    // Larger primary line = resolved full name; smaller line = the
-                    // raw odinId. For a 1:1 the conversation name IS the odinId
-                    // (contact resolution is UI-side), so show the resolved
-                    // contactName above it. Suppress the subtitle when it would
-                    // duplicate the name (unresolved contact, self, or group).
-                    val displayName = if (isWithSelf) {
-                        uiState.ownerSession?.displayName ?: conversation.name
-                    } else {
-                        uiState.contactName ?: conversation.name
-                    }
+                    // Suppress the subtitle when it would duplicate the name
+                    // (unresolved contact, self, or group).
                     val subtitle = (if (isWithSelf) {
                         uiState.ownerSession?.odinId?.domainName
                     } else {
@@ -173,6 +178,11 @@ fun ConversationSettingsUi(
                         // No drill-in: the overview below already shows everything
                         // ContactInfo would, for this conversation.
                         onClick = null,
+                        // The identity's public photo. One that serves none renders
+                        // initials, which PublicAvatar leaves un-tappable.
+                        onAvatarClick = conversation.avatarModel.odinId?.let { odinId ->
+                            { fullScreenAvatarUrl = odinId.publicImageUrl() }
+                        },
                     )
 
                     // Server-stamped conversation creation date — accurate and
@@ -194,7 +204,7 @@ fun ConversationSettingsUi(
                     }
 
                     uiState.overview?.let { overview ->
-                        OverviewSection(
+                        ConversationOverviewSection(
                             overview = overview,
                             onMediaClick = { fullScreenItem = it },
                             onSeeAll = { onSeeAllMedia(conversationId) },
@@ -219,58 +229,12 @@ fun ConversationSettingsUi(
                 snackbarHostState = snackbarHostState,
                 onDismiss = { fullScreenItem = null },
             )
-        }
-    }
-}
 
-@Composable
-private fun OverviewSection(
-    overview: ConversationOverview,
-    onMediaClick: (SharedMediaItem) -> Unit,
-    onSeeAll: () -> Unit,
-) {
-    val hasAnything = overview.media.isNotEmpty() || overview.files.isNotEmpty() ||
-            overview.audio.isNotEmpty() || overview.diceRolls.isNotEmpty() ||
-            overview.locations.isNotEmpty()
-
-    if (hasAnything) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(MR.string.contact_info_recent_media),
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = onSeeAll) {
-                Text(text = stringResource(MR.string.conversation_media_see_all))
-            }
-        }
-    }
-
-    if (overview.media.isNotEmpty()) {
-        val strip = remember(overview.media) { overview.media.take(50) }
-        Spacer(modifier = Modifier.height(4.dp))
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(strip) { item ->
-                MediaItem(
-                    payload = item.payload,
-                    fileId = item.fileId,
-                    driveId = chatTargetDrive.alias,
-                    previewThumbnail = item.previewThumbnail,
-                    keyHeader = item.keyHeader,
-                    imageSize = ImageSize.THUMB_MEDIUM,
-                    isSticker = item.isSticker,
-                    modifier = Modifier.size(76.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    onClick = { onMediaClick(item) },
-                    sharedTransitionScope = null,
-                    animatedVisibilityScope = null,
+            fullScreenAvatarUrl?.let { url ->
+                AvatarFullScreenViewer(
+                    source = SubSamplingImageSource.Url(url),
+                    title = displayName,
+                    onDismiss = { fullScreenAvatarUrl = null },
                 )
             }
         }

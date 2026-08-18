@@ -1,5 +1,8 @@
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+
 package id.homebase.app
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import androidx.navigation.ExperimentalBrowserHistoryApi
@@ -25,6 +28,12 @@ import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.startKoin
 
+private fun bootStage(label: String, percent: Int): Unit =
+    js("{ if (window.__homebaseBoot) window.__homebaseBoot(label, percent); }")
+
+private fun bootDone(): Unit =
+    js("{ if (window.__homebaseBootDone) window.__homebaseBootDone(); }")
+
 @OptIn(ExperimentalComposeUiApi::class)
 @ExperimentalBrowserHistoryApi
 fun main() {
@@ -32,8 +41,11 @@ fun main() {
     // before Koin (and the DriveSync graph behind the login screen) ever touches DatabaseManager.
     MainScope().launch {
         initWebSqlJs()
+        bootStage("Preparing storage…", 60)
         DatabaseManager.initializeWithRecovery(DatabaseDriverFactory())
+        bootStage("Opening database…", 75)
         startKoin { modules(allModules) }
+        bootStage("Starting services…", 85)
 
         // Seamless owner-session login (issue #853). Two halves, both no-ops on the dev server:
         //  - Boot after the authorize redirect: the URL carries the callback params; feed them
@@ -61,6 +73,7 @@ fun main() {
                         circles = listOf(CONFIRMED_CONNECTIONS_CIRCLE_ID, AUTO_CONNECTIONS_CIRCLE_ID),
                         persistForRedirect = true
                     )
+                    bootStage("Signing you in…", 90)
                     SeamlessOwnerLogin.navigateToAuthorize(authorizeUrl)
                     return@launch // page is navigating away — don't boot the UI
                 } catch (e: Exception) {
@@ -78,6 +91,7 @@ fun main() {
         // (Android) and MainViewController() (iOS). Idempotent.
         GlobalContext.get().get<AuthConnectionCoordinator>().promoteToForeground()
         ComposeViewport("ComposeApp") {
+            LaunchedEffect(Unit) { bootDone() }
             App(onNavHostReady = { it.bindToBrowserNavigation() })
         }
     }

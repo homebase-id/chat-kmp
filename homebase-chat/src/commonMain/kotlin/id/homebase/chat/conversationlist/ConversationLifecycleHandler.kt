@@ -36,6 +36,14 @@ import id.homebase.resources.auto_connect_recipient_unreachable
 import id.homebase.resources.chat_conversation_deleted_confirmation
 import id.homebase.resources.chat_conversation_deleting_in_progress
 import id.homebase.resources.chat_conversation_leaving_and_deleting_in_progress
+import id.homebase.resources.chat_error_accept_rejoin
+import id.homebase.resources.chat_error_archive_conversation
+import id.homebase.resources.chat_error_clear_conversation
+import id.homebase.resources.chat_error_decline_rejoin
+import id.homebase.resources.chat_error_delete_conversation
+import id.homebase.resources.chat_error_no_ready_recipients
+import id.homebase.resources.chat_error_toggle_pin
+import id.homebase.resources.chat_error_unarchive_conversation
 import id.homebase.resources.chat_group_introduce_everyone_status
 import id.homebase.resources.chat_introduce_preflight_in_progress
 import kotlinx.coroutines.CancellationException
@@ -80,7 +88,8 @@ internal class ConversationLifecycleHandler(
             } catch (e: Exception) {
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to toggle pinned conversation: ${e.message}"
+                        MR.string.chat_error_toggle_pin,
+                        e.message ?: "",
                     )
                 )
             }
@@ -208,7 +217,7 @@ internal class ConversationLifecycleHandler(
             uiState.update { it.copy(uiDialog = null) }
             if (action.readyRecipients.isEmpty()) {
                 // No-op — the dialog should not have allowed this, but be defensive.
-                sendEvent(ShowErrorMessage("No ready recipients to send to."))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_no_ready_recipients))
                 return@launch
             }
             conversationService.introduceRecipients(
@@ -217,6 +226,37 @@ internal class ConversationLifecycleHandler(
                 message = action.message,
             )
             sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+        }
+    }
+
+    /**
+     * Re-run preflight from the dialog's "Check again" affordance and swap in
+     * the fresh result. Three outcomes:
+     *  - preflight itself failed (null): leave the dialog exactly as it was, so
+     *    a network blip doesn't erase what the user was reading.
+     *  - everything is Ready now: send, same as if the first check had passed.
+     *  - still mixed: replace the dialog's result so the list re-renders with
+     *    the new per-recipient reasons.
+     */
+    fun handleIntroduceRetryPreflight(action: ConversationListUiAction.IntroduceRetryPreflight) {
+        scope.launch {
+            uiState.update {
+                it.copy(inFlightOperationLabel = MR.string.chat_introduce_preflight_in_progress)
+            }
+            val preflight = conversationService.previewIntroduceEveryone(action.conversationId)
+            uiState.update { it.copy(inFlightOperationLabel = null) }
+            if (preflight == null) return@launch
+            if (preflight.allReady) {
+                uiState.update { it.copy(uiDialog = null) }
+                conversationService.introduceEveryone(action.conversationId, action.message)
+                sendEvent(ShowInfoMessage(MR.string.chat_group_introduce_everyone_status))
+                return@launch
+            }
+            uiState.update { state ->
+                val dialog = state.uiDialog as? ConversationListUiDialog.IntroducePreflight
+                    ?: return@update state
+                state.copy(uiDialog = dialog.copy(result = preflight))
+            }
         }
     }
 
@@ -232,7 +272,7 @@ internal class ConversationLifecycleHandler(
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "Failed to archive conversation: ${e.message}"
                 }
-                sendEvent(ShowErrorMessage("Failed to archive conversation: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_archive_conversation, e.message ?: ""))
             }
         }
     }
@@ -245,7 +285,7 @@ internal class ConversationLifecycleHandler(
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "Failed to unarchive conversation: ${e.message}"
                 }
-                sendEvent(ShowErrorMessage("Failed to unarchive conversation: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_unarchive_conversation, e.message ?: ""))
             }
         }
     }
@@ -266,7 +306,7 @@ internal class ConversationLifecycleHandler(
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "Failed to clear conversation: ${e.message}"
                 }
-                sendEvent(ShowErrorMessage("Failed to clear conversation: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_clear_conversation, e.message ?: ""))
             }
         }
     }
@@ -309,7 +349,7 @@ internal class ConversationLifecycleHandler(
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "Failed to accept rejoin: ${e.message}"
                 }
-                sendEvent(ShowErrorMessage("Failed to accept rejoin: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_accept_rejoin, e.message ?: ""))
             }
         }
     }
@@ -323,7 +363,7 @@ internal class ConversationLifecycleHandler(
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "Failed to decline rejoin: ${e.message}"
                 }
-                sendEvent(ShowErrorMessage("Failed to decline rejoin: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_decline_rejoin, e.message ?: ""))
             }
         }
     }
@@ -436,7 +476,7 @@ internal class ConversationLifecycleHandler(
                 "Failed to delete conversation (leaveFirst=$leaveFirst): ${e.message}"
             }
             uiState.update { it.copy(inFlightOperationLabel = null) }
-            sendEvent(ShowErrorMessage("Failed to delete conversation: ${e.message}"))
+            sendEvent(ShowErrorMessage(MR.string.chat_error_delete_conversation, e.message ?: ""))
         }
     }
 

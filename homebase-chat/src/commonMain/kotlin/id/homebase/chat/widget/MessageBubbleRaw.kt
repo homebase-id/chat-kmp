@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,12 +58,16 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
+import id.homebase.chat.contactcard.ContactCardBubble
+import id.homebase.chat.contactcard.contactCardPhotoData
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -71,6 +76,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
+import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
@@ -147,6 +153,8 @@ fun MessageBubbleRaw(
     authorName: String? = null,
     authorColor: Color? = null,
     onLongClick: () -> Unit,
+    // Null keeps combinedClickable's single-tap path undelayed for bubbles that can't react.
+    onDoubleClick: (() -> Unit)? = null,
     onMediaClick: (PayloadDescriptor) -> Unit,
     onClickMessageId: (Uuid) -> Unit,
     onRequestDecryptedFile: ((PayloadDescriptor) -> Unit)? = null,
@@ -161,6 +169,11 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
+    // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
+    // than as the message itself: typed bubbles must not open their full-screen detail from here.
+    displayOnly: Boolean = false,
 ) {
 
     // #814: render the timestamp + delivery footer only on the last bubble of a
@@ -185,8 +198,8 @@ fun MessageBubbleRaw(
             EventBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
@@ -211,12 +224,54 @@ fun MessageBubbleRaw(
             GroodleBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
                 onLongClick = onLongClick,
+            )
+            return
+        }
+        is MessageContent.ContactCard -> {
+            // No edited marker: MessageMapper hard-codes isEdited = false for every typed kind.
+            val cardInfoText = formatMessageTimestamp(message.userDate)
+            val onSaveCard = remember(onSaveContactCard, displayOnly) {
+                onSaveContactCard?.takeIf { !displayOnly }
+            }
+            val cardPhoto = remember(message.fileId, message.payloads, message.keyHeader) {
+                contactCardPhotoData(
+                    payloads = message.payloads,
+                    driveId = chatTargetDrive.alias,
+                    fileId = message.fileId,
+                    keyHeader = message.keyHeader,
+                    previewThumbnail = message.previewThumbnail,
+                )
+            }
+            ContactCardBubble(
+                descriptor = content.descriptor,
+                modifier = modifier,
+                // displayOnly owns the whole action surface, not just the detail: a preview must
+                // not offer Save either, whatever the host handed down.
+                onSaveToContacts = onSaveCard,
+                onMessageIdentity = onMessageIdentity?.takeIf { !displayOnly },
+                onLongClick = onLongClick,
+                canOpenDetail = !displayOnly,
+                // From the envelope, not the card: the card's own odinId is attacker-controlled.
+                authorOdinId = message.originalAuthor?.domainName,
+                photo = cardPhoto,
+                footer = {
+                    MessageTimestampFooter(
+                        visible = showMessageFooter,
+                        infoText = cardInfoText,
+                        contentColor = LocalContentColor.current,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                },
             )
             return
         }
@@ -228,11 +283,11 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.Poll -> {
-            id.homebase.chat.poll.PollBubble(
+            PollBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
@@ -429,6 +484,14 @@ fun MessageBubbleRaw(
             markdownHasBlockElements(bodyText)
     }
 
+    // The author name carries its own 4dp bottom padding, so the text row drops its top one
+    // when the name is the element directly above it. The quote sits above the name in the
+    // custom Layout below, but between the name and the text in the block Column.
+    val authorAbutsText = authorName != null && !hasMedia
+    val textTopPadding = if (authorAbutsText) 0.dp else 12.dp
+    val blockTextTopPadding =
+        if (authorAbutsText && message.messageAppData.replyPreview == null) 0.dp else 12.dp
+
     val big = Dimens.Message.cornerRadius
     val small = Dimens.Message.cornerCollapseRadius
     val shape = remember(sentByYou, clusterPosition, mediaOnly) {
@@ -459,6 +522,7 @@ fun MessageBubbleRaw(
                 Modifier.combinedClickable(
                     onClick = {},
                     onLongClick = { handleLongClick() },
+                    onDoubleClick = onDoubleClick,
                     interactionSource = pressInteractionSource,
                     indication = null
                 )
@@ -471,14 +535,18 @@ fun MessageBubbleRaw(
         color = if (isStickerBubble) Color.Transparent else backgroundColor,
     ) {
         Box {
-            // Overlay Box that captures all long clicks
+            // Sits under the content and takes every tap the content itself doesn't claim
+            // (plain body text is not a pointer-input node). It consumes the down, so the
+            // Surface's combinedClickable above never sees a second tap — the double-tap
+            // has to be handled here too, not only there.
             if (isMobile()) {
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .pointerInput(message.id) {
+                        .pointerInput(message.id, onDoubleClick != null) {
                             detectTapGestures(
-                                onLongPress = { handleLongClick() }
+                                onLongPress = { handleLongClick() },
+                                onDoubleTap = onDoubleClick?.let { react -> { _ -> react() } },
                             )
                         }
                 )
@@ -587,11 +655,10 @@ fun MessageBubbleRaw(
                         }
                     },
                 ) { measurables, constraints ->
-                    val minContentWidth = Dimens.MediaBubble.minWidthWithContent.roundToPx()
-                        .coerceAtMost(constraints.maxWidth)
-                    val mediaPlaceable = measurables[1].measure(
-                        constraints.copy(minWidth = minContentWidth)
-                    )
+                    // No captioned-image min-width floor here: the image itself only fills that
+                    // floor when a caption is present, so flooring the bubble alone left the
+                    // bubble background showing beside a narrow portrait. The quote ellipsizes.
+                    val mediaPlaceable = measurables[1].measure(constraints.copy(minWidth = 0))
                     val width = mediaPlaceable.width
                     val replyPlaceable = measurables[0].measure(
                         constraints.copy(minWidth = width, maxWidth = width)
@@ -671,7 +738,9 @@ fun MessageBubbleRaw(
                         }
                     }
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(
+                            start = 12.dp, end = 12.dp, top = blockTextTopPadding, bottom = 12.dp,
+                        ),
                     ) {
                         // No onTextLayout: the block renderer reports none, and the
                         // timestamp is placed below as its own row (next).
@@ -786,7 +855,8 @@ fun MessageBubbleRaw(
                             }
                             Row(
                                 modifier = Modifier.padding(
-                                    horizontal = 12.dp, vertical = 12.dp
+                                    start = 12.dp, end = 12.dp,
+                                    top = textTopPadding, bottom = 12.dp,
                                 ),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -882,7 +952,8 @@ fun MessageBubbleRaw(
                                     Text(
                                         text = messageInfoText,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = contentColor.copy(alpha = 0.7f)
+                                        color = contentColor.copy(alpha = 0.7f),
+                                        modifier = Modifier.testTag(ChatBubbleTestTags.TIMESTAMP),
                                     )
                                     if (sentByYou && !message.isDeleted) {
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -956,6 +1027,11 @@ fun MessageBubbleRaw(
                         // Measure info text
                         val infoPlaceable = measurables[infoIndex].measure(constraints)
 
+                        // The 8dp gap is already the info Row's own start padding; a hidden
+                        // footer is an empty Row and reserves nothing.
+                        val infoReservation =
+                            if (showMessageFooter) infoPlaceable.width + 12.dp.roundToPx() else 0
+
                         // Calculate potential final width BEFORE measuring reply
                         val layoutResult = textLayoutResult
 
@@ -974,19 +1050,18 @@ fun MessageBubbleRaw(
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
                             val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                            val horizontalGap = 8.dp.roundToPx()
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                             val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+                                (lastLineEnd + infoReservation) <= availableWidth
 
                             rawPotentialFinalWidth = if (fitsOnLastLine) {
                                 maxOf(
                                     mediaWidth,
                                     textPlaceable.width,
-                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    (lastLineEnd + infoReservation),
                                     authorWidth
                                 )
                             } else {
@@ -1007,12 +1082,21 @@ fun MessageBubbleRaw(
                                 )
                         }
 
+                        // The quote fills whatever exact width it is handed, so only its
+                        // intrinsic reveals what the quoted content actually needs. A media
+                        // bubble sizes to the media, which is never narrower than the floor.
+                        val replyNaturalWidth =
+                            if (replyIndex != -1 && mediaWidth == 0) {
+                                measurables[replyIndex].maxIntrinsicWidth(Constraints.Infinity)
+                            } else 0
+
                         // Clamp to the parent's bound. The reply re-measure below forces an exact
                         // width, so an unclamped value here would propagate any computation drift
                         // straight into a child measurement — turning a one-off mismeasure into a
                         // sustained layout-invalidation loop. The clamp guarantees convergence.
                         val potentialFinalWidth =
-                            rawPotentialFinalWidth.coerceAtMost(constraints.maxWidth)
+                            maxOf(rawPotentialFinalWidth, replyNaturalWidth)
+                                .coerceAtMost(constraints.maxWidth)
 
                         // NOW measure reply with the correct width that accounts for info placement
                         val replyPlaceable = if (replyIndex != -1) measurables[replyIndex].measure(
@@ -1033,25 +1117,25 @@ fun MessageBubbleRaw(
                         if (layoutResult != null && layoutResult.lineCount > 0) {
                             val lastLineIndex = layoutResult.lineCount - 1
                             val lastLineRight = layoutResult.getLineRight(lastLineIndex)
-                            val horizontalGap = 8.dp.roundToPx()
                             val textRowPadding = 12.dp.roundToPx()
                             val availableWidth =
                                 if (mediaWidth > 0) mediaWidth else constraints.maxWidth
                             val lastLineEnd = textRowPadding + leadingIconOffset + lastLineRight.toInt()
                             val fitsOnLastLine =
-                                (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding) <= availableWidth
+                                (lastLineEnd + infoReservation) <= availableWidth
 
                             if (fitsOnLastLine) {
                                 finalWidth = maxOf(
                                     mediaWidth,
                                     replyWidth,
                                     textPlaceable.width,
-                                    (lastLineEnd + horizontalGap + infoPlaceable.width + textRowPadding),
+                                    (lastLineEnd + infoReservation),
                                     authorWidth
                                 )
                                 val lastLineBottom = layoutResult.getLineBottom(lastLineIndex)
                                 infoY =
-                                    placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() + 16.dp.roundToPx() - infoPlaceable.height
+                                    placeables.sumOf { it.height } + replyHeight + lastLineBottom.toInt() +
+                                        textTopPadding.roundToPx() + 4.dp.roundToPx() - infoPlaceable.height
                                 infoX = finalWidth - infoPlaceable.width - textRowPadding
                                 finalHeight =
                                     placeables.sumOf { it.height } +

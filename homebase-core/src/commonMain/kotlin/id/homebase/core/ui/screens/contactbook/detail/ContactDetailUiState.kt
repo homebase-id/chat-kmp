@@ -120,11 +120,9 @@ sealed interface ContactDetailAction {
     data object BlockClicked : ContactDetailAction
     data object UnblockClicked : ContactDetailAction
     data object DisconnectClicked : ContactDetailAction
-    /** Accept an incoming connection request from this contact. */
-    data object AcceptRequestClicked : ContactDetailAction
     /** Accept an incoming request and add the contact to the chosen circles (their 32-char
      *  N-format ids). Empty list = accept without adding to any circle (#921 Part B). */
-    data class AcceptRequestWithCircles(val circleIds: List<String>) : ContactDetailAction
+    data class AcceptRequestClicked(val circleIds: List<String>) : ContactDetailAction
     /** Reject (decline) an incoming connection request from this contact. */
     data object RejectRequestClicked : ContactDetailAction
     /** Cancel (withdraw) an outgoing connection request to this contact. */
@@ -166,6 +164,7 @@ sealed interface ContactDetailEvent {
     data object PhotoError : ContactDetailEvent
     /** Edit blanked a previously-set field, which the server merge can't express — field kept. */
     data object ClearUnsupported : ContactDetailEvent
+    data object AdditionsFailed : ContactDetailEvent
     /** Success confirmations for connection actions. */
     data object Blocked : ContactDetailEvent
     data object Unblocked : ContactDetailEvent

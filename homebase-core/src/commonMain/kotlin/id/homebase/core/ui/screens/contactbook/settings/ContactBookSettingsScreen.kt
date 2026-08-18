@@ -17,7 +17,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -25,7 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.core.widget.SettingsItemAction
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_settings_open
 import id.homebase.resources.contactbook_settings_section
@@ -84,22 +84,21 @@ fun ContactBookSettingsUi(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
             if (showOpenContacts) {
-                SettingsItemAction(
-                    imageVector = Icons.Outlined.People,
-                    text = stringResource(MR.string.contactbook_settings_open),
-                    onClick = { onAction(ContactBookSettingsUiAction.OpenContactsClicked) },
+                SettingsRow(
+                    icon = Icons.Outlined.People,
+                    title = stringResource(MR.string.contactbook_settings_open),
+                    action = SettingsRowAction.Navigate {
+                        onAction(ContactBookSettingsUiAction.OpenContactsClicked)
+                    },
                 )
             }
-            SettingsItemAction(
-                imageVector = Icons.Outlined.Visibility,
-                text = stringResource(MR.string.contactbook_settings_show_icon),
-                onClick = { onAction(ContactBookSettingsUiAction.SetIconVisible(!uiState.iconVisible)) },
-                trailingContent = {
-                    Switch(
-                        checked = uiState.iconVisible,
-                        onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
-                    )
-                },
+            SettingsRow(
+                icon = Icons.Outlined.Visibility,
+                title = stringResource(MR.string.contactbook_settings_show_icon),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.iconVisible,
+                    onCheckedChange = { onAction(ContactBookSettingsUiAction.SetIconVisible(it)) },
+                ),
             )
             Spacer(modifier = Modifier.fillMaxWidth().height(24.dp))
         }

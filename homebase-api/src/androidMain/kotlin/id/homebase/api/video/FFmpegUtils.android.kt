@@ -132,13 +132,12 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
-    ): String? = withContext(Dispatchers.IO) {
+    ): String = withContext(Dispatchers.IO) {
         val context = ActivityProvider.requireApplicationContext()
         val inFile = File(inputPath)
         if (!inFile.exists()) {
             Log.e(TAG, "File not found: $inputPath")
-            return@withContext null
+            throw VideoCompressionFailedException(inputPath, "input file not found")
         }
 
         if ((trimStartMs == null) != (trimEndMs == null)) {
@@ -172,32 +171,11 @@ actual object FFmpegUtils {
             trimEndMs = effectiveTrimEnd,
             probedWidthPx = probe.widthPx,
             probedHeightPx = probe.heightPx,
-            probedCodecMime = if (probe.videoTrackCount == 1 && probe.audioTrackCount <= 1) probe.videoMime else null,
-            inputDurationMs = inputDurationMs,
-            inputBytes = inputBytes,
             rotationDegrees = rotation,
             // Default encoder = libx264. Android doesn't expose a hardware
             // libavcodec wrapper (h264_mediacodec exists but is unreliable in
             // FFmpegKit builds); stick with libx264 for predictable behaviour.
-            probedBitDepth = probe.bitDepth,
-            probedIsHdr = probe.isHdr,
-            allowTenBit = allowTenBit,
         )
-
-        if (plan.skipReason != null) {
-            val elapsedMs = System.currentTimeMillis() - t0
-            Log.i(TAG, "compressVideo: ${elapsedMs}ms (AlreadyOptimal) ${plan.skipReason}")
-            // EXIF / GPS / location atoms survive an un-re-encoded pass-through;
-            // strip via mp4parser. Returns null if input had no location atoms
-            // — caller falls back to the original.
-            val sanitized = File(context.cacheDir, "sanitized_${inFile.name}")
-            return@withContext if (Mp4LocationStripper.stripTo(inputPath, sanitized.absolutePath)) {
-                Log.d(TAG, "Stripped location atoms → ${sanitized.absolutePath}")
-                sanitized.absolutePath
-            } else {
-                null
-            }
-        }
 
         val args = plan.args.toTypedArray()
         Log.d(TAG, "compressVideo args: ${args.joinToString(" ")}")
@@ -216,7 +194,7 @@ actual object FFmpegUtils {
             val elapsedMs = System.currentTimeMillis() - t0
             Log.e(TAG, "compressVideo crashed after ${elapsedMs}ms", e)
             outFile.delete()
-            return@withContext null
+            throw VideoCompressionFailedException(inputPath, "ffmpeg crashed after ${elapsedMs}ms", e)
         }
 
         val elapsedMs = System.currentTimeMillis() - t0
@@ -228,7 +206,9 @@ actual object FFmpegUtils {
                     "trimDurationMs=$trimDurationMs, quality=$quality): ${session.failStackTrace}"
             )
             outFile.delete()
-            return@withContext null
+            throw VideoCompressionFailedException(
+                inputPath, "ffmpeg returned rc=${session.returnCode}"
+            )
         }
 
         val outBytes = outFile.length()

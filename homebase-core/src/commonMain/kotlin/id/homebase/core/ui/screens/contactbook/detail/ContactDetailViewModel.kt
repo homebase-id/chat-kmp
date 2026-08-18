@@ -31,8 +31,6 @@ import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
-import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.ReconcileAction
@@ -40,6 +38,8 @@ import id.homebase.core.contactbook.reconcileAction
 import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
+import id.homebase.core.ui.screens.contactbook.assignableCircles
+import id.homebase.core.ui.screens.contactbook.isSystemCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -270,8 +270,6 @@ class ContactDetailViewModel(
                 // (circ.circlesFor); pending membership is a live-read snapshot (pendingCircleIds,
                 // refreshed by refreshPendingCircles) merged in here, since there's no bulk
                 // "list this contact's pending circles" endpoint to observe reactively.
-                fun isSystemCircle(id: String) = id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
-                    id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
                 val realCircles = domain?.let { d -> circ.circlesFor(d) }.orEmpty()
                     .filterNot { it.disabled || isSystemCircle(it.id) }
                 val realIds = realCircles.map { it.id.lowercase() }.toSet()
@@ -288,13 +286,7 @@ class ContactDetailViewModel(
                 // Every user-defined circle the user could add a contact to — independent of this
                 // contact's membership. Same system-circle exclusion as the chips above; feeds the
                 // pending-request circle picker (#921 Part B).
-                val assignableCircles = circ.circles
-                    .map { it.circle }
-                    .filterNot { it.disabled || isSystemCircle(it.id) }
-                    .filter { it.name.isNotBlank() }
-                    .map { ContactCircleUi(it.id, it.name, pending = false) }
-                    .distinctBy { it.id.lowercase() }
-                    .sortedBy { it.name.lowercase() }
+                val assignableCircles = circ.assignableCircles()
                 _uiState.update {
                     it.copy(
                         entry = entry,
@@ -534,10 +526,7 @@ class ContactDetailViewModel(
             ContactDetailAction.BlockClicked -> _uiState.update { it.copy(confirm = ContactDetailConfirm.BLOCK) }
             ContactDetailAction.DisconnectClicked ->
                 _uiState.update { it.copy(confirm = ContactDetailConfirm.DISCONNECT) }
-            ContactDetailAction.AcceptRequestClicked -> handleRequestAction(
-                event = ContactDetailEvent.RequestAccepted,
-            ) { connectionRequestService.acceptIncomingRequest(it) }
-            is ContactDetailAction.AcceptRequestWithCircles -> {
+            is ContactDetailAction.AcceptRequestClicked -> {
                 // Circle ids arrive as 32-char N-format strings; the accept API takes Uuids. Drop
                 // any that fail to parse rather than aborting the accept.
                 val circleUuids = action.circleIds.mapNotNull {
@@ -681,6 +670,9 @@ class ContactDetailViewModel(
                     if (result.photoFailed) _events.tryEmit(ContactDetailEvent.PhotoError)
                     if (result.clearedFieldsIgnored) {
                         _events.tryEmit(ContactDetailEvent.ClearUnsupported)
+                    }
+                    if (result.additionsFailed) {
+                        _events.tryEmit(ContactDetailEvent.AdditionsFailed)
                     }
                 }
                 ContactSaveResult.Forbidden -> _events.tryEmit(ContactDetailEvent.Forbidden)

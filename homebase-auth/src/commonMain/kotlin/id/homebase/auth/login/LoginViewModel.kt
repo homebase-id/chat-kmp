@@ -18,8 +18,10 @@ import id.homebase.core.config.AppConfig
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.appPermissions
 import id.homebase.core.config.circleDriveTargetRequest
+import id.homebase.core.config.createAccountReturnUrl
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.notifications.NotificationService
+import id.homebase.core.util.CreatedIdentityRelay
 import id.homebase.resources.MR
 import id.homebase.resources.error_unknown
 import id.homebase.resources.login_error_generic
@@ -28,6 +30,7 @@ import id.homebase.resources.login_error_not_homebase
 import id.homebase.resources.login_error_tls
 import id.homebase.resources.login_error_unreachable
 import io.ktor.client.HttpClient
+import io.ktor.http.encodeURLParameter
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,9 +38,12 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+
+private const val CREATE_ACCOUNT_URL = "https://homebase.id/app-create-account"
 
 class LoginViewModel(
     private val youAuthFlowManager: YouAuthFlowManager,
@@ -58,6 +64,7 @@ class LoginViewModel(
 
     init {
         loadUsernameFromStorage()
+        observeCreatedIdentity()
         observeDriveStatuses()
         observeAuthState()
     }
@@ -71,7 +78,7 @@ class LoginViewModel(
     fun onAction(action: LoginUiAction) {
         when (action) {
             is LoginUiAction.CreateAccount -> {
-                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl("https://homebase.id/sign-up")) }
+                _uiState.update { it.copy(uiEvent = LoginUiEvent.OpenUrl(createAccountUrl())) }
             }
 
             is LoginUiAction.LoginClicked -> {
@@ -93,6 +100,32 @@ class LoginViewModel(
     }
 
     /* ---------------- PRIVATE ---------------- */
+
+    private fun createAccountUrl(): String {
+        val returnUrl = createAccountReturnUrl() ?: return CREATE_ACCOUNT_URL
+        return "$CREATE_ACCOUNT_URL?returnUrl=${returnUrl.encodeURLParameter()}"
+    }
+
+    /**
+     * Picks up the domain the sign-up flow just created and seeds the Homebase ID field with it.
+     * The value arrives over a deep link any app on the device can fire, so it is only shown once
+     * it parses as an identity.
+     */
+    private fun observeCreatedIdentity() {
+        viewModelScope.launch {
+            CreatedIdentityRelay.domain.filterNotNull().collect { domain ->
+                CreatedIdentityRelay.consume()
+                val created = try {
+                    OdinId(domain)
+                } catch (_: Exception) {
+                    Logger.w(tag = "LoginViewModel", messageString = "Ignoring unparseable created identity: $domain")
+                    return@collect
+                }
+                Logger.i(tag = "LoginViewModel", messageString = "Prefilling with created identity ${created.domainName}")
+                _uiState.update { it.copy(homebaseId = created.domainName, error = null) }
+            }
+        }
+    }
 
     private fun startLogin(homebaseIdValue: String) {
         Logger.i(tag = "LoginViewModel", messageString = "startLogin($homebaseIdValue)")
@@ -273,17 +306,30 @@ class LoginViewModel(
                             if (syncStopped || syncCannotStart) {
                                 handleAuthenticatedUser()
                             } else {
-                                _uiState.update { it.copy(isLoading = true) }
+                                _uiState.update {
+                                    it.copy(isLoading = true, isAwaitingAuthConfirmation = false)
+                                }
                             }
                         }
 
-                        is YouAuthState.Authenticating,
+                        is YouAuthState.Authenticating -> {
+                            _uiState.update {
+                                it.copy(isLoading = true, isAwaitingAuthConfirmation = true)
+                            }
+                        }
+
                         is YouAuthState.Initializing -> {
                             _uiState.update { it.copy(isLoading = true) }
                         }
 
                         is YouAuthState.Unauthenticated -> {
-                            _uiState.update { it.copy(isLoading = false, isAuthenticated = false) }
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isAuthenticated = false,
+                                    isAwaitingAuthConfirmation = false,
+                                )
+                            }
                         }
 
                         is YouAuthState.Error -> {
@@ -291,6 +337,7 @@ class LoginViewModel(
                                 it.copy(
                                     isLoading = false,
                                     isAuthenticated = false,
+                                    isAwaitingAuthConfirmation = false,
                                     error = LoginError.Message(authState.message)
                                 )
                             }

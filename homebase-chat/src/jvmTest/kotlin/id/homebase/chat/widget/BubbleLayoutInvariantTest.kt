@@ -9,6 +9,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
@@ -89,6 +91,7 @@ class BubbleLayoutInvariantTest {
     private enum class Caption(val text: String, val hasCaption: Boolean) {
         NONE("", false),
         SHORT("Nice", true),
+        TINY("Idk", true),
         LONG(
             "This is a long single paragraph caption, wide enough to exceed a fixed " +
                 "album width so any empty strip beside the images would show.",
@@ -150,9 +153,13 @@ class BubbleLayoutInvariantTest {
         bytesWritten = 3_300_000,
     )
 
+    // Stable so a test can hand the bubble the quoted message itself (which is what makes the
+    // quote render a thumbnail).
+    private val quotedId = Uuid.random()
+
     private fun Case.message(): MessageUiModel {
         val reply = if (reply) ReplyPreview(
-            replyUniqueId = Uuid.random(),
+            replyUniqueId = quotedId,
             authorOdinId = "bob.example.com",
             message = "the message being replied to",
         ) else null
@@ -183,10 +190,16 @@ class BubbleLayoutInvariantTest {
         )
     }
 
-    private fun ComposeUiTest.render(case: Case, authorName: String? = null) = setContent {
+    private fun ComposeUiTest.render(
+        case: Case,
+        authorName: String? = null,
+        cluster: MessageClusterPosition = MessageClusterPosition.ALONE,
+        quoted: MessageUiModel? = null,
+    ) = setContent {
         Host {
             MessageBubbleRaw(
                 message = case.message(),
+                replyMessages = quoted?.let { persistentMapOf(quotedId to it) } ?: persistentMapOf(),
                 decryptedFiles = persistentMapOf(),
                 sentByYou = case.sent,
                 onLongClick = {},
@@ -196,12 +209,18 @@ class BubbleLayoutInvariantTest {
                 animatedVisibilityScope = null,
                 downloadingFiles = emptySet(),
                 authorName = authorName,
+                clusterPosition = cluster,
             )
         }
     }
 
     private fun ComposeUiTest.boundsOf(tag: String): DpRect =
         onNodeWithTag(tag).getUnclippedBoundsInRoot()
+
+    // The reply preview is clickable, so its children are merged away in the default tree.
+    private fun ComposeUiTest.quoteTextBounds(): DpRect =
+        onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true)
+            .getUnclippedBoundsInRoot()
 
     private fun ComposeUiTest.exists(tag: String): Boolean =
         onNodeWithTag(tag).let { runCatching { it.getUnclippedBoundsInRoot() }.isSuccess }
@@ -366,6 +385,59 @@ class BubbleLayoutInvariantTest {
     }
 
     /**
+     * #1224: an image with a reply quote and NO caption hugs the image — reply, bubble and
+     * image share one width, so no bubble background shows beside the photo.
+     *
+     * The reply-over-media Layout floored the media placeable (so the bubble and the reply too)
+     * to the 240dp CAPTIONED-image min-width, but the image only fills that floor when a caption
+     * is present: TALL_PORTRAIT's height-capped 144dp image sat in a 240dp bubble, leaving the
+     * reported strip. Aspects at or above the floor are the unchanged control.
+     */
+    @Test
+    fun imageWithReply_noCaption_bubbleHugsImage() = runComposeUiTest {
+        // The reply quote's own horizontal insets: 6dp on the reply Row + 8dp on its Column.
+        val replyQuoteInset = 14f
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false))
+            for (aspect in listOf(
+                Aspect.TALL_PORTRAIT, Aspect.PORTRAIT, Aspect.SQUARE, Aspect.LANDSCAPE, Aspect.PANORAMA,
+            )) {
+                val case = Case(
+                    name = "1img/$aspect/reply/${if (sent) "sent" else "recv"}",
+                    sent = sent, images = 1, caption = Caption.NONE, reply = true, aspect = aspect,
+                )
+                render(case)
+                val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+                val media = boundsOf(ChatBubbleTestTags.MEDIA)
+                val quote = quoteTextBounds()
+                val mediaWidth = media.right.value - media.left.value
+                val bubbleWidth = bubble.right.value - bubble.left.value
+
+                if (!approx(mediaWidth, bubbleWidth))
+                    failures += "[${case.name}] bubble is wider than the image (background strip): " +
+                        "media.width=$mediaWidth bubble.width=$bubbleWidth"
+                if (!approx(media.left.value, bubble.left.value))
+                    failures += "[${case.name}] left strip: media.left=${media.left.value} bubble.left=${bubble.left.value}"
+                if (!approx(media.right.value, bubble.right.value))
+                    failures += "[${case.name}] right strip beside the image: " +
+                        "media.right=${media.right.value} bubble.right=${bubble.right.value}"
+                // The quote is measured at the media width, so its text can never reach past
+                // the image's right edge less the reply's own inset.
+                if (quote.right.value > media.right.value - replyQuoteInset + tol)
+                    failures += "[${case.name}] reply quote overhangs the image: " +
+                        "quote.right=${quote.right.value} media.right=${media.right.value}"
+                // Only at TALL_PORTRAIT's width is the fixture quote (182dp intrinsic) wider than
+                // the room it gets, so only there does its ellipsized text prove the exact clamp.
+                if (aspect == Aspect.TALL_PORTRAIT &&
+                    !approx(media.right.value - quote.right.value, replyQuoteInset)
+                )
+                    failures += "[${case.name}] reply quote does not fill the image width: " +
+                        "quote.right=${quote.right.value} media.right=${media.right.value}"
+            }
+        assertTrue(failures.isEmpty(), "reply-over-media hug failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
      * Regression guard: media-only bubbles (no caption, any image count) are UNCHANGED —
      * the media fills the whole bubble, no inset, no gap.
      */
@@ -409,6 +481,137 @@ class BubbleLayoutInvariantTest {
                     failures += "[file/$cap/${if (sent) "sent" else "recv"}] document got media height=$h (>= minHeight=$floor); expected a compact file card"
             }
         assertTrue(failures.isEmpty(), "document compact-card failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * A short text bubble hugs its text.
+     *
+     * With the footer shown there is exactly ONE 8dp gap between the text and the tucked
+     * timestamp — the width formula used to add an 8dp gap on top of the info Row's own
+     * `start = 8.dp` padding — plus the usual 12dp trailing inset.
+     *
+     * With the footer hidden (a non-terminal cluster bubble) the empty info Row must reserve
+     * nothing: the bubble is the text plus its 12dp side insets. It used to reserve the full
+     * 28dp strip for an empty Row, i.e. 16dp more than the inset it needs.
+     */
+    @Test
+    fun textBubble_hugsText_singleGapBeforeTimestamp() = runComposeUiTest {
+        val inset = 12f
+        val gap = 8f
+        val failures = mutableListOf<String>()
+
+        for (sent in listOf(true, false)) {
+            val who = if (sent) "sent" else "recv"
+            render(Case("text/$who", sent, 0, Caption.SHORT), cluster = MessageClusterPosition.END)
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            val caption = boundsOf(ChatBubbleTestTags.CAPTION)
+            val timestamp = boundsOf(ChatBubbleTestTags.TIMESTAMP)
+
+            if (!approx(timestamp.left.value - caption.right.value, gap))
+                failures += "[$who] gap before the tucked timestamp is " +
+                    "${timestamp.left.value - caption.right.value}dp, expected ${gap}dp"
+            // Only on a received bubble is the timestamp the last footer child; a sent one
+            // trails a 4dp spacer + delivery ticks.
+            if (!sent && !approx(bubble.right.value - timestamp.right.value, inset))
+                failures += "[$who] trailing inset is " +
+                    "${bubble.right.value - timestamp.right.value}dp, expected ${inset}dp"
+        }
+
+        // Footer hidden: no timestamp, and nothing reserved for it.
+        render(Case("text/mid", false, 0, Caption.SHORT), cluster = MessageClusterPosition.MIDDLE)
+        val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+        val caption = boundsOf(ChatBubbleTestTags.CAPTION)
+        if (exists(ChatBubbleTestTags.TIMESTAMP))
+            failures += "[mid] a non-terminal cluster bubble must not render a timestamp"
+        val bubbleWidth = bubble.right.value - bubble.left.value
+        val hugWidth = (caption.right.value - caption.left.value) + 2 * inset
+        if (!approx(bubbleWidth, hugWidth))
+            failures += "[mid] footerless bubble is ${bubbleWidth}dp wide, expected ${hugWidth}dp " +
+                "(text + 2x${inset}dp inset)"
+
+        assertTrue(failures.isEmpty(), "bubble text-hug failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * A reply quote is measured at an exact width taken from the bubble, and it fills whatever
+     * it is given — so if the reply's own text is all that sizes the bubble, a three-character
+     * reply squeezes the quote to a sliver. The quoted content must get a vote: the same quote
+     * must render at the same width under a short reply as under a long one, while the bubble
+     * stays inside the column.
+     */
+    @Test
+    fun replyQuote_notCrushedByShortReplyText() = runComposeUiTest {
+        render(Case("reply/long", sent = false, images = 0, caption = Caption.LONG, reply = true))
+        val roomy = quoteTextBounds()
+        val roomyWidth = roomy.right.value - roomy.left.value
+
+        render(Case("reply/tiny", sent = false, images = 0, caption = Caption.TINY, reply = true))
+        val tight = quoteTextBounds()
+        val tightWidth = tight.right.value - tight.left.value
+        val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+        val bubbleWidth = bubble.right.value - bubble.left.value
+
+        val failures = mutableListOf<String>()
+        if (!approx(tightWidth, roomyWidth))
+            failures += "quote crushed under a short reply: ${tightWidth}dp vs ${roomyWidth}dp " +
+                "with a long reply"
+        if (bubbleWidth > columnWidth.value + tol)
+            failures += "quote pushed the bubble past the column: ${bubbleWidth}dp > ${columnWidth.value}dp"
+
+        // A quote of a media message renders a thumbnail, which is SubcomposeLayout-backed —
+        // intrinsics are not supported on those, so this proves the width vote never asks one.
+        render(
+            Case("reply/thumb", sent = false, images = 0, caption = Caption.TINY, reply = true),
+            quoted = Case("quoted", sent = false, images = 1, caption = Caption.SHORT).message(),
+        )
+        // The 40dp thumb + its 4dp padding must show up in the width — that is what proves the
+        // image node really is in the tree, so the case above is not vacuous.
+        val thumbBubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+        val thumbWidth = (thumbBubble.right.value - thumbBubble.left.value) - bubbleWidth
+        if (!approx(thumbWidth, 44f))
+            failures += "quote thumbnail added ${thumbWidth}dp to the bubble, expected 44dp"
+
+        assertTrue(failures.isEmpty(), "reply-quote width failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * The sender name in a group message sits 4dp above the text — its own bottom padding —
+     * instead of that 4dp plus the text row's 12dp top inset. Without a name the text keeps
+     * its 12dp inset from the bubble edge, and with media above it the 12dp stays too.
+     */
+    @Test
+    fun authorName_tightGapAboveText() = runComposeUiTest {
+        val name = "Alice Author"
+        val failures = mutableListOf<String>()
+
+        render(Case("author", sent = false, images = 0, caption = Caption.SHORT), authorName = name)
+        val author = onNodeWithText(name).getUnclippedBoundsInRoot()
+        var caption = boundsOf(ChatBubbleTestTags.CAPTION)
+        if (!approx(caption.top.value - author.bottom.value, 4f))
+            failures += "author -> text gap is ${caption.top.value - author.bottom.value}dp, expected 4dp"
+        // The tucked timestamp is placed off the text's own top inset, so collapsing that
+        // inset must not drag it away from the last line.
+        val tuckedWithAuthor =
+            boundsOf(ChatBubbleTestTags.TIMESTAMP).bottom.value - caption.bottom.value
+
+        render(Case("no-author", sent = false, images = 0, caption = Caption.SHORT))
+        val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+        caption = boundsOf(ChatBubbleTestTags.CAPTION)
+        if (!approx(caption.top.value - bubble.top.value, 12f))
+            failures += "without an author the text inset is " +
+                "${caption.top.value - bubble.top.value}dp, expected 12dp"
+        val tucked = boundsOf(ChatBubbleTestTags.TIMESTAMP).bottom.value - caption.bottom.value
+        if (!approx(tuckedWithAuthor, tucked))
+            failures += "tucked timestamp sits ${tuckedWithAuthor}dp below the text with an " +
+                "author but ${tucked}dp without"
+
+        render(Case("author+img", sent = false, images = 1, caption = Caption.SHORT), authorName = name)
+        val media = boundsOf(ChatBubbleTestTags.MEDIA)
+        caption = boundsOf(ChatBubbleTestTags.CAPTION)
+        if (!approx(caption.top.value - media.bottom.value, 12f))
+            failures += "media -> text gap is ${caption.top.value - media.bottom.value}dp, expected 12dp"
+
+        assertTrue(failures.isEmpty(), "author gap failures:\n" + failures.joinToString("\n"))
     }
 
     /**

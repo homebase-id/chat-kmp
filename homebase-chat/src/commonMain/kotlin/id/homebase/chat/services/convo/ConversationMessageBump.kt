@@ -17,12 +17,20 @@ import kotlin.uuid.Uuid
  * last message left every denormalised field unchanged). Returns the
  * new list otherwise.
  *
- * Three cases on the message's `userDate` vs the conversation's current
- * `latestMessageTimestamp`:
+ * A **status message** (`dataType = 202`) is not a last message and returns
+ * null outright, matching cold-load enrichment, whose query excludes
+ * `dataType = 202` — when the two disagree the row's preview *and* sort key
+ * change on restart (#1153). The exclusion has to be duplicated rather than
+ * moved into the SQL: status visibility depends on decrypted content the query
+ * can't read, so a row it returned could fail to map and blank the preview
+ * (#1148).
+ *
+ * Three cases on a non-status message's `userDate` vs the conversation's
+ * current `latestMessageTimestamp`:
  *
  *  - **newer (`>`)** — a genuinely new last message. Advance the
  *    timestamp, refresh the preview, and bump unread (non-self,
- *    non-edit, non-status).
+ *    non-edit).
  *  - **equal (`==`)** — a re-emit of the *current* last message
  *    (soft-delete, delivery-status change, or reaction fan-out; a
  *    reaction re-emit carries the original `userDate` because reactions
@@ -78,8 +86,9 @@ internal fun applyIncomingMessageBump(
     sqlUserDate: Instant,
     activeDomain: OdinId?,
 ): List<ConversationUiModel>? {
-    val increment =
-        if (!m.isEdited && !m.isAuthoredBy(activeDomain) && !m.isStatusMessage) 1 else 0
+    if (m.isStatusMessage) return null
+
+    val increment = if (!m.isEdited && !m.isAuthoredBy(activeDomain)) 1 else 0
 
     // Denormalised last-message preview fields, recomputed from `m`. Shared by
     // the "new message" and "same-userDate re-emit" branches so the preview is
@@ -104,7 +113,7 @@ internal fun applyIncomingMessageBump(
         when {
             // Strictly newer → a genuinely new last message. Advance the
             // timestamp, refresh the preview and bump unread (for non-self,
-            // non-edit, non-status arrivals).
+            // non-edit arrivals).
             sqlUserDate > existing.latestMessageTimestamp -> {
                 didChange = true
                 val next = existing
@@ -123,7 +132,7 @@ internal fun applyIncomingMessageBump(
                     "bump convo=$targetConversationId sqlUserDateMs=${sqlUserDate.toEpochMilliseconds()} " +
                         "originalAuthor=${m.originalAuthor?.domainName ?: "null"} " +
                         "isAuthoredBy(self)=${m.isAuthoredBy(activeDomain)} " +
-                        "isEdited=${m.isEdited} isStatusMessage=${m.isStatusMessage} " +
+                        "isEdited=${m.isEdited} " +
                         "increment=$increment unreadCount=${next.unreadCount}"
                 }
                 next

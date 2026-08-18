@@ -28,6 +28,9 @@ data class MessageWindow(
     val hasNewerMessages: Boolean = false,
     val isLoadingOlder: Boolean = false,
     val isLoadingNewer: Boolean = false,
+    /** Windowed sync (#1223): the server may hold messages older than local EOS. */
+    val serverHasMoreOlder: Boolean = false,
+    val isLoadingOlderFromServer: Boolean = false,
 )
 
 /**
@@ -145,6 +148,7 @@ class PaginatedConversationState(
         hasOlderMessages: Boolean = false,
         newerCursor: QueryBatchCursor? = null,
         hasNewerMessages: Boolean = false,
+        serverHasMoreOlder: Boolean = false,
         merge: Boolean = false,
     ) {
         _windows.update { current ->
@@ -163,6 +167,7 @@ class PaginatedConversationState(
                 newerCursor = newerCursor,
                 hasOlderMessages = hasOlderMessages,
                 hasNewerMessages = hasNewerMessages,
+                serverHasMoreOlder = serverHasMoreOlder,
             ))
         }
     }
@@ -193,6 +198,7 @@ class PaginatedConversationState(
                 newerCursor = newerCursor,
                 hasNewerMessages = hasNewer,
                 isLoadingOlder = false,
+                isLoadingOlderFromServer = false,
             ))
         }
     }
@@ -273,6 +279,20 @@ class PaginatedConversationState(
         _windows.update { current ->
             val existing = current[conversationId] ?: return@update current
             current + (conversationId to existing.copy(isLoadingNewer = loading))
+        }
+    }
+
+    fun setLoadingOlderFromServer(conversationId: Uuid, loading: Boolean) {
+        _windows.update { current ->
+            val existing = current[conversationId] ?: return@update current
+            current + (conversationId to existing.copy(isLoadingOlderFromServer = loading))
+        }
+    }
+
+    fun setServerHasMoreOlder(conversationId: Uuid, value: Boolean) {
+        _windows.update { current ->
+            val existing = current[conversationId] ?: return@update current
+            current + (conversationId to existing.copy(serverHasMoreOlder = value))
         }
     }
 

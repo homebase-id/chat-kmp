@@ -12,13 +12,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Lock
@@ -42,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,6 +77,7 @@ import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
 import id.homebase.chat.archivedconversations.ArchivedConversationsScreen
 import id.homebase.api.crypto.Md5
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.ConversationListScreen
 import id.homebase.chat.conversationmedia.ConversationMediaScreen
 import id.homebase.chat.conversationlist.ConversationListViewModel
@@ -123,6 +127,7 @@ import id.homebase.core.ui.screens.location.share.ShareLocationScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
+import id.homebase.core.ui.screens.settings.SettingsActions
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
@@ -143,9 +148,14 @@ import id.homebase.core.ui.screens.contactbook.add.AddContactScreen
 import id.homebase.core.ui.screens.contactbook.ContactBookUiAction
 import id.homebase.core.ui.screens.contactbook.ContactBookUiEvent
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
+import id.homebase.core.ui.screens.contactbook.ShareContactPickerScreen
+import id.homebase.core.ui.screens.contactbook.components.ContactCardDescriptorSaver
+import id.homebase.core.ui.screens.contactbook.components.ContactCardSaveHost
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailScreen
 import id.homebase.core.ui.screens.contactbook.onboarding.ContactBookOnboardingScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
+import id.homebase.resources.chat_contact_card_saved_body
+import id.homebase.resources.chat_contact_card_saved_open
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
@@ -435,6 +445,29 @@ fun AppNavHost(
 
                 is NotificationNavigationEvent.OpenUrl -> uriHandler.openUrl(event.url)
 
+                is NotificationNavigationEvent.OpenConnectionRequest -> {
+                    val domain = event.odinId.lowercase()
+                    Logger.i(tag = "AppNavHost") { "OpenConnectionRequest received: $domain" }
+                    // Cold-start safety, as in OpenMoment below: a tap can land while the host is
+                    // still on Route.AppLoading, whose ChatList navigation pops (inclusive) —
+                    // anything pushed before that would go with it. Gate on ChatList being in the
+                    // stack (immediate when warm).
+                    navController.currentBackStack.firstContaining {
+                        it.destination.hasRoute(Route.ChatList::class)
+                    }
+                    // Push the contact book first so back-press from the request lands on the
+                    // contacts tab rather than dropping straight out to chat.
+                    openContactBook()
+                    navController.navigate(
+                        // Same synthetic key the contact book uses for an identity with no saved
+                        // contact record — a pending requester never has one.
+                        Route.ContactBookDetail(
+                            uniqueId = Md5.toGuidId(domain).toString(),
+                            odinId = domain,
+                        )
+                    )
+                }
+
                 is NotificationNavigationEvent.OpenMoment -> {
                     val momentId = Uuid.parseOrNull(event.momentId)
                     Logger.i(tag = "AppNavHost") {
@@ -642,9 +675,14 @@ fun AppNavHost(
 
                 val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
                 Column(
-                    // statusBarsPadding consumes the inset, so screens in the NavHost
-                    // below don't re-pad while the banner occupies the top edge.
-                    modifier = if (showUpdateBanner) Modifier.statusBarsPadding() else Modifier,
+                    // Not statusBarsPadding(): outside Android it consumes into a legacy
+                    // modifier-local channel the NavHost's TopAppBars cannot see, so they
+                    // re-pad the top inset and the header drops a safe-area below the banner.
+                    modifier = if (showUpdateBanner) {
+                        Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                    } else {
+                        Modifier
+                    },
                 ) {
                     if (isOnTopLevelScreen) {
                         if (showUpdateBanner) {
@@ -960,6 +998,42 @@ fun AppNavHost(
                                         }
                                     }
                                 }
+                                var pendingContactCard by rememberSaveable(
+                                    stateSaver = ContactCardDescriptorSaver,
+                                ) { mutableStateOf<ContactCardDescriptor?>(null) }
+                                var savedContact by remember {
+                                    mutableStateOf<Pair<String, Uuid?>?>(null)
+                                }
+                                savedContact?.let { (savedName, savedId) ->
+                                    val message = stringResource(
+                                        MR.string.chat_contact_card_saved_body,
+                                        savedName,
+                                    )
+                                    val open = stringResource(MR.string.chat_contact_card_saved_open)
+                                    LaunchedEffect(savedContact) {
+                                        val result = snackbarHostState.showSnackbar(
+                                            message = message,
+                                            actionLabel = if (savedId != null) open else null,
+                                            duration = SnackbarDuration.Short,
+                                        )
+                                        if (result == SnackbarResult.ActionPerformed && savedId != null) {
+                                            navController.navigate(
+                                                Route.ContactBookDetail(savedId.toString(), null)
+                                            )
+                                        }
+                                        savedContact = null
+                                    }
+                                }
+                                ContactCardSaveHost(
+                                    descriptor = pendingContactCard,
+                                    onDismiss = { pendingContactCard = null },
+                                    onOpenContact = { uniqueId, odinId ->
+                                        navController.navigate(
+                                            Route.ContactBookDetail(uniqueId.toString(), odinId)
+                                        )
+                                    },
+                                    onSaved = { name, uniqueId -> savedContact = name to uniqueId },
+                                )
                                 ConversationListScreen(
                                     viewModel = conversationListViewModel,
                                     archivedConversationsViewModel = koinViewModel(),
@@ -981,6 +1055,9 @@ fun AppNavHost(
                                     onNavigateToLocationSetup = openLocation,
                                     onNavigateToShareLocation = { conversationId ->
                                         navController.navigate(Route.LocationShare(conversationId))
+                                    },
+                                    onNavigateToShareContact = { conversationId ->
+                                        navController.navigate(Route.ShareContact(conversationId))
                                     },
                                     onNavigateToContactInfo = {
                                         // 1:1 contact info is the full contact-detail screen
@@ -1018,6 +1095,7 @@ fun AppNavHost(
                                         @Suppress("AssignedValueIsNeverRead")
                                         showingOnlyDetailPane = it
                                     },
+                                    onSaveContactCard = { pendingContactCard = it },
                                 )
                             }
                         }
@@ -1198,6 +1276,12 @@ fun AppNavHost(
                                     onEditGroup = {
                                         navController.navigate(Route.GroupEdit(it))
                                     },
+                                    // Same destination the 1:1 settings screen uses —
+                                    // ConversationMedia is keyed by conversationId only,
+                                    // so it needs no group-specific handling (#1157).
+                                    onSeeAllMedia = { conversationId ->
+                                        navController.navigate(Route.ConversationMedia(conversationId))
+                                    },
                                 )
                             }
                         }
@@ -1230,35 +1314,37 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
-                                    onBackClick = { navController.popBackStack() },
-                                    onNavigateToNotifications = {
-                                        navController.navigate(Route.NotificationSettings)
-                                    },
-                                    onNavigateToAppearance = {
-                                        navController.navigate(Route.AppearanceSettings)
-                                    },
-                                    onNavigateToStorage = {
-                                        navController.navigate(Route.StorageSettings)
-                                    },
-                                    onNavigateToHelp = {
-                                        navController.navigate(Route.Help)
-                                    },
-                                    onNavigateToMomentsSettings = {
-                                        navController.navigate(Route.MomentsSettings)
-                                    },
-                                    onNavigateToVaultSettings = {
-                                        navController.navigate(Route.VaultSettings)
-                                    },
-                                    onNavigateToLocation = openLocation,
-                                    onNavigateToContactBookSettings = {
-                                        navController.navigate(Route.ContactBookSettings)
-                                    },
-                                    onNavigateToProfileEdit = {
-                                        navController.navigate(Route.ProfileEdit)
-                                    },
-                                    onNavigateToProfileAvatarEdit = {
-                                        navController.navigate(Route.ProfileAvatarEdit)
-                                    },
+                                    actions = SettingsActions(
+                                        onBack = { navController.popBackStack() },
+                                        onNotifications = {
+                                            navController.navigate(Route.NotificationSettings)
+                                        },
+                                        onAppearance = {
+                                            navController.navigate(Route.AppearanceSettings)
+                                        },
+                                        onStorage = {
+                                            navController.navigate(Route.StorageSettings)
+                                        },
+                                        onHelp = {
+                                            navController.navigate(Route.Help)
+                                        },
+                                        onMomentsSettings = {
+                                            navController.navigate(Route.MomentsSettings)
+                                        },
+                                        onVaultSettings = {
+                                            navController.navigate(Route.VaultSettings)
+                                        },
+                                        onLocation = openLocation,
+                                        onContactBookSettings = {
+                                            navController.navigate(Route.ContactBookSettings)
+                                        },
+                                        onProfileEdit = {
+                                            navController.navigate(Route.ProfileEdit)
+                                        },
+                                        onProfileAvatarEdit = {
+                                            navController.navigate(Route.ProfileAvatarEdit)
+                                        },
+                                    ),
                                 )
                             }
                         }
@@ -1505,6 +1591,23 @@ fun AppNavHost(
                                     // Maps-off / enable-location CTA → location setup (dashboard or
                                     // onboarding), reusing the shared nav lambda.
                                     onOpenSetup = openLocation,
+                                )
+                            }
+                        }
+
+                        composable<Route.ShareContact> { backStackEntry ->
+                            if (isAuthenticated) {
+                                val route = backStackEntry.toRoute<Route.ShareContact>()
+                                ShareContactPickerScreen(
+                                    viewModel = koinViewModel(
+                                        key = route.conversationId,
+                                        parameters = {
+                                            org.koin.core.parameter.parametersOf(
+                                                Uuid.parse(route.conversationId)
+                                            )
+                                        },
+                                    ),
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }
