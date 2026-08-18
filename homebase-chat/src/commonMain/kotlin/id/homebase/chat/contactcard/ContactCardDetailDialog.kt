@@ -89,7 +89,6 @@ fun ContactCardDetailDialog(
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     authorOdinId: String? = null,
-    sentByYou: Boolean = false,
     photo: HomebaseImageData? = null,
 ) {
     Dialog(
@@ -102,7 +101,6 @@ fun ContactCardDetailDialog(
             onSaveToContacts = onSaveToContacts,
             onMessageIdentity = onMessageIdentity,
             authorOdinId = authorOdinId,
-            sentByYou = sentByYou,
             photo = photo,
         )
     }
@@ -116,7 +114,6 @@ private fun ContactCardDetailContent(
     onSaveToContacts: ((ContactCardDescriptor) -> Unit)?,
     onMessageIdentity: ((String) -> Unit)?,
     authorOdinId: String?,
-    sentByYou: Boolean,
     photo: HomebaseImageData?,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -197,7 +194,6 @@ private fun ContactCardDetailContent(
                     descriptor = descriptor,
                     size = 72.dp,
                     authorOdinId = authorOdinId,
-                    sentByYou = sentByYou,
                     photo = photo,
                 )
                 Spacer(Modifier.width(16.dp))

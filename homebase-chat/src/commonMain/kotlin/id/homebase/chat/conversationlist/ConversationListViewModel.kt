@@ -886,6 +886,16 @@ class ConversationListViewModel(
                 }
         }
 
+        // Whose avatar a contact-card bubble is allowed to dial; see ContactCardDescriptor.
+        viewModelScope.launch {
+            contactService.contacts
+                .map { contacts -> contacts.mapTo(mutableSetOf()) { it.odinId } }
+                .distinctUntilChanged()
+                .collect { identities ->
+                    _messagesUiState.update { it.copy(savedContactIdentities = identities) }
+                }
+        }
+
         // Set connected state
         viewModelScope.launch {
             authConnectionCoordinator.connectionState

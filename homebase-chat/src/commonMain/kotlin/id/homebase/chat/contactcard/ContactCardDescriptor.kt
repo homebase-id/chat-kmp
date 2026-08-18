@@ -54,22 +54,20 @@ data class ContactCardDescriptor(
      *
      * Drawing the avatar dials `https://<odinId>/pub/image`, and any client can author a card
      * naming any host — so an ungated fetch is a tracking pixel: open the chat and the named host
-     * learns your IP and the moment you read it. Two cases disclose nothing new:
+     * learns your IP and the moment you read it. Only hosts this app already dials on the same
+     * screens resolve:
      *
-     * - [author] (the envelope's `originalAuthor`, which the card's author cannot forge) equals the
-     *   card's identity: the sender already knows their message reached you.
-     * - [sentByYou]: you picked this contact out of your own book, so it is a host you already
-     *   resolve in the contact list.
+     * - [author] — the envelope's `originalAuthor`, which the card's author cannot forge. Their
+     *   avatar is already drawn beside their own messages in a group and in the 1:1 header.
+     * - a member of [savedContacts] — the contact list already draws their avatar.
      *
-     * Ceiling: a card you *forwarded* rather than composed counts as [sentByYou] but was named by
-     * its original sender. Gating on "is already one of my contacts" would close that too, at the
-     * cost of a contact lookup per bubble.
+     * Empty [savedContacts] therefore denies, which is what a host that supplies nothing gets.
      *
      * Saving has no equivalent gate: this one exists because the bubble fetches without being asked.
      */
-    fun avatarIdentity(author: String?, sentByYou: Boolean = false): OdinId? =
+    fun avatarIdentity(author: String?, savedContacts: Set<OdinId> = emptySet()): OdinId? =
         identity()?.takeIf {
-            sentByYou || it.domainName.equals(author?.trim(), ignoreCase = true)
+            it.domainName.equals(author?.trim(), ignoreCase = true) || it in savedContacts
         }
 
     fun isValid(): Boolean {

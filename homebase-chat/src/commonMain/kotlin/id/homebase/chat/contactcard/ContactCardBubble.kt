@@ -80,7 +80,6 @@ fun ContactCardBubble(
     onLongClick: (() -> Unit)? = null,
     canOpenDetail: Boolean = true,
     authorOdinId: String? = null,
-    sentByYou: Boolean = false,
     photo: HomebaseImageData? = null,
     footer: (@Composable () -> Unit)? = null,
 ) {
@@ -140,7 +139,6 @@ fun ContactCardBubble(
                     descriptor = descriptor,
                     size = 44.dp,
                     authorOdinId = authorOdinId,
-                    sentByYou = sentByYou,
                     photo = photo,
                 )
                 Spacer(Modifier.width(12.dp))
@@ -227,7 +225,6 @@ fun ContactCardBubble(
         ContactCardDetailDialog(
             descriptor = descriptor,
             authorOdinId = authorOdinId,
-            sentByYou = sentByYou,
             photo = photo,
             onDismiss = { showDetail = false },
             // Close first: the editor is hosted above the nav graph and this dialog would outlive it.
@@ -253,7 +250,6 @@ internal fun ContactCardAvatar(
     descriptor: ContactCardDescriptor,
     size: Dp,
     authorOdinId: String?,
-    sentByYou: Boolean,
     photo: HomebaseImageData? = null,
 ) {
     val initials = remember(descriptor) { descriptor.avatarInitials() }
@@ -277,9 +273,10 @@ internal fun ContactCardAvatar(
 
     // An identity publishes its avatar at a URL derived from the odinId, so the card shows a real
     // picture without the descriptor carrying one — nothing would fit in the 7 KB header anyway.
-    // Gated on the sender: see ContactCardDescriptor.avatarIdentity.
-    val identity = remember(descriptor, authorOdinId, sentByYou) {
-        descriptor.avatarIdentity(authorOdinId, sentByYou)
+    // Gated: see ContactCardDescriptor.avatarIdentity.
+    val savedContacts = LocalSavedContactIdentities.current
+    val identity = remember(descriptor, authorOdinId, savedContacts) {
+        descriptor.avatarIdentity(authorOdinId, savedContacts)
     }
     if (identity != null) {
         Box(modifier = Modifier.clearAndSetSemantics {}) {
