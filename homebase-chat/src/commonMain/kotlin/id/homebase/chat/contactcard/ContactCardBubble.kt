@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -45,6 +46,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_actions
@@ -78,6 +81,7 @@ fun ContactCardBubble(
     canOpenDetail: Boolean = true,
     authorOdinId: String? = null,
     sentByYou: Boolean = false,
+    photo: HomebaseImageData? = null,
     footer: (@Composable () -> Unit)? = null,
 ) {
     if (descriptor == null || !descriptor.isValid()) {
@@ -137,6 +141,7 @@ fun ContactCardBubble(
                     size = 44.dp,
                     authorOdinId = authorOdinId,
                     sentByYou = sentByYou,
+                    photo = photo,
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(
@@ -223,6 +228,7 @@ fun ContactCardBubble(
             descriptor = descriptor,
             authorOdinId = authorOdinId,
             sentByYou = sentByYou,
+            photo = photo,
             onDismiss = { showDetail = false },
             // Close first: the editor is hosted above the nav graph and this dialog would outlive it.
             onSaveToContacts = onSaveToContacts?.let { save ->
@@ -248,11 +254,26 @@ internal fun ContactCardAvatar(
     size: Dp,
     authorOdinId: String?,
     sentByYou: Boolean,
+    photo: HomebaseImageData? = null,
 ) {
     val initials = remember(descriptor) { descriptor.avatarInitials() }
     // Holds sp text, so a fixed dp clips it at a large font scale; capped so 2x doesn't eat the row.
     val fontScale = LocalDensity.current.fontScale
     val diameter = size * fontScale.coerceIn(1f, 1.5f)
+
+    // No provenance gate, unlike the identity avatar below: these bytes are already on the message,
+    // so drawing them dials nobody.
+    if (photo != null) {
+        HomebaseImage(
+            imageData = photo,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            placeholder = { ContactCardInitials(initials, diameter, fontScale) },
+            error = { ContactCardInitials(initials, diameter, fontScale) },
+            modifier = Modifier.size(diameter).clip(CircleShape).clearAndSetSemantics {},
+        )
+        return
+    }
 
     // An identity publishes its avatar at a URL derived from the odinId, so the card shows a real
     // picture without the descriptor carrying one — nothing would fit in the 7 KB header anyway.
@@ -276,6 +297,11 @@ internal fun ContactCardAvatar(
         return
     }
 
+    ContactCardInitials(initials, diameter, fontScale)
+}
+
+@Composable
+private fun ContactCardInitials(initials: String, diameter: Dp, fontScale: Float) {
     Box(
         // Decoration: the initials only re-render the name that follows.
         modifier = Modifier

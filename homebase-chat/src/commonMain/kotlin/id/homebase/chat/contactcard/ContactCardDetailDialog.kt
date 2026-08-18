@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import id.homebase.core.clipboard.clipEntryOf
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_card_action_unavailable
 import id.homebase.resources.chat_contact_card_call
@@ -89,6 +90,7 @@ fun ContactCardDetailDialog(
     onMessageIdentity: ((String) -> Unit)? = null,
     authorOdinId: String? = null,
     sentByYou: Boolean = false,
+    photo: HomebaseImageData? = null,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -101,6 +103,7 @@ fun ContactCardDetailDialog(
             onMessageIdentity = onMessageIdentity,
             authorOdinId = authorOdinId,
             sentByYou = sentByYou,
+            photo = photo,
         )
     }
 }
@@ -114,6 +117,7 @@ private fun ContactCardDetailContent(
     onMessageIdentity: ((String) -> Unit)?,
     authorOdinId: String?,
     sentByYou: Boolean,
+    photo: HomebaseImageData?,
 ) {
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboard.current
@@ -194,6 +198,7 @@ private fun ContactCardDetailContent(
                     size = 72.dp,
                     authorOdinId = authorOdinId,
                     sentByYou = sentByYou,
+                    photo = photo,
                 )
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {

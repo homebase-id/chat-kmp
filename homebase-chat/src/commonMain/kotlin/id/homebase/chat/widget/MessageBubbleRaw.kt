@@ -66,6 +66,7 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.chat.contactcard.ContactCardBubble
+import id.homebase.chat.contactcard.contactCardPhotoData
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -238,6 +239,15 @@ fun MessageBubbleRaw(
             val onSaveCard = remember(onSaveContactCard, displayOnly) {
                 onSaveContactCard?.takeIf { !displayOnly }
             }
+            val cardPhoto = remember(message.fileId, message.payloads, message.keyHeader) {
+                contactCardPhotoData(
+                    payloads = message.payloads,
+                    driveId = chatTargetDrive.alias,
+                    fileId = message.fileId,
+                    keyHeader = message.keyHeader,
+                    previewThumbnail = message.previewThumbnail,
+                )
+            }
             ContactCardBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
@@ -250,6 +260,7 @@ fun MessageBubbleRaw(
                 // From the envelope, not the card: the card's own odinId is attacker-controlled.
                 authorOdinId = message.originalAuthor?.domainName,
                 sentByYou = sentByYou,
+                photo = cardPhoto,
                 footer = {
                     MessageTimestampFooter(
                         visible = showMessageFooter,
