@@ -259,7 +259,6 @@ fun MessageBubbleRaw(
                 canOpenDetail = !displayOnly,
                 // From the envelope, not the card: the card's own odinId is attacker-controlled.
                 authorOdinId = message.originalAuthor?.domainName,
-                sentByYou = sentByYou,
                 photo = cardPhoto,
                 footer = {
                     MessageTimestampFooter(
