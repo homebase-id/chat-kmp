@@ -437,10 +437,17 @@ class ContactRepository(
         }
         return when (result) {
             is ContactWriteResult.Ok -> result.body
-            // retryVersionGated only surfaces Ok/NotFound; Conflict can't reach here, but the `when`
-            // must be exhaustive. Both non-Ok cases are "nothing written" → null.
-            ContactWriteResult.NotFound -> null
-            is ContactWriteResult.Conflict -> null
+            // Both non-Ok cases are "nothing written" → null, and the caller reports that to the
+            // user as a partial failure. Logged because they are otherwise indistinguishable from
+            // each other and from a write that succeeded: the only other record is the request line.
+            ContactWriteResult.NotFound -> {
+                Logger.w(TAG) { "$op: 404 for $uniqueId — nothing written" }
+                null
+            }
+            is ContactWriteResult.Conflict -> {
+                Logger.w(TAG) { "$op: 409 for $uniqueId — nothing written" }
+                null
+            }
         }
     }
 
