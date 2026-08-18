@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -64,6 +65,9 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
+import id.homebase.chat.contactcard.ContactCardBubble
+import id.homebase.chat.contactcard.contactCardPhotoData
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -72,6 +76,7 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.dice.DiceRollBubble
 import id.homebase.chat.event.EventBubble
 import id.homebase.chat.groodle.GroodleBubble
+import id.homebase.chat.poll.PollBubble
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
@@ -164,6 +169,11 @@ fun MessageBubbleRaw(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
+    // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
+    // than as the message itself: typed bubbles must not open their full-screen detail from here.
+    displayOnly: Boolean = false,
 ) {
 
     // #814: render the timestamp + delivery footer only on the last bubble of a
@@ -188,8 +198,8 @@ fun MessageBubbleRaw(
             EventBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
@@ -214,8 +224,8 @@ fun MessageBubbleRaw(
             GroodleBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,
@@ -224,9 +234,44 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.ContactCard -> {
-            id.homebase.chat.contactcard.ContactCardBubble(
+            // No edited marker: MessageMapper hard-codes isEdited = false for every typed kind.
+            val cardInfoText = formatMessageTimestamp(message.userDate)
+            val onSaveCard = remember(onSaveContactCard, displayOnly) {
+                onSaveContactCard?.takeIf { !displayOnly }
+            }
+            val cardPhoto = remember(message.fileId, message.payloads, message.keyHeader) {
+                contactCardPhotoData(
+                    payloads = message.payloads,
+                    driveId = chatTargetDrive.alias,
+                    fileId = message.fileId,
+                    keyHeader = message.keyHeader,
+                    previewThumbnail = message.previewThumbnail,
+                )
+            }
+            ContactCardBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
+                // displayOnly owns the whole action surface, not just the detail: a preview must
+                // not offer Save either, whatever the host handed down.
+                onSaveToContacts = onSaveCard,
+                onMessageIdentity = onMessageIdentity?.takeIf { !displayOnly },
+                onLongClick = onLongClick,
+                canOpenDetail = !displayOnly,
+                // From the envelope, not the card: the card's own odinId is attacker-controlled.
+                authorOdinId = message.originalAuthor?.domainName,
+                photo = cardPhoto,
+                footer = {
+                    MessageTimestampFooter(
+                        visible = showMessageFooter,
+                        infoText = cardInfoText,
+                        contentColor = LocalContentColor.current,
+                        showDeliveryStatus = sentByYou && !message.isDeleted,
+                        isPendingSend = isPendingSend,
+                        deliveryStatus = message.messageAppData.deliveryStatus,
+                        pendingSince = message.userDate,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                },
             )
             return
         }
@@ -238,11 +283,11 @@ fun MessageBubbleRaw(
             return
         }
         is MessageContent.Poll -> {
-            id.homebase.chat.poll.PollBubble(
+            PollBubble(
                 descriptor = content.descriptor,
                 modifier = modifier,
-                messageId = message.id,
-                conversationId = message.conversationId,
+                messageId = message.id.takeIf { !displayOnly },
+                conversationId = message.conversationId.takeIf { !displayOnly },
                 ownReactions = message.ownReactions,
                 reactionSummary = message.reactionPreview,
                 organizer = message.originalAuthor,

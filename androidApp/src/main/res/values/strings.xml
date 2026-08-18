@@ -8,6 +8,7 @@
     <string name="share_preview_title_others">%1$s +%2$d others</string>
     <string name="share_send_failed">Failed to send: %1$s</string>
     <string name="share_contact_save_failed">Couldn\'t save the contact</string>
+    <string name="share_contact_save_partial">Contact saved, but its extra numbers, emails and company couldn\'t be added</string>
     <string name="crash_emoji">(╯°□°)╯︵ ┻━┻</string>
     <string name="crash_title">Well, this is awkward.</string>
     <string name="crash_body">Homebase tripped over its own feet and had to sit down for a second. You really shouldn\'t be seeing this — but here we are. Let\'s get you back.</string>

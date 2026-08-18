@@ -144,6 +144,9 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.ktor.client.mock)
             implementation(libs.okio.fakefilesystem)
+            // Rendering a real bubble pulls rememberHaptics -> koinInject<UserPreferences>,
+            // which a test can only satisfy by building one over a Settings.
+            implementation(libs.multiplatform.settings)
         }
     }
 
