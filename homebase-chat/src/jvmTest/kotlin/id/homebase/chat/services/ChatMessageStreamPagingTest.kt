@@ -850,4 +850,49 @@ class ChatMessageStreamPagingTest {
             "the newly-arrived latest-page row must not appear until the user pages back to the latest",
         )
     }
+
+    /**
+     * Windowed-sync server backfill (#1223): `loadOlderMessagesFromServer` upserts a
+     * server page below local EOS, then re-reads with the window's HELD olderCursor.
+     * This proves that read pattern works: rows landing under an exhausted cursor
+     * are returned by the next fetch on that same cursor, disjoint from the loaded
+     * window, and re-raise hasMoreRows when they exceed the page size.
+     */
+    @Test
+    fun rowsUpsertedBelowExhaustedCursor_areReachableViaHeldOlderCursor() = runTest {
+        val conversationId = Uuid.random()
+        val baseTime = 1_700_000_000_000L
+
+        // The windowed fresh sync left only 5 recent messages locally.
+        val recent = (0 until 5).map { i ->
+            seedMessage(conversationId, userDateMs = baseTime + i * 1000L)
+        }
+        val (firstPage, hasMore, heldCursor) = fetchPage(conversationId, limit = 10)
+        assertEquals(5, firstPage.size)
+        assertFalse(hasMore, "local EOS — the exhausted state the server backfill starts from")
+
+        // A server page of 7 older messages lands (baseUpsertEntryZapZap path —
+        // seedMessage writes through the same convert+upsert pipeline).
+        val older = (1..7).map { i ->
+            seedMessage(conversationId, userDateMs = baseTime - i * 1000L)
+        }
+
+        // The re-read uses the held cursor with the normal local page size.
+        val (page2, more2, cursor2) = fetchPage(conversationId, limit = 4, cursor = heldCursor)
+        assertEquals(4, page2.size, "backfilled rows must be visible under the held cursor")
+        assertTrue(more2, "3 of 7 backfilled rows remain — hasMoreRows must be re-raised")
+        assertTrue(
+            page2.none { it.id in recent },
+            "the re-read page must be disjoint from the already-loaded window",
+        )
+
+        val (page3, more3, _) = fetchPage(conversationId, limit = 4, cursor = cursor2)
+        assertEquals(3, page3.size)
+        assertFalse(more3, "after draining the backfill, local EOS again")
+        assertEquals(
+            older.toSet(),
+            (page2 + page3).map { it.id }.toSet(),
+            "every backfilled row is reached exactly once — no gaps, no duplicates",
+        )
+    }
 }

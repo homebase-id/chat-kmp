@@ -476,4 +476,55 @@ class PaginatedConversationStateTest {
             "refilling the trimmed slice via the recovered cursor must not duplicate rows",
         )
     }
+
+    // ---------- windowed-sync server-backfill flags (#1223) ----------
+
+    @Test
+    fun serverFlags_defaultFalseAndSettersUpdateThem() {
+        val state = PaginatedConversationState()
+        state.setInitialWindow(convoId, listOf(message(userDateMs = 10, conversationId = convoId)))
+
+        val initial = state.getWindow(convoId)!!
+        assertFalse(initial.serverHasMoreOlder)
+        assertFalse(initial.isLoadingOlderFromServer)
+
+        state.setServerHasMoreOlder(convoId, true)
+        state.setLoadingOlderFromServer(convoId, true)
+        val updated = state.getWindow(convoId)!!
+        assertTrue(updated.serverHasMoreOlder)
+        assertTrue(updated.isLoadingOlderFromServer)
+    }
+
+    @Test
+    fun setInitialWindow_seedsServerHasMoreOlder() {
+        val state = PaginatedConversationState()
+        state.setInitialWindow(
+            convoId,
+            listOf(message(userDateMs = 10, conversationId = convoId)),
+            serverHasMoreOlder = true,
+        )
+        assertTrue(state.getWindow(convoId)!!.serverHasMoreOlder)
+    }
+
+    @Test
+    fun prependOlderMessages_clearsServerLoadingFlag() {
+        val state = PaginatedConversationState()
+        state.setInitialWindow(
+            convoId,
+            listOf(message(userDateMs = 100, conversationId = convoId)),
+            serverHasMoreOlder = true,
+        )
+        state.setLoadingOlderFromServer(convoId, true)
+
+        state.prependOlderMessages(
+            convoId,
+            listOf(message(userDateMs = 50, conversationId = convoId)),
+            QueryBatchCursor(),
+            hasMore = false,
+        )
+
+        val window = state.getWindow(convoId)!!
+        assertFalse(window.isLoadingOlderFromServer, "The local re-read is the terminal step of the server path")
+        assertTrue(window.serverHasMoreOlder, "Completeness is decided by the server response, not the re-read")
+    }
 }

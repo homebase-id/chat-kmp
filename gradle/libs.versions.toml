@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.1"
+agp = "9.3.1"
 android-compileSdk = "36"
 android-minSdk = "28"
 android-targetSdk = "36"
@@ -72,6 +72,8 @@ cryptography = "0.5.0"
 robolectric = "4.16.1"
 navigation = "2.9.2"
 koin = "4.2.1"
+# Held at 0.13.0: 0.14.2+ publishes klibs with abi_version 2.4.0, unreadable by Kotlin 2.3.x.
+# Bumping needs the Kotlin 2.4 upgrade first, or every Kotlin/Native target fails to resolve.
 filekit = "0.13.0"
 androidx-work = "2.11.2"
 atomicfu = "0.32.1"

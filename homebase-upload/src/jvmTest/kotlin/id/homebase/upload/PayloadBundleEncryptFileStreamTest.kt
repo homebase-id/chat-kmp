@@ -36,7 +36,6 @@ class PayloadBundleEncryptFileStreamTest {
             fileOps = fileOps,
             videoProcessor = VideoPayloadProcessor(fileOps),
             eventBus = EventBus(),
-            videoEncodePolicy = object : VideoEncodePolicy { override val allowTenBitVideo = false },
         )
 
     private fun bundle(vararg payloads: PayloadFile) =

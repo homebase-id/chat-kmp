@@ -15,12 +15,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.NetworkCheck
+import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat_kmp.homebase_common.BuildConfig
@@ -50,13 +58,11 @@ import id.homebase.api.client.diagnostics.ProbeStatus
 import id.homebase.api.client.diagnostics.ResolutionRung
 import id.homebase.api.client.diagnostics.ResolutionSource
 import id.homebase.core.clipboard.clipEntryOf
-import id.homebase.core.ui.screens.help.HelpClickableRow
-import id.homebase.core.ui.screens.help.HelpSectionHeader
-import id.homebase.core.widget.CheckboxRow
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.dev_menu_allow_ten_bit_video
-import id.homebase.resources.dev_menu_allow_ten_bit_video_description
 import id.homebase.resources.dev_menu_clear_data
 import id.homebase.resources.dev_menu_force_logout
 import id.homebase.resources.dev_menu_force_logout_confirm_action
@@ -80,7 +86,6 @@ import id.homebase.resources.dev_menu_section_database
 import id.homebase.resources.dev_menu_section_misc
 import id.homebase.resources.dev_menu_section_sync
 import id.homebase.resources.dev_menu_section_testing
-import id.homebase.resources.dev_menu_section_video
 import id.homebase.resources.dev_menu_test_notification
 import id.homebase.resources.dev_menu_test_scheduled_push
 import id.homebase.resources.dev_menu_test_temporal_read
@@ -219,34 +224,23 @@ fun DeveloperMenuUi(
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_misc))
-            Text(
-                text = BuildConfig.APP_BUILD_TIME,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            DevSectionHeader(title = stringResource(MR.string.dev_menu_section_misc))
+            DevFootnote(text = BuildConfig.APP_BUILD_TIME)
+
+            DevSectionHeader(title = stringResource(MR.string.dev_menu_section_sync))
+            SettingsRow(
+                icon = Icons.Outlined.Sync,
+                title = stringResource(MR.string.dev_menu_force_sync),
+                action = SettingsRowAction.Invoke {
+                    onAction(DeveloperMenuUiAction.ForceSyncAll)
+                },
             )
-            Spacer(modifier = Modifier.height(8.dp))
 
-            // Sync & Connection Section
-            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_sync))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    HelpClickableRow(
-                        label = stringResource(MR.string.dev_menu_force_sync),
-                        showChevron = false,
-                        onClick = { onAction(DeveloperMenuUiAction.ForceSyncAll) }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Network Status Section — layered DNS/TCP/TLS/ping probe (issue #1078)
+            // Layered DNS/TCP/TLS/ping probe (issue #1078)
             NetworkStatusSection(
                 isRunning = uiState.isRunningNetworkDiagnostic,
                 lastKnownGoodIp = uiState.lastKnownGoodIp,
@@ -256,82 +250,54 @@ fun DeveloperMenuUi(
                     clipboardScope.launch { clipboard.setClipEntry(clipEntryOf(snapshot)) }
                 },
             )
-            Spacer(modifier = Modifier.height(8.dp))
 
-            // Database Section
-            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_database))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    HelpClickableRow(
-                        label = stringResource(MR.string.dev_menu_clear_data),
-                        showChevron = false,
-                        onClick = { onAction(DeveloperMenuUiAction.ClearAllData) }
-                    )
-                    HelpClickableRow(
-                        label = stringResource(MR.string.dev_menu_force_logout),
-                        showChevron = false,
-                        onClick = { showForceLogoutConfirm = true }
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Testing Section
-            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_testing))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    HelpClickableRow(
-                        label = stringResource(MR.string.dev_menu_test_notification),
-                        showChevron = false,
-                        onClick = { onAction(DeveloperMenuUiAction.TestRichNotification) }
-                    )
-                    HelpClickableRow(
-                        label = stringResource(MR.string.dev_menu_test_temporal_read),
-                        showChevron = false,
-                        onClick = { onAction(DeveloperMenuUiAction.TestTemporalLocationRead) }
-                    )
-                    HelpClickableRow(
-                        label = stringResource(MR.string.dev_menu_test_scheduled_push),
-                        showChevron = true,
-                        onClick = onNavigateToScheduledPushTest
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Video Section
-            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_video))
-            CheckboxRow(
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(MR.string.dev_menu_allow_ten_bit_video),
-                checked = uiState.allowTenBitVideo,
-                onCheckedChange = { onAction(DeveloperMenuUiAction.ToggleAllowTenBitVideo) }
+            DevSectionHeader(title = stringResource(MR.string.dev_menu_section_database))
+            SettingsRow(
+                icon = Icons.Outlined.DeleteSweep,
+                title = stringResource(MR.string.dev_menu_clear_data),
+                isDestructive = true,
+                action = SettingsRowAction.Invoke {
+                    onAction(DeveloperMenuUiAction.ClearAllData)
+                },
             )
-            Text(
-                text = stringResource(MR.string.dev_menu_allow_ten_bit_video_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
+            SettingsRow(
+                icon = Icons.AutoMirrored.Outlined.Logout,
+                title = stringResource(MR.string.dev_menu_force_logout),
+                isDestructive = true,
+                action = SettingsRowAction.Invoke { showForceLogoutConfirm = true },
             )
-            Spacer(modifier = Modifier.height(8.dp))
 
-            // Crashlytics Section
-            HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_crashlytics))
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column {
-                    HelpClickableRow(
-                        label = stringResource(MR.string.dev_menu_trigger_test_crash),
-                        showChevron = false,
-                        onClick = { showCrashConfirm = true }
-                    )
-                }
-            }
-            Text(
-                text = stringResource(MR.string.dev_menu_trigger_test_crash_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp)
+            DevSectionHeader(title = stringResource(MR.string.dev_menu_section_testing))
+            SettingsRow(
+                icon = Icons.Outlined.NotificationsActive,
+                title = stringResource(MR.string.dev_menu_test_notification),
+                action = SettingsRowAction.Invoke {
+                    onAction(DeveloperMenuUiAction.TestRichNotification)
+                },
             )
+            SettingsRow(
+                icon = Icons.Outlined.LocationOn,
+                title = stringResource(MR.string.dev_menu_test_temporal_read),
+                action = SettingsRowAction.Invoke {
+                    onAction(DeveloperMenuUiAction.TestTemporalLocationRead)
+                },
+            )
+            SettingsRow(
+                modifier = Modifier.testTag("scheduledPushTestRow"),
+                icon = Icons.Outlined.Schedule,
+                title = stringResource(MR.string.dev_menu_test_scheduled_push),
+                action = SettingsRowAction.Navigate(onNavigateToScheduledPushTest),
+            )
+
+            DevSectionHeader(title = stringResource(MR.string.dev_menu_section_crashlytics))
+            SettingsRow(
+                icon = Icons.Outlined.Warning,
+                title = stringResource(MR.string.dev_menu_trigger_test_crash),
+                isDestructive = true,
+                action = SettingsRowAction.Invoke { showCrashConfirm = true },
+            )
+            DevFootnote(text = stringResource(MR.string.dev_menu_trigger_test_crash_description))
+
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -350,80 +316,90 @@ private fun NetworkStatusSection(
     onRun: () -> Unit,
     onCopy: (String) -> Unit,
 ) {
-    HelpSectionHeader(title = stringResource(MR.string.dev_menu_section_network))
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column {
-            HelpClickableRow(
-                label = stringResource(MR.string.dev_menu_run_network_diagnostics),
-                showChevron = false,
-                onClick = onRun,
-            )
+    DevSectionHeader(title = stringResource(MR.string.dev_menu_section_network))
 
-            // Always visible — the production-captured last-known-good IP, so it's confirmable
-            // without running the probe.
-            val ipValue = if (lastKnownGoodIp != null) {
-                val now = Clock.System.now().toEpochMilliseconds()
-                "${lastKnownGoodIp.ip} (${formatAge(now - lastKnownGoodIp.resolvedAtMs)})"
-            } else {
-                stringResource(MR.string.dev_menu_network_last_good_ip_none)
-            }
-            Text(
-                text = stringResource(MR.string.dev_menu_network_last_good_ip, ipValue),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+    // Always visible — the production-captured last-known-good IP, so it's confirmable
+    // without running the probe.
+    val ipValue = if (lastKnownGoodIp != null) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        "${lastKnownGoodIp.ip} (${formatAge(now - lastKnownGoodIp.resolvedAtMs)})"
+    } else {
+        stringResource(MR.string.dev_menu_network_last_good_ip_none)
+    }
+    SettingsRow(
+        icon = Icons.Outlined.NetworkCheck,
+        title = stringResource(MR.string.dev_menu_run_network_diagnostics),
+        supportingText = stringResource(MR.string.dev_menu_network_last_good_ip, ipValue),
+        action = SettingsRowAction.Invoke(onRun),
+    )
 
-            if (isRunning) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
-            }
+    if (isRunning) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+        }
+    }
 
-            diagnostics?.let { d ->
-                HorizontalDivider()
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    val serverLine = "Server: ${d.hostname}"
+    diagnostics?.let { d ->
+        Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val serverLine = "Server: ${d.hostname}"
+                Text(
+                    text = serverLine,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+
+                d.rungs.forEach { rung -> NetworkRungBlock(rung) }
+
+                if (d.captivePortalSuspected) {
                     Text(
-                        text = serverLine,
-                        style = MaterialTheme.typography.titleSmall,
+                        text = stringResource(MR.string.dev_menu_network_captive_portal),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
+                }
 
-                    d.rungs.forEach { rung -> NetworkRungBlock(rung) }
-
-                    if (d.captivePortalSuspected) {
-                        Text(
-                            text = stringResource(MR.string.dev_menu_network_captive_portal),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = { onCopy(buildNetworkSnapshot(d)) }) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = stringResource(MR.string.dev_menu_network_copy),
+                            modifier = Modifier.size(18.dp),
                         )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(onClick = { onCopy(buildNetworkSnapshot(d)) }) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = stringResource(MR.string.dev_menu_network_copy),
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = stringResource(MR.string.dev_menu_network_copy))
-                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = stringResource(MR.string.dev_menu_network_copy))
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun DevSectionHeader(title: String) {
+    SettingsSectionHeader(
+        title = title,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+    )
+}
+
+@Composable
+private fun DevFootnote(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+    )
 }
 
 /** One resolution-ladder rung: a source header (resolve status + IP), then its connect stages. */

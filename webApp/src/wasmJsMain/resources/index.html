@@ -49,14 +49,144 @@
             height: calc(100% - env(safe-area-inset-top));
             width: calc(100% - env(safe-area-inset-left) - env(safe-area-inset-right));
         }
+
+        #splash {
+            position: fixed;
+            inset: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            padding: 24px;
+            box-sizing: border-box;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-size: 14px;
+            transition: opacity 200ms ease-out;
+        }
+
+        #splash.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #splash-spinner {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            animation: splash-spin 900ms linear infinite;
+        }
+
+        #splash-bar {
+            width: 220px;
+            max-width: 60vw;
+            height: 3px;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        #splash-bar-fill {
+            width: 0;
+            height: 100%;
+            border-radius: 2px;
+            transition: width 250ms ease-out;
+        }
+
+        #splash-error {
+            max-width: 420px;
+            line-height: 1.5;
+        }
+
+        #splash.failed #splash-spinner,
+        #splash.failed #splash-bar {
+            display: none;
+        }
+
+        @keyframes splash-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #splash-spinner { animation-duration: 2.4s; }
+            #splash-bar-fill { transition: none; }
+        }
+
+        @media (prefers-color-scheme: light) {
+            #splash { background-color: #FFF; color: #5F6368; }
+            #splash-spinner { border-top-color: #1A73E8; border-right-color: #1A73E8; }
+            #splash-bar { background-color: #E8EAED; }
+            #splash-bar-fill { background-color: #1A73E8; }
+            #splash-error { color: #C5221F; }
+        }
+
+        @media (prefers-color-scheme: dark) {
+            #splash { background-color: #000; color: #9AA0A6; }
+            #splash-spinner { border-top-color: #8AB4F8; border-right-color: #8AB4F8; }
+            #splash-bar { background-color: #2A2A2A; }
+            #splash-bar-fill { background-color: #8AB4F8; }
+            #splash-error { color: #F28B82; }
+        }
     </style>
 </head>
 <body>
+<div id="splash" role="status" aria-live="polite">
+    <div id="splash-spinner"></div>
+    <div id="splash-stage">Starting…</div>
+    <div id="splash-bar"><div id="splash-bar-fill"></div></div>
+    <div id="splash-error" hidden></div>
+</div>
 <div id="ComposeApp"></div>
+
+<script type="application/javascript">
+    // Boot progress for the pre-first-frame window. The bundle download and wasm compile are
+    // reported from the loader below; everything after main() enters is reported from Kotlin
+    // (main.wasm.kt) through these same three globals.
+    (function () {
+        window.__homebaseBoot = function (label, percent) {
+            var stage = document.getElementById("splash-stage");
+            var fill = document.getElementById("splash-bar-fill");
+            if (stage && label) stage.textContent = label;
+            if (fill && typeof percent === "number") fill.style.width = percent + "%";
+        };
+
+        window.__homebaseBootDone = function () {
+            var splash = document.getElementById("splash");
+            if (splash == null) return;
+            window.__homebaseBoot(null, 100);
+            // Two frames: the first commits Compose's initial paint, the second starts the fade
+            // against it, so the canvas is never revealed mid-composition.
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    splash.classList.add("hidden");
+                    setTimeout(function () { splash.remove(); }, 250);
+                });
+            });
+        };
+
+        window.__homebaseBootError = function (message) {
+            var splash = document.getElementById("splash");
+            if (splash == null) return;
+            splash.classList.add("failed");
+            var stage = document.getElementById("splash-stage");
+            if (stage) stage.textContent = "Homebase Chat couldn't start";
+            var error = document.getElementById("splash-error");
+            if (error) {
+                error.hidden = false;
+                error.textContent = message;
+            }
+        };
+    })();
+</script>
 <script type="application/javascript">
     const unhandledError = (event, error) => {
         if (error instanceof WebAssembly.CompileError) {
-            document.getElementById("warning").style.display = "initial";
+            window.__homebaseBootError(
+                "This browser can't run WebAssembly modules this app needs. " +
+                "Try the latest Chrome, Edge, Firefox or Safari."
+            );
 
             // Hide a Scary Webpack Overlay which is less informative in this case.
             const webpackOverlay = document.getElementById("webpack-dev-server-client-overlay");
@@ -117,10 +247,22 @@
             window.close();
             return;
         }
-        ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "<%= htmlWebpackPlugin.files.js[0] %>"].forEach(function (src) {
+        var scripts = ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
+        var loaded = 0;
+        scripts.forEach(function (src) {
             var s = document.createElement("script");
             s.src = src;
             s.async = false; // script-inserted scripts run in insertion order when async=false
+            s.onload = function () {
+                loaded++;
+                var last = loaded === scripts.length;
+                // The bundle's onload only means its JS arrived — the wasm still has to be
+                // fetched and compiled before main() runs, so this tops out at 40%.
+                window.__homebaseBoot(last ? "Loading app…" : "Loading…", Math.round((loaded / scripts.length) * 40));
+            };
+            s.onerror = function () {
+                window.__homebaseBootError("Couldn't load " + src + ". Check your connection and reload.");
+            };
             document.body.appendChild(s);
         });
     })();

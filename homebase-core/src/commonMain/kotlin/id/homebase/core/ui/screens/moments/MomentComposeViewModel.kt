@@ -12,10 +12,10 @@ import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.core.clipboard.platformFileFromPath
 import id.homebase.core.moments.services.MediaInfo
 import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.util.contentType
 import id.homebase.core.util.resolveContentType
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
-import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -405,19 +405,19 @@ internal fun deriveMomentInstant(attachments: List<AttachmentPendingFile>): Inst
 internal fun AttachmentPendingFile.toAttachmentInput(): AttachmentInput = when (this) {
     is AttachmentPendingFile.File -> AttachmentInput(
         filePath = file.toString(),
-        contentType = resolveContentType(file.name, file.mimeType()?.toString()),
+        contentType = file.contentType(),
         displayName = file.name,
     )
 
     is AttachmentPendingFile.FileImage -> AttachmentInput(
         filePath = file.toString(),
-        contentType = resolveContentType(file.name, file.mimeType()?.toString()),
+        contentType = file.contentType(),
         displayName = file.name,
     )
 
     is AttachmentPendingFile.FileVideo -> AttachmentInput(
         filePath = file.toString(),
-        contentType = resolveContentType(file.name, file.mimeType()?.toString()),
+        contentType = file.contentType(),
         displayName = file.name,
         trimStartMs = trimStartMs,
         trimEndMs = trimEndMs,
@@ -431,7 +431,7 @@ internal fun AttachmentPendingFile.toAttachmentInput(): AttachmentInput = when (
 
     is AttachmentPendingFile.Audio -> AttachmentInput(
         filePath = audioFile.toString(),
-        contentType = resolveContentType(audioFile.name, audioFile.mimeType()?.toString()),
+        contentType = audioFile.contentType(),
         displayName = audioFile.name,
         waveformFile = waveformFile?.toString(),
         audioLengthSeconds = lengthSeconds,

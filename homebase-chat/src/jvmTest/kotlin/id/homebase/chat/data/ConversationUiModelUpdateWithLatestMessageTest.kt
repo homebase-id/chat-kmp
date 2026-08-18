@@ -122,13 +122,17 @@ class ConversationUiModelUpdateWithLatestMessageTest {
     }
 
     /**
-     * #1148 — a status message ("You updated the conversation photo") advances
-     * `latestMessageTimestamp` and gets that value persisted into `localAppData`,
+     * #1148 — a status message ("You updated the conversation photo") used to advance
+     * `latestMessageTimestamp` and get that value persisted into `localAppData`,
      * but `selectAllConversationPlusLastMessage` excludes `dataType = 202`. Cold-load
      * enrichment therefore arrives with a message OLDER than the seeded sort key; the
      * old `candidate >= latestMessageTimestamp` guard rejected it and the row kept
      * `mapToBasic`'s `" "` placeholder, rendering "No messages yet" beside a correct
      * timestamp. The preview must apply anyway; the sort key must not regress.
+     *
+     * #1153 stopped the live path advancing the sort key for status messages, but the
+     * seed is monotonic and owner-synced, so a value stamped by an older build (or by
+     * another of the owner's devices still on one) persists. This stays a live case.
      */
     @Test
     fun appliesPreview_whenSeedTimestampIsNewerThanEnrichmentMessage() {

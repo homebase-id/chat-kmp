@@ -23,12 +23,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
+import id.homebase.resources.contact_share_prompt_add
+import id.homebase.resources.contact_share_prompt_body
+import id.homebase.resources.contact_share_prompt_skip
+import id.homebase.resources.contact_share_prompt_title
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,15 +51,19 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
+import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.contactcard.VCardContact
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.MessageAttachmentBuilder
+import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.widget.MediaAttachmentEditor
@@ -72,13 +83,19 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
+import id.homebase.core.contactbook.ContactOverrideStore
+import id.homebase.core.ui.screens.contactbook.ContactCardImport
+import id.homebase.core.ui.screens.contactbook.ContactDraft
+import id.homebase.core.ui.screens.contactbook.ContactSaveResult
+import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
+import id.homebase.core.ui.screens.contactbook.saveNewContact
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.contentType
 import id.homebase.feed.MainActivity
 import id.homebase.feed.R
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -117,11 +134,19 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val cropResultBus: CropResultBus by inject()
     private val drawResultBus: DrawResultBus by inject()
 
+    private val contactRepository: ContactRepository by inject()
+    private val contactOverrideStore: ContactOverrideStore by inject()
+
     private var isSending by mutableStateOf(false)
     private var isProcessing by mutableStateOf(false)
     private var screenState by mutableStateOf<ShareScreenState>(ShareScreenState.Picking)
     private var editorAttachments by mutableStateOf<List<AttachmentPendingFile>>(emptyList())
     private var activeImageEdit by mutableStateOf<ActiveImageEdit?>(null)
+
+    /** Non-null when the incoming share parsed as a renderable vCard; drives the card send path. */
+    private var sharedContact by mutableStateOf<VCardContact?>(null)
+    private var sharedContactDescriptor: ContactCardDescriptor? = null
+    private var showContactEditor by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -169,16 +194,32 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
 
         // Extract shared content
         val tempDir = File(cacheDir, "share_temp")
-        val sharedContent = SharedContentExtractor.extract(intent, contentResolver, tempDir)
+        val rawContent = SharedContentExtractor.extract(intent, contentResolver, tempDir)
         Logger.d(tag = COLD_TAG) {
-            if (sharedContent == null) "initShareFlow: extract() returned null"
-            else "initShareFlow: extract() files=${sharedContent.files.size} hasText=${sharedContent.hasText} textLen=${sharedContent.text?.length ?: 0}"
+            if (rawContent == null) "initShareFlow: extract() returned null"
+            else "initShareFlow: extract() files=${rawContent.files.size} hasText=${rawContent.hasText} textLen=${rawContent.text?.length ?: 0}"
         }
-        if (sharedContent == null || sharedContent.isEmpty) {
+        if (rawContent == null || rawContent.isEmpty) {
             Toast.makeText(this, getString(R.string.share_nothing_to_share), Toast.LENGTH_SHORT).show()
             finish()
             return
         }
+
+        // A shared contact becomes a contact-card message, not an opaque .vcf attachment. A
+        // vCard that won't parse — or that parses to nothing renderable — leaves the descriptor
+        // null and falls through to the ordinary file/text paths, so the share is never dropped.
+        val contact = ContactShareDetector.detect(intent.type, rawContent)
+        val descriptor = contact?.let { ContactCardImport.toDescriptor(it) }
+        if (contact != null && descriptor != null) {
+            sharedContact = contact
+            sharedContactDescriptor = descriptor
+        }
+        Logger.d(tag = COLD_TAG) { "initShareFlow: contactShare=${sharedContactDescriptor != null}" }
+        // The contact card carries everything the vCard held, so the picker previews the name
+        // instead of the raw file and must not offer the media editor / "New Moment" path.
+        val sharedContent = sharedContact
+            ?.let { SharedContent(text = it.displayName) }
+            ?: rawContent
 
         // Check for direct share target (user tapped a conversation shortcut in the share sheet).
         // Try multiple detection mechanisms since Android behavior varies by version:
@@ -192,7 +233,10 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         if (directShareConvoId != null) {
             try {
                 val conversationId = Uuid.parse(directShareConvoId)
-                if (sharedContent.hasFiles) {
+                if (sharedContact != null) {
+                    // Falls through to setContent so the "add to your contacts?" prompt can render.
+                    sendContactCard(setOf(conversationId))
+                } else if (sharedContent.hasFiles) {
                     // Show overlay while converting files, then transition to editor
                     isProcessing = true
                     lifecycleScope.launch {
@@ -239,8 +283,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                 type = FileKitType.ImageAndVideo
             ) { file ->
                 file?.let {
-                    val mimeType = it.mimeType()?.toString() ?: ""
-                    val pending = if (mimeType.startsWith("video/")) {
+                    val pending = if (it.contentType().startsWith("video/")) {
                         AttachmentPendingFile.FileVideo(Uuid.random(), it)
                     } else {
                         AttachmentPendingFile.FileImage(Uuid.random(), it)
@@ -351,6 +394,44 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                         }
                     }
 
+                    is ShareScreenState.ContactSent -> {
+                        val contact = sharedContact
+                        if (!isProcessing && contact != null) {
+                            if (showContactEditor) {
+                                ContactEditSheet(
+                                    editing = null,
+                                    seed = remember(contact) { ContactCardImport.toDraft(contact) },
+                                    seedAdditionalPhones = remember(contact) {
+                                        sharedContactDescriptor?.let { ContactCardImport.extraPhones(it) }.orEmpty()
+                                    },
+                                    seedAdditionalEmails = remember(contact) {
+                                        sharedContactDescriptor?.let { ContactCardImport.extraEmails(it) }.orEmpty()
+                                    },
+                                    onSave = { draft, addPhones, addEmails, photo ->
+                                        showContactEditor = false
+                                        saveSharedContact(
+                                            draft,
+                                            addPhones,
+                                            addEmails,
+                                            photo,
+                                            state.conversationIds,
+                                        )
+                                    },
+                                    onDismiss = {
+                                        showContactEditor = false
+                                        finishToConversation(state.conversationIds)
+                                    },
+                                )
+                            } else {
+                                AddToContactsPrompt(
+                                    displayName = contact.displayName,
+                                    onAdd = { showContactEditor = true },
+                                    onSkip = { finishToConversation(state.conversationIds) },
+                                )
+                            }
+                        }
+                    }
+
                 }
 
                 // Crop/draw editor, mounted over the preview. These screens normally
@@ -426,7 +507,9 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         Logger.d(tag = COLD_TAG) {
             "onConversationsPicked: count=${conversationIds.size} hasFiles=${content.hasFiles}"
         }
-        if (content.hasFiles) {
+        if (sharedContact != null) {
+            sendContactCard(conversationIds)
+        } else if (content.hasFiles) {
             // Show overlay while converting files
             isProcessing = true
             lifecycleScope.launch {
@@ -593,6 +676,95 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         )
     }
 
+    /**
+     * Sends the parsed vCard as a contact-card message to each picked conversation, then parks on
+     * [ShareScreenState.ContactSent] so the user can decide whether to also save it to the app's
+     * address book. Navigation to the conversation happens once that prompt is answered.
+     */
+    private fun sendContactCard(conversationIds: Set<Uuid>) {
+        val descriptor = sharedContactDescriptor ?: return
+        if (isSending) return
+        isSending = true
+        isProcessing = true
+        screenState = ShareScreenState.ContactSent(conversationIds)
+
+        lifecycleScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    for (conversationId in conversationIds) {
+                        chatMessageSenderService.sendNewTypedMessage(
+                            messageUniqueId = Uuid.random(),
+                            conversationId = conversationId,
+                            content = MessageContent.ContactCard(descriptor),
+                            previousMessageUniqueId = null,
+                        )
+                    }
+                }
+                Toast.makeText(this@ShareReceiverActivity, getString(R.string.share_sent), Toast.LENGTH_SHORT).show()
+                isProcessing = false
+            } catch (e: Exception) {
+                Logger.e(tag = "ShareReceiver") { "Failed to send contact card: ${e.message}" }
+                isSending = false
+                isProcessing = false
+                Toast.makeText(
+                    this@ShareReceiverActivity,
+                    getString(R.string.share_send_failed, e.message ?: ""),
+                    Toast.LENGTH_LONG,
+                ).show()
+                finish()
+            } finally {
+                cleanupTempFiles()
+            }
+        }
+    }
+
+    private fun saveSharedContact(
+        draft: ContactDraft,
+        additionalPhones: List<String>,
+        additionalEmails: List<String>,
+        photo: PlatformFile?,
+        conversationIds: Set<Uuid>,
+    ) {
+        isProcessing = true
+        lifecycleScope.launch {
+            // Not saveContactDraft: the organization and the extra phones/emails the sheet collects
+            // live only in the override blob, and writing the contact alone drops them silently.
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    saveNewContact(
+                        contactOverrideStore,
+                        contactRepository,
+                        draft,
+                        additionalPhones,
+                        additionalEmails,
+                        photo,
+                    )
+                }
+            }
+            val saved = result.getOrNull() as? ContactSaveResult.Success
+            if (saved == null) {
+                Logger.e(tag = "ShareReceiver") { "Failed to save shared contact: ${result.exceptionOrNull()?.message}" }
+                Toast.makeText(
+                    this@ShareReceiverActivity,
+                    getString(R.string.share_contact_save_failed),
+                    Toast.LENGTH_LONG,
+                ).show()
+            } else if (saved.additionsFailed) {
+                Toast.makeText(
+                    this@ShareReceiverActivity,
+                    getString(R.string.share_contact_save_partial),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+            finishToConversation(conversationIds)
+        }
+    }
+
+    private fun finishToConversation(conversationIds: Set<Uuid>) {
+        conversationIds.firstOrNull()?.let { startActivity(openConversationIntent(it)) }
+        finish()
+    }
+
     private fun cleanupTempFiles() {
         safeDeleteRecursively(cacheDir.absolutePath, "share_temp")
     }
@@ -755,17 +927,19 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                         when (attachment) {
                             is AttachmentPendingFile.FileImage -> AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString() ?: "image/jpeg",
+                                contentType = attachment.file.contentType()
+                                    .takeUnless { it == "application/octet-stream" } ?: "image/jpeg",
                                 displayName = attachment.file.name,
                             )
                             is AttachmentPendingFile.FileVideo -> AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString() ?: "video/mp4",
+                                contentType = attachment.file.contentType()
+                                    .takeUnless { it == "application/octet-stream" } ?: "video/mp4",
                                 displayName = attachment.file.name,
                             )
                             is AttachmentPendingFile.File -> AttachmentInput(
                                 filePath = attachment.file.toString(),
-                                contentType = attachment.file.mimeType()?.toString() ?: "application/octet-stream",
+                                contentType = attachment.file.contentType(),
                                 displayName = attachment.file.name,
                             )
                             is AttachmentPendingFile.Gallery -> AttachmentInput(
@@ -831,6 +1005,29 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         }
     }
 
+    @Composable
+    private fun AddToContactsPrompt(
+        displayName: String,
+        onAdd: () -> Unit,
+        onSkip: () -> Unit,
+    ) {
+        AlertDialog(
+            onDismissRequest = onSkip,
+            title = { Text(stringResource(MR.string.contact_share_prompt_title)) },
+            text = { Text(stringResource(MR.string.contact_share_prompt_body, displayName)) },
+            confirmButton = {
+                TextButton(onClick = onAdd) {
+                    Text(stringResource(MR.string.contact_share_prompt_add))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onSkip) {
+                    Text(stringResource(MR.string.contact_share_prompt_skip))
+                }
+            },
+        )
+    }
+
     private sealed class ActiveImageEdit {
         abstract val requestId: Uuid
         abstract val attachmentId: Uuid
@@ -846,5 +1043,8 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             val attachments: List<AttachmentPendingFile>,
             val conversationTitle: String,
         ) : ShareScreenState()
+
+        /** Contact card sent; asking whether to also save it to the address book. */
+        data class ContactSent(val conversationIds: Set<Uuid>) : ShareScreenState()
     }
 }

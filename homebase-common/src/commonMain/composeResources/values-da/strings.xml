@@ -180,6 +180,7 @@
     <string name="login_try_again_button">Prøv igen</string>
     <string name="login_create_account_button">Opret konto</string>
     <string name="login_authenticating">Authentikerer…</string>
+    <string name="login_waiting_for_browser">Venter på login-bekræftelse — tjek din browser</string>
     <string name="login_successful">Login lykkedes</string>
     <string name="login_progress_sync">Synkroniserer drev %1$s</string>
     <string name="login_progress_sync_count">Poster %1$s / %2$s synkroniseret</string>
@@ -197,7 +198,6 @@
     <!-- Settings screen -->
     <string name="settings_appearance">Udseende</string>
     <string name="settings_haptic_feedback">Haptisk feedback</string>
-    <string name="settings_connections">Forbindelser</string>
     <string name="connections_already_sent_title">Anmodning allerede sendt</string>
     <string name="connections_already_sent_text">En forbindelsesanmodning til %1$s findes allerede. Åbn ejer konsollen for at se eller administrere den.</string>
     <string name="connections_refresh">Opdater</string>
@@ -219,7 +219,6 @@
     <string name="connections_empty_outgoing_subtitle">Tryk på + knappen for at sende en forbindelsesanmodning.</string>
     <string name="connections_send_request">Send anmodning</string>
     <string name="settings_notifications">Notifikationer</string>
-    <string name="settings_profile_info">Profiloplysninger</string>
     <string name="settings_security_setup">Sikkerhedsopsætning</string>
     <string name="settings_help">Hjælp</string>
     <string name="settings_storage">Lagerplads</string>
@@ -310,8 +309,6 @@
     <string name="settings_delete_account_dialog_title">Slet din konto?</string>
     <string name="settings_delete_account_dialog_text">Din konto er meget mere end bare denne app. Hvis du vil slette din konto kan du gøre det i ejer konsollen.</string>
     <string name="settings_open_owner_console">Åben ejer konsol</string>
-    <string name="settings_notifications_active">Notifikationer aktive</string>
-    <string name="settings_notifications_issue">Problem med notifikationer</string>
 
     <!-- Notification settings screen -->
     <string name="settings_notifications_disabled_title">Push-notifikationer er deaktiveret</string>
@@ -569,10 +566,10 @@
     <!-- Per-status reasons. %1$s is the recipient's display name. -->
     <string name="chat_introduce_preflight_reason_ready">%1$s er klar.</string>
     <string name="chat_introduce_preflight_reason_not_connected">Du er ikke forbundet med %1$s.</string>
-    <string name="chat_introduce_preflight_reason_not_configured">%1$s's identitet er ikke konfigureret endnu.</string>
+    <string name="chat_introduce_preflight_reason_not_configured">%1$s har ikke færdiggjort opsætningen af sin identitet — bed dem logge ind og gøre det færdigt.</string>
     <string name="chat_introduce_preflight_reason_requires_upgrade">%1$s's server skal opdateres.</string>
     <string name="chat_introduce_preflight_reason_not_permitted">%1$s tillader ikke introduktioner fra dig.</string>
-    <string name="chat_introduce_preflight_reason_rejected">%1$s afviste anmodningen.</string>
+    <string name="chat_introduce_preflight_reason_rejected">%1$s's server accepterede ikke anmodningen.</string>
     <string name="chat_introduce_preflight_reason_unreachable">Kunne ikke nå %1$s's server lige nu.</string>
     <string name="chat_introduce_preflight_reason_unknown">Noget gik galt med %1$s.</string>
     <string name="chat_leave_and_delete">Forlad og slet</string>
@@ -655,6 +652,7 @@
     <string name="chat_clear">Ryd</string>
     <string name="chat_options">Samtale menu</string>
     <string name="chat_no_messages">Ingen beskeder endnu</string>
+    <string name="chat_load_older_messages">Indlæs flere</string>
     <string name="chat_new_messages">Nye beskeder</string>
     <string name="chat_connection_invited">Inviteret</string>
     <string name="chat_connection_wants_to_connect">Vil forbinde</string>
@@ -906,6 +904,9 @@
     <string name="chat_poll_end_failed">Kunne ikke afslutte afstemningen. Prøv igen.</string>
     <string name="chat_poll_ended_self">Du afsluttede afstemningen: "%1$s"</string>
     <string name="chat_poll_ended_other">%1$s afsluttede afstemningen: "%2$s"</string>
+    <string name="chat_poll_roster_loading">Indlæser stemmer…</string>
+    <string name="chat_poll_roster_error">Kunne ikke indlæse hvem der stemte.</string>
+    <string name="chat_poll_roster_partial">Viser %1$d af %2$d stemmer</string>
 
     <string name="chat_unknown_message_type">Ukendt beskedtype — opdatér venligst appen.</string>
     <string name="chat_unknown_message_type_diagnostic">(type %1$d)</string>
@@ -1191,9 +1192,26 @@
     <string name="cd_video_scrubber_frame">Videoskrubberbillede</string>
     <string name="video_web_large_playback_unsupported">Store videoer kan endnu ikke afspilles i browseren</string>
 
-    <!-- Settings section headers -->
-    <string name="settings_section_general">Generelt</string>
-    <string name="settings_section_danger_zone">Farezone</string>
+    <!-- Settings hub -->
+    <string name="settings_section_preferences">Præferencer</string>
+    <string name="settings_section_apps">Apps</string>
+    <string name="settings_section_device">Enhed</string>
+    <string name="settings_section_account_actions">Kontohandlinger</string>
+    <string name="settings_edit_profile">Rediger profil</string>
+    <string name="settings_security_setup_desc">Adgangskode og gendannelsesnøgle</string>
+    <string name="settings_notifications_status_checking">Kontrollerer…</string>
+    <string name="settings_notifications_status_on">Push-notifikationer virker</string>
+    <string name="settings_notifications_status_error">Push-notifikationer virker ikke</string>
+    <string name="settings_appearance_theme">Tema: %1$s</string>
+    <string name="settings_moments_desc">Billeder, klip og noter</string>
+    <string name="settings_vault_desc">Krypteret dokumentopbevaring</string>
+    <string name="settings_location_desc">Privat placeringshistorik</string>
+    <string name="settings_contactbook_desc">Din adressebog og cirkler</string>
+    <string name="settings_storage_desc">Caches, database og medier</string>
+    <string name="settings_storage_used">%1$s brugt på denne enhed</string>
+    <string name="settings_help_desc">Logs og diagnostik</string>
+    <string name="settings_logout_desc">Dine data forbliver på din identitet</string>
+    <string name="settings_delete_account_desc">Permanent, i din ejer konsol</string>
 
     <!-- Audio player -->
     <string name="audio_pause">Pause</string>
@@ -1211,7 +1229,6 @@
     <string name="dev_menu_section_sync">Synkronisering &amp; forbindelse</string>
     <string name="dev_menu_section_database">Database &amp; lagerplads</string>
     <string name="dev_menu_section_testing">Testværktøjer</string>
-    <string name="dev_menu_section_video">Video</string>
     <string name="dev_menu_section_network">Netværksstatus</string>
     <string name="dev_menu_run_network_diagnostics">Kør netværksdiagnostik</string>
     <string name="dev_menu_network_copy">Kopiér diagnostik</string>
@@ -1239,8 +1256,6 @@
     <string name="scheduled_push_test_cancel_confirm_message_one_shot">Denne planlagte notifikation bliver annulleret.</string>
     <string name="scheduled_push_test_cancel_confirm_message_recurring">Denne notifikation gentages på ubestemt tid. Annullering er den eneste måde at stoppe den på.</string>
     <string name="scheduled_push_test_cancel_confirm_action">Annuller notifikation</string>
-    <string name="dev_menu_allow_ten_bit_video">Tillad 10-bit video</string>
-    <string name="dev_menu_allow_ten_bit_video_description">Behold uploadede 10-bit videoer i 10-bit (High 10) i stedet for at nedkonvertere til 8-bit. Kun til test — resultatet kan muligvis ikke afspilles på alle enheder.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
     <string name="dev_menu_trigger_test_crash">Udløs testnedbrud</string>
     <string name="dev_menu_trigger_test_crash_description">Får bevidst appen til at gå ned med det samme for at teste nedbrudsrapportering. Appen lukker øjeblikkeligt — åbn den igen bagefter, så nedbrudsrapporten kan uploades til Crashlytics.</string>

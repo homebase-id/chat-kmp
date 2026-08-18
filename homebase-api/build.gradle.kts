@@ -170,6 +170,7 @@ kotlin {
         "id.homebase.api.sync.database.OutboxSetNextRunTimeTest",
         "id.homebase.api.sync.database.OutboxSyncTest",
         "id.homebase.api.sync.database.OutboxTest",
+        "id.homebase.api.sync.DriveSyncCollectionTest",
         "id.homebase.api.sync.DriveSyncManagerTest",
         "id.homebase.api.sync.DriveSyncTest",
         "id.homebase.api.sync.LogoutLoginRoundTripTest",
