@@ -67,7 +67,7 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogText
@@ -771,7 +771,7 @@ fun ConversationListUi(
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
-    val isExpanded = isDesktop() &&  windowAdaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(800)
+    val isExpanded = isExpandedLayout()
     val scaffoldDirective = PaneScaffoldDirective(
         maxHorizontalPartitions = if (isExpanded) 2 else 1,
         horizontalPartitionSpacerSize = 0.dp, // Remove the white border
@@ -873,7 +873,7 @@ fun ConversationListUi(
         scope.launch {
             if (messagesUiState.fullScreenOverlay != null) {
                 onUiAction(ConversationListUiAction.CloseFullScreenOverlay)
-            } else if (!isDesktop()) {
+            } else if (!isExpanded) {
                 scaffoldNavigator.navigateBack(BackNavigationBehavior.PopUntilContentChange)
             }
         }
