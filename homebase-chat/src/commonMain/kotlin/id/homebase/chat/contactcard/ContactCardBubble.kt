@@ -273,7 +273,6 @@ internal fun ContactCardAvatar(
 
     // An identity publishes its avatar at a URL derived from the odinId, so the card shows a real
     // picture without the descriptor carrying one — nothing would fit in the 7 KB header anyway.
-    // Gated: see ContactCardDescriptor.avatarIdentity.
     val savedContacts = LocalSavedContactIdentities.current
     val identity = remember(descriptor, authorOdinId, savedContacts) {
         descriptor.avatarIdentity(authorOdinId, savedContacts)

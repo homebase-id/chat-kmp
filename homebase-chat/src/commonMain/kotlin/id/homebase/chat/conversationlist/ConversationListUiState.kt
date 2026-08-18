@@ -154,7 +154,6 @@ data class MessageListUiState(
      *  viewer) don't re-scroll. */
     val scrollToLatestRequest: Uuid? = null,
     val awaitingJumpMessageId: Uuid? = null,
-    /** Contact-book identities, published to the bubbles as [id.homebase.chat.contactcard.LocalSavedContactIdentities]. */
     val savedContactIdentities: Set<OdinId> = emptySet(),
 )
 

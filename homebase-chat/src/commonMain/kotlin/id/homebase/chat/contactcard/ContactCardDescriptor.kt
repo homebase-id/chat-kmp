@@ -49,22 +49,8 @@ data class ContactCardDescriptor(
     fun identity(): OdinId? =
         odinId.trim().ifBlank { null }?.let { runCatching { OdinId(it) }.getOrNull() }
 
-    /**
-     * The identity whose avatar this card may fetch, or null to fall back to initials.
-     *
-     * Drawing the avatar dials `https://<odinId>/pub/image`, and any client can author a card
-     * naming any host — so an ungated fetch is a tracking pixel: open the chat and the named host
-     * learns your IP and the moment you read it. Only hosts this app already dials on the same
-     * screens resolve:
-     *
-     * - [author] — the envelope's `originalAuthor`, which the card's author cannot forge. Their
-     *   avatar is already drawn beside their own messages in a group and in the 1:1 header.
-     * - a member of [savedContacts] — the contact list already draws their avatar.
-     *
-     * Empty [savedContacts] therefore denies, which is what a host that supplies nothing gets.
-     *
-     * Saving has no equivalent gate: this one exists because the bubble fetches without being asked.
-     */
+    // Ungated, this is a tracking pixel: any client can author a card naming any host, and drawing
+    // its avatar dials that host. Only hosts already dialled on the same screens resolve.
     fun avatarIdentity(author: String?, savedContacts: Set<OdinId> = emptySet()): OdinId? =
         identity()?.takeIf {
             it.domainName.equals(author?.trim(), ignoreCase = true) || it in savedContacts

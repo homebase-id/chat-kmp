@@ -323,8 +323,6 @@ class ContactCardValuesTest {
         )
     }
 
-    // The common case, and the one an author-only gate silently turned into a no-op: you share a
-    // contact out of your own book, so the host is one you already resolve in the contact list.
     @Test
     fun `a card naming someone in your book fetches whoever sent it`() {
         val card = card().copy(odinId = "todd.mitchell.demo.rocks")

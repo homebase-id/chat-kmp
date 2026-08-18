@@ -37,14 +37,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-/**
- * What a contact card is allowed to dial.
- *
- * Rendering an identity avatar issues `GET https://<odinId>/pub/image`, and the odinId comes off a
- * card any client may have authored — so the assertions here are on the Coil requests the render
- * actually produces, not on what the tree looks like. Both avatar branches clear their semantics,
- * so a screen-level assertion cannot tell a fetch from initials at all.
- */
+// Asserts on Coil requests, not on the tree: both avatar branches clear their semantics, so a
+// screen-level assertion cannot tell a fetch from initials.
 @OptIn(ExperimentalTestApi::class, ExperimentalSharedTransitionApi::class)
 class ContactCardAvatarFetchTest {
 
@@ -54,8 +48,6 @@ class ContactCardAvatarFetchTest {
 
     private val requested = CopyOnWriteArrayList<Any>()
 
-    // Records what the render asked for and fails every request: nothing here needs pixels, and a
-    // real fetch would leave the test dependent on the network.
     private val recorder = Interceptor { chain ->
         requested += chain.request.data
         ErrorResult(null, chain.request, UnsupportedOperationException("recorded"))
@@ -133,8 +125,6 @@ class ContactCardAvatarFetchTest {
 
     @Test
     fun `a card you sent naming someone off your book dials nobody`() = runComposeUiTest {
-        // The forwarded card: authored by you, but the identity on it was chosen by whoever sent
-        // it to you first.
         renderBubble(card(stranger), authorOdinId = me.domainName)
 
         assertEquals(emptyList(), publicImageHosts())
@@ -202,9 +192,8 @@ class ContactCardAvatarFetchTest {
         assertEquals(emptyList(), publicImageHosts())
     }
 
-    // Through MessageItem, not the bubble: the book crosses ConversationContent -> MessageItem ->
-    // MessageBubble -> MessageBubbleRaw to reach the avatar, and a direct bubble call cannot see a
-    // layer that swallows the CompositionLocal.
+    // Through MessageItem, not the bubble: a direct bubble call cannot see a layer that swallows
+    // the CompositionLocal.
     @Test
     fun `the book reaches a card rendered in the stream`() = runComposeUiTest {
         setContent {
