@@ -2,6 +2,7 @@ package id.homebase.api.client.identity
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.truncateToCodePoints
 
 @Immutable
 data class PublicIdentity(
@@ -16,8 +17,8 @@ data class PublicIdentity(
 )
 
 fun PublicIdentity.initials(): String {
-    val first = firstName?.trim()?.takeIf { it.isNotEmpty() }?.firstOrNull()
-    val last = surName?.trim()?.takeIf { it.isNotEmpty() }?.firstOrNull()
+    val first = firstName?.trim()?.takeIf { it.isNotEmpty() }?.truncateToCodePoints(1)
+    val last = surName?.trim()?.takeIf { it.isNotEmpty() }?.truncateToCodePoints(1)
 
     if (first != null && last != null) {
         return "${first}${last}".uppercase()
@@ -30,9 +31,12 @@ fun PublicIdentity.initials(): String {
         ?: emptyList()
 
     return when {
-        tokens.size >= 2 -> "${tokens.first().first()}${tokens.last().first()}".uppercase()
-        tokens.size == 1 -> tokens.first().first().uppercaseChar().toString()
-        else -> odinId.domainName.firstOrNull()?.uppercaseChar()?.toString() ?: "?"
+        tokens.size >= 2 ->
+            "${tokens.first().truncateToCodePoints(1)}${tokens.last().truncateToCodePoints(1)}"
+                .uppercase()
+
+        tokens.size == 1 -> tokens.first().truncateToCodePoints(1).uppercase()
+        else -> odinId.domainName.truncateToCodePoints(1).uppercase().ifEmpty { "?" }
     }
 }
 
