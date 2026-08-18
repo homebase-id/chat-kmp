@@ -18,12 +18,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 
-/**
- * Phone-width only: `ModalBottomSheet` hides itself *before* it asks whether it may, so a caller
- * that refuses inside `onDismissRequest` keeps a sheet that has already animated away, over a
- * dialog window that still eats every touch. The wide branch is a plain `Dialog` and cannot
- * reach that state, so these run at a forced compact size.
- */
+// Forced compact size: the wide branch is a plain Dialog and cannot reach the bug, so these pass
+// against broken code at the default 1024x768.
 @OptIn(ExperimentalTestApi::class)
 class EmergencyLocateSheetDismissTest {
 
@@ -53,7 +49,6 @@ class EmergencyLocateSheetDismissTest {
         waitForIdle()
     }
 
-    /** The scrim above the sheet, in the sheet's own window — the last root the scene put up. */
     private fun SkikoComposeUiTest.tapAboveTheSheet() {
         onAllNodes(isRoot()).onLast().performTouchInput {
             click(Offset(width / 2f, 4f))
