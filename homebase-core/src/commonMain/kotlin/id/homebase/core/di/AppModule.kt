@@ -265,7 +265,7 @@ val appModule = module {
     // Read+write contact source of truth lives in homebase-api (ContactRepository); the contact
     // book consumes it directly. No core-side stream/service wrapper.
     // User overrides of profile-synced fields (bulk app-data tier), shared by list + detail.
-    singleOf(::ContactOverrideStore)
+    single { ContactOverrideStore(get(), get(), get()) }
 
     // region Location add-on
     single { LocationPreferences(get()) }
@@ -1002,7 +1002,9 @@ val appModule = module {
         ShareContactPickerViewModel(
             conversationId = params.get(),
             repo = get(),
+            overrideStore = get(),
             chatMessageSenderService = get(),
+            fileOperationsProvider = get(),
         )
     }
     viewModelOf(::ContactDetailViewModel)
