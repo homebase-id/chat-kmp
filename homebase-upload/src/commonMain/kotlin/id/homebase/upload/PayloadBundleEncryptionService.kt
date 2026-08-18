@@ -21,7 +21,6 @@ class PayloadBundleEncryptionService(
     private val fileOps: FileOperationsProvider,
     private val videoProcessor: VideoPayloadProcessor,
     private val eventBus: EventBus,
-    private val videoEncodePolicy: VideoEncodePolicy,
 ) : PayloadBundleEncryptor {
 
     override suspend fun encryptBundle(
@@ -89,7 +88,6 @@ class PayloadBundleEncryptionService(
                         descriptorContentPayloadKey = "${UploadProtocol.DEFAULT_PAYLOAD_DESCRIPTOR_KEY}$index",
                         trimStartMs = payload.trimStartMs,
                         trimEndMs = payload.trimEndMs,
-                        allowTenBit = videoEncodePolicy.allowTenBitVideo,
                         inputBlobUrl = payload.inputBlobUrl,
                     )
 
@@ -113,10 +111,11 @@ class PayloadBundleEncryptionService(
 
                 index++;
             }
-        } catch (e: SourceUnavailableException) {
-            // A source vanished between the up-front probe and its read (the
-            // swept-mid-bundle race). Reap the encrypted temps produced so far so the
-            // failed send leaves no orphaned enc*/video temps, then rethrow to fail soft.
+        } catch (e: Throwable) {
+            // Any failure mid-bundle — a source swept between the up-front probe and its read,
+            // or a video whose transcode failed (VideoCompressionFailedException). Reap the
+            // encrypted temps produced so far so the failed send leaves no orphaned
+            // enc*/video temps, then rethrow to fail soft.
             newPayloads.forEach { runCatching { fileOps.deleteTempFile(it.filePath) } }
             // The per-file delete above reaps a staged HLS index.ts but leaves its
             // hls_<uuid>/ parent (and sibling playlist). In the durable staging dir that

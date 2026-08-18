@@ -1,5 +1,6 @@
 package id.homebase.chat.contactcard
 
+import id.homebase.api.common.OdinId
 import id.homebase.api.util.codePointCount
 import kotlinx.serialization.Serializable
 
@@ -19,27 +20,68 @@ data class ContactCardDescriptor(
     val organization: String = "",
     val phones: List<String> = emptyList(),
     val emails: List<String> = emptyList(),
+    /**
+     * The Homebase identity this card is *about* (not its author — that's the envelope's
+     * `originalAuthor`). Optional: a vCard-sourced card has none. Its only use today is the
+     * published avatar at `https://<odinId>/pub/image`, which is why the card can show a real
+     * picture without carrying one.
+     */
+    val odinId: String = "",
     val schemaVersion: Int = 1,
 ) {
+    /** Blank when a card carries nothing renderable; the caller supplies a localized fallback. */
     fun summaryLine(): String = displayName.ifBlank {
-        organization.ifBlank { phones.firstOrNull() ?: emails.firstOrNull() ?: FALLBACK_SUMMARY }
-    }
+        // A card from another client may carry only the structured name, which would otherwise
+        // title itself with a phone number.
+        listOf(givenName, surname).filter { it.isNotBlank() }.joinToString(" ").ifBlank {
+            organization.ifBlank {
+                identity()?.domainName
+                    ?: (phones + emails).firstOrNull { it.isNotBlank() }.orEmpty()
+            }
+        }
+    }.scrubbed()
+
+    /**
+     * The identity, only when it really parses as one. A card authored elsewhere can put anything
+     * in the field, and it becomes a URL host — so it is validated at the point of use, not merely
+     * on arrival.
+     */
+    fun identity(): OdinId? =
+        odinId.trim().ifBlank { null }?.let { runCatching { OdinId(it) }.getOrNull() }
+
+    // Ungated, this is a tracking pixel: any client can author a card naming any host, and drawing
+    // its avatar dials that host. Only hosts already dialled on the same screens resolve.
+    fun avatarIdentity(author: String?, savedContacts: Set<OdinId> = emptySet()): OdinId? =
+        identity()?.takeIf {
+            it.domainName.equals(author?.trim(), ignoreCase = true) || it in savedContacts
+        }
 
     fun isValid(): Boolean {
         if (displayName.codePointCount() > MAX_NAME_CODEPOINTS) return false
+        if (odinId.codePointCount() > MAX_VALUE_CODEPOINTS) return false
         if (givenName.codePointCount() > MAX_NAME_CODEPOINTS) return false
         if (surname.codePointCount() > MAX_NAME_CODEPOINTS) return false
         if (organization.codePointCount() > MAX_NAME_CODEPOINTS) return false
         if (phones.size > MAX_VALUES_PER_KIND || emails.size > MAX_VALUES_PER_KIND) return false
         if (phones.any { it.codePointCount() > MAX_VALUE_CODEPOINTS }) return false
         if (emails.any { it.codePointCount() > MAX_VALUE_CODEPOINTS }) return false
-        return displayName.isNotBlank() || phones.isNotEmpty() || emails.isNotEmpty()
+        return displayName.isNotBlank() || phones.isNotEmpty() || emails.isNotEmpty() ||
+            identity() != null
     }
 
     companion object {
         const val MAX_NAME_CODEPOINTS = 80
         const val MAX_VALUE_CODEPOINTS = 120
         const val MAX_VALUES_PER_KIND = 10
-        const val FALLBACK_SUMMARY = "Contact"
     }
+}
+
+/**
+ * Drops control and bidi-override characters. A card is authored by a remote client and its text
+ * reaches the bubble, the conversation-list preview and — once saved — the stored contact name, so
+ * a U+202E in a display name reverses everything after it everywhere that contact is shown.
+ */
+fun String.scrubbed(): String = filterNot { c ->
+    c < ' ' || c == '\u007F' || c == '\uFEFF' ||
+        c in '\u200B'..'\u200F' || c in '\u202A'..'\u202E' || c in '\u2066'..'\u2069'
 }

@@ -1229,7 +1229,6 @@
     <string name="dev_menu_section_sync">Synkronisering &amp; forbindelse</string>
     <string name="dev_menu_section_database">Database &amp; lagerplads</string>
     <string name="dev_menu_section_testing">Testværktøjer</string>
-    <string name="dev_menu_section_video">Video</string>
     <string name="dev_menu_section_network">Netværksstatus</string>
     <string name="dev_menu_run_network_diagnostics">Kør netværksdiagnostik</string>
     <string name="dev_menu_network_copy">Kopiér diagnostik</string>
@@ -1257,8 +1256,6 @@
     <string name="scheduled_push_test_cancel_confirm_message_one_shot">Denne planlagte notifikation bliver annulleret.</string>
     <string name="scheduled_push_test_cancel_confirm_message_recurring">Denne notifikation gentages på ubestemt tid. Annullering er den eneste måde at stoppe den på.</string>
     <string name="scheduled_push_test_cancel_confirm_action">Annuller notifikation</string>
-    <string name="dev_menu_allow_ten_bit_video">Tillad 10-bit video</string>
-    <string name="dev_menu_allow_ten_bit_video_description">Behold uploadede 10-bit videoer i 10-bit (High 10) i stedet for at nedkonvertere til 8-bit. Kun til test — resultatet kan muligvis ikke afspilles på alle enheder.</string>
     <string name="dev_menu_section_crashlytics">Crashlytics</string>
     <string name="dev_menu_trigger_test_crash">Udløs testnedbrud</string>
     <string name="dev_menu_trigger_test_crash_description">Får bevidst appen til at gå ned med det samme for at teste nedbrudsrapportering. Appen lukker øjeblikkeligt — åbn den igen bagefter, så nedbrudsrapporten kan uploades til Crashlytics.</string>

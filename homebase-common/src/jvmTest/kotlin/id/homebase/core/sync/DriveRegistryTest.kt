@@ -1,6 +1,7 @@
 package id.homebase.core.sync
 
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.NetworkException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.auth.ApiCredentials
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import java.nio.channels.UnresolvedAddressException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -239,6 +241,51 @@ class DriveRegistryTest {
 
         assertFailsWith<ClientException> {
             registry.addDrive(feedLabeledDrive)
+        }
+        db.close()
+    }
+
+    // CIO throws UnresolvedAddressException, an IllegalArgumentException — a catch on IOException
+    // misses it.
+    @Test
+    fun addDriveBestEffortSwallowsOfflineTransportFailure() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder(
+            fetchResolver = { throw NetworkException(UnresolvedAddressException()) },
+        )
+        val registry = buildRegistry(db, recorder = recorder)
+
+        registry.addDriveBestEffort(feedLabeledDrive)
+
+        assertTrue(recorder.uploads.isEmpty(), "nothing should have been written")
+        assertTrue(recorder.updates.isEmpty(), "nothing should have been written")
+        db.close()
+    }
+
+    /** Same, for a path that reaches the registry without the API layer's wrap. */
+    @Test
+    fun addDriveBestEffortSwallowsRawCioConnectFailure() = runTest {
+        val db = createTestDatabaseManager()
+        val registry = buildRegistry(
+            db,
+            recorder = WriteRecorder(fetchResolver = { throw UnresolvedAddressException() }),
+        )
+
+        registry.addDriveBestEffort(feedLabeledDrive)
+
+        db.close()
+    }
+
+    @Test
+    fun addDriveBestEffortPropagatesNonTransportFailures() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder(
+            uploadErrorOnCall = { OdinClientErrorCode.UnhandledScenario },
+        )
+        val registry = buildRegistry(db, recorder = recorder)
+
+        assertFailsWith<ClientException> {
+            registry.addDriveBestEffort(feedLabeledDrive)
         }
         db.close()
     }

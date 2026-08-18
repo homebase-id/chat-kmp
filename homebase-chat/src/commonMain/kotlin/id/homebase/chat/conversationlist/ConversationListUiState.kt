@@ -154,6 +154,7 @@ data class MessageListUiState(
      *  viewer) don't re-scroll. */
     val scrollToLatestRequest: Uuid? = null,
     val awaitingJumpMessageId: Uuid? = null,
+    val savedContactIdentities: Set<OdinId> = emptySet(),
 )
 
 /**

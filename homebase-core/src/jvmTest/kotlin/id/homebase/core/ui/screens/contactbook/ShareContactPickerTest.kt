@@ -4,6 +4,7 @@ package id.homebase.core.ui.screens.contactbook
 
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -142,10 +143,39 @@ class ShareContactPickerTest {
     }
 
     @Test
-    fun `organization stays blank because ContactBookEntry has no such field`() {
-        val descriptor = assertNotNull(ContactCardImport.toDescriptor(entry(phone = "+14155550123")))
+    fun `organization is carried when the entry has one, and blank when it does not`() {
+        val plain = assertNotNull(ContactCardImport.toDescriptor(entry(phone = "+14155550123")))
+        assertEquals("", plain.organization)
 
-        assertEquals("", descriptor.organization)
+        // It lives only in the override blob, so the picker must apply that before building a card.
+        val withOrg = entry(phone = "+14155550123")
+            .withOverride(ContactFieldOverlay(organization = "Vance Labs"))
+
+        assertEquals("Vance Labs", assertNotNull(ContactCardImport.toDescriptor(withOrg)).organization)
+    }
+
+    @Test
+    fun `an override's extras and edited primary all reach the descriptor`() {
+        val overridden = entry(phone = "+14155550123", email = "ada@example.com").withOverride(
+            ContactFieldOverlay(
+                phone = "+14155550999",
+                additionalPhones = listOf("+14155550124"),
+                additionalEmails = listOf("ada.vance@work.example"),
+            ),
+        )
+
+        val descriptor = assertNotNull(shareContactCandidates(listOf(overridden), "").single().descriptor)
+
+        assertEquals(listOf("+14155550999", "+14155550124"), descriptor.phones)
+        assertEquals(listOf("ada@example.com", "ada.vance@work.example"), descriptor.emails)
+    }
+
+    @Test
+    fun `a contact whose only values are additional is shareable`() {
+        val overridden = entry(displayName = "", givenName = null, surname = null)
+            .withOverride(ContactFieldOverlay(additionalPhones = listOf("+14155550124")))
+
+        assertTrue(shareContactCandidates(listOf(overridden), "").single().shareable)
     }
 
     @Test

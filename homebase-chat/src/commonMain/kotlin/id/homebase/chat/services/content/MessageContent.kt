@@ -126,13 +126,20 @@ sealed interface MessageContent {
 
     /**
      * A shared contact card (name, organization, phones, emails) — produced by sharing a vCard
-     * into the app. [actions] inherits [ActionPolicy.StructuredOneShot]; the card is an
-     * immutable snapshot of what the sender shared, so there is nothing to edit and forwarding
-     * a stranger's phone number out of context is a leak the long-press menu shouldn't invite.
-     * [descriptor] follows the same nullability contract as [Event.descriptor].
+     * into the app. [descriptor] follows the same nullability contract as [Event.descriptor].
      */
     data class ContactCard(val descriptor: ContactCardDescriptor?) : MessageContent {
-        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_CONTACT_LABEL
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,            // it is a snapshot of someone else's details, not your text
+            allowReply = true,            // "is this the right number?"
+            allowForward = true,          // passing a contact on is what you do with one, and the
+                                          // card is self-contained — no conversation to lose
+            allowShare = false,           // the detail view copies each value on its own
+            allowInlineReactions = true,
+            allowReactionDetails = true,  // reactions are on, so who-reacted must be too
+        )
+        override val displayLabel: String
+            get() = descriptor?.summaryLine()?.ifBlank { null } ?: UNPARSEABLE_CONTACT_LABEL
 
         // A contact's name is somebody else's PII; it must not reach the recipient's push
         // provider. Generic wire label — the real card renders from the decrypted header.

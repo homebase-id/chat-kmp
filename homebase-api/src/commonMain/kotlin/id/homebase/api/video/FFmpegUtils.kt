@@ -32,14 +32,18 @@ expect object FFmpegUtils {
      */
     suspend fun probeVideo(inputPath: String): VideoTrackInfo?
 
+    /**
+     * Re-encodes [inputPath] and returns the output path. Never returns the input untouched:
+     * there is no "already fine, skip it" outcome, because that would ship whatever the source
+     * was. A failure throws [VideoCompressionFailedException].
+     */
     suspend fun compressVideo(
         inputPath: String,
         onProgress: ((Float) -> Unit)? = null,
         trimStartMs: Long? = null,
         trimEndMs: Long? = null,
         quality: VideoQuality = VideoQuality.STANDARD,
-        allowTenBit: Boolean = false,
-    ): String?
+    ): String
 
     suspend fun getDurationMs(inputPath: String): Long
 

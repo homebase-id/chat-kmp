@@ -113,9 +113,11 @@ fun GroodleBubble(
         .clip(RoundedCornerShape(16.dp))
         .background(containerColor)
         .let {
-            if (canOpenDetail || onLongClick != null) {
+            // Off-stream the bubble must take no pointer: a handler that can't open the detail
+            // still eats the tap the action-menu scrim needs to dismiss.
+            if (canOpenDetail) {
                 it.combinedClickable(
-                    onClick = { if (canOpenDetail) showDetail = true },
+                    onClick = { showDetail = true },
                     onLongClick = onLongClick,
                 )
             } else it

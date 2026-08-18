@@ -648,7 +648,8 @@ class AuthConnectionCoordinator(
      * it locally) — persisting again would just churn the file with the same content.
      */
     suspend fun mountDrive(drive: LabeledDrive, persist: Boolean = true) {
-        if (persist) driveRegistry.addDrive(drive)
+        // Must not throw: callers activate add-ons from a viewModelScope with no handler.
+        if (persist) driveRegistry.addDriveBestEffort(drive)
         val owner = drive.ownerOdinId
         val newlyMounted = driveSyncManager.mountDrive(drive.drive.alias, drive.label, owner)
         if (!newlyMounted) {

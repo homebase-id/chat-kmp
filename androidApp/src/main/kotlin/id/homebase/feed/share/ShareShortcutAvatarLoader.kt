@@ -10,6 +10,7 @@ import android.graphics.Rect
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.IconCompat
 import co.touchlab.kermit.Logger
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.image.HomebaseImageLoader
@@ -137,7 +138,7 @@ class ShareShortcutAvatarLoader(
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
         val textBounds = Rect()
-        val displayInitials = initials.take(2).uppercase()
+        val displayInitials = initials.truncateToCodePoints(2).uppercase()
         textPaint.getTextBounds(displayInitials, 0, displayInitials.length, textBounds)
         val y = size / 2f + textBounds.height() / 2f
         canvas.drawText(displayInitials, size / 2f, y, textPaint)
