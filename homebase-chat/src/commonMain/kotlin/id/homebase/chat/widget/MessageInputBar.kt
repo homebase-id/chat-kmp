@@ -123,6 +123,7 @@ import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.clipboard.ClipboardImagePasteEffect
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.pasteImageContextMenuItem
@@ -213,6 +214,13 @@ fun MessageInputBar(
     val linkPreviewProvider: LinkPreviewProvider = koinInject()
     var cancelledUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var lastFetchedUrl by remember { mutableStateOf<String?>(null) }
+
+    // Web only: Cmd/Ctrl+V arrives as a DOM paste event carrying the image, which needs no
+    // permission prompt. Mounted once here rather than per text field so a single conversation
+    // never registers two listeners and attaches the same paste twice.
+    ClipboardImagePasteEffect(enabled = onPasteImage != null) { bytes ->
+        onPasteImage?.invoke(bytes)
+    }
 
     LaunchedEffect(textFieldState.annotatedString.text) {
         val text = textFieldState.annotatedString.text
@@ -460,14 +468,6 @@ fun MessageTextFieldExpanded(
                                     onPasteImage.invoke(imageBytes)
                                     true
                                 } else {
-                                    // The browser clipboard is async-only, so the read above
-                                    // always returns null on web. Start the async read and
-                                    // report the event unhandled: consuming it would swallow
-                                    // an ordinary text paste, and we cannot know yet whether
-                                    // the clipboard holds an image.
-                                    pasteScope.launch {
-                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                    }
                                     false
                                 }
                             }
@@ -760,14 +760,6 @@ fun MessageTextFieldCompact(
                                                     onPasteImage.invoke(imageBytes)
                                                     true
                                                 } else {
-                                                    // The browser clipboard is async-only, so the read above
-                                                    // always returns null on web. Start the async read and
-                                                    // report the event unhandled: consuming it would swallow
-                                                    // an ordinary text paste, and we cannot know yet whether
-                                                    // the clipboard holds an image.
-                                                    pasteScope.launch {
-                                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                                    }
                                                     false
                                                 }
                                             }
