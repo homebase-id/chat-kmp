@@ -47,6 +47,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.avatars.PublicAvatar
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_reaction
@@ -232,7 +233,7 @@ private fun EmojiToggleChip(
             .clickable(onClick = onClick),
     ) {
         Text(
-            text = label,
+            text = label.withEmojiFont(),
             style = MaterialTheme.typography.labelLarge,
             color = textColor,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -297,7 +298,7 @@ private fun ReactionRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (isOwner) youLabel else item.displayName,
+                text = (if (isOwner) youLabel else item.displayName).withEmojiFont(),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -311,7 +312,7 @@ private fun ReactionRow(
         }
 
         Text(
-            text = item.emoji,
+            text = item.emoji.withEmojiFont(),
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
         )
     }

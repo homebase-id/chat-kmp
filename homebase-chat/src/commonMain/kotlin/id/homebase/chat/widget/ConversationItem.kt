@@ -44,6 +44,8 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.emojiFontFamily
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -107,10 +109,11 @@ fun ConversationItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val title = if (enrichedData.conversation.isWithSelf)
+                    stringResource(MR.string.chat_note_to_self)
+                else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you))
                 Text(
-                    text = if (enrichedData.conversation.isWithSelf)
-                        stringResource(MR.string.chat_note_to_self)
-                    else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you)),
+                    text = title.withEmojiFont(),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
@@ -369,6 +372,7 @@ fun ConversationMessagePreview(
     prefix: String? = null,
     prefixColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
+    val emojiFamily = emojiFontFamily()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -376,7 +380,7 @@ fun ConversationMessagePreview(
     ) {
         if (prefix != null) {
             Text(
-                text = prefix,
+                text = prefix.withEmojiFont(emojiFamily),
                 style = MaterialTheme.typography.bodyMedium,
                 color = prefixColor.copy(
                     alpha = if (isDeleted) 0.5f else 1f
@@ -401,8 +405,8 @@ fun ConversationMessagePreview(
             // strip is the same AST walk the renderer and previews share, and it
             // sidesteps the old RichTextState infinite-recomposition footgun
             // entirely (no Compose MutableState is mutated during composition).
-            val previewText = remember(text) {
-                markdownToPlainPreview(text, maxCodePoints = 200)
+            val previewText = remember(text, emojiFamily) {
+                markdownToPlainPreview(text, maxCodePoints = 200).withEmojiFont(emojiFamily)
             }
 
             Text(

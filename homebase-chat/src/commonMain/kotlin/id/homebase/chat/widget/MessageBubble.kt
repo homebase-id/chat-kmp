@@ -96,6 +96,8 @@ import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.withEmojiFont
+
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.initials
 import id.homebase.core.util.isDesktopOrWeb
@@ -1155,7 +1157,7 @@ fun InlineReplyPreview(
                     youLabel = stringResource(MR.string.you),
                 )
                 Text(
-                    text = authorDisplayName,
+                    text = authorDisplayName.withEmojiFont(),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
                     maxLines = 1,
@@ -1180,7 +1182,7 @@ fun InlineReplyPreview(
                             }
                         }
                         Text(
-                            text = displayMessage,
+                            text = displayMessage.withEmojiFont(),
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = replyPreviewMaxLines,

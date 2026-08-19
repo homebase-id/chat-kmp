@@ -152,6 +152,7 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
@@ -754,15 +755,14 @@ fun ConversationContent(
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
-                                    Text(
-                                        text = if (conversation.conversation.isWithSelf) stringResource(
-                                            MR.string.chat_note_to_self
-                                        )
+                                    val conversationTitle =
+                                        if (conversation.conversation.isWithSelf)
+                                            stringResource(MR.string.chat_note_to_self)
                                         else conversation.getDisplayName(
-                                            youLabel = stringResource(
-                                                MR.string.you
-                                            )
-                                        ),
+                                            youLabel = stringResource(MR.string.you),
+                                        )
+                                    Text(
+                                        text = conversationTitle.withEmojiFont(),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -2013,7 +2013,7 @@ private fun PinnedMessagesSheet(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = previewText,
+                                text = previewText.withEmojiFont(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 2,
