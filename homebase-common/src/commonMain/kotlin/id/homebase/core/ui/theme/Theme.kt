@@ -163,7 +163,7 @@ fun HomebaseTheme(
         CompositionLocalProvider(LocalHomebaseExtendedColors provides extendedColors) {
                 MaterialTheme(
                         colorScheme = colorScheme,
-                        typography = HomebaseTypography,
+                        typography = appTypography(),
                         content = content
                 )
         }
