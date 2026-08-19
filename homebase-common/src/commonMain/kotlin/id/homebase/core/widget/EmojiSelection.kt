@@ -71,6 +71,7 @@ import id.homebase.resources.emoji_none_found
 import id.homebase.resources.emoji_search_placeholder
 import id.homebase.resources.error
 import id.homebase.resources.search
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -201,7 +202,7 @@ fun EmojiSelection(
                                 tonalElevation = if (selectedSection == section) 4.dp else 0.dp
                             ) {
                                 Text(
-                                    text = EmojiParser.getSectionEmoji(section),
+                                    text = EmojiParser.getSectionEmoji(section).withEmojiFont(),
                                     fontSize = 24.sp,
                                     modifier = Modifier.padding(4.dp)
                                 )
@@ -255,7 +256,7 @@ fun EmojiSelection(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = emoji.emoji,
+                            text = emoji.emoji.withEmojiFont(),
                             autoSize = TextAutoSize.StepBased(14.sp, 24.sp),
                             textAlign = TextAlign.Center
                         )
@@ -304,7 +305,7 @@ fun EmojiSelection(
                                             modifier = Modifier.size(40.dp)
                                         ) {
                                             Text(
-                                                text = emoji.emoji,
+                                                text = emoji.emoji.withEmojiFont(),
                                                 fontSize = 20.sp
                                             )
                                         }
@@ -317,7 +318,7 @@ fun EmojiSelection(
                                                 modifier = Modifier.size(40.dp)
                                             ) {
                                                 Text(
-                                                    text = emoji.emoji,
+                                                    text = emoji.emoji.withEmojiFont(),
                                                     fontSize = 20.sp
                                                 )
                                             }
