@@ -1145,7 +1145,7 @@ private fun ReactionDetailRow(
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = reaction.emoji.withEmojiFont(),
+            text = reaction.emoji,
             style = MaterialTheme.typography.headlineMedium,
         )
     }
@@ -1919,7 +1919,7 @@ internal fun EmojiReactionButton(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = emoji.withEmojiFont(),
+                text = emoji,
                 style = MaterialTheme.typography.titleMedium,
                 color = activeTint,
             )
@@ -3260,7 +3260,7 @@ private fun CommentRow(
             }
         } else {
             Text(
-                text = comment.body,
+                text = comment.body.withEmojiFont(),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.fillMaxWidth(),
             )

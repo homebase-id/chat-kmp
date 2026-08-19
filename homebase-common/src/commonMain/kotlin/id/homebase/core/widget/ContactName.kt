@@ -15,7 +15,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.common.OdinId
-import id.homebase.core.ui.theme.withEmojiFont
 import org.koin.compose.koinInject
 
 @Composable
@@ -49,7 +48,7 @@ fun ContactName(
     }
 
     Text(
-        text = displayName.withEmojiFont(),
+        text = displayName,
         modifier = modifier,
         style = style,
         fontWeight = fontWeight,

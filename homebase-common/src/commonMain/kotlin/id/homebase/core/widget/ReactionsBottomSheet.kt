@@ -53,7 +53,6 @@ import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_reactions_tap_to_remove
 import id.homebase.resources.chat_reactions_title
 import id.homebase.resources.you
-import id.homebase.core.ui.theme.withEmojiFont
 import org.jetbrains.compose.resources.stringResource
 
 @Immutable
@@ -298,7 +297,7 @@ private fun ReactionRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = (if (isOwner) youLabel else item.displayName).withEmojiFont(),
+                text = if (isOwner) youLabel else item.displayName,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -312,7 +311,7 @@ private fun ReactionRow(
         }
 
         Text(
-            text = item.emoji.withEmojiFont(),
+            text = item.emoji,
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
         )
     }

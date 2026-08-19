@@ -379,8 +379,8 @@ internal fun buildChatInlineAnnotatedString(
     // result is identical for unchanged inputs, and re-parsing it is part of the
     // rich-text scroll-in bounce.
     // Web bundles a colour-emoji font and scopes it to the emoji runs; null everywhere else,
-    // where withEmojiFont returns the string untouched. Part of the remember key so the
-    // emoji pass is memoized with the parse rather than redone on every recomposition.
+    // where withEmojiFont returns the string untouched. Part of the remember key so the emoji
+    // pass is memoized with the parse rather than redone on every recomposition.
     val emojiFamily = emojiFontFamily()
     return remember(content, style, color, emojiFamily) {
         content.withChatHardLineBreaks().buildMarkdownAnnotatedString(
