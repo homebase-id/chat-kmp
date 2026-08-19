@@ -98,7 +98,6 @@ import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.initials
-import id.homebase.core.util.isDesktop
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
@@ -1124,10 +1123,10 @@ fun InlineReplyPreview(
 
     // Mirror the link-preview / Signal QuoteView bounded-block pattern: the body
     // is already capped at 80 codepoints on the header (payload-free), so this is
-    // a pure presentational choice. Desktop has the horizontal room for a second
-    // line; on mobile we keep a single line to stay compact. The author name stays
-    // single-line on every platform.
-    val replyPreviewMaxLines = if (isDesktop()) 2 else 1
+    // a pure presentational choice. Desktop and web have the horizontal room for a
+    // second line; on mobile we keep a single line to stay compact. The author name
+    // stays single-line on every platform.
+    val replyPreviewMaxLines = if (isDesktopOrWeb()) 2 else 1
 
     Row(
         modifier = Modifier
