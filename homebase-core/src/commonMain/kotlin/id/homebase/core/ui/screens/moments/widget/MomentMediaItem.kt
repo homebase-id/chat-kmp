@@ -68,6 +68,7 @@ import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_message_video_thumbnail
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.persistentMapOf
 import org.jetbrains.compose.resources.stringResource
@@ -595,7 +596,7 @@ private fun MediaPlaceholder(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = emoji,
+            text = emoji.withEmojiFont(),
             style = MaterialTheme.typography.displayMedium,
         )
     }

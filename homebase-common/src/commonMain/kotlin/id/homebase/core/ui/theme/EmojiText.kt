@@ -3,6 +3,7 @@ package id.homebase.core.ui.theme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 
@@ -18,8 +19,11 @@ import androidx.compose.ui.text.withStyle
  * styling at all, so nothing changes there.
  */
 @Composable
-fun String.withEmojiFont(): AnnotatedString {
-    val family = emojiFontFamily() ?: return AnnotatedString(this)
+fun String.withEmojiFont(): AnnotatedString = withEmojiFont(emojiFontFamily())
+
+/** [withEmojiFont] for callers that already hold the family and want to memoize the result. */
+fun String.withEmojiFont(family: FontFamily?): AnnotatedString {
+    if (family == null) return AnnotatedString(this)
     val runs = emojiRuns(this)
     if (runs.isEmpty()) return AnnotatedString(this)
     val emojiStyle = SpanStyle(fontFamily = family)
@@ -39,8 +43,11 @@ fun String.withEmojiFont(): AnnotatedString {
  * for one. Existing spans are preserved; the emoji font is layered over the emoji runs only.
  */
 @Composable
-fun AnnotatedString.withEmojiFont(): AnnotatedString {
-    val family = emojiFontFamily() ?: return this
+fun AnnotatedString.withEmojiFont(): AnnotatedString = withEmojiFont(emojiFontFamily())
+
+/** [withEmojiFont] for callers that already hold the family and want to memoize the result. */
+fun AnnotatedString.withEmojiFont(family: FontFamily?): AnnotatedString {
+    if (family == null) return this
     val runs = emojiRuns(this.text)
     if (runs.isEmpty()) return this
     val emojiStyle = SpanStyle(fontFamily = family)

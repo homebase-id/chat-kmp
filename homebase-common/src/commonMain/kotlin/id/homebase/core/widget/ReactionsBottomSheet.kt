@@ -53,6 +53,7 @@ import id.homebase.resources.chat_message_reaction
 import id.homebase.resources.chat_reactions_tap_to_remove
 import id.homebase.resources.chat_reactions_title
 import id.homebase.resources.you
+import id.homebase.core.ui.theme.withEmojiFont
 import org.jetbrains.compose.resources.stringResource
 
 @Immutable
@@ -311,7 +312,7 @@ private fun ReactionRow(
         }
 
         Text(
-            text = item.emoji,
+            text = item.emoji.withEmojiFont(),
             style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp),
         )
     }

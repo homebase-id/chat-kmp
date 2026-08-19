@@ -198,6 +198,7 @@ import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlin.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1144,7 +1145,7 @@ private fun ReactionDetailRow(
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = reaction.emoji,
+            text = reaction.emoji.withEmojiFont(),
             style = MaterialTheme.typography.headlineMedium,
         )
     }
@@ -1918,7 +1919,7 @@ internal fun EmojiReactionButton(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = emoji,
+                text = emoji.withEmojiFont(),
                 style = MaterialTheme.typography.titleMedium,
                 color = activeTint,
             )

@@ -46,6 +46,8 @@ import com.mikepenz.markdown.model.rememberMarkdownState
 import id.homebase.api.util.markdownHasBlockElements
 import id.homebase.api.util.markdownToPlainPreview
 import id.homebase.api.util.withChatHardLineBreaks
+import id.homebase.core.ui.theme.emojiFontFamily
+import id.homebase.core.ui.theme.withEmojiFont
 
 /**
  * THE single read-only markdown renderer for chat.
@@ -376,11 +378,15 @@ internal fun buildChatInlineAnnotatedString(
     // a scroll-in recomposition doesn't re-parse the body each frame — pure work whose
     // result is identical for unchanged inputs, and re-parsing it is part of the
     // rich-text scroll-in bounce.
-    return remember(content, style, color) {
+    // Web bundles a colour-emoji font and scopes it to the emoji runs; null everywhere else,
+    // where withEmojiFont returns the string untouched. Part of the remember key so the
+    // emoji pass is memoized with the parse rather than redone on every recomposition.
+    val emojiFamily = emojiFontFamily()
+    return remember(content, style, color, emojiFamily) {
         content.withChatHardLineBreaks().buildMarkdownAnnotatedString(
             style = style,
             annotatorSettings = settings,
-        )
+        ).withEmojiFont(emojiFamily)
     }
 }
 

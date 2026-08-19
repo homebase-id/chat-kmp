@@ -87,6 +87,7 @@ import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -677,7 +678,7 @@ private fun ReactionRow(reaction: ReactionUiModel, modifier: Modifier = Modifier
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = reaction.emoji,
+            text = reaction.emoji.withEmojiFont(),
             style = MaterialTheme.typography.headlineMedium,
         )
     }
