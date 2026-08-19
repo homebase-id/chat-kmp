@@ -198,6 +198,7 @@ import id.homebase.resources.reactions
 import id.homebase.resources.read_by
 import id.homebase.resources.sending_to
 import id.homebase.resources.uploaded
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlin.time.Instant
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -3259,7 +3260,7 @@ private fun CommentRow(
             }
         } else {
             Text(
-                text = comment.body,
+                text = comment.body.withEmojiFont(),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.fillMaxWidth(),
             )
