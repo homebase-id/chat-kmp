@@ -640,7 +640,7 @@ private fun RecipientRow(recipient: RecipientStatusUiModel, modifier: Modifier =
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = recipient.displayName,
+                text = recipient.displayName.withEmojiFont(),
                 style = MaterialTheme.typography.bodyLarge,
             )
             if (errorText != null) {
@@ -673,7 +673,7 @@ private fun ReactionRow(reaction: ReactionUiModel, modifier: Modifier = Modifier
             options = AvatarOptions(size = 40.dp),
         )
         Text(
-            text = reaction.displayName,
+            text = reaction.displayName.withEmojiFont(),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f),
         )

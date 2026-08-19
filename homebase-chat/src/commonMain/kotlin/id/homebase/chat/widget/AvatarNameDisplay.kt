@@ -26,6 +26,7 @@ import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.resources.MR
 import id.homebase.resources.details
+import id.homebase.core.ui.theme.withEmojiFont
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -69,7 +70,7 @@ fun AvatarNameDisplay(
                 }
             ) {
                 Text(
-                    text = displayName,
+                    text = displayName.withEmojiFont(),
                     style = MaterialTheme.typography.headlineSmall,
                     textAlign = TextAlign.Center,
                 )

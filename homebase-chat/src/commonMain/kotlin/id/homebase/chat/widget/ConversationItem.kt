@@ -62,6 +62,7 @@ import id.homebase.resources.chat_note_to_self
 import id.homebase.resources.chat_preview_sender_label
 import id.homebase.resources.chat_search_result_pinned
 import id.homebase.resources.you
+import id.homebase.core.ui.theme.withEmojiFont
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -108,9 +109,10 @@ fun ConversationItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (enrichedData.conversation.isWithSelf)
+                    text = (if (enrichedData.conversation.isWithSelf)
                         stringResource(MR.string.chat_note_to_self)
-                    else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you)),
+                    else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you)))
+                        .withEmojiFont(),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
@@ -406,7 +408,7 @@ fun ConversationMessagePreview(
             }
 
             Text(
-                text = previewText,
+                text = previewText.withEmojiFont(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                     alpha = if (isDeleted) 0.5f else 1f

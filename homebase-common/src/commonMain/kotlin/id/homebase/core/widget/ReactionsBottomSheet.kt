@@ -298,7 +298,7 @@ private fun ReactionRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = if (isOwner) youLabel else item.displayName,
+                text = (if (isOwner) youLabel else item.displayName).withEmojiFont(),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )

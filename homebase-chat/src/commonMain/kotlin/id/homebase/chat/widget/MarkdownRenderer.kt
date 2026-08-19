@@ -152,7 +152,7 @@ fun ChatMarkdown(
             highlightColor = highlightColor,
         )
         Text(
-            text = highlighted ?: AnnotatedString(plain),
+            text = (highlighted ?: AnnotatedString(plain)).withEmojiFont(),
             modifier = modifier,
             color = color,
             style = style,
