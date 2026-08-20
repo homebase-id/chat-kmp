@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
@@ -44,6 +45,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -101,6 +103,7 @@ import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_desc
 import id.homebase.resources.settings_logout_in_progress
 import id.homebase.resources.settings_moments_desc
+import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_status_checking
 import id.homebase.resources.settings_notifications_status_error
@@ -327,6 +330,17 @@ fun SettingsUi(
             }
 
             item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("nativeFeedToggle"),
+                    icon = Icons.Outlined.DynamicFeed,
+                    title = stringResource(MR.string.settings_native_feed),
+                    action = SettingsRowAction.Toggle(
+                        checked = uiState.useNativeFeed,
+                        onCheckedChange = { onAction(SettingsUiAction.SetUseNativeFeed(it)) },
+                    ),
+                )
+            }
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("momentsSettingsButton"),

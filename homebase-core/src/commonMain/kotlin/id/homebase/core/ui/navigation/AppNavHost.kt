@@ -99,8 +99,11 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
+import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
+import id.homebase.core.ui.screens.feed.FeedTimelineScreen
+import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
@@ -197,6 +200,9 @@ import id.homebase.resources.pending_upgrade_message
 import id.homebase.resources.pending_upgrade_confirm
 import id.homebase.resources.upgrade_running_message
 
+// Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
+private const val SCROLL_TO_TOP_KEY = "scrollToTop"
+
 @Composable
 fun AppNavHost(
     viewModel: AppViewModel,
@@ -279,6 +285,10 @@ fun AppNavHost(
     // Track if we're showing only the detail pane (list hidden) in a top level screen
     var showingOnlyDetailPane by remember { mutableStateOf(false) }
 
+    // The feed's media viewer is inline in the NavHost (a Dialog paints grey safe-area strips on iOS), so it
+    // renders *under* this Scaffold's bottom bar unless the screen reports it up.
+    var isFeedMediaOpen by remember { mutableStateOf(false) }
+
     // Check if current destination is a top-level route. Uses the static route-type
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
@@ -300,7 +310,8 @@ fun AppNavHost(
     // gate the gallery uses.
     val isVaultEditorOpen = vaultUiState.pendingEditor != null
     val showBottomNavigationBar =
-        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen
+        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen &&
+                !isFeedMediaOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -604,6 +615,8 @@ fun AppNavHost(
             if (showBottomNavigationBar) {
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
+                        val isSelected =
+                            currentDestination?.hasRoute(topLevelRoute.route::class) == true
                         NavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
@@ -619,11 +632,13 @@ fun AppNavHost(
                                     textAlign = TextAlign.Center,
                                 )
                             },
-                            selected = currentDestination?.hasRoute(
-                                topLevelRoute.route::class
-                            ) == true,
+                            selected = isSelected,
                             onClick = {
                                 when {
+                                    // Re-tapping the active tab scrolls to the top instead of re-navigating.
+                                    isSelected -> navController.currentBackStackEntry
+                                        ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
+
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
                                     topLevelRoute is TopLevelRoute.Location -> openLocation()
@@ -648,6 +663,8 @@ fun AppNavHost(
                 if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
                     NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
                         topLevelRoutes.forEach { topLevelRoute ->
+                            val isSelected =
+                                currentDestination?.hasRoute(topLevelRoute.route::class) == true
                             NavigationRailItem(
                                 icon = {
                                     TopLevelNavIcon(
@@ -656,9 +673,12 @@ fun AppNavHost(
                                     )
                                 },
                                 // label = { Text(stringResource(topLevelRoute.labelRes)) },
-                                selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
+                                selected = isSelected,
                                 onClick = {
                                     when {
+                                        isSelected -> navController.currentBackStackEntry
+                                            ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
+
                                         topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                         topLevelRoute is TopLevelRoute.Vault -> openVault()
                                         topLevelRoute is TopLevelRoute.Location -> openLocation()
@@ -842,20 +862,55 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Feed> {
+                        composable<Route.Feed> { entry ->
                             if (isAuthenticated) {
-                                FeedScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateToChat = {
-                                        navController.navigate(Route.ChatList) {
-                                            popUpTo(Route.ChatList) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                // Read on each Feed entry so the Settings toggle takes effect on return.
+                                val useNativeFeed = koinInject<UserPreferences>().useNativeFeed
+                                if (useNativeFeed) {
+                                    val scrollFeedToTop by entry.savedStateHandle
+                                        .getStateFlow(SCROLL_TO_TOP_KEY, false)
+                                        .collectAsStateWithLifecycle()
+                                    // ponytail: post composer disabled for now — the feed is read-only
+                                    // for posts. Restore the composer nav + Route.PostCompose below.
+                                    FeedTimelineScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateToDetail = {
+                                            navController.navigate(Route.PostDetail(it.toString()))
+                                        },
+                                        onAuthorClick = {
+                                            navController.navigateToIdentity(it.domainName)
+                                        },
+                                        onFullScreenMediaChanged = { isFeedMediaOpen = it },
+                                        scrollToTop = scrollFeedToTop,
+                                        onScrollToTopHandled = {
+                                            entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
+                                        },
+                                    )
+                                } else {
+                                    // Legacy WebView feed — user opted out of the native feed.
+                                    FeedScreen(viewModel = koinViewModel())
+                                }
+                            }
+                        }
+
+                        composable<Route.PostDetail> { entry ->
+                            if (isAuthenticated) {
+                                val r = entry.toRoute<Route.PostDetail>()
+                                PostDetailScreen(
+                                    viewModel = koinViewModel(key = "post-detail-" + r.postId) {
+                                        parametersOf(Uuid.parse(r.postId))
+                                    },
+                                    onBack = { navController.popBackStack() },
+                                    onAuthorClick = {
+                                        navController.navigateToIdentity(it.domainName)
                                     },
                                 )
                             }
                         }
+
+                        // ponytail: Route.Following is unregistered — the v2 API has no followers
+                        // controller, so the screen could only show its 404 empty state. The screen,
+                        // VM and provider are kept; re-add this destination once the routes ship.
 
                         composable<Route.ContactBook> {
                             if (isAuthenticated) {
@@ -1650,8 +1705,11 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Vault> {
+                        composable<Route.Vault> { entry ->
                             if (isAuthenticated) {
+                                val scrollVaultToTop by entry.savedStateHandle
+                                    .getStateFlow(SCROLL_TO_TOP_KEY, false)
+                                    .collectAsStateWithLifecycle()
                                 when (isVaultActivated) {
                                     null -> {
                                         Box(
@@ -1685,6 +1743,10 @@ fun AppNavHost(
                                             },
                                             onNavigateToDrawer = { requestId ->
                                                 navController.navigate(Route.Draw(requestId.toString()))
+                                            },
+                                            scrollToTop = scrollVaultToTop,
+                                            onScrollToTopHandled = {
+                                                entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
                                             },
                                         )
                                     }
@@ -1823,6 +1885,17 @@ fun AppNavHost(
     }
 }
 
+
+// Contacts are keyed by md5(odinId). An author who isn't in the contact book still lands on a usable screen —
+// ContactDetailViewModel.syntheticEntry builds an entry from the route odinId.
+private fun NavHostController.navigateToIdentity(odinId: String) {
+    navigate(
+        Route.ContactBookDetail(
+            uniqueId = Md5.toGuidId(odinId.lowercase()).toString(),
+            odinId = odinId,
+        )
+    )
+}
 
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,

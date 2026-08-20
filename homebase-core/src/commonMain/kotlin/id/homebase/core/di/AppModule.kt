@@ -123,6 +123,17 @@ import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipientLookupService
 import id.homebase.core.moments.services.MomentsVideoSession
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.core.feed.services.ChannelDefinitionService
+import id.homebase.core.feed.services.ChannelPostQueryService
+import id.homebase.core.feed.services.FeedPermissionService
+import id.homebase.core.feed.services.FeedPostSenderService
+import id.homebase.core.feed.services.FeedTimelineService
+import id.homebase.core.feed.services.PostCommentsService
+import id.homebase.core.feed.services.PostReactionService
+import id.homebase.core.feed.services.ReportingUrlProvider
+import id.homebase.core.ui.screens.feed.FeedTimelineViewModel
+import id.homebase.core.ui.screens.feed.PostDetailViewModel
+import id.homebase.core.ui.screens.feed.following.FollowingViewModel
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.core.config.chatLabeledDrive
@@ -246,6 +257,17 @@ val appModule = module {
     singleOf(::MomentCommentsService)
     singleOf(::MomentActionService)
     singleOf(::MomentGroupService)
+
+    // Native Feed services. FollowProvider is registered in ApiModule.
+    singleOf(::FeedTimelineService)
+    singleOf(::ChannelDefinitionService)
+    singleOf(::ChannelPostQueryService)
+    singleOf(::FeedPostSenderService)
+    singleOf(::PostCommentsService)
+    singleOf(::PostReactionService)
+    singleOf(::FeedPermissionService)
+    singleOf(::ReportingUrlProvider)
+
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
 
@@ -565,6 +587,12 @@ val appModule = module {
                 get<MomentGroupService>().start()
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
+
+                get<FeedTimelineService>().reset()
+                get<PostCommentsService>().reset()
+                // Permissions are per-identity: a re-login must not reuse the previous user's security context.
+                get<FeedPermissionService>().reset()
+                get<FeedTimelineService>().start()
 
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
@@ -1013,6 +1041,41 @@ val appModule = module {
     viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
+
+    // ponytail: PostComposeViewModel unregistered — the post composer is disabled for now. FeedPostSenderService
+    // stays registered (delete-post still uses it). Restore the composer VM + Route.PostCompose to re-enable.
+    // Explicit (not viewModelOf) for the FeedPermissionQualifier: the feed's drives are granted by the feed
+    // extend-permissions flow, not the login one the unqualified ExtendPermissionViewModel checks.
+    viewModel {
+        FeedTimelineViewModel(
+            timelineService = get(),
+            reactionService = get(),
+            channelService = get(),
+            contactService = get(),
+            credentialsManager = get(),
+            publicProfileProvider = get(),
+            senderService = get(),
+            reportingUrlProvider = get(),
+            feedPermissionViewModel = get(FeedPermissionQualifier),
+            optionalDriveActivation = get(),
+        )
+    }
+    viewModelOf(::FollowingViewModel)
+    viewModel { params ->
+        PostDetailViewModel(
+            postId = params.get(),
+            timelineService = get(),
+            commentsService = get(),
+            reactionService = get(),
+            senderService = get(),
+            credentialsManager = get(),
+            contactService = get(),
+            stickerStream = get(),
+            publicProfileProvider = get(),
+            reportingUrlProvider = get(),
+            permissionService = get(),
+        )
+    }
     viewModel { params ->
         MomentDetailViewModel(
             momentId = params.get(),
