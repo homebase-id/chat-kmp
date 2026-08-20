@@ -51,9 +51,6 @@ class PeerFileByGlobalTransitProvider(
             "/peer/$peer/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey",
         )
         val cacheKey = peerCacheKey("payload", peer, driveId, globalTransitId, payloadKey)
-        Logger.i(tag = TAG) {
-            "getPayload: GET peer=${peer.domainName} drive=$driveId gtid=$globalTransitId key=$payloadKey"
-        }
         val response = try {
             driveCache.readPayloadThrough(cacheKey) {
                 fetch(url, creds.accessToken, PayloadSizePolicy.RENDER_LIMIT_BYTES)
@@ -84,9 +81,6 @@ class PeerFileByGlobalTransitProvider(
         )
         val cacheKey =
             peerCacheKey("thumb", peer, driveId, globalTransitId, payloadKey, width, height)
-        Logger.i(tag = TAG) {
-            "getThumb: GET peer=${peer.domainName} drive=$driveId gtid=$globalTransitId key=$payloadKey ${width}x$height"
-        }
         val response = try {
             driveCache.readThumbThrough(cacheKey) { fetch(url, creds.accessToken, maxBytes = null) }
         } catch (_: NotFoundException) {
@@ -97,6 +91,8 @@ class PeerFileByGlobalTransitProvider(
     }
 
     private suspend fun fetch(url: String, token: String, maxBytes: Long?): ByteApiResponse {
+        // Only reached on a cache miss, so one line here is exactly one network read.
+        Logger.i(tag = TAG) { "GET $url" }
         val response = requestBytes(maxBytes) { httpClient.get(url) { bearerAuth(token) } }
         // 404 becomes NotFoundException, which the cache memoises so a followed post with no
         // server-side thumbnail stops being re-requested on every scroll past it.
