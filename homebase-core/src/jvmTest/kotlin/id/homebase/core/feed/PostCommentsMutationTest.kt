@@ -44,11 +44,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * [PostCommentsService.updateComment] and [PostCommentsService.removeComment] — the enqueued
- * request shape, the public-vs-encrypted branch inherited from the owning post, and the
- * failure paths (version-tag mismatch, still-queued create, refused enqueue).
- */
 class PostCommentsMutationTest {
 
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
@@ -127,10 +122,8 @@ class PostCommentsMutationTest {
         )
     }
 
-    /**
-     * Land a comment the way sync does — with a server-assigned `versionTag`, which
-     * [PostCommentsService.updateComment] requires and an optimistic local write never has.
-     */
+    // updateComment requires a server-assigned versionTag, which an optimistic local write never
+    // has — only a synced row does.
     private suspend fun seedSyncedComment(
         commentId: Uuid,
         groupId: Uuid,

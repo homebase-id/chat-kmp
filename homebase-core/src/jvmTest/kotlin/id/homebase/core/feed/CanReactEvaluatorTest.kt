@@ -20,9 +20,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * Every branch of [evaluateCanReact] — the pure port of dotyoucore-js `useCanReact`.
- */
 class CanReactEvaluatorTest {
 
     private val channelAlias = FeedProtocol.PublicChannelDriveAlias
@@ -43,7 +40,6 @@ class CanReactEvaluatorTest {
         ),
     )
 
-    /** One security context whose permission groups are [groups] (each a list of drive grants). */
     private fun context(vararg groups: List<DriveGrant>) = SecurityContext(
         caller = CallerContext(securityLevel = "connected"),
         permissionContext = PermissionContext(groups.map { PermissionGroup(driveGrants = it) }),
@@ -65,8 +61,6 @@ class CanReactEvaluatorTest {
         isAuthenticated = isAuthenticated,
         isOwner = isOwner,
     )
-
-    // ---------------- denial reasons ----------------
 
     @Test
     fun notAuthenticatedAndNotOwner_isNotAuthenticated() {
@@ -113,22 +107,20 @@ class CanReactEvaluatorTest {
         assertEquals(CanReact.Denied(DenyReason.DisabledOnPost), result)
     }
 
-    /** Denial order matters: no grant beats a disabled post, exactly as in the web. */
+    // Denial order matters: no grant beats a disabled post, exactly as in the web.
     @Test
     fun reactAccessOffWithNoGrants_reportsNotAuthorizedFirst() {
         val result = evaluate(context(), reactAccess = ReactAccess.None)
         assertEquals(CanReact.Denied(DenyReason.NotAuthorized), result)
     }
 
-    /** EmojiOnly/CommentOnly are rendering hints in the web, not denials — only `false` disables. */
+    // EmojiOnly/CommentOnly are rendering hints in the web, not denials — only false disables.
     @Test
     fun partialReactAccessIsNotADenial() {
         val ctx = context(listOf(grant(reactAndComment)))
         assertEquals(CanReact.All, evaluate(ctx, reactAccess = ReactAccess.EmojiOnly))
         assertEquals(CanReact.All, evaluate(ctx, reactAccess = ReactAccess.CommentOnly))
     }
-
-    // ---------------- allowances ----------------
 
     @Test
     fun authorMayAlwaysReact_evenWithNoContextAndPostDisabled() {
@@ -165,8 +157,6 @@ class CanReactEvaluatorTest {
         assertTrue(result.allowsComment)
     }
 
-    // ---------------- drive-grant filter ----------------
-
     @Test
     fun grantForAnotherDriveAliasDoesNotCount() {
         val other = grant(reactAndComment, alias = Uuid.random().toString())
@@ -194,8 +184,6 @@ class CanReactEvaluatorTest {
         )
         assertEquals(CanReact.All, evaluate(context(listOf(hex))))
     }
-
-    // ---------------- permission merging ----------------
 
     @Test
     fun permissionsMergeAcrossPermissionGroups() {

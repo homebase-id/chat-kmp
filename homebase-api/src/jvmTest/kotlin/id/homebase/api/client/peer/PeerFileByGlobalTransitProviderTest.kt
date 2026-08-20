@@ -23,11 +23,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * Locks the exact over-peer routes (the thing the earlier WIP got wrong: it hit the retired V1
- * `/transit/query/{payload,thumb}_byglobaltransitid` shape and 404'd). These must stay the UnifiedV2
- * `PeerByGtid` paths, since that's what odin-core's `V2DrivePeerQueryByGtidController` serves.
- */
+// The over-peer routes must stay the UnifiedV2 `PeerByGtid` paths — that is what odin-core's
+// `V2DrivePeerQueryByGtidController` serves; the retired V1 `/transit/query/…` shape 404s.
 class PeerFileByGlobalTransitProviderTest {
 
     private val peer = OdinId("author.example.com")
@@ -94,17 +91,13 @@ class PeerFileByGlobalTransitProviderTest {
         assertNull(provider(engine).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key))
     }
 
-    /**
-     * A followed identity's oversized photo must be refused at the render limit rather than
-     * buffered into RAM — the typed throw is what `HomebaseImageLoader.fetchFullPayloadUncached`
-     * catches to keep the already-rendered thumbnail.
-     */
+    // The typed throw is what `HomebaseImageLoader.fetchFullPayloadUncached` catches to keep the
+    // already-rendered thumbnail.
     @Test
     fun payload_overRenderLimit_throwsPayloadTooLarge() = runTest {
         val oversized = PayloadSizePolicy.RENDER_LIMIT_BYTES + 1
         // MockEngine validates Content-Length against the body, so the oversized body has to be
-        // real; what's asserted is that the guard trips on the HEADER (sizeBytes == the advertised
-        // length, not -1 from the counting fallback) — i.e. before the body is buffered.
+        // real; sizeBytes == the advertised length proves the guard tripped on the header.
         val engine = MockEngine {
             respond(
                 ByteArray(oversized.toInt()),

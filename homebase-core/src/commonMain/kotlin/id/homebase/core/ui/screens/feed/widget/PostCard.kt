@@ -159,7 +159,6 @@ fun PostCard(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
 
-        // Edge-to-edge — no horizontal padding, no corner clip.
         PostMedia(
             post = post,
             onMediaClick = onMediaClick,

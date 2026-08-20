@@ -25,7 +25,6 @@ sealed interface CanReact {
 }
 
 enum class DenyReason {
-    /** No session at all. */
     NotAuthenticated,
 
     /** Authenticated, but the channel drive grants neither React nor Comment. */

@@ -32,8 +32,7 @@ class FeedPermissionService(
     }
 
     // Immutable map, always replaced — @Volatile makes the lock-free hit path safe; fetchLock only serialises
-    // misses so a screenful of posts can't stampede the endpoint. Keyed by identity, not (identity, drive):
-    // the context is identity-scoped.
+    // misses so a screenful of posts can't stampede the endpoint. Keyed by identity: the context is identity-scoped.
     @Volatile
     private var localContexts: Map<OdinId, SecurityContext> = emptyMap()
     private val fetchLock = Mutex()

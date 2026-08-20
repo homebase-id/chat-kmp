@@ -35,8 +35,7 @@ internal sealed interface MediaPageSource {
  * @param rawIvPresent whether the payload carries an IV at all (on an encrypted
  *   file, false ⇒ not yet uploaded / pending)
  * @param decodedIv the decoded payload IV, or null if absent or undecodable
- * @param isEncrypted whether the file's payloads are encrypted at all. Chat media
- *   always is, hence the default; a public feed post is not.
+ * @param isEncrypted false for a public feed post, whose payloads carry no IV at all
  */
 internal fun resolveMediaPageSource(
     localContext: LocalAttachmentContext?,
@@ -48,9 +47,7 @@ internal fun resolveMediaPageSource(
     return when {
         localPath != null -> MediaPageSource.LocalFile(localPath)
         decodedIv != null -> MediaPageSource.Remote(decodedIv)
-        // A public post ships its payloads plaintext, so no IV here means "public",
-        // not "not uploaded yet" — fetch and render instead of spinning forever.
-        !isEncrypted -> MediaPageSource.Remote(iv = null)
+        !isEncrypted -> MediaPageSource.Remote(iv = null) // plaintext post → no IV, not pending
         rawIvPresent -> MediaPageSource.Unavailable // IV present but won't decode → corrupt
         else -> MediaPageSource.Pending // no IV yet → still uploading / not ready
     }

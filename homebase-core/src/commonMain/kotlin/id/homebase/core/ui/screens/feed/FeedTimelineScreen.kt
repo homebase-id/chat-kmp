@@ -90,16 +90,14 @@ fun FeedTimelineScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
-    // Collected so the list recomposes (and channel labels appear) once definitions load.
     val channels by viewModel.channels.collectAsStateWithLifecycle()
-    // The row falls back to the raw domain for identities absent here, mirroring the web feed.
     val displayNames by viewModel.displayNames.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(
         state = rememberTopAppBarState(),
     )
     val scope = rememberCoroutineScope()
-    // Tapping a post or its comment button opens comments as a bottom-sheet modal; null == closed.
+    // null == comments sheet closed.
     var commentsPostId by remember { mutableStateOf<Uuid?>(null) }
     // Kept past dismissal: posting a comment is fire-and-forget on a VM that outlives the sheet, so a rejection
     // can land with the sheet already gone and its own collector dead.

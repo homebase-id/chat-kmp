@@ -31,15 +31,12 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import id.homebase.api.common.SecureByteArray as Sba
 
-// A real in-memory OdinDatabase (so a real OutboxSync persists durable rows we can read back) plus a no-op
-// uploader so nothing hits the network.
+// A real in-memory OdinDatabase, so a real OutboxSync persists durable rows we can read back.
 class FeedTestEnv(
     testScope: TestScope,
-    /** Lets a test wrap the driver to inject a failure (e.g. a refused `INSERT INTO Outbox`). Identity by default. */
+    // Lets a test wrap the driver to inject a failure, e.g. a refused `INSERT INTO Outbox`.
     wrapDriver: (SqlDriver) -> SqlDriver = { it },
 ) {
-    // The JDBC SQLite driver is on the jvmTest *runtime* classpath but NOT the compile classpath, so it is
-    // instantiated reflectively rather than adding a build-file dependency.
     val driver: SqlDriver = wrapDriver(newInMemoryJdbcDriver())
 
     // Bound to the test scheduler so advanceUntilIdle drains all DB work before assertions.
@@ -94,8 +91,8 @@ class FeedTestEnv(
         )
     }
 
-    // Over a MockEngine that 500s: the feed comment tests only cold-load OWN posts, so the over-peer query is
-    // never reached. This exists to satisfy the PostCommentsService constructor.
+    // A MockEngine that 500s: the comment tests only cold-load own posts, so the over-peer query
+    // is never reached.
     val driveQueryProvider: DriveQueryProvider = DriveQueryProvider(
         httpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }),
         credentialsManager = credentialsManager,
@@ -121,8 +118,7 @@ class FeedTestEnv(
     suspend fun outboxCount(): Long = databaseManager.outbox.count()
 }
 
-// Returns the bundle verbatim so payload keys survive into the upload request unchanged; these tests assert
-// routing (drive, fileType, groupId), not ciphertext.
+// Returns the bundle verbatim so payload keys survive into the upload request unchanged.
 private class PassthroughEncryptor : PayloadBundleEncryptor {
     override suspend fun encryptBundle(
         uniqueId: kotlin.uuid.Uuid,

@@ -25,10 +25,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
-/**
- * [ChannelDefinitionService] merges the channel-definition files (`fileType = 103`) from the feed
- * drive and the user's own public-channel drive into one `channelId → definition` map.
- */
 class ChannelDefinitionServiceTest {
 
     private val feedDrive = feedLabeledDrive.drive.alias

@@ -125,7 +125,6 @@ fun PostDetailScreen(
     val canComment = postAllowsComment && uiState.canReact?.allowsComment != false
     val commentDenial = commentDenial(post != null, postAllowsComment, uiState.canReact)
 
-    // Falls back to the raw domain for identities we don't know.
     val displayNameFor: (OdinId?) -> String = { odinId ->
         odinId?.let { id -> uiState.displayNames[id]?.takeIf { it.isNotBlank() } }
             ?: odinId?.domainName.orEmpty()
@@ -335,8 +334,7 @@ fun PostDetailScreen(
             }
         }
 
-        // Non-null reactor list == sheet visible. The detail screen has no contact-lookup dependency, so names
-        // fall back to the reactor's domain.
+        // The detail screen has no contact-lookup dependency, so names fall back to the reactor's domain.
         uiState.reactorsSheet?.let { reactors ->
             ReactionsBottomSheet(
                 reactions = reactors,
@@ -352,8 +350,7 @@ fun PostDetailScreen(
     }
 }
 
-// Null while the verdict is still resolving — no message beats a message that flips a moment later. Copy is
-// taken from dotyoucore-js CantReactInfo.
+// Null while the verdict is still resolving — no message beats a message that flips a moment later.
 private fun commentDenial(
     hasPost: Boolean,
     postAllowsComment: Boolean,

@@ -61,11 +61,9 @@ class PostCommentsService(
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
     private val outboxSync: OutboxSync,
-    // Encrypted comments upload through the shared pipeline; public comments ship plaintext and enqueue directly.
     private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
     private val fileOps: FileOperationsProvider,
-    // A followed author's comments live on their drive, so a received post (non-null senderOdinId) reads over peer.
     private val driveQueryProvider: DriveQueryProvider,
     private val scope: CoroutineScope,
 ) {

@@ -76,12 +76,7 @@ import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
-/**
- * Moments-specific clone of `id.homebase.chat.widget.MediaItem`.
- *
- * Renders a single media item based on the payload's content type. This file was forked from
- * the chat widget so it can diverge to fit Moments' UX without disturbing chat.
- */
+// Moments-specific clone of `id.homebase.chat.widget.MediaItem`, free to diverge from chat's copy.
 @Composable
 fun MomentMediaItem(
     payload: PayloadDescriptor,
@@ -93,25 +88,15 @@ fun MomentMediaItem(
     keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
-    // Fill the box the parent hands us (Fit, whole image visible) instead of
-    // imposing the media's own aspect ratio on the layout. Set when the host
-    // gives an explicit size — e.g. the comments-shrink band or the detail/reels
-    // pager page — so the image collapses into that box like the video tile does
-    // (which fills via plain fillMaxSize). Without this the intrinsic
-    // `.aspectRatio()` modifier below lets the image size to its own ratio inside
-    // a height-constrained pager and overflow the band.
+    // Set when the host gives an explicit size (comments-shrink band, detail/reels pager page): without it the
+    // intrinsic `.aspectRatio()` below sizes the image to its own ratio and overflows that box.
     fitBounds: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
-    // Render photos through [ZoomableSubSamplingImage] so the user can
-    // pinch-zoom/pan/double-tap inline (timeline + reels). Off by default so
-    // non-photo contexts and callers that don't want inline zoom keep the
-    // lightweight HomebaseImage/AsyncImage path. Only affects image payloads.
+    // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
     enableZoom: Boolean = false,
-    // Reports `true` while the zoomed-in photo is panned past fit and `false`
-    // when it returns to fit. The host (carousel pager) uses it to suspend
-    // page-swiping so panning a zoomed photo doesn't flip pages.
+    // True while the zoomed photo is panned past fit; the carousel pager uses it to suspend page-swiping.
     onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =
         RoundedCornerShape(
@@ -123,9 +108,8 @@ fun MomentMediaItem(
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
     isUploading: Boolean = false,
-    // When set, this payload's bytes live on the followed author's drive: read over peer by
-    // [globalTransitId] from [driveId] on this identity (a feed post from someone you follow).
-    // Both must be set together. Null on the local path (Moments, own posts).
+    // Must be set together with [globalTransitId]: reads this payload over peer from the followed author's
+    // drive. Null on the local path (Moments, own posts).
     remoteOdinId: OdinId? = null,
     globalTransitId: Uuid? = null,
 ) {

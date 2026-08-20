@@ -7,12 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-/**
- * The unencrypted (public feed post) classification: a payload with no IV on an
- * unencrypted file is plaintext-and-ready, not pending. Chat media is always
- * encrypted, so every chat case must still land on exactly the source it did before
- * [resolveMediaPageSource] learned about plaintext.
- */
+// Chat media is always encrypted, so every chat case must still land on exactly the source it did
+// before resolveMediaPageSource learned about plaintext.
 class MediaPageSourcePlaintextTest {
 
     private val iv = ByteArray(16) { it.toByte() }
@@ -51,7 +47,6 @@ class MediaPageSourcePlaintextTest {
 
     @Test
     fun `a decodable iv still takes the encrypted remote path`() {
-        // Belt and braces: even flagged unencrypted, a real IV is honoured rather than dropped.
         val encrypted = resolveMediaPageSource(null, rawIvPresent = true, decodedIv = iv, isEncrypted = true)
         assertIs<MediaPageSource.Remote>(encrypted)
         assertContentEquals(iv, encrypted.iv)

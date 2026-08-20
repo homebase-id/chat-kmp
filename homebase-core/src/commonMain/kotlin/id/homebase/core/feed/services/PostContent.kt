@@ -70,28 +70,27 @@ object ReactAccessSerializer : KSerializer<ReactAccess> {
 // HomebaseFile this descriptor rides on. Nullable fields default so older and newer clients tolerate each other.
 @Serializable
 data class PostContent(
-    // All envelope-ish fields default so a single missing key can't fail the whole parse and blank the caption.
     val version: Int = 0,
     val id: String = "",
     val channelId: String = "",
     val type: PostType = PostType.Tweet,
     val caption: String = "",
     val slug: String = "",
-    /** A rich-text tree on the wire, NOT a string — [JsonElement] so a present value can't blank [caption]. */
+    /** A rich-text tree on the wire, not a string — a String type fails the parse and blanks [caption]. */
     val captionRichText: JsonElement? = null,
     val primaryMediaKey: String? = null,
     val reactAccess: ReactAccess = ReactAccess.All,
     val embeddedPost: EmbeddedPost? = null,
     val sourceUrl: String? = null,
     val abstract: String? = null,
-    /** A rich-text tree on the wire, not a string — it threw at `$.body` and blanked every caption. */
+    /** A rich-text tree on the wire, not a string — a String type blanks every caption. */
     val body: JsonElement? = null,
 )
 
 // Nesting is one level only — the web strips an embed's own embed on upload.
 @Serializable
 data class EmbeddedPost(
-    /** The wire key is `authorOdinId`, NOT `author` — with ignoreUnknownKeys the latter silently blanked the card. */
+    /** Wire key is `authorOdinId`, not `author` — ignoreUnknownKeys blanks the card silently. */
     val authorOdinId: String? = null,
     val caption: String? = null,
     val type: PostType? = null,
@@ -103,7 +102,7 @@ data class EmbeddedPost(
     val userDate: Long? = null,
     /** Web caps these at 6 when the header runs tight. */
     val payloads: List<PayloadDescriptor>? = null,
-    /** A thumbnail OBJECT on the wire, NOT a string — a `{...}` value was failing the whole repost parse. */
+    /** A thumbnail object on the wire, not a string — a `{...}` value fails the whole parse. */
     val previewThumbnail: JsonElement? = null,
 )
 

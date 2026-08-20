@@ -53,21 +53,10 @@ data class HomebaseImageData(
     val payloadContentType: String? = null,
     /** KeyHeader for decryption of the payload */
     val keyHeader: KeyHeader,
-    /**
-     * Author identity to fetch this payload from **over peer**, when the bytes live on a followed
-     * identity's drive rather than the local one (a feed post from someone you follow). Null for
-     * local media. When set (together with [globalTransitId]), the loader addresses the read to
-     * `{driveId}` on this peer by [globalTransitId] instead of the local server. See
-     * `PeerFileByGlobalTransitProvider`.
-     */
+    /** Set with [globalTransitId] to fetch over peer; both null for local media. */
     val remoteOdinId: OdinId? = null,
-    /**
-     * Cross-identity id of the file on [remoteOdinId]'s drive. Required alongside [remoteOdinId] for
-     * an over-peer read (the peer routes address files by global-transit-id, not local fileId).
-     */
     val globalTransitId: Uuid? = null,
 ) {
-    /** Whether this payload must be fetched from [remoteOdinId]'s drive over peer. */
     val isOverPeer: Boolean
         get() = remoteOdinId != null && globalTransitId != null
 

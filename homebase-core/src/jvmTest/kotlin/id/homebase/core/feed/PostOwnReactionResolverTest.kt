@@ -37,9 +37,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-// Verified against live data: the header's reactionPreview is the correct tally even for a followed post, but
-// carries no per-identity information, and localAppData.localReactions is null on every post header. So the
-// roster read is the only source for "which of these is mine", and it must stay cheap.
+// The header tally carries no per-identity information and localAppData.localReactions is null on
+// every post header, so the roster read is the only source for "which of these is mine".
 class PostOwnReactionResolverTest {
 
     private val self = OdinId("test.example.com")
@@ -89,7 +88,6 @@ class PostOwnReactionResolverTest {
 
         val rendered = post.withOwnReactions(resolver.ownReactions.value[post.fileId])
         assertEquals(listOf("❤️"), rendered.ownReactions)
-        // The server-maintained tally is the source of truth and must survive untouched.
         assertEquals(2, rendered.reactionPreview?.reactions?.values?.single()?.count)
     }
 
@@ -107,8 +105,7 @@ class PostOwnReactionResolverTest {
 
     @Test
     fun overlay_addsAGlyphTheHeaderHasNotCaughtUpOnYet() = runResolverTest {
-        // A followed post whose header only lists someone else's reaction: ours is enqueued but the
-        // author hasn't redistributed the preview, so the merge has to surface it.
+        // Ours is enqueued but the author hasn't redistributed the preview yet.
         val post = post(preview = preview("💀" to 1))
         roster.reactors(post.fileId, other to "💀", self to "❤️")
 
@@ -125,7 +122,6 @@ class PostOwnReactionResolverTest {
 
     @Test
     fun resolve_skipsPostsWhoseHeaderShowsNoReactions() = runResolverTest {
-        // Nobody reacted, so neither did we — this must never cost a request.
         val posts = listOf(post(preview = null), post(preview = preview()), post(preview = null))
 
         resolver().resolve(posts, limit = 10)
@@ -135,8 +131,7 @@ class PostOwnReactionResolverTest {
 
     @Test
     fun resolve_doesNotRefetchOnRepeatedPasses() = runResolverTest {
-        // The timeline re-emits on every sync batch and on every scroll-triggered page; a resolved
-        // post must be read exactly once.
+        // The timeline re-emits on every sync batch and every scroll-triggered page.
         val posts = List(3) { post(preview = preview("❤️" to 1)) }
         posts.forEach { roster.reactors(it.fileId, self to "❤️") }
 
@@ -156,7 +151,6 @@ class PostOwnReactionResolverTest {
         resolver.resolve(listOf(post), limit = 10)
         assertEquals(1, roster.requests)
 
-        // Someone else reacted: the header moved, so the roster is read again.
         val bumped = post.copy(reactionPreview = preview("❤️" to 2))
         resolver.resolve(listOf(bumped), limit = 10)
         assertEquals(2, roster.requests)
@@ -185,12 +179,10 @@ class PostOwnReactionResolverTest {
         val resolver = resolver()
         resolver.resolve(listOf(post), limit = 10)
 
-        // Nothing cached, so the row renders exactly as the header describes it — not blanked.
         val rendered = post.withOwnReactions(resolver.ownReactions.value[post.fileId])
         assertEquals(post, rendered)
         assertEquals(3, rendered.reactionPreview?.reactions?.values?.single()?.count)
 
-        // ...and the post is retried once the read recovers.
         roster.failing = false
         resolver.resolve(listOf(post), limit = 10)
         assertEquals(listOf("❤️"), resolver.ownReactions.value[post.fileId])
@@ -211,7 +203,7 @@ class PostOwnReactionResolverTest {
         assertEquals(0, roster.requests, "a locally toggled post must not be re-read straight away")
         assertEquals(listOf("❤️"), resolver.ownReactions.value[post.fileId])
 
-        // Toggling the same glyph again removes it (the rollback path uses exactly this).
+        // The rollback path relies on toggling the same glyph again removing it.
         resolver.applyLocalToggle(post, "❤️")
         assertEquals(emptyList(), resolver.ownReactions.value[post.fileId])
     }
@@ -233,7 +225,6 @@ class PostOwnReactionResolverTest {
     )
 
     private fun post(preview: ReactionSummary?) = FeedPostItem(
-        // A followed post carries no uniqueId, so its id IS the globalTransitId (FeedModels).
         id = Uuid.random(),
         fileId = Uuid.random(),
         globalTransitId = Uuid.random(),

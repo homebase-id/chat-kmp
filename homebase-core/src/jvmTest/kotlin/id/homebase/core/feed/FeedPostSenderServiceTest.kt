@@ -25,11 +25,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * The post create/edit send path was removed while feed compose is disabled, so this
- * only covers [FeedPostSenderService.deletePost]. Reviving compose re-adds create/update on the
- * shared UploadService pipeline — add their tests back then.
- */
+// The create/edit send path was removed while feed compose is disabled, so only deletePost is left
+// to cover.
 class FeedPostSenderServiceTest {
 
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
@@ -41,7 +38,6 @@ class FeedPostSenderServiceTest {
         optimisticWriter = env.optimisticWriter,
     )
 
-    /** Write a post row locally so [FeedPostSenderService.deletePost] can resolve + remove it. */
     private suspend fun seedPost(postId: Uuid) {
         val content = OdinSystemSerializer.serialize(
             PostContent(
@@ -95,7 +91,6 @@ class FeedPostSenderServiceTest {
         sender().deletePost(channelId = channelDrive, postUniqueId = postId)
         advanceUntilIdle()
 
-        // Drain every queued row and find the comment-cleanup (DeleteFilesByGroupId) entry.
         val rows = drainAllRows()
         val groupDelete = rows.firstOrNull { it.uploadType == DriveOutboxUploader.DeleteFilesByGroupId }
         assertNotNull(groupDelete, "deletePost must enqueue a DeleteFilesByGroupId comment cleanup")
@@ -103,7 +98,6 @@ class FeedPostSenderServiceTest {
             groupDelete.json.decodeToString().contains(postId.toString()),
             "the comment-cleanup row must target the post id ($postId) as its groupId",
         )
-        // The post itself is also removed (DeleteFile) by fileId.
         assertTrue(
             rows.any { it.uploadType == DriveOutboxUploader.DeleteFile },
             "deletePost must enqueue the post's own DeleteFile",

@@ -76,7 +76,7 @@ class PostCommentsServiceTest {
         scope = env.scope,
     )
 
-    /** A minimal own-post [FeedPostItem] (null senderOdinId → no over-peer comment load). */
+    // A null senderOdinId keeps the over-peer comment load out of the picture.
     private fun ownPost(postId: Uuid) = FeedPostItem(
         id = postId,
         fileId = Uuid.random(),
@@ -103,7 +103,6 @@ class PostCommentsServiceTest {
         acl = null,
     )
 
-    /** Write a post row locally so the comment service can resolve the post's drive/audience. */
     private suspend fun seedPost(postId: Uuid, encrypted: Boolean = false) {
         val content = OdinSystemSerializer.serialize(
             PostContent(
@@ -132,10 +131,8 @@ class PostCommentsServiceTest {
         )
     }
 
-    /**
-     * Land a followed author's post the way feed aggregation does: on the FEED drive with NO
-     * uniqueId, addressable only by its globalTransitId.
-     */
+    // Feed aggregation lands a followed author's post on the feed drive with no uniqueId, so it is
+    // addressable only by its globalTransitId.
     private suspend fun seedFollowedPost(gtid: Uuid, author: OdinId) {
         val content = OdinSystemSerializer.serialize(
             PostContent(
@@ -174,7 +171,6 @@ class PostCommentsServiceTest {
         )
     }
 
-    /** Write a comment row locally (fileType 801) with the given groupId, for cold-load tests. */
     private suspend fun seedComment(commentId: Uuid, groupId: Uuid, body: String) {
         val content = OdinSystemSerializer.serialize(
             PostCommentContent(version = FeedProtocol.CommentVersion, body = body)
@@ -249,13 +245,11 @@ class PostCommentsServiceTest {
 
     @Test
     fun coldLoad_postWithNoComments_doesNotLeakOtherPostsComments() = runFeedTest {
-        // The post under view has ZERO comments...
         val postId = Uuid.random()
         seedPost(postId)
 
-        // ...but an UNRELATED post on the same drive has a top-level comment. The old reply pass
-        // queried with an empty groupId set when the host post had no top-level comments, which
-        // QueryBatch turns into "every comment on the drive" — leaking this decoy across posts.
+        // QueryBatch reads an empty groupId set as "every comment on the drive", so a decoy on an
+        // unrelated post is what catches the leak.
         val decoyPostId = Uuid.random()
         seedPost(decoyPostId)
         seedComment(Uuid.random(), groupId = decoyPostId, body = "comment on the OTHER post")
@@ -273,7 +267,6 @@ class PostCommentsServiceTest {
     @Test
     fun postComment_onUnencryptedPost_isUnencryptedAnonymous_onEncryptedPost_isEncrypted() =
         runFeedTest {
-            // Public (unencrypted) post → comment must be unencrypted + Anonymous ACL.
             val publicPostId = Uuid.random()
             seedPost(publicPostId, encrypted = false)
             val publicCommentId = Uuid.random()
@@ -283,7 +276,6 @@ class PostCommentsServiceTest {
                 commentUniqueId = publicCommentId,
             )
 
-            // Encrypted post → comment must be encrypted.
             val privatePostId = Uuid.random()
             seedPost(privatePostId, encrypted = true)
             val privateCommentId = Uuid.random()

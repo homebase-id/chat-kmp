@@ -76,14 +76,12 @@ fun CommentsModalSheet(
     val scope = rememberCoroutineScope()
     val actionFailedMessage = stringResource(MR.string.feed_comment_action_failed)
 
-    // Falls back to the raw domain for unknown identities.
     val displayNameFor: (OdinId?) -> String = { odinId ->
         odinId?.let { id -> uiState.displayNames[id]?.takeIf { it.isNotBlank() } }
             ?: odinId?.domainName.orEmpty()
     }
 
     val post = uiState.post
-    // Two gates: the post's own setting, then this viewer's grants.
     val postAllowsComment = post == null ||
         post.reactAccess == ReactAccess.All ||
         post.reactAccess == ReactAccess.CommentOnly

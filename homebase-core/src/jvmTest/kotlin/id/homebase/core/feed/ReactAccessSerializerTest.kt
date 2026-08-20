@@ -7,12 +7,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * `reactAccess` on the wire is dotyoucore-js's `true | false | 'comment' | 'emoji'` union, not the
- * Kotlin enum name. Posts carrying the boolean form used to fail the whole [PostContent] parse and
- * drop out of the feed, so both directions of [id.homebase.core.feed.services.ReactAccessSerializer]
- * are pinned here.
- */
+// `reactAccess` on the wire is dotyoucore-js's `true | false | 'comment' | 'emoji'` union, not the
+// Kotlin enum name.
 class ReactAccessSerializerTest {
 
     private fun decode(reactAccessJson: String): ReactAccess {

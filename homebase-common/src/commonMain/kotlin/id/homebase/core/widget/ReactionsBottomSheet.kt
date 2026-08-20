@@ -63,13 +63,7 @@ data class ReactionDisplayItem(
     val emoji: String,
 )
 
-/**
- * @param summaryCounts authoritative `emoji → count` tallies to label the chips with, for callers
- *   whose [reactions] roster is knowably partial (the feed: a post hosted on another identity keeps
- *   its reaction rows there, so the roster read can name at most ourselves while the post header
- *   still carries the correct totals). Null (the default) derives the counts from [reactions].
- * @param footnote a line under the title explaining a partial roster. Null hides it.
- */
+// [summaryCounts] labels the chips when the caller's [reactions] roster is partial; null tallies the roster.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReactionsBottomSheet(
@@ -164,8 +158,6 @@ private fun ColumnScope.ReactionsContent(
     val grouped = remember(reactions) {
         reactions.groupBy { it.emoji }
     }
-    // Chip tallies come from the caller's authoritative counts when it has them; otherwise the
-    // roster IS the tally.
     val counts = remember(grouped, summaryCounts) {
         summaryCounts?.takeIf { it.isNotEmpty() } ?: grouped.mapValues { it.value.size }
     }

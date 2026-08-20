@@ -27,8 +27,7 @@ import org.jetbrains.compose.resources.stringResource
 
 private const val READ_MORE_LIMIT = 400
 
-// Newlines kept in a collapsed caption before the rest flatten to spaces — the web limits a teaser to 7 lines
-// so a newline-heavy post can't dominate the timeline.
+// Matches the web's teaser cap so a newline-heavy post can't dominate the timeline.
 private const val MAX_TEASER_LINES = 7
 
 private fun String.clampTeaserLines(): String {
@@ -38,8 +37,7 @@ private fun String.clampTeaserLines(): String {
         parts.drop(MAX_TEASER_LINES).joinToString(" ")
 }
 
-// When the full text lives in a `pst_text` overflow payload the caller passes [onExpandFetchFullText], invoked
-// once on the first expand; when null, expanding just reveals [caption] in full.
+// [onExpandFetchFullText] is invoked once on the first expand; null means [caption] is already the full text.
 @Composable
 fun PostBody(
     caption: String,

@@ -56,10 +56,8 @@ import id.homebase.resources.feed_post_show_reactors
 import kotlinx.collections.immutable.toImmutableList
 import org.jetbrains.compose.resources.stringResource
 
-// Write affordances follow BOTH the author's [reactAccess] and the viewer's [permission] — the post says what
-// it allows at all, the drive grants say whether this viewer holds it. A null [permission] means "not resolved
-// yet": the affordance stays visible rather than falsely disappearing, and the write is still authorised
-// server-side. The reaction summary is never gated — a post you may not react to still shows its tally.
+// Write affordances follow BOTH the author's [reactAccess] and the viewer's [permission]. A null [permission]
+// means "not resolved yet": the affordance stays visible, and the write is still authorised server-side.
 @Composable
 fun PostInteracts(
     reactionSummary: ReactionSummary?,
@@ -77,7 +75,6 @@ fun PostInteracts(
         (permission?.allowsEmoji ?: true)
     val canComment = (reactAccess == ReactAccess.All || reactAccess == ReactAccess.CommentOnly) &&
         (permission?.allowsComment ?: true)
-    // Repost is offered whenever the post is interactable at all.
     val canRepost = reactAccess != ReactAccess.None
 
     var showQuickMenu by remember { mutableStateOf(false) }
@@ -165,8 +162,7 @@ fun PostInteracts(
     }
 }
 
-// (MaterialTheme.motionScheme is internal in JetBrains material3 1.9.0, so the spring is tuned here.)
-// With [trailing] it renders as a TextButton (icon + label); otherwise a bare IconButton.
+// MaterialTheme.motionScheme is internal in JetBrains material3 1.9.0, so the spring is tuned here.
 @Composable
 private fun FeedActionButton(
     icon: ImageVector,

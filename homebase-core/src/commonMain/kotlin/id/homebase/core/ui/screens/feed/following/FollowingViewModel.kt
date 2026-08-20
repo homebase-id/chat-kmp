@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// Effects, not state — they fire once and must not replay on recomposition, so they ride a SharedFlow.
 sealed interface FollowingEvent {
     data class ShowSnackbar(val message: String) : FollowingEvent
     data class NavigateToIdentity(val odinId: String) : FollowingEvent
@@ -39,7 +38,6 @@ class FollowingViewModel(
     private val _events = MutableSharedFlow<FollowingEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<FollowingEvent> = _events.asSharedFlow()
 
-    /** Identities with no saved contact/connection fall back to the raw domain in the screen. */
     val displayNames: StateFlow<Map<OdinId, String>> =
         contactService.contacts
             .map { contacts -> contacts.associate { it.odinId to it.name } }

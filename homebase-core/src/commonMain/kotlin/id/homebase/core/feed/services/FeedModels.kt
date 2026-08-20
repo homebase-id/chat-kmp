@@ -30,7 +30,7 @@ data class FeedPostItem(
     val reactAccess: ReactAccess,
     val embeddedPost: EmbeddedPost?,
     val userDateMs: Long,
-    /** When the post was published; drives the timeline sort, distinct from [userDateMs] which may be backdated. */
+    /** Drives the timeline sort; [userDateMs] can be backdated. */
     val createdMs: Long,
     val previewThumbnail: EmbeddedThumb?,
     val reactionPreview: ReactionSummary?,
@@ -41,9 +41,7 @@ data class FeedPostItem(
     val versionTag: Uuid?,
     val ownReactions: List<String>,
     val commentCount: Int,
-    /** Public posts ship unencrypted; anything narrower is encrypted. */
     val isEncrypted: Boolean,
-    /** Null when the server didn't return server metadata. */
     val acl: AccessControlList?,
 )
 
@@ -94,7 +92,6 @@ data class PostCommentItem(
     val originalAuthor: OdinId?,
     val body: String,
     val mediaPayloadKey: String?,
-    /** Null for a top-level comment. */
     val replyToId: Uuid?,
     val userDateMs: Long,
     val createdMs: Long,

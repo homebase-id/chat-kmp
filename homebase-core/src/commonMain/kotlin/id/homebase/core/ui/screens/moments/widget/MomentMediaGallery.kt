@@ -48,19 +48,15 @@ fun MomentMediaGallery(
     isMuted: Boolean = true,
     onToggleMute: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
-    // True when the host moment is the most-centred video card in the viewport. Ignored by SingleImageLayout —
-    // single videos autoplay via the parent setting playingMomentId.
+    // Ignored by SingleImageLayout — single videos autoplay via the parent setting playingMomentId.
     autoplayActive: Boolean = false,
-    // Fires with the visible carousel page's payload key so the host can route tap-to-detail. No-op on the
-    // single-payload path.
+    // No-op on the single-payload path.
     onVisiblePayloadChanged: (String) -> Unit = {},
-    // Force carousel videos to fit — set while the host card is shrunk for the comments sheet.
+    // Set while the host card is shrunk for the comments sheet.
     fitToContent: Boolean = false,
-    // Optional floor on a single image's aspect: clamps very tall portraits (center-cropped) so one post can't
-    // dominate the scroll. Null = no floor; the feed passes FeedMinMediaAspect.
+    // Null = no floor; the feed passes FeedMinMediaAspect to clamp very tall portraits.
     minAspect: Float? = null,
-    // When set, the bytes live on this followed author's drive: read over peer by [globalTransitId] from
-    // [driveId]. Both must be set together. Feed-only; Moments passes null.
+    // Must be set together with [globalTransitId]; reads over peer from the followed author's drive.
     remoteOdinId: OdinId? = null,
     globalTransitId: Uuid? = null,
 ) {
@@ -128,12 +124,8 @@ private fun SingleImageLayout(
     messageId: Uuid,
     downloadingFiles: Set<String>,
     isUploading: Boolean,
-    // Show the whole image (fit) filling the host box instead of the aspect-locked crop — used while the card
-    // is shrunk to a band above the comments sheet.
     fitToContent: Boolean = false,
-    // Optional lower bound on the aspect (see [MomentMediaGallery]).
     minAspect: Float? = null,
-    // Over-peer read identity for followed-post media; null = local.
     remoteOdinId: OdinId? = null,
     globalTransitId: Uuid? = null,
 ) {
@@ -193,9 +185,8 @@ private fun SingleImageLayout(
             preserveAspectRatio = fitToContent,
             fitBounds = fitToContent || minAspect != null,
             shape = RectangleShape,
-            // Preserve nullability: wrapping a nullable handler in a non-null lambda made the item ALWAYS
-            // register a pointer detector that silently consumed taps, breaking the card-level multi-tap
-            // detector. Same pattern at the other layout call sites.
+            // Keep the nullability: wrapping a nullable handler in a non-null lambda made the item ALWAYS
+            // register a pointer detector that silently consumed taps, breaking the card-level multi-tap one.
             onClick = onMediaClick?.let { handler -> { handler(payload) } },
             onLongPress = onMediaLongPress?.let { handler -> { offset -> handler(payload, offset) } },
             sharedTransitionScope = sharedTransitionScope,
@@ -211,7 +202,6 @@ private fun SingleImageLayout(
     }
 }
 
-// Returns null when no thumbnail with sane dimensions is available — caller decides the fallback.
 // Crop cap for the single-VIDEO feed tile. 0.8 == a 4:5 portrait frame, center-cropped so it reads as a card
 // instead of a short strip; taller portrait videos keep their natural height. Photos use [MaxFeedPhotoAspect].
 internal const val MaxFeedMediaAspect = 0.8f

@@ -36,20 +36,13 @@ import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.test.runTest
 
-/**
- * [FeedPermissionService]: context sourcing (local vs peer), the per-identity cache, the
- * permissive peer degrade, and the never-throws contract.
- */
 class FeedPermissionServiceTest {
 
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
     private val me = OdinId("me.example.com")
     private val peer = OdinId("peer.example.com")
 
-    /**
-     * A local `/auth/context` body granting [permission] on the public-channel drive. Emitted with
-     * no `X-SSE` header so [SecurityContextProvider] treats it as plaintext.
-     */
+    // No X-SSE header, so SecurityContextProvider treats the body as plaintext.
     private fun contextJson(permission: String) = """
         {
           "caller": { "odinId": "$me", "securityLevel": "owner" },
@@ -138,8 +131,6 @@ class FeedPermissionServiceTest {
         )
     }
 
-    // ---------------- local context ----------------
-
     @Test
     fun ownPost_readsLocalContext_andIsAllowed() = runTest {
         val f = fixture(okEngine())
@@ -164,8 +155,6 @@ class FeedPermissionServiceTest {
         f.service.canReact(post(author = null))
         assertEquals(2, f.requestCount)
     }
-
-    // ---------------- failure paths ----------------
 
     @Test
     fun failedContextFetch_doesNotThrow() = runTest {
@@ -192,8 +181,6 @@ class FeedPermissionServiceTest {
         assertEquals(0, f.requestCount)
     }
 
-    // ---------------- peer degrade ----------------
-
     @Test
     fun peerAuthoredPost_degradesPermissive_withoutARequest() = runTest {
         val f = fixture(okEngine())
@@ -201,7 +188,7 @@ class FeedPermissionServiceTest {
         assertEquals(0, f.requestCount, "no v2 over-peer security-context route exists to call")
     }
 
-    /** The degrade is permissive about *grants* only — the post's own reactAccess still applies. */
+    // The degrade is permissive about grants only — the post's own reactAccess still applies.
     @Test
     fun peerAuthoredPostWithReactAccessOff_isDisabledOnPost() = runTest {
         val f = fixture(okEngine())

@@ -81,7 +81,7 @@ class FeedTimelineServiceTest {
         )
     }
 
-    /** A followed identity's post as it lands on the feed drive: globalTransitId, no uniqueId. */
+    // A followed identity's post lands on the feed drive with a globalTransitId and no uniqueId.
     private fun feedReferenceFile(
         globalTransitId: Uuid,
         caption: String,
@@ -100,10 +100,8 @@ class FeedTimelineServiceTest {
     private fun TestScope.newService(): Pair<FeedTimelineService, EventBus> {
         val eventBus = EventBus()
         // No active credentials → cold-load returns early; the test drives logic via BatchReceived.
-        // Run the service's collector on an Unconfined test dispatcher so it subscribes to the
-        // EventBus eagerly when start() launches it (before the test emits), and so emits are
-        // delivered synchronously — otherwise a StandardTestDispatcher leaves the SharedFlow
-        // collector unsubscribed (subscriptionCount stays 0) until the next dispatch.
+        // Unconfined so the collector subscribes before the test emits; a StandardTestDispatcher
+        // would leave it unsubscribed until the next dispatch and drop the batch.
         val serviceScope = kotlinx.coroutines.CoroutineScope(
             UnconfinedTestDispatcher(testScheduler)
         )
@@ -116,7 +114,6 @@ class FeedTimelineServiceTest {
         return service to eventBus
     }
 
-    /** Emit a batch and let the (Unconfined) collector process it synchronously. */
     private suspend fun emitBatch(eventBus: EventBus, driveId: Uuid, files: List<HomebaseFile>) {
         eventBus.emit(BackendEvent.DataEvent.BatchReceived(driveId, files))
     }
@@ -136,7 +133,6 @@ class FeedTimelineServiceTest {
 
         val timeline = service.timeline.value
         assertEquals(3, timeline.size)
-        // Newest published first.
         assertEquals(listOf("new followed post", "my own post", "old followed post"),
             timeline.map { it.caption })
     }
@@ -164,9 +160,7 @@ class FeedTimelineServiceTest {
         service.start()
         advanceUntilIdle()
 
-        // A followed identity's post lands on the feed drive as a reference: globalTransitId only,
-        // no uniqueId. Keying the incremental path on uniqueId dropped every one of them, so a
-        // live push for a followed post only showed up on the next cold load.
+        // Keying the incremental path on uniqueId would drop every feed reference.
         val gtid = Uuid.random()
         emitBatch(eventBus, feedDrive, listOf(feedReferenceFile(gtid, "followed post", 4_000)))
 
@@ -191,12 +185,10 @@ class FeedTimelineServiceTest {
         emitBatch(eventBus, feedDrive, listOf(postFile(id, feedDrive, "to delete", createdMs = 1_000)))
         assertEquals(1, service.timeline.value.size)
 
-        // Soft-delete the same post.
         emitBatch(eventBus, feedDrive,
             listOf(postFile(id, feedDrive, "to delete", createdMs = 1_000, deleted = true)))
         assertEquals(0, service.timeline.value.size)
 
-        // Add one then reset clears.
         emitBatch(eventBus, feedDrive, listOf(postFile(Uuid.random(), feedDrive, "after", createdMs = 9_000)))
         assertEquals(1, service.timeline.value.size)
         service.reset()

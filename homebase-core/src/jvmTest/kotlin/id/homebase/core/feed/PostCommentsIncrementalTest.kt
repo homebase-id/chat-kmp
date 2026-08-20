@@ -46,11 +46,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.uuid.Uuid
 
-/**
- * The two ways comments reach a [PostCommentsService] thread after the first cold-load: the
- * incremental `BatchReceived` path (including the reply-before-parent buffer) and the over-peer
- * read for a followed author's post.
- */
 class PostCommentsIncrementalTest {
 
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
@@ -85,9 +80,8 @@ class PostCommentsIncrementalTest {
             optimisticWriter = env.optimisticWriter,
             fileOps = env.fileOps,
             driveQueryProvider = driveQueryProvider,
-            // Unconfined so the EventBus collector subscribes eagerly and processes emits
-            // synchronously — a StandardTestDispatcher would leave it unsubscribed until the
-            // next dispatch and the test's batch would be dropped.
+            // Unconfined so the EventBus collector subscribes eagerly; a StandardTestDispatcher
+            // would leave it unsubscribed until the next dispatch and drop the test's batch.
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
         )
 
@@ -218,11 +212,8 @@ class PostCommentsIncrementalTest {
         assertEquals(emptyList(), comments.value)
     }
 
-    /**
-     * The over-peer read is executed by the Ktor engine on its own dispatcher, which the virtual
-     * scheduler can't drain — `advanceUntilIdle()` returns before the request is even issued. Wait
-     * for the result on a real clock instead.
-     */
+    // The Ktor engine runs on its own dispatcher, which the virtual scheduler can't drain:
+    // advanceUntilIdle() returns before the request is even issued.
     private suspend fun <T> awaitOffTestClock(block: suspend () -> T): T =
         withContext(Dispatchers.Default) { withTimeout(10_000) { block() } }
 

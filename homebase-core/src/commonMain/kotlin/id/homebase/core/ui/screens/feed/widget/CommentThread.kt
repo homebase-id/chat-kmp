@@ -61,7 +61,6 @@ import kotlin.uuid.Uuid
 
 private const val COMMENT_LIKE_EMOJI = "❤️"
 
-/** Block is offered only on someone else's comment, and only when its author is known. */
 private fun PostCommentItem.blockAction(
     isMine: Boolean,
     onBlockAuthor: (OdinId) -> Unit,
@@ -71,9 +70,7 @@ private fun PostCommentItem.blockAction(
     return { onBlockAuthor(author) }
 }
 
-// One level only: a reply button is offered on top-level comments, and replies cannot be replied to.
-// [permission] is one verdict resolved for the post and applied to every row, never re-fetched per comment;
-// null (unresolved) leaves Like and Reply visible.
+// [permission] is one verdict for the whole post; null (unresolved) leaves Like and Reply visible.
 @Composable
 fun CommentThread(
     comments: List<PostCommentItem>,
@@ -197,7 +194,6 @@ private fun CommentRow(
                     )
 
                     if (isEditing) {
-                        // Prefilled with the current body, kept across recomposition by keying on the id.
                         var draft by remember(comment.id) { mutableStateOf(comment.body) }
                         OutlinedTextField(
                             value = draft,

@@ -78,7 +78,6 @@ class PostDetailViewModel(
     // Folded so the aux combine below stays on the typed 5-arg overload.
     private val _postAux = combine(_liveReactionSummary, _canReact, _ownReactions, ::Triple)
 
-    // list == null means the sheet is closed; non-null (possibly empty) means open.
     private val _reactors = MutableStateFlow(ReactorsState())
 
     private val _events = MutableSharedFlow<PostDetailEvent>(extraBufferCapacity = 4)
@@ -135,7 +134,7 @@ class PostDetailViewModel(
         viewModelScope.launch {
             val self = credentialsManager.getActiveCredentials()?.domain
             _selfOdinId.value = self
-                // You aren't in your own ContactService contacts, so without this your own posts show a raw domain.
+            // You aren't in your own ContactService contacts, so without this your own posts show a raw domain.
             if (self != null) {
                 _selfName.value =
                     runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
@@ -187,7 +186,6 @@ class PostDetailViewModel(
         PostDetailUiState(
             post = post,
             comments = comments,
-                // Seeded false so a WhileSubscribed re-subscription never flashes the spinner over loaded content.
             isLoading = !timelineEmitted && post == null,
             replyingTo = replyingTo,
             selfOdinId = aux.self,
@@ -382,7 +380,6 @@ private data class ReactorsState(
     val loading: Boolean = false,
     /** Authoritative per-emoji tallies off the post header; the roster can't be trusted for these. */
     val counts: Map<String, Int> = emptyMap(),
-    /** The roster is knowably incomplete — the post is hosted by another identity. */
     val partial: Boolean = false,
 )
 

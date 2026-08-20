@@ -69,7 +69,6 @@ class FeedTimelineViewModel(
 
     val channels: StateFlow<Map<String, ChannelDefinition>> = channelService.channels
 
-    // Only known identities appear here; the screen falls back to the raw domain, mirroring the web feed.
     // You aren't in your own ContactService contacts, so your own posts need this to show a name not a domain.
     private val _selfName = MutableStateFlow<Pair<OdinId, String>?>(null)
 
@@ -80,7 +79,6 @@ class FeedTimelineViewModel(
             names.toMap()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    // Public posts (blank id or the public alias) are never labelled.
     fun channelNameFor(channelId: String): String? =
         if (isPublicChannel(channelId)) {
             null

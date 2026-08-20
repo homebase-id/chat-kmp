@@ -31,10 +31,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
-/**
- * The `HomebaseFile` → feed-model mappers in `FeedModels.kt`, plus the two small decoders
- * ([decodeReactionEmoji], [previewBody]) that sit next to them.
- */
 class FeedModelsTest {
 
     private val driveId = SystemDriveConstants.publicPostChannelDrive.alias

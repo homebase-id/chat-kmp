@@ -65,8 +65,6 @@ import kotlin.time.Instant
 
 // [timestampMs] is the post's userDate, NOT the drive file's `created` — on a followed post that is the
 // aggregation time onto the local feed drive, not when the author posted.
-// [audience] takes the place of the channel name when it is narrower than public, and the web shows it to the
-// author only, since it is the author's own sharing choice.
 @Composable
 fun PostAuthorHeader(
     authorOdinId: OdinId,

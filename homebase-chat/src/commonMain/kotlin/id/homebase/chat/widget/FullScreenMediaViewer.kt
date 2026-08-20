@@ -82,8 +82,7 @@ fun FullScreenMediaViewer(
     modifier: Modifier = Modifier,
     data: FullScreenOverlay.ViewMessageData,
     isDownloading: Boolean = false,
-    // Null when the host cannot perform the action — the share button / menu item is then
-    // absent rather than present-but-dead.
+    // Null hides the control rather than leaving it present-but-dead.
     onShare: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     onSave: ((messageId: Uuid, payloadKey: String) -> Unit)? = null,
     // Save a viewed sticker into the user's library. Default no-op for non-chat hosts

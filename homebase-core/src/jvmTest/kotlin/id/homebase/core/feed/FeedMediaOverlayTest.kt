@@ -16,10 +16,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
 
-/**
- * [feedMediaOverlay] is what tells the shared chat viewers where a feed post's bytes actually live:
- * whether they're encrypted, and — for a followed identity's post — which peer to read them from.
- */
 class FeedMediaOverlayTest {
 
     private val channelDrive = Uuid.random()

@@ -91,8 +91,7 @@ fun CommentComposer(
 
     var text by remember { mutableStateOf("") }
     var pickedImage by remember { mutableStateOf<PlatformFile?>(null) }
-    // One combined expression panel (emoji + stickers), rendered inline in the keyboard area so the input row
-    // stays visible while picking.
+    // Rendered inline in the keyboard area so the input row stays visible while picking.
     var showExpressionSheet by remember { mutableStateOf(false) }
     var expressionTab by remember { mutableStateOf(ExpressionTab.Emoji) }
     // Send is async and text/pickedImage only clear once it finishes, so without this an impatient second tap

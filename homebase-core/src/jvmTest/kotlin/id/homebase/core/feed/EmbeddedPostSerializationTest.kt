@@ -9,12 +9,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/**
- * The quoted-source card renders straight off [EmbeddedPost], so every field it reads has to
- * survive the [OdinSystemSerializer] round-trip *and* match the web wire key exactly — with
- * `ignoreUnknownKeys` a misnamed field parses silently to null and blanks the card rather than
- * failing loudly (which is exactly how `author` vs `authorOdinId` went unnoticed).
- */
+// With `ignoreUnknownKeys` a misnamed field parses silently to null and blanks the quote card
+// instead of failing loudly, so these pin the exact web wire keys.
 class EmbeddedPostSerializationTest {
 
     @Test
@@ -37,12 +33,8 @@ class EmbeddedPostSerializationTest {
         assertEquals(original, parsed)
     }
 
-    /**
-     * A repost exactly as dotyoucore-js writes it (`RepostButton` spreads the whole source
-     * `PostContent` and adds the envelope fields). Guards the field names the quote card depends
-     * on, and that web-only keys we don't model (`lastModified`, `primaryMediaFile`,
-     * `captionAsRichText`, `isCollaborative`) don't fail the parse and drop the repost.
-     */
+    // A repost exactly as dotyoucore-js writes it; the web-only keys we don't model must not fail
+    // the parse and drop the repost.
     @Test
     fun webRepostWireShapeParses() {
         val wire = """
@@ -103,10 +95,6 @@ class EmbeddedPostSerializationTest {
         assertNotNull(embedded.previewThumbnail, "preview thumbnail object dropped")
     }
 
-    /**
-     * A caption-less media repost — the source post is a photo with no text. Every text field is
-     * absent, so the card has to fall back to author + media instead of rendering an empty box.
-     */
     @Test
     fun captionLessMediaRepostKeepsAuthorAndPayloads() {
         val wire = """

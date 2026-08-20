@@ -19,7 +19,6 @@ data class FeedTimelineUiState(
     val isReactorsLoading: Boolean = false,
     /** The roster only lists our own identity's rows on someone else's post, so chips are labelled from here. */
     val reactorsCounts: Map<String, Int> = emptyMap(),
-    /** True when the open sheet's roster is knowably incomplete — the post isn't ours. */
     val reactorsPartial: Boolean = false,
     val selfOdinId: OdinId? = null,
 )

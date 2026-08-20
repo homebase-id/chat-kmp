@@ -28,15 +28,8 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * A followed identity's post is aggregated onto the feed drive with NO uniqueId (verified on live
- * data: 431/431 feed-drive post rows have `uniqueId IS NULL`), so [FeedPostItem.id] falls back to
- * the globalTransitId and `OptimisticWriter.writeReactionToggle` — which resolves the row by
- * uniqueId — finds nothing.
- *
- * The send only ever needed `(driveId, fileId)`. Returning early on the missed optimistic write made
- * every reaction on a followed post a silent no-op: nothing enqueued, nothing thrown, no snackbar.
- */
+// A followed identity's post lands on the feed drive with no uniqueId, so the optimistic write —
+// which resolves the row by uniqueId — misses; the send itself only needs (driveId, fileId).
 class PostReactionFeedReferenceToggleTest {
 
     private val feedDrive = feedLabeledDrive.drive.alias
@@ -96,12 +89,8 @@ class PostReactionFeedReferenceToggleTest {
             )
         }
 
-    /**
-     * The server STRIPS `senderOdinId` on a follower's copy of an inbound post (the same reason
-     * `PostCommentsService.recipientsFromPost` reads `originalAuthor` first), so resolving the
-     * author from the raw field queued the reaction with an EMPTY recipient list: it showed in our
-     * own facepile and reached nobody — not the author, not another viewer.
-     */
+    // The server strips senderOdinId on a follower's copy, so the author can only come from
+    // originalAuthor — otherwise the reaction queues with an empty recipient list.
     @Test
     fun toggleReaction_recipientsSurvive_whenTheServerStrippedTheSenderOnOurCopy() = runFeedTest {
         val post = feedReferencePost().copy(senderOdinId = null)

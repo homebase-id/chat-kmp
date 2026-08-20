@@ -41,8 +41,6 @@ data class CachedImage(val bytes: ByteArray, val contentType: String, val size: 
 class HomebaseImageLoader(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
-    // Fetches media that lives on a followed identity's drive (feed posts from people you follow).
-    // Only used when a HomebaseImageData carries remoteOdinId + globalTransitId.
     private val peerFileProvider: PeerFileByGlobalTransitProvider,
 ) {
     // Durable scope hosting full-payload loads so a cancelled caller (e.g. a

@@ -44,11 +44,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * [PostReactionService]'s read paths ([PostReactionService.reactionSummary],
- * [PostReactionService.liveReactionSummary], [PostReactionService.listReactors]) plus the two
- * ways a toggle can decline to queue: an invalid emoji and a refused outbox insert.
- */
 class PostReactionSummaryTest {
 
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
@@ -236,12 +231,8 @@ class PostReactionSummaryTest {
         assertEquals(listOf("❤️"), hearts.map { it.emoji })
     }
 
-    // -------------------- header tallies (reactors-sheet chips) --------------------
-
-    // The reactors sheet labels its chips from the header, not from the roster: on a post hosted by
-    // another identity `listReactors` only ever sees our own rows (the group-reactions endpoint is
-    // addressed at our own domain), while the header preview stays correct.
-
+    // Chips are labelled from the header, not the roster: on a post hosted by another identity
+    // `listReactors` only ever sees our own rows, while the header preview stays correct.
     @Test
     fun emojiCounts_decodesGlyphsAndDropsUndecodableEntries() {
         val summary = ReactionSummary(
@@ -283,8 +274,8 @@ class PostReactionSummaryTest {
         val post = seedPost()
         advanceUntilIdle()
 
-        // Rejection has to reach the caller: it flips the like button before calling, and only
-        // un-flips it on a failure. Returning quietly left the button lit with nothing queued.
+        // The rejection must reach the caller: the like button flips optimistically and only
+        // un-flips on a failure.
         assertFailsWith<IllegalArgumentException> { service().toggleReaction(post, "") }
         assertFailsWith<IllegalArgumentException> { service().toggleReaction(post, "   ") }
         assertFailsWith<IllegalArgumentException> {
@@ -295,11 +286,7 @@ class PostReactionSummaryTest {
         assertEquals(0L, env.outboxCount())
     }
 
-    /**
-     * A ZWJ sequence is one glyph in the picker but many UTF-16 units — 👨‍👩‍👧‍👦 and 👩‍❤️‍💋‍👨 are 11
-     * each — so a `length` cap of 8 rejected 16 of the 1949 emoji in `emoji_data.json` outright.
-     * Counted as code points they are 7 and 8.
-     */
+    // A ZWJ sequence is one glyph but many UTF-16 units (👨‍👩‍👧‍👦 is 11), so the cap counts code points.
     @Test
     fun toggleReaction_zwjEmoji_isQueuedLikeAPlainGlyph() = runFeedTest {
         val post = seedPost()

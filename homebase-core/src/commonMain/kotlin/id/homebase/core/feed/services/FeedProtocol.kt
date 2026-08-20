@@ -30,7 +30,6 @@ object FeedProtocol {
 
     // Payload keys must match ^[a-z0-9_]{8,10}$.
 
-    /** Combine with [mediaPayloadKey] (e.g. `pst_mdi_00`). */
     const val MediaPayloadKeyPrefix = "pst_mdi"
 
     const val LinksPayloadKey = "pst_links"
@@ -41,10 +40,9 @@ object FeedProtocol {
     const val CommentMediaPayloadKey = "cmmnt_md"
 
 
-    /** Shared by every channel drive (default channel = the public-channel drive). */
+    /** Shared by every channel drive. */
     val ChannelDriveType: Uuid = Uuid.parse("8f448716-e34c-edf9-0141-45e043ca6612")
 
-    /** `Md5.toGuidId("public_channel_drive")`. */
     val PublicChannelDriveAlias: Uuid = Md5.toGuidId("public_channel_drive")
 
     /** The two-digit zero-padded suffix keeps the key 10 chars, within `^[a-z0-9_]{8,10}$`. */

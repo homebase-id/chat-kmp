@@ -113,7 +113,6 @@ fun FollowingScreen(
                         val isFollowed = remember(odinId, uiState.following) {
                             uiState.following.any { it.equals(odinId, ignoreCase = true) }
                         }
-                        // Resolve to a saved contact/connection name, else the raw domain.
                         val odin = remember(odinId) { OdinId(odinId) }
                         val displayName = displayNames[odin]?.takeIf { it.isNotBlank() } ?: odinId
                         IdentityRow(
@@ -189,9 +188,6 @@ private fun IdentityRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // Show the domain as a secondary line only when it differs from the resolved name,
-            // so a known contact reads "Alice / alice.dotyou.cloud" and an unknown shows just
-            // the domain once.
             if (displayName != odinId) {
                 Text(
                     text = odinId,
