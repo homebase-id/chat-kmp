@@ -21,24 +21,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-/**
- * Branded full-screen message state for the native feed — a tonal icon medallion, a title, an
- * optional supporting line, and an optional action button. Used for the empty timeline and the
- * load-error states so both read with the same calm, centred composition instead of a bare
- * spinner or raw error text.
- *
- * Purely presentational. Strings are resolved by the caller (so the Konsist hardcoded-literal
- * rule sees no inline text literal here) and passed in; [onAction] + [actionLabel] are both
- * required for the button to appear.
- *
- * @param icon the glyph shown inside the tonal medallion.
- * @param iconContentDescription accessibility label for [icon], or null when purely decorative.
- * @param title the headline line (already localized).
- * @param body optional supporting line beneath the title (already localized).
- * @param actionLabel optional button label; the button renders only when both this and [onAction]
- *   are non-null.
- * @param onAction invoked when the action button is tapped.
- */
+// Strings are resolved by the caller so the Konsist hardcoded-literal rule sees no inline literal here.
+// [onAction] and [actionLabel] are both required for the button to appear.
 @Composable
 fun FeedMessageState(
     icon: ImageVector,
@@ -58,7 +42,6 @@ fun FeedMessageState(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // A tonal medallion sets the icon apart from the bare-icon look of a default empty state.
             Surface(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.secondaryContainer,

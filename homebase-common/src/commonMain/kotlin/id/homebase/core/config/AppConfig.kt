@@ -246,12 +246,12 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // (fileType=77) are indexed locally and available offline (#1105). Display name / avatar
 // continue to come from the public `https://{odinId}/pub/profile` endpoint
 // (PublicProfileProviderCached) — that's a separate, cache-backed path.
-// The feed + public-channel drives are deliberately NOT here. Everything in this list is
-// exempt from AuthConnectionCoordinator's read-grant filter and from drivesToPrune, which is
-// only sound for drives [targetDriveAccessRequest] grants at login. The feed drives are
-// granted by the separate [feedTargetDriveAccessRequest] extend-permissions flow, so listing
-// them here puts an ungranted drive on the WebSocket subscription — the server then closes
-// the socket and the whole session loses live chat (#1079). They activate through
+// The feed + public-channel drives are deliberately NOT here. Everything in this list is exempt from
+// AuthConnectionCoordinator's read-grant filter and from drivesToPrune, which is only sound for drives
+// [targetDriveAccessRequest] grants at login. The feed drives are granted by the separate
+// [feedTargetDriveAccessRequest] extend-permissions flow, so listing them here puts an ungranted drive on the
+// WebSocket subscription — the server then closes the socket and the whole session loses live chat. They
+// activate through
 // OptionalDriveActivation like Moments/Vault instead; once registered, the login pre-mount
 // loop mounts them on every device and the sync engine drains the transit inbox as before.
 val mandatorySyncDrives: List<LabeledDrive> =

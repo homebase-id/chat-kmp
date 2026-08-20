@@ -45,31 +45,9 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import kotlin.uuid.Uuid
 
-/**
- * Drives the native home timeline ([FeedTimelineScreen]).
- *
- * [FeedTimelineService] is an app-scoped singleton normally started by
- * `AppModule.onPostAuthenticated`; this VM also calls its idempotent [start] in `init`
- * so a session-restore launch (where that preload hook never fires) still loads the
- * feed without a relogin. The first emission flips [FeedTimelineUiState.isLoading]
- * false; we deliberately seed `isLoading = true` directly in the [MutableStateFlow] (not via
- * a `stateIn(WhileSubscribed)` default) so the spinner doesn't flash back on every
- * re-subscription (see the MomentDetail spinner bug in CLAUDE.md).
- *
- * Reactions go through [PostReactionService.toggleReaction], whose optimistic write updates
- * the underlying file's reaction preview; the service re-emits the timeline so the card
- * re-renders with the new tally — no local mutation of [FeedTimelineUiState.posts] needed.
- *
- * The reaction TALLY is taken straight off the header preview, which the server maintains and the
- * author's feed distribution keeps in step (verified against the author's live summary). What the
- * header cannot carry is which reaction is ours, so [PostOwnReactionResolver] resolves that
- * separately — lazily, cached, and only for posts that show a reaction at all.
- *
- * The two drives the timeline reads are grant-gated add-ons, not login drives: they are authorized
- * by the `feedTargetDriveAccessRequest` extend-permissions flow and mounted through
- * [OptionalDriveActivation], exactly as Moments does (see `MomentsViewModel`). Without that the
- * native feed would read two drives nothing ever mounts.
- */
+// isLoading is seeded directly in the MutableStateFlow, not via a stateIn(WhileSubscribed) default, so the
+// spinner doesn't flash back on every re-subscription.
+// The two source drives are grant-gated add-ons, not login drives: they mount through OptionalDriveActivation.
 class FeedTimelineViewModel(
     private val timelineService: FeedTimelineService,
     private val reactionService: PostReactionService,
@@ -83,23 +61,16 @@ class FeedTimelineViewModel(
     private val optionalDriveActivation: OptionalDriveActivation,
 ) : ViewModel() {
 
-    /** The feed's extend-permissions VM; [FeedTimelineScreen] renders its dialog. */
     val extendPermissionViewModel: ExtendPermissionViewModel
         get() = feedPermissionViewModel
 
     private val _uiState = MutableStateFlow(FeedTimelineUiState(isLoading = true))
     val uiState: StateFlow<FeedTimelineUiState> = _uiState.asStateFlow()
 
-    /** `channelId → [ChannelDefinition]` so the screen can label a post's (non-public) channel. */
     val channels: StateFlow<Map<String, ChannelDefinition>> = channelService.channels
 
-    /**
-     * Reactive `odinId → resolved display name`, sourced from [ContactService] (saved contacts
-     * merged with connections). Only known identities appear here; the screen falls back to the
-     * raw domain for anyone absent — mirroring the web feed's `AuthorName` (`fullName ?? odinId`).
-     */
-    /** Owner's own resolved name (public profile), overlaid so your own posts show your name not
-     *  your raw domain — you aren't in your own ContactService contacts. */
+    // Only known identities appear here; the screen falls back to the raw domain, mirroring the web feed.
+    // You aren't in your own ContactService contacts, so your own posts need this to show a name not a domain.
     private val _selfName = MutableStateFlow<Pair<OdinId, String>?>(null)
 
     val displayNames: StateFlow<Map<OdinId, String>> =
@@ -109,10 +80,7 @@ class FeedTimelineViewModel(
             names.toMap()
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    /**
-     * Channel name to show on a post, or null for a public/unknown channel (which shows no label).
-     * Public posts (blank id or the public alias) are never labelled.
-     */
+    // Public posts (blank id or the public alias) are never labelled.
     fun channelNameFor(channelId: String): String? =
         if (isPublicChannel(channelId)) {
             null
@@ -120,8 +88,6 @@ class FeedTimelineViewModel(
             channelService.nameFor(channelId)
         }
 
-    /** True for the public channel (blank id or the public alias) — visible to everyone. The
-     *  header shows a globe + "Public" for these instead of a lock + channel name. */
     fun isPublicChannel(channelId: String): Boolean =
         channelId.isBlank() || channelId == FeedProtocol.PublicChannelDriveAlias.toString()
 
@@ -130,39 +96,28 @@ class FeedTimelineViewModel(
 
     private val ownReactionResolver = PostOwnReactionResolver(reactionService)
 
-    /** The timeline as the service emitted it, before the own-reaction overlay. */
     private var rawPosts: List<FeedPostItem> = emptyList()
 
-    /** How far down the list own-reactions are resolved; widened by [loadMore] as the user pages. */
     private var reactionWindow = REACTION_WINDOW
 
-    // Synchronous one-shot guard for the auto-activate collector: the drives only read as mounted
-    // once activate()'s mount lands, so a second grant emission in that window would re-enter.
-    // Same latch MomentsViewModel uses.
+    // One-shot guard: the drives only read as mounted once activate()'s mount lands, so a second grant
+    // emission in that window would re-enter. Same latch MomentsViewModel uses.
     private var activationKicked = false
 
     companion object {
         private const val TAG = "FeedTimelineViewModel"
 
-        /** Posts resolved ahead of the scroll position (~7 screenfuls of cards). */
         private const val REACTION_WINDOW = 20
     }
 
     init {
-        // Idempotent (`if (started) return`). AppModule.onPostAuthenticated normally
-        // starts the service, but that preload hook is DEFERRED on a session-restore
-        // launch and never fires (the headless Authenticated branch waits for a "next
-        // Authenticated" that doesn't come), leaving a returning user with an empty feed
-        // until a full relogin. Starting here when the Feed screen opens makes the
-        // timeline load regardless — a fresh login that already started the service just
-        // no-ops this call.
+        // Idempotent. AppModule.onPostAuthenticated normally starts the service, but that hook never fires on
+        // a session-restore launch, leaving a returning user with an empty feed until a full relogin.
         timelineService.start()
-        // Idempotent — ensures the contact/connection streams are hydrating so author names
-        // resolve even on a session-restore launch where chat hasn't been opened yet.
+        // Idempotent — hydrates contact/connection streams so author names resolve on a session-restore launch.
         contactService.start()
         viewModelScope.launch {
             val self = credentialsManager.getActiveCredentials()?.domain ?: return@launch
-            // Drives the reactors-sheet "owner" highlight and the overflow menu's own-vs-other split.
             _uiState.update { it.copy(selfOdinId = self) }
             val name = runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
             if (!name.isNullOrBlank()) _selfName.value = self to name
@@ -197,13 +152,11 @@ class FeedTimelineViewModel(
                     if (error == null) {
                         it.copy(errorMessage = null)
                     } else {
-                        // The timeline never emits on a failed load, so nothing else would take
-                        // the cold-start skeletons or the refresh spinner down.
+                        // The timeline never emits on a failed load, so nothing else takes the skeletons down.
                         it.copy(errorMessage = error, isLoading = false, isRefreshing = false)
                     }
                 }
-                // With posts already on screen the full-screen error state would blank a working
-                // feed, so the screen keeps the list and the failure is reported here instead.
+                // A full-screen error would blank a working feed, so with posts on screen it stays a snackbar.
                 if (error != null && rawPosts.isNotEmpty()) {
                     _events.tryEmit(
                         FeedTimelineEvent.ShowSnackbar(MR.string.feed_timeline_refresh_failed)
@@ -217,9 +170,7 @@ class FeedTimelineViewModel(
                 .collect {
                     if (!activationKicked && !feedDrivesMounted()) {
                         activationKicked = true
-                        // Both drives: the timeline aggregates the feed drive (followed
-                        // identities' posts) and the user's own public-channel drive, and the
-                        // one extend-permissions flow grants both.
+                        // One extend-permissions flow grants both source drives.
                         optionalDriveActivation.activate(feedLabeledDrive)
                         optionalDriveActivation.activate(publicChannelLabeledDrive)
                     }
@@ -236,17 +187,10 @@ class FeedTimelineViewModel(
         return posts.map { it.withOwnReactions(resolved[it.fileId]) }
     }
 
-    /**
-     * Pull older posts: asks the service for one more page per source drive. Gated on
-     * [FeedTimelineUiState.endReached] so the scroll trigger goes quiet once every drive is
-     * depleted; the service separately drops a call made while a page fetch is already in flight,
-     * so the repeated firing of that trigger can't stack up page reads.
-     */
+    // The service drops a call made while a page fetch is already in flight, so the scroll trigger can't stack.
     fun loadMore() {
-        // The screen fires this within a few rows of the end, so "everything loaded + a page" is a
-        // window that always covers what the user has actually scrolled past. Resolving it here as
-        // well as on the next timeline emission matters once the feed is fully paged: no further
-        // emission would come to trigger it.
+        // Resolving here as well as on the next timeline emission matters once the feed is fully paged: no
+        // further emission would come to trigger it.
         val loaded = rawPosts
         reactionWindow = loaded.size + REACTION_WINDOW
         viewModelScope.launch { ownReactionResolver.resolve(loaded, reactionWindow) }
@@ -260,13 +204,8 @@ class FeedTimelineViewModel(
         }
     }
 
-    /**
-     * Pull-to-refresh: re-run the service's cold-load via [FeedTimelineService.refresh],
-     * which re-queries both source drives and re-emits the timeline. The spinner stays up
-     * for the whole round-trip — [isRefreshing] is held true until `refresh()` returns and
-     * cleared in `finally` so a failure (or the timeline re-emit clearing it early) can't
-     * strand the indicator on or spin it forever.
-     */
+    // isRefreshing is held true until refresh() returns and cleared in finally, so neither a failure nor an
+    // early timeline re-emit can strand the indicator.
     fun refresh() {
         _uiState.update { it.copy(isRefreshing = true) }
         viewModelScope.launch {
@@ -284,16 +223,9 @@ class FeedTimelineViewModel(
         _events.tryEmit(FeedTimelineEvent.NavigateToDetail(postId))
     }
 
-    /**
-     * Fire-and-forget reaction toggle from a feed card. The optimistic write inside
-     * [PostReactionService] updates the UI via the timeline re-emit; a failure rolls back
-     * there and we surface a snackbar.
-     *
-     * The own-reaction flip is applied here too, against the RAW timeline item: on a followed
-     * identity's post the optimistic write can't run (the feed-drive reference has no uniqueId) and
-     * the header tally only moves once the author redistributes it, so nothing else would light the
-     * like button up. A failed toggle flips it back.
-     */
+    // The own-reaction flip is applied against the RAW timeline item: on a followed post the optimistic write
+    // can't run (no uniqueId) and the tally only moves once the author redistributes, so nothing else would
+    // light the like button up.
     fun onToggleReaction(post: FeedPostItem, emoji: String) {
         val raw = rawPosts.firstOrNull { it.id == post.id } ?: post
         ownReactionResolver.applyLocalToggle(raw, emoji)
@@ -310,17 +242,8 @@ class FeedTimelineViewModel(
         }
     }
 
-    /**
-     * Open the inline "who reacted" sheet for a tweet/media post and fetch its roster (articles
-     * route to the detail screen instead). Opens immediately with an empty list + loading flag,
-     * then fills in once [PostReactionService.listReactors] returns. Names resolve through
-     * [ContactService], falling back to the raw domain. Mirrors `PostDetailViewModel.showReactors`.
-     *
-     * The chips are labelled from the post header, not from the roster: on a post hosted by another
-     * identity the roster read can only see our own rows (see [PostReactionService.listReactors]),
-     * so it is flagged partial and the sheet says as much instead of presenting one name as all of
-     * them.
-     */
+    // Chips are labelled from the post header, not the roster: on someone else's post the roster read only
+    // sees our own rows, so it is flagged partial.
     fun showReactors(post: FeedPostItem) {
         _uiState.update {
             it.copy(
@@ -340,7 +263,6 @@ class FeedTimelineViewModel(
                         emoji = it.emoji,
                     )
                 }
-                // Drop the result if the user dismissed the sheet while the fetch was in flight.
                 _uiState.update {
                     if (it.reactorsSheet != null) {
                         it.copy(reactorsSheet = reactors, isReactorsLoading = false)
@@ -368,12 +290,7 @@ class FeedTimelineViewModel(
         }
     }
 
-    /**
-     * Delete the user's own post from the feed. The post's [FeedPostItem.driveId] is the channel
-     * drive it lives on, so it's the correct `channelId` for [FeedPostSenderService.deletePost].
-     * The optimistic writer drops it from the timeline before this returns; on failure we surface a
-     * snackbar. Mirrors `PostDetailViewModel.deletePost` (the menu only offers this for own posts).
-     */
+    // [FeedPostItem.driveId] is the channel drive the post lives on — the correct channelId to delete against.
     fun deletePost(post: FeedPostItem) {
         viewModelScope.launch {
             try {
@@ -385,11 +302,7 @@ class FeedTimelineViewModel(
         }
     }
 
-    /**
-     * Report [post] to whoever hosts its author. The destination is that identity's own
-     * `config/reporting` endpoint (with a shared fallback); resolving it is a network call, so
-     * it happens here and the screen just opens the URL that comes back.
-     */
+    // The destination is the author's own config/reporting endpoint, so resolving it is a network call.
     fun reportPost(post: FeedPostItem) {
         val author = post.authorOdinId ?: return
         viewModelScope.launch {
@@ -398,7 +311,6 @@ class FeedTimelineViewModel(
     }
 }
 
-/** One-time effects the [FeedTimelineScreen] reacts to (navigation, snackbars). */
 sealed interface FeedTimelineEvent {
     data class NavigateToDetail(val postId: Uuid) : FeedTimelineEvent
     data class ShowSnackbar(val messageKey: StringResource) : FeedTimelineEvent

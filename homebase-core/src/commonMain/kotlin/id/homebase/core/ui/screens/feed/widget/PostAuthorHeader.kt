@@ -63,28 +63,10 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 
-/**
- * Top row of a feed post card: author avatar + display name, an optional
- * "to <channel>" line, and a relative timestamp. Purely presentational — the
- * caller resolves [displayName] and [channelName]; this widget never does a
- * lookup.
- *
- * @param authorOdinId identity used to fetch the avatar (caller passes
- *   `originalAuthor ?: senderOdinId`).
- * @param displayName already-resolved name to render.
- * @param channelName optional channel the post was published to.
- * @param timestampMs epoch-ms authored/publish time (the post's `userDate`), rendered via
- *   [formatTimestamp]. NOT the drive file's `created`, which on a followed/public post is the
- *   aggregation time onto the local feed drive, not when the author posted.
- * @param onAuthorClick invoked when the avatar or name is tapped.
- * @param isOwnPost true when the post was authored by the current user — selects the overflow
- *   menu's actions (Edit/Delete vs Report/Block).
- * @param audience who the post is actually shared with, when that's worth surfacing (the web
- *   shows this to the author only, since it's the author's own sharing choice). Takes the place
- *   of the channel name when it's narrower than public.
- * @param onEditPost / onDeletePost / onReportPost / onBlockAuthor overflow-menu handlers. Null
- *   handlers are omitted; when none apply the trailing `…` button isn't shown at all.
- */
+// [timestampMs] is the post's userDate, NOT the drive file's `created` — on a followed post that is the
+// aggregation time onto the local feed drive, not when the author posted.
+// [audience] takes the place of the channel name when it is narrower than public, and the web shows it to the
+// author only, since it is the author's own sharing choice.
 @Composable
 fun PostAuthorHeader(
     authorOdinId: OdinId,
@@ -126,10 +108,8 @@ fun PostAuthorHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // Web `PostMeta` (Meta.tsx) renders the date first, then a separated audience link
-            // carrying a glyph — so timestamp leads, audience follows. A public post shows a globe
-            // + "Public"; a restricted channel shows a lock + its name; an unknown/still-loading
-            // channel shows nothing until its definition arrives.
+            // Timestamp leads, audience follows (web Meta.tsx). An unknown/still-loading channel shows nothing
+            // until its definition arrives.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = formatTimestamp(Instant.fromEpochMilliseconds(timestampMs)),
@@ -137,13 +117,10 @@ fun PostAuthorHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
-                // A restricted audience wins over the channel name: "who can see this" is the
-                // more useful fact, and it's the one the web surfaces to the author.
+                // A restricted audience wins over the channel name: "who can see this" is the more useful fact.
                 val audienceLabel = audience?.takeIf { it.isRestricted }?.labelResource()
                 val channelLabel = channelName?.takeIf { it.isNotBlank() }
                 if (isPublic || channelLabel != null || audienceLabel != null) {
-                    // A thin 12dp hairline separates timestamp from audience (not a middot),
-                    // matching the M3 redesign spec.
                     VerticalDivider(
                         modifier = Modifier
                             .padding(horizontal = 8.dp)
@@ -192,7 +169,6 @@ fun PostAuthorHeader(
     }
 }
 
-/** The string each audience renders as in the header chip. */
 private fun PostAudience.labelResource(): StringResource = when (this) {
     PostAudience.Public -> MR.string.feed_audience_public
     PostAudience.Authenticated -> MR.string.feed_audience_authenticated
@@ -202,12 +178,8 @@ private fun PostAudience.labelResource(): StringResource = when (this) {
     PostAudience.Owner -> MR.string.feed_audience_owner
 }
 
-/**
- * Trailing `…` overflow for a post. Own post → Edit + Delete; someone else's → Report (web
- * `OwnerActions` / `ExternalActions` parity). Renders nothing when no handler applies, so a card
- * with no actions (e.g. inside the detail screen, which has its own top-bar menu) shows no button.
- * Delete is guarded by a confirm dialog — it's a one-tap-from-the-list destructive action.
- */
+// Renders nothing when no handler applies, so a card with no actions shows no button. Delete is guarded by a
+// confirm dialog — it's a one-tap-from-the-list destructive action.
 @Composable
 private fun PostOverflowMenu(
     isOwnPost: Boolean,

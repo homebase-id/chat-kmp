@@ -8,15 +8,9 @@ import io.ktor.client.statement.bodyAsText
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/**
- * Resolves where "Report" should send the user for a given author.
- *
- * Each identity publishes its own abuse-reporting endpoint at the unauthenticated
- * `https://{odinId}/config/reporting` (shape `{"url": "..."}`), so a report lands with whoever
- * hosts the author rather than with us. Mirrors dotyoucore-js `useManageSocialFeed`'s
- * `getContentReportUrl`, including its fallback: any failure (offline, 404, malformed body,
- * identity that never configured one) resolves to [DEFAULT_REPORT_URL].
- */
+// Each identity publishes its own abuse-reporting endpoint at the unauthenticated
+// `https://{odinId}/config/reporting`, so a report lands with whoever hosts the author rather than with us.
+// Any failure resolves to [DEFAULT_REPORT_URL].
 class ReportingUrlProvider(private val httpClient: HttpClient) {
 
     @Serializable
@@ -34,7 +28,7 @@ class ReportingUrlProvider(private val httpClient: HttpClient) {
     companion object {
         private const val TAG = "ReportingUrl"
 
-        /** The web client's fallback (`useManageSocialFeed.ts`) — keep the two in step. */
+        /** The web client's fallback — keep the two in step. */
         const val DEFAULT_REPORT_URL = "https://ravenhosting.cloud/report"
 
         private val json = Json { ignoreUnknownKeys = true }

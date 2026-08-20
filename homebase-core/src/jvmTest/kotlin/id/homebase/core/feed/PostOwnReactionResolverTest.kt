@@ -37,16 +37,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * Covers [PostOwnReactionResolver] — the timeline's own-reaction resolution — and the
- * [withOwnReactions] overlay it feeds.
- *
- * Context for the assertions below (verified against live data on `samwise.gamgee.demo.rocks`):
- * the header's `reactionPreview` is the correct tally even for a followed identity's post (it
- * matches that author's live summary), but it carries no per-identity information, and
- * `localAppData.localReactions` — chat's own-reaction mirror — is null on every post header. So the
- * roster read is the only source for "which of these is mine", and it must stay cheap.
- */
+// Verified against live data: the header's reactionPreview is the correct tally even for a followed post, but
+// carries no per-identity information, and localAppData.localReactions is null on every post header. So the
+// roster read is the only source for "which of these is mine", and it must stay cheap.
 class PostOwnReactionResolverTest {
 
     private val self = OdinId("test.example.com")
@@ -85,7 +78,6 @@ class PostOwnReactionResolverTest {
         )
     )
 
-    // -------------------- own-reaction detection --------------------
 
     @Test
     fun resolve_marksOurOwnGlyphActive_withoutTouchingTheHeaderTally() = runResolverTest {
@@ -130,7 +122,6 @@ class PostOwnReactionResolverTest {
         assertEquals(listOf("❤️"), rendered.ownReactions)
     }
 
-    // -------------------- cost gating --------------------
 
     @Test
     fun resolve_skipsPostsWhoseHeaderShowsNoReactions() = runResolverTest {
@@ -184,7 +175,6 @@ class PostOwnReactionResolverTest {
         assertEquals(5, roster.requests, "widening the window reads only the newly covered posts")
     }
 
-    // -------------------- failure --------------------
 
     @Test
     fun resolve_failedReadLeavesTheHeaderSnapshotIntact() = runResolverTest {
@@ -206,7 +196,6 @@ class PostOwnReactionResolverTest {
         assertEquals(listOf("❤️"), resolver.ownReactions.value[post.fileId])
     }
 
-    // -------------------- optimistic toggle --------------------
 
     @Test
     fun applyLocalToggle_flipsOurGlyphAndSuppressesTheRefetchThatWouldUndoIt() = runResolverTest {
@@ -235,7 +224,6 @@ class PostOwnReactionResolverTest {
         assertTrue(post.withOwnReactions(null).ownReactions.isEmpty())
     }
 
-    // -------------------- fixtures --------------------
 
     private fun preview(vararg counts: Pair<String, Int>) = ReactionSummary(
         reactions = counts.associate { (emoji, count) ->
@@ -271,10 +259,7 @@ class PostOwnReactionResolverTest {
         acl = null,
     )
 
-    /**
-     * A MockEngine standing in for `GET /drives/{driveId}/files/{fileId}/group-reactions`, keyed by
-     * the fileId in the path, that counts how many reads the resolver actually made.
-     */
+    /** Stands in for `GET /drives/{driveId}/files/{fileId}/group-reactions`, counting the reads made. */
     private class RosterServer {
         private val byFile = mutableMapOf<Uuid, List<GroupReactionItem>>()
 
@@ -299,7 +284,6 @@ class PostOwnReactionResolverTest {
             if (failing) {
                 respondError(HttpStatusCode.InternalServerError)
             } else {
-                // .../files/{fileId}/group-reactions
                 val fileId = request.url.encodedPath.split("/")
                     .let { segments -> segments.getOrNull(segments.lastIndex - 1) }
                     ?.let { runCatching { Uuid.parse(it) }.getOrNull() }

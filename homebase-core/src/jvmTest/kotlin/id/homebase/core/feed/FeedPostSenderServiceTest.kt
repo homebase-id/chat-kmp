@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 /**
- * The post create/edit send path was removed while feed compose is disabled (PR #802), so this
+ * The post create/edit send path was removed while feed compose is disabled, so this
  * only covers [FeedPostSenderService.deletePost]. Reviving compose re-adds create/update on the
  * shared UploadService pipeline — add their tests back then.
  */

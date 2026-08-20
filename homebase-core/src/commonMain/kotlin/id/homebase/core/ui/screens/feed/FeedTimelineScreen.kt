@@ -76,21 +76,8 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
-/**
- * Native home timeline. Lists [PostCard]s newest-first with infinite scroll,
- * pull-to-refresh, and skeleton / empty / error states.
- *
- * Navigation is callback-based: the VM emits one-time [FeedTimelineEvent]s collected
- * here and forwarded to [onNavigateToDetail]; the screen never holds a NavController.
- *
- * @param onAuthorClick opens the tapped post author's profile. [PostCard]'s own
- *   `onAuthorClick` takes no arg, so the author identity (`originalAuthor ?: senderOdinId`)
- *   is resolved here per row before invoking this callback.
- * @param onFullScreenMediaChanged reported up because the media viewer renders inside the
- *   NavHost, below the app-level bottom navigation bar — only the host can hide that.
- * @param scrollToTop set by the host when the already-selected Feed tab is re-tapped;
- *   [onScrollToTopHandled] clears it once the list has moved.
- */
+// onFullScreenMediaChanged is reported up because the media viewer renders inside the NavHost, below the
+// app-level bottom navigation bar — only the host can hide that.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedTimelineScreen(
@@ -102,36 +89,29 @@ fun FeedTimelineScreen(
     onScrollToTopHandled: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    // Opens the author's report intake / the owner console's block page (web parity).
     val uriHandler = getUriHandler()
     // Collected so the list recomposes (and channel labels appear) once definitions load.
     val channels by viewModel.channels.collectAsStateWithLifecycle()
-    // Resolved author names (saved contacts + connections); the row falls back to the raw
-    // domain for identities absent here, mirroring the web feed's AuthorName.
+    // The row falls back to the raw domain for identities absent here, mirroring the web feed.
     val displayNames by viewModel.displayNames.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    // The LargeTopAppBar collapses to a small bar as the list scrolls up; exitUntilCollapsed
-    // gives the IG/FB "big title shrinks then pins" motion.
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(
         state = rememberTopAppBarState(),
     )
     val scope = rememberCoroutineScope()
-    // Tapping a post or its comment button opens comments as a bottom-sheet modal over the feed
-    // (vs navigating away); null == closed.
+    // Tapping a post or its comment button opens comments as a bottom-sheet modal; null == closed.
     var commentsPostId by remember { mutableStateOf<Uuid?>(null) }
-    // Kept past dismissal: posting a comment is fire-and-forget on a VM keyed to the post, which
-    // outlives the sheet, so a rejection can land with the sheet already gone. The sheet's own
-    // collector dies with it, so this is what keeps that VM's events observed.
+    // Kept past dismissal: posting a comment is fire-and-forget on a VM that outlives the sheet, so a rejection
+    // can land with the sheet already gone and its own collector dead.
     var lastCommentsPostId by remember { mutableStateOf<Uuid?>(null) }
-    // Tapped photo/video, shown full-screen over the timeline; null == closed. Pure view state, so
-    // it lives here rather than in the VM.
+    // Pure view state, so it lives here rather than in the VM; null == closed.
     var overlay by remember { mutableStateOf<FullScreenOverlay?>(null) }
-    // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps the list out of the
-    // composition, so a state remembered inside it would come back scrolled to the top.
+    // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps the list out of the composition, so a
+    // state remembered inside it would come back scrolled to the top.
     val listState = rememberLazyListState()
 
-    // onDispose resets it: a notification tap can navigate away with the viewer still open,
-    // which would otherwise leave the bottom bar hidden on the destination screen.
+    // onDispose resets it: a notification tap can navigate away with the viewer still open, which would leave
+    // the bottom bar hidden on the destination screen.
     DisposableEffect(overlay != null) {
         onFullScreenMediaChanged(overlay != null)
         onDispose { onFullScreenMediaChanged(false) }
@@ -155,9 +135,8 @@ fun FeedTimelineScreen(
         }
     }
 
-    // Permission-drift detection on every screen entry, as on the Moments tab: the feed-qualified
-    // VM checks once on construction and caches that verdict, so a grant added to the requested
-    // set later (or revoked in the owner console) would otherwise never resurface the dialog.
+    // Permission-drift check on every screen entry: the feed-qualified VM checks once on construction and caches
+    // that verdict, so a grant added or revoked later would never resurface the dialog.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -169,18 +148,15 @@ fun FeedTimelineScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Renders only when the feed's drives aren't granted yet; the VM activates (registers + mounts)
-    // them as soon as they are.
     ExtendPermissionDialog(viewModel = viewModel.extendPermissionViewModel)
 
     FeedMediaFullScreenHost(overlay = overlay, onDismiss = { overlay = null }) {
         Scaffold(
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
-                // ponytail: the Following/Followers action is parked (PR #802) — the v2 API has
-                // no followers controller, so every /api/v2/followers/* call 404s
-                // (homebase-id/odin-core#1611). FollowingScreen and its VM are kept intact;
-                // restore this action + the Route.Following destination once the routes land.
+                // ponytail: Following/Followers is parked — the v2 API has no followers controller, so every
+                // /api/v2/followers/* call 404s. FollowingScreen and its VM are kept intact; restore this
+                // action + the Route.Following destination once the routes land.
                 TopAppBar(
                     title = { Text(stringResource(MR.string.feed_timeline_title)) },
                     scrollBehavior = scrollBehavior,
@@ -194,8 +170,7 @@ fun FeedTimelineScreen(
                 .padding(innerPadding)
 
             when {
-                // Gated on an empty list: a refresh that fails over a populated feed reports on
-                // the snackbar instead of replacing posts the user can still read.
+                // Gated on an empty list: a refresh that fails over a populated feed reports on the snackbar.
                 uiState.errorMessage != null && uiState.posts.isEmpty() -> FeedMessageState(
                     icon = Icons.Outlined.CloudOff,
                     iconContentDescription = null,
@@ -250,17 +225,14 @@ fun FeedTimelineScreen(
         }
 
         lastCommentsPostId?.let { pid ->
-            // Resolved here, not inside the sheet, so the collector below outlives a dismissal —
-            // the sheet is handed the same instance.
+            // Resolved here, not inside the sheet, so the collector below outlives a dismissal.
             val commentsViewModel: PostDetailViewModel =
                 koinViewModel(key = "feed-comments-$pid") { parametersOf(pid) }
             val commentFailedMessage = stringResource(MR.string.feed_comment_action_failed)
             LaunchedEffect(commentsViewModel) {
                 commentsViewModel.events.collect { event ->
-                    // While the sheet is up it hosts its own snackbar (this Scaffold's renders
-                    // behind it, and on Android in another window); once dismissed, the Scaffold's
-                    // is the only host left. Shown from a separate scope so a lingering snackbar
-                    // can't stall the collector.
+                    // While the sheet is up it hosts its own snackbar; once dismissed the Scaffold's is the only
+                    // host left. Shown from a separate scope so a lingering snackbar can't stall the collector.
                     if (event is PostDetailEvent.ShowSnackbar && commentsPostId == null) {
                         scope.launch {
                             snackbarHostState.showSnackbar(event.message ?: commentFailedMessage)
@@ -279,8 +251,6 @@ fun FeedTimelineScreen(
             }
         }
 
-        // Inline "who reacted" sheet for tweet/media posts (articles use the detail screen). Names
-        // fall back to the reactor's domain; the avatar is derived from the odinId inside the sheet.
         uiState.reactorsSheet?.let { reactors ->
             ReactionsBottomSheet(
                 reactions = reactors,
@@ -296,20 +266,14 @@ fun FeedTimelineScreen(
     }
 }
 
-/** Number of items from the end at which [onLoadMore] is triggered. */
 private const val LOAD_MORE_THRESHOLD = 4
 
-// ponytail: on wide (tablet/desktop) windows the feed column is capped to 80% width and centered
-// so posts don't stretch full-bleed; phone-width (< 600dp, the M3 compact/medium breakpoint) stays
+// ponytail: on wide windows the feed column is capped to 80% width and centered; phone-width (< 600dp) stays
 // full width. Bump FEED_WIDE_FRACTION down (or swap for a widthIn max) if 80% still reads too wide.
 private val FEED_WIDE_BREAKPOINT = 600.dp
 private const val FEED_WIDE_FRACTION = 0.8f
 
-/**
- * Paints the darker feed band across the full width, then hands [content] a modifier that is
- * centered and capped at [FEED_WIDE_FRACTION] on wide windows / full width on phones. Shared by the
- * real list and the loading skeletons so both track the same column width.
- */
+// Shared by the real list and the loading skeletons so both track the same column width.
 @Composable
 private fun FeedWidthContainer(
     modifier: Modifier = Modifier,
@@ -339,7 +303,6 @@ private fun FeedTimelineList(
     onLoadMore: () -> Unit,
     onPostClick: (Uuid) -> Unit,
     onOpenComments: (Uuid) -> Unit,
-    /** Opens the tapped media full-screen; the String is the resolved author name for its app bar. */
     onOpenMedia: (post: FeedPostItem, index: Int, title: String) -> Unit,
     onShowReactors: (FeedPostItem) -> Unit,
     onToggleReaction: (post: FeedPostItem, emoji: String) -> Unit,
@@ -356,10 +319,8 @@ private fun FeedTimelineList(
 ) {
     val pullState = rememberPullToRefreshState()
 
-    // Trigger loadMore as the user nears the end. The snapshotFlow body returns a coarse
-    // Boolean "near the end" key, which snapshotFlow already self-dedups structurally before
-    // emitting — so no trailing distinctUntilChanged (that would run the same Boolean compare
-    // twice; see CLAUDE.md).
+    // The snapshotFlow body returns a coarse Boolean "near the end" key, which snapshotFlow already self-dedups
+    // — so no trailing distinctUntilChanged.
     LaunchedEffect(listState, uiState.endReached, uiState.posts.size) {
         if (uiState.endReached) return@LaunchedEffect
         snapshotFlowShouldLoadMore(listState, uiState.posts.size)
@@ -372,8 +333,7 @@ private fun FeedTimelineList(
         state = pullState,
         modifier = modifier,
     ) {
-      // The darker surfaceContainerHigh band fills the full width (painted by FeedWidthContainer);
-      // the post column itself is centered and width-capped on wide windows so the gaps between
+      // The darker band fills the full width while the post column is centered and capped, so the gaps between
       // posts and the side margins read as the same separator colour.
       FeedWidthContainer { columnModifier ->
         LazyColumn(
@@ -383,17 +343,12 @@ private fun FeedTimelineList(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(uiState.posts, key = { it.id.toString() }) { post ->
-                // Read `channels` so the row recomposes when definitions arrive; the lambda
-                // returns null for public/unknown channels.
+                // Read `channels` so the row recomposes when definitions arrive.
                 channels
                 val author = post.originalAuthor ?: post.senderOdinId
-                // The full PostDetail screen is reserved for long-form Articles. A tweet/media
-                // post stays inline: comments open as a modal sheet, the reaction facepile opens
-                // the inline reactors sheet, and tapping a photo opens it full-screen over the
-                // timeline (double-tap still likes). An Article's media opens the article instead.
+                // The full PostDetail screen is reserved for long-form Articles; a tweet/media post stays inline.
                 val isArticle = post.type == PostType.Article
-                // originalAuthor survives the server stripping senderOdinId, so it's the reliable
-                // own-vs-other signal for the overflow menu (Edit/Delete vs Report).
+                // originalAuthor survives the server stripping senderOdinId, so it's the reliable own-vs-other signal.
                 val isOwnPost = selfOdinId != null && author == selfOdinId
                 val displayName = author
                     ?.let { displayNames[it]?.takeIf { n -> n.isNotBlank() } ?: it.domainName }
@@ -404,9 +359,8 @@ private fun FeedTimelineList(
                     channelName = channelNameFor(post.channelId),
                     isPublic = isPublicChannel(post.channelId),
                     onToggleReaction = { emoji -> onToggleReaction(post, emoji) },
-                    // ponytail: post composer disabled for now (PR #802). PostCard hides the
-                    // repost button + overflow Edit item when these are null; Delete/Report stay.
-                    // Restore the FAB + Route.PostCompose (see AppNavHost) to re-enable compose.
+                    // ponytail: post composer disabled for now. PostCard hides the repost button + overflow Edit
+                    // when these are null. Restore the FAB + Route.PostCompose to re-enable compose.
                     onRepost = null,
                     onOpenComments = { onOpenComments(post.id) },
                     onShowReactors = { if (isArticle) onPostClick(post.id) else onShowReactors(post) },
@@ -416,8 +370,7 @@ private fun FeedTimelineList(
                         else onOpenMedia(post, index, displayName)
                     },
                     onAuthorClick = { if (author != null) onAuthorClick(author) },
-                    // OdinId's constructor throws on a non-domain; the embed's author is
-                    // unvalidated wire data, so gate on isValid before touching it.
+                    // OdinId's constructor throws on a non-domain and the embed's author is unvalidated wire data.
                     embeddedAuthorName = post.embeddedPost?.authorOdinId
                         ?.takeIf { OdinId.isValid(it) }
                         ?.let { displayNames[OdinId(it)]?.takeIf { n -> n.isNotBlank() } },
@@ -433,11 +386,6 @@ private fun FeedTimelineList(
     }
 }
 
-/**
- * Emits whether the list is scrolled within [LOAD_MORE_THRESHOLD] of the end. Kept as a
- * thin wrapper so the screen body stays readable; the Boolean key it returns is what
- * snapshotFlow dedups on.
- */
 private fun snapshotFlowShouldLoadMore(
     listState: LazyListState,
     itemCount: Int,
@@ -446,10 +394,6 @@ private fun snapshotFlowShouldLoadMore(
     itemCount > 0 && lastVisible >= itemCount - 1 - LOAD_MORE_THRESHOLD
 }
 
-/**
- * The cold-start loading state: a stack of shimmering [PostSkeleton]s on the same darker band
- * background as the real list, so the load reads as "posts arriving" rather than a bare spinner.
- */
 @Composable
 private fun FeedTimelineLoading(modifier: Modifier = Modifier) {
     FeedWidthContainer(modifier) { columnModifier ->

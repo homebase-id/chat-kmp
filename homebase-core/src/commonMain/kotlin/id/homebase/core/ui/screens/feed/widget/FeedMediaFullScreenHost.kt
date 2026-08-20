@@ -19,18 +19,9 @@ import id.homebase.core.feed.services.FeedProtocol
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-/**
- * Wraps a feed screen so a tapped photo/video can take over the whole window, reusing the shared
- * chat viewers ([FullScreenMediaViewer] / [FullScreenVideoPlayer]) rather than a feed-specific one.
- *
- * Same shape as `MomentDetailScreen`'s host: a [SharedTransitionLayout] + [AnimatedContent] that
- * *swaps* the screen for the viewer, which is what supplies the `sharedTransitionScope` /
- * `animatedVisibilityScope` the viewers require. Because the swap disposes [content], any scroll
- * state the caller wants to survive a dismiss has to be hoisted above this host — both feed screens
- * do that.
- *
- * [overlay] is screen-local state owned by the caller; null renders [content] unchanged.
- */
+// A SharedTransitionLayout + AnimatedContent that SWAPS the screen for the viewer, which is what supplies the
+// scopes the shared chat viewers require. Because the swap disposes [content], any scroll state that must
+// survive a dismiss has to be hoisted above this host.
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 internal fun FeedMediaFullScreenHost(
@@ -55,9 +46,8 @@ internal fun FeedMediaFullScreenHost(
             when (target) {
                 null -> content()
 
-                // Share / save / delete need a feed-side action service to decrypt a payload to a
-                // file; until that exists no handler is passed, so those controls stay hidden
-                // rather than rendering as dead buttons.
+                // Share / save / delete need a feed-side action service to decrypt a payload to a file; until
+                // that exists no handler is passed, so those controls stay hidden rather than dead.
                 is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                     data = target,
                     onDismiss = onDismiss,
@@ -79,23 +69,10 @@ internal fun FeedMediaFullScreenHost(
     }
 }
 
-/**
- * The overlay for the media payload at [index] of [post] (the 0-based index `PostCard`'s
- * `onMediaClick` reports), or null when the post has no payload there. A video payload routes to
- * the video player and everything else to the image viewer — the same split Moments makes.
- *
- * The image viewer is handed the post's **whole** media list plus the tapped key, so its pager can
- * swipe across a multi-image post from wherever the tap landed.
- *
- * Drive resolution mirrors `PostMedia`: a followed identity's payload bytes live on the author's
- * channel drive, not our feed drive, so a received post (a `senderOdinId` plus a `globalTransitId`
- * and a parseable channel alias) points at the channel drive, addressed over peer by
- * `globalTransitId`; our own posts stay local on [FeedPostItem.driveId]. The image viewer honours
- * those peer fields; the video player does not yet — peer video playback still issues a local read
- * and falls back to its poster frame.
- *
- * @param title shown in the viewer's app bar; callers pass the resolved author name.
- */
+// Drive resolution mirrors PostMedia: a received post (senderOdinId + globalTransitId + a parseable channel
+// alias) points at the author's channel drive over peer; our own posts stay local on [FeedPostItem.driveId].
+// The image viewer honours those peer fields; the video player does not yet — peer video playback still issues
+// a local read and falls back to its poster frame.
 internal fun feedMediaOverlay(
     post: FeedPostItem,
     index: Int,

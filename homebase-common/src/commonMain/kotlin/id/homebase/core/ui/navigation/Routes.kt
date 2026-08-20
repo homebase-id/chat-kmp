@@ -160,7 +160,7 @@ sealed class Route {
     data class PostDetail(val postId: String) : Route()
 
     // ponytail: Route.PostCompose (the post composer) removed while feed compose is disabled
-    // (PR #802). Restore it + the PostCompose destination in AppNavHost to re-enable.
+    // Restore it + the PostCompose destination in AppNavHost to re-enable.
 
     @Serializable
     @SerialName("feed_following")

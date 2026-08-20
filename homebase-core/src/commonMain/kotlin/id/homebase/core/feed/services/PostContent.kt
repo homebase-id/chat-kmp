@@ -14,10 +14,6 @@ import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
-/**
- * Kind of feed post — mirrors dotyoucore-js `PostType`. Maps to a [FeedProtocol] dataType
- * on the wire via [toDataType].
- */
 @Serializable
 enum class PostType {
     Tweet,
@@ -25,17 +21,13 @@ enum class PostType {
     Article,
 }
 
-/** Wire dataType for this [PostType] (see [FeedProtocol.TweetDataType] etc.). */
 fun PostType.toDataType(): Int = when (this) {
     PostType.Tweet -> FeedProtocol.TweetDataType
     PostType.Media -> FeedProtocol.MediaDataType
     PostType.Article -> FeedProtocol.ArticleDataType
 }
 
-/**
- * Who may react to / comment on a post — mirrors dotyoucore-js `ReactAccess`.
- * Defaults to [All] so legacy posts that pre-date this field stay fully interactive.
- */
+// Defaults to [All] so legacy posts that pre-date this field stay fully interactive.
 @Serializable(with = ReactAccessSerializer::class)
 enum class ReactAccess {
     All,
@@ -44,14 +36,9 @@ enum class ReactAccess {
     None,
 }
 
-/**
- * dotyoucore-js serializes `reactAccess` as `true | false | 'comment' | 'emoji'` (a boolean/string
- * union) — NOT the Kotlin enum names. Posts with a boolean `reactAccess` were therefore failing to
- * parse and silently dropping out of the feed (incl. most followed identities' posts). This maps
- * the web wire form ↔ [ReactAccess] (tolerating the native enum names too) and writes the web form
- * back so our posts/reposts round-trip to the web. Semantics mirror web PostInteracts:
- * `true`→All, `false`→None, `'comment'`→CommentOnly (emoji off), `'emoji'`→EmojiOnly (comment off).
- */
+// dotyoucore-js serializes reactAccess as `true | false | 'comment' | 'emoji'`, NOT the Kotlin enum names —
+// posts with a boolean were failing to parse and silently dropping out of the feed. Writes the web form back
+// so our posts round-trip. true→All, false→None, 'comment'→CommentOnly, 'emoji'→EmojiOnly.
 object ReactAccessSerializer : KSerializer<ReactAccess> {
     override val descriptor: SerialDescriptor =
         PrimitiveSerialDescriptor("ReactAccess", PrimitiveKind.STRING)
@@ -79,90 +66,47 @@ object ReactAccessSerializer : KSerializer<ReactAccess> {
     }
 }
 
-/**
- * Descriptor for a feed post, serialized through
- * [id.homebase.api.serialization.OdinSystemSerializer] (camelCase, `ignoreUnknownKeys = true`,
- * `explicitNulls = false`). Ported from dotyoucore-js `PostContent`.
- *
- * Envelope fields (author odinId, created/userDate timestamps) are NOT duplicated here — they
- * come from the [id.homebase.api.client.drives.files.HomebaseFile] this descriptor rides on.
- * [caption] and [body] are user-entered text.
- *
- * Nullable fields default to forward-compat values so older clients tolerate newer posts and
- * vice-versa.
- */
+// Envelope fields (author odinId, created/userDate timestamps) are NOT duplicated here — they come from the
+// HomebaseFile this descriptor rides on. Nullable fields default so older and newer clients tolerate each other.
 @Serializable
 data class PostContent(
-    // All envelope-ish fields default so a single missing key (e.g. dotyoucore-js posts
-    // carry no `version`) can't fail the whole parse and blank out the caption.
+    // All envelope-ish fields default so a single missing key can't fail the whole parse and blank the caption.
     val version: Int = 0,
     val id: String = "",
     val channelId: String = "",
     val type: PostType = PostType.Tweet,
-    /** User-entered caption / status text. */
     val caption: String = "",
     val slug: String = "",
-    /**
-     * Optional rich-text for the caption. On the wire this is a rich-text tree (a JSON
-     * array/object), NOT a string — type it [JsonElement] so a present value doesn't fail the
-     * whole parse and blank out [caption]. We render [caption] (plain text); this is kept only
-     * so a round-trip preserves it.
-     */
+    /** A rich-text tree on the wire, NOT a string — [JsonElement] so a present value can't blank [caption]. */
     val captionRichText: JsonElement? = null,
-    /** Payload key of the lead media for media posts (see [FeedProtocol.mediaPayloadKey]). */
     val primaryMediaKey: String? = null,
     val reactAccess: ReactAccess = ReactAccess.All,
-    /** A quoted / reposted source post, if this is a repost. */
     val embeddedPost: EmbeddedPost? = null,
-    /** Canonical external URL for an article post. */
     val sourceUrl: String? = null,
-    /** Short summary for an article post. */
     val abstract: String? = null,
-    /**
-     * Long-form article body. On the wire this is a rich-text tree (JSON array/object), not a
-     * string — [JsonElement] so it parses without throwing (it threw at `$.body` and blanked
-     * every caption). Article rendering reads this later; for now it's parse-tolerance only.
-     */
+    /** A rich-text tree on the wire, not a string — it threw at `$.body` and blanked every caption. */
     val body: JsonElement? = null,
 )
 
-/**
- * A post embedded inside another post (repost / quote). Field names mirror the web wire form
- * (dotyoucore-js `EmbeddedPost`), which is a whole [PostContent] plus the envelope bits the quote
- * card needs. Nesting is one level only — the web strips an embed's own embed on upload.
- */
+// Nesting is one level only — the web strips an embed's own embed on upload.
 @Serializable
 data class EmbeddedPost(
-    /**
-     * odinId of the source post's author. The wire key is `authorOdinId` (web assigns it from
-     * `fileMetadata.originalAuthor`) — NOT `author`, which never existed on the wire and, with
-     * `ignoreUnknownKeys`, silently parsed to null and blanked the whole quote card.
-     */
+    /** The wire key is `authorOdinId`, NOT `author` — with ignoreUnknownKeys the latter silently blanked the card. */
     val authorOdinId: String? = null,
     val caption: String? = null,
     val type: PostType? = null,
-    /** Source channel drive alias — the drive its payloads live on, over on the author's identity. */
+    /** The drive its payloads live on, over on the author's identity. */
     val channelId: String? = null,
     val fileId: String? = null,
     val globalTransitId: String? = null,
-    /** Absolute URL of the source post on the author's identity; the quote card's tap target. */
     val permalink: String? = null,
-    /** Author's userDate (epoch ms) of the embedded post. */
     val userDate: Long? = null,
-    /** The source post's payload descriptors; web caps these at 6 when the header runs tight. */
+    /** Web caps these at 6 when the header runs tight. */
     val payloads: List<PayloadDescriptor>? = null,
-    /**
-     * Inline preview thumbnail for the embed. On the wire this is a thumbnail OBJECT
-     * (`{ pixelWidth, pixelHeight, contentType, ... }`), NOT a string — type it [JsonElement] for
-     * parse-tolerance, since a `{...}` value was failing the whole repost parse and dropping it.
-     */
+    /** A thumbnail OBJECT on the wire, NOT a string — a `{...}` value was failing the whole repost parse. */
     val previewThumbnail: JsonElement? = null,
 )
 
-/**
- * Definition of a channel drive (`fileType = 103`). Ported from dotyoucore-js
- * `ChannelDefinition`. Default channel = the public channel.
- */
 @Serializable
 data class ChannelDefinition(
     val name: String,

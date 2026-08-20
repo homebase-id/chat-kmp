@@ -79,15 +79,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 
-/**
- * Post detail + comments. Resolves the post from the live timeline via [PostDetailViewModel],
- * renders the full [PostCard] at the top, the [CommentThread] below, and a pinned
- * [CommentComposer] at the bottom that shows the reply target when one is active. A post that
- * disallows comments still shows the ones it has — only the composer goes away.
- *
- * Navigation is callback-driven: the VM emits one-time [PostDetailEvent]s that this screen
- * collects and forwards to [onBack] / [onAuthorClick]; the screen never holds a NavController.
- */
+// A post that disallows comments still shows the ones it has — only the composer goes away.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PostDetailScreen(
@@ -101,10 +93,10 @@ fun PostDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val uriHandler = getUriHandler()
-    // Tapped photo/video, shown full-screen over the post; null == closed. Pure view state.
+    // Pure view state; null == closed.
     var overlay by remember { mutableStateOf<FullScreenOverlay?>(null) }
-    // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps this screen out of the
-    // composition, so a state remembered inside it would come back scrolled to the top.
+    // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps this screen out of the composition, so
+    // a state remembered inside it would come back scrolled to the top.
     val postScrollState = rememberScrollState()
     val actionFailedMessage = stringResource(MR.string.feed_comment_action_failed)
 
@@ -124,18 +116,16 @@ fun PostDetailScreen(
     }
 
     val post = uiState.post
-    // Two independent gates, as on the web: the post says whether it accepts comments at all,
-    // the channel's drive grants say whether THIS viewer may write one.
+    // Two independent gates: the post says whether it accepts comments at all, the drive grants say whether
+    // THIS viewer may write one.
     val postAllowsComment = post != null &&
         (post.reactAccess == ReactAccess.All || post.reactAccess == ReactAccess.CommentOnly)
-    // Permissive while the verdict is still resolving (`canReact == null`), matching the
-    // comments sheet: showing the composer and hiding it a beat later reads worse than the
-    // rare case of a denied user seeing it briefly, and `commentDenial` stays quiet until then.
+    // Permissive while the verdict resolves: showing the composer and hiding it a beat later reads worse than
+    // a denied user seeing it briefly.
     val canComment = postAllowsComment && uiState.canReact?.allowsComment != false
     val commentDenial = commentDenial(post != null, postAllowsComment, uiState.canReact)
 
-    // Resolve an author's display name from the contact/connection map the VM streams,
-    // falling back to the raw domain for identities we don't know (web `AuthorName` parity).
+    // Falls back to the raw domain for identities we don't know.
     val displayNameFor: (OdinId?) -> String = { odinId ->
         odinId?.let { id -> uiState.displayNames[id]?.takeIf { it.isNotBlank() } }
             ?: odinId?.domainName.orEmpty()
@@ -157,8 +147,7 @@ fun PostDetailScreen(
                         }
                     },
                     actions = {
-                        // Owner gets Delete; everyone else gets the web's external actions
-                        // (Report / Block). originalAuthor survives the server stripping senderOdinId.
+                        // originalAuthor survives the server stripping senderOdinId.
                         val isMyPost = post?.isAuthoredBy(uiState.selfOdinId) == true
                         val postAuthor = post?.authorOdinId
                         if (post != null) {
@@ -175,9 +164,8 @@ fun PostDetailScreen(
                                 onDismissRequest = { menuOpen = false },
                             ) {
                                 if (isMyPost) {
-                                    // ponytail: post composer disabled for now (PR #802) — the owner
-                                    // Edit item is gone; Delete stays. Restore it + Route.PostCompose
-                                    // to re-enable.
+                                    // ponytail: post composer disabled for now — the owner Edit item is gone;
+                                    // Delete stays. Restore it + Route.PostCompose to re-enable.
                                     DropdownMenuItem(
                                         text = {
                                             Text(stringResource(MR.string.feed_post_detail_delete))
@@ -233,9 +221,8 @@ fun PostDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    // Scaffold's innerPadding already ate the navigation bar; consuming it here
-                    // makes the composer's imePadding below resolve to the pure keyboard height
-                    // instead of keyboard + nav bar (the gap this screen showed above the IME).
+                    // Scaffold's innerPadding already ate the navigation bar; consuming it here makes the
+                    // composer's imePadding resolve to the pure keyboard height instead of keyboard + nav bar.
                     .consumeWindowInsets(innerPadding),
             ) {
                 Box(modifier = Modifier.weight(1f)) {
@@ -265,8 +252,6 @@ fun PostDetailScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 val authorOdinId = post.originalAuthor ?: post.senderOdinId
-                                // Null for a public/unknown channel; a name (once `channels` loads)
-                                // for a restricted one.
                                 val isPublicChannel = post.channelId.isBlank() ||
                                     post.channelId == FeedProtocol.PublicChannelDriveAlias.toString()
                                 val channelName = post.channelId
@@ -274,8 +259,6 @@ fun PostDetailScreen(
                                     ?.let { channels[it]?.name }
                                 PostCard(
                                     post = post,
-                                    // Resolved via ContactService; PostAuthorHeader derives its
-                                    // avatar/initials from this, falling back to the raw domain.
                                     displayName = displayNameFor(authorOdinId),
                                     channelName = channelName,
                                     isPublic = isPublicChannel,
@@ -299,8 +282,7 @@ fun PostDetailScreen(
                                 )
 
                                 HorizontalDivider()
-                                // Existing comments always render — `reactAccess` governs writing,
-                                // not reading (web parity). Only the composer below is gated.
+                                // Existing comments always render — reactAccess governs writing, not reading.
                                 CommentThread(
                                     comments = uiState.comments,
                                     displayNameFor = displayNameFor,
@@ -353,11 +335,8 @@ fun PostDetailScreen(
             }
         }
 
-        // "Who reacted" sheet for the post — opened from the PostCard's reaction pill.
-        // Non-null reactor list == sheet visible; dismiss clears it back to null. The
-        // detail screen has no contact-lookup dependency, so names fall back to the
-        // reactor's domain (PublicAvatar inside the sheet derives the avatar from the
-        // odinId).
+        // Non-null reactor list == sheet visible. The detail screen has no contact-lookup dependency, so names
+        // fall back to the reactor's domain.
         uiState.reactorsSheet?.let { reactors ->
             ReactionsBottomSheet(
                 reactions = reactors,
@@ -373,11 +352,8 @@ fun PostDetailScreen(
     }
 }
 
-/**
- * Which "you can't comment" line to show, or null when the composer should be offered (or when
- * the verdict is still resolving — no message beats a message that flips a moment later).
- * Mirrors dotyoucore-js `CantReactInfo`, whose copy these strings are taken from.
- */
+// Null while the verdict is still resolving — no message beats a message that flips a moment later. Copy is
+// taken from dotyoucore-js CantReactInfo.
 private fun commentDenial(
     hasPost: Boolean,
     postAllowsComment: Boolean,

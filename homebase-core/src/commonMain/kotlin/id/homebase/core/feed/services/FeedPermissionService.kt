@@ -18,21 +18,10 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/**
- * Resolves [CanReact] for a feed post — the service half of the dotyoucore-js `useCanReact` port
- * (the decision itself lives in the pure [evaluateCanReact]).
- *
- * Which security context governs a post depends on **who wrote it**, exactly as in the web
- * (`SecurityProvider.ts`):
- *  - the user's own post → the local context (`GET /auth/context`), fetched once per identity and
- *    cached, so scrolling a timeline issues no repeat requests;
- *  - a followed identity's post → *that peer's* context, because the grant deciding whether you may
- *    comment on their channel is the one **they** issued you; your local context says nothing about
- *    it. See [assumedPeerContext] for why this is currently assumed rather than fetched.
- *
- * Never throws (cancellation excepted): any failure degrades to [DenyReason.Unknown], which the UI
- * can retry rather than treat as a hard denial.
- */
+// Which security context governs a post depends on who wrote it: the user's own post uses the local context,
+// a followed identity's post needs *that peer's* context, because the grant deciding whether you may comment
+// on their channel is the one THEY issued you. Never throws: any failure degrades to DenyReason.Unknown,
+// which the UI can retry rather than treat as a hard denial.
 class FeedPermissionService(
     private val securityContextProvider: SecurityContextProvider,
     private val credentialsManager: CredentialsManager,
@@ -42,21 +31,19 @@ class FeedPermissionService(
         private const val TAG = "FeedPermissionService"
     }
 
-    // Immutable map, always replaced — @Volatile makes the lock-free hit path safe; fetchLock only
-    // serialises misses so a screenful of posts can't stampede the endpoint. Same shape as
-    // PublicProfileProviderCached.notFoundCache. Keyed by identity, not by (identity, drive): the
-    // context is identity-scoped, so one entry already serves every channel drive of that identity.
+    // Immutable map, always replaced — @Volatile makes the lock-free hit path safe; fetchLock only serialises
+    // misses so a screenful of posts can't stampede the endpoint. Keyed by identity, not (identity, drive):
+    // the context is identity-scoped.
     @Volatile
     private var localContexts: Map<OdinId, SecurityContext> = emptyMap()
     private val fetchLock = Mutex()
 
-    /** Whether the signed-in user may emoji-react to and/or comment on [post]. */
     suspend fun canReact(post: FeedPostItem): CanReact = try {
         val self = credentialsManager.getActiveCredentials()?.domain
             ?: return CanReact.Denied(DenyReason.NotAuthenticated)
 
-        // A post whose file carries neither author nor sender is an own-drive write; reading it as
-        // self is what an absent sender means, and matches the web's own-post short-circuit.
+        // A file carrying neither author nor sender is an own-drive write; reading it as self is what an
+        // absent sender means.
         val author = post.authorOdinId ?: self
         val channelDriveAlias =
             post.channelId.toUuidOrNull() ?: FeedProtocol.PublicChannelDriveAlias
@@ -80,15 +67,14 @@ class FeedPermissionService(
         CanReact.Denied(DenyReason.Unknown)
     }
 
-    /** Logout: drop the previous identity's cached context. */
     fun reset() {
         localContexts = emptyMap()
     }
 
     private suspend fun localContext(self: OdinId): SecurityContext? {
         localContexts[self]?.let { return it }
-        // A failed fetch is deliberately not cached — it is transient (offline / 5xx) and caching
-        // it would pin DenyReason.Unknown for the rest of the session.
+        // A failed fetch is deliberately not cached — it is transient, and caching it would pin
+        // DenyReason.Unknown for the rest of the session.
         return fetchLock.withLock {
             localContexts[self]
                 ?: securityContextProvider.getSecurityContext()
@@ -96,22 +82,10 @@ class FeedPermissionService(
         }
     }
 
-    /**
-     * **Server gap.** The peer branch cannot be fetched: odin-core exposes the over-peer security
-     * context only on v1 — `POST /api/apps/v1/transit/query/security/context`
-     * (`AppPeerSecurityContextController` / `PeerSecurityContextControllerBase`), gated by
-     * `[AuthorizeValidAppToken]`, which 401s for this client's UnifiedV2 bearer token. UnifiedV2
-     * ships peer query, file-read, temporal, write and notification routes but no
-     * `/api/v2/peer/{odinId}/security/context`; the service and perimeter halves
-     * (`PeerDriveQueryService.GetRemoteDotYouContextAsync`, `PeerPerimeterSecurityController`)
-     * already exist, only the v2 client-facing action is missing.
-     *
-     * Until that route lands, a followed identity's channel is assumed to grant React + Comment, so
-     * the UI keeps offering the action instead of falsely blocking it. Everything the post itself
-     * carries is still honoured — notably `reactAccess: false` still yields
-     * [DenyReason.DisabledOnPost] — because this feeds the same [evaluateCanReact] as the real
-     * context does. Replace this with the real fetch once the endpoint exists.
-     */
+    // SERVER GAP: the over-peer security context exists only on v1, gated by [AuthorizeValidAppToken], which
+    // 401s this client's UnifiedV2 bearer. Until a v2 route lands, a followed identity's channel is assumed to
+    // grant React + Comment so the UI keeps offering the action instead of falsely blocking it. Everything the
+    // post itself carries is still honoured — reactAccess: false still yields DenyReason.DisabledOnPost.
     private fun assumedPeerContext(channelDriveAlias: Uuid): SecurityContext = SecurityContext(
         caller = CallerContext(securityLevel = "connected"),
         permissionContext = PermissionContext(

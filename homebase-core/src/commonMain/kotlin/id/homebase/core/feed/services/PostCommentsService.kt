@@ -54,35 +54,18 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
 
-/**
- * Per-post view of comments + the comment send/edit/remove path. Mirrors
- * [id.homebase.core.moments.services.MomentCommentsService] (per-parent `StateFlow`, lazy
- * cold-load + shared event subscription) and the Moments comment send.
- *
- * Comments are `fileType = [FeedProtocol.CommentFileType]` (801). Threading is one level:
- *  - a **top-level** comment has `groupId = postId`,
- *  - a **reply** has `groupId = parentCommentId`.
- *
- * So `commentsFor(postId)` cold-loads `groupId = postId` (top-level) and, when a reply's parent is
- * known, replies are queried by `groupId = parentCommentId`. The mapper tags a file whose `groupId`
- * differs from the queried post as a reply ([PostCommentItem.replyToId]).
- *
- * Comments live on the post's drive. For posts the user reads in their home feed that is the
- * FeedDrive; the channel drive is also covered because both are queried by the same `groupId`.
- */
+// Threading is one level: a top-level comment has groupId = postId, a reply has groupId = parentCommentId.
 @OptIn(ExperimentalEncodingApi::class)
 class PostCommentsService(
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
     private val eventBus: EventBus,
     private val outboxSync: OutboxSync,
-    // Encrypted comments upload through the shared pipeline (issue #844); public comments ship
-    // plaintext and enqueue directly (no encryptBundle) below.
+    // Encrypted comments upload through the shared pipeline; public comments ship plaintext and enqueue directly.
     private val uploadService: UploadService,
     private val optimisticWriter: OptimisticWriter,
     private val fileOps: FileOperationsProvider,
-    // Reads a followed author's comment thread over peer (their comments live on their drive, not
-    // ours). Only used when a post is a received/followed reference (non-null senderOdinId).
+    // A followed author's comments live on their drive, so a received post (non-null senderOdinId) reads over peer.
     private val driveQueryProvider: DriveQueryProvider,
     private val scope: CoroutineScope,
 ) {
@@ -93,9 +76,7 @@ class PostCommentsService(
         private const val MaxPendingComments = 200
     }
 
-    // Comments land on the post's drive. The home feed reads the FeedDrive; the channel drive
-    // shares the same groupId index, so cold-loading the FeedDrive covers feed reads. Sends target
-    // the post's own drive (resolved from where the post row lives).
+    // The FeedDrive and the channel drive share the same groupId index, so cold-loading the FeedDrive covers both.
     private val feedDrive = feedLabeledDrive.drive.alias
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
     private val sourceDrives = setOf(feedDrive, channelDrive)
@@ -107,20 +88,13 @@ class PostCommentsService(
 
     private val lock = SynchronizedObject()
     private val perPost = mutableMapOf<Uuid, PerPostState>()
-    // Replies whose parent comment hasn't been observed yet, keyed by the reply's groupId
-    // (= the parent comment id). Flushed when that parent top-level comment is inserted.
-    // Insertion-ordered and bounded: a groupId naming a POST the user never opens has no drain at
-    // all (cold-load re-reads from the DB, not from here), so unbounded this retains a header per
-    // synced comment for the whole session.
+    // Replies whose parent comment hasn't been observed yet, keyed by the reply's groupId. Bounded: a groupId
+    // naming a POST the user never opens has no drain at all, so unbounded this leaks a header per synced comment.
     private val pendingByGroupId = mutableMapOf<Uuid, MutableList<HomebaseFile>>()
     private var pendingCount = 0
     private var subscriptionStarted = false
 
-    /**
-     * Comments for [post]. Takes the whole post (not just its id) so a followed/received post can be
-     * cold-loaded over peer: its comments live on the author's drive, addressed by the post's
-     * globalTransitId on the author's channel drive. Own/connected posts still cold-load locally.
-     */
+    // Takes the whole post, not just its id: routing a peer cold-load needs its globalTransitId and channel.
     fun commentsFor(post: FeedPostItem): StateFlow<List<PostCommentItem>> {
         val (state, isFirstObserver) = stateFor(post.id)
         if (isFirstObserver) {
@@ -157,10 +131,7 @@ class PostCommentsService(
         }
     }
 
-    /**
-     * Logout: drop the previous identity's comments and any buffered replies.
-     * `subscriptionStarted` stays set — the collector is app-scoped and re-fills per post.
-     */
+    // subscriptionStarted stays set — the collector is app-scoped and re-fills per post.
     fun reset() {
         synchronized(lock) {
             perPost.values.forEach { it.flow.value = emptyList() }
@@ -170,7 +141,7 @@ class PostCommentsService(
         }
     }
 
-    /** Caller must hold [lock]. Buffers [file], evicting the oldest entries past the cap. */
+    /** Caller must hold [lock]. */
     private fun bufferPendingLocked(groupId: Uuid, file: HomebaseFile) {
         pendingByGroupId.getOrPut(groupId) { mutableListOf() }.add(file)
         pendingCount++
@@ -188,13 +159,9 @@ class PostCommentsService(
             val active = credentialsManager.getActiveCredentials() ?: return
             val identityId = active.getIdentityId()
 
-            // Top-level comments + replies both surface here: replies carry the parent comment id
-            // as their groupId, and the parent comment's id is in this post's comment set. We pull
-            // the full comment tree for the post in two passes:
-            //   pass 0 = top-level   (groupId == postId)
-            //   pass 1 = replies     (groupId in the just-discovered top-level comment ids)
-            // We NEVER call queryBatchAsync with an empty group set: an empty groupIdAnyOf is
-            // dropped by QueryBatch and would return every comment on the drive (cross-post leak).
+            // Two passes: top-level (groupId == postId), then replies (groupId in the discovered comment ids).
+            // NEVER call queryBatchAsync with an empty group set — QueryBatch drops an empty groupIdAnyOf and
+            // returns every comment on the drive (cross-post leak).
             for (drive in sourceDrives) {
                 val seenGroupIds = mutableSetOf(postId)
                 var roundGroupIds = listOf(postId)
@@ -218,13 +185,11 @@ class PostCommentsService(
                         items.forEach { state.byId[it.id] = it }
                         state.byId.values.filter { it.replyToId == null }.map { it.id }
                     }
-                    // Next pass queries replies whose parent is a not-yet-queried top-level comment.
                     roundGroupIds = newTopLevelIds.filterNot { it in seenGroupIds }
                     seenGroupIds.addAll(newTopLevelIds)
                 }
             }
-            // Followed/received posts: the author's copy of the thread lives on THEIR drive, so the
-            // local passes above find nothing. Read it over peer by the post's globalTransitId.
+            // A followed post's thread lives on the AUTHOR's drive, so the local passes above find nothing.
             loadPeerComments(post, state)
             emitSorted(state)
         } catch (e: Exception) {
@@ -232,16 +197,8 @@ class PostCommentsService(
         }
     }
 
-    /**
-     * Cold-load a followed post's comment thread over peer. The author's comments live on their
-     * channel drive ([FeedPostItem.channelId]) keyed by the post's [FeedPostItem.globalTransitId];
-     * we broker the read through our own server via [DriveQueryProvider.queryBatch] with the author
-     * as `ownerOdinId`. Comments are the **Comment** file system (fileType 801) per the dotyoucore
-     * convention, selected by the `X-ODIN-FILE-SYSTEM-TYPE` header (see queryBatch's fileSystemType).
-     *
-     * Two passes mirror the local cold-load: top-level (groupId == the post's gtid), then replies
-     * (groupId in the discovered top-level comment ids). No-op for own posts (null senderOdinId).
-     */
+    // Brokered through our own server with the author as ownerOdinId. Comments are the Comment file system
+    // (fileType 801), selected by the X-ODIN-FILE-SYSTEM-TYPE header.
     private suspend fun loadPeerComments(post: FeedPostItem, state: PerPostState) {
         val author = post.senderOdinId ?: return
         val gtid = post.globalTransitId ?: return
@@ -293,23 +250,18 @@ class PostCommentsService(
         }
         if (comments.isEmpty()) return
 
-        // Collect the states whose flow needs re-emitting; emit OUTSIDE the lock.
+        // Emit OUTSIDE the lock.
         val touched = synchronized(lock) {
             val dirty = mutableSetOf<PerPostState>()
             for (file in comments) {
                 val groupId = file.fileMetadata.appData.groupId ?: continue
                 val uniqueId = file.fileMetadata.appData.uniqueId ?: continue
-                // A comment's groupId is either the post (top-level) or a parent comment (reply).
-                // Route it to whichever observed post owns that group: postId directly, or the post
-                // that has a comment whose id == groupId (the reply's parent).
                 val ownerPostId = perPost.keys.firstOrNull { it == groupId }
                     ?: perPost.entries.firstOrNull { (_, s) -> s.byId.containsKey(groupId) }?.key
 
                 if (ownerPostId == null) {
-                    // Owning post not observed yet. If this is a reply whose parent comment simply
-                    // hasn't arrived, buffer it so a later top-level insert can flush it instead of
-                    // dropping it. (A comment whose groupId is an unobserved POST has no drain —
-                    // opening that post cold-loads it from the DB — so it just ages out of the cap.)
+                    // Owning post not observed yet. Buffer a reply so a later top-level insert can flush it;
+                    // a comment whose groupId is an unobserved POST has no drain and just ages out of the cap.
                     if (!file.isSoftDeleted()) {
                         bufferPendingLocked(groupId, file)
                         Logger.d(tag = TAG) {
@@ -329,7 +281,6 @@ class PostCommentsService(
                 state.byId[uniqueId] = item
                 dirty.add(state)
 
-                // A top-level comment just landed: flush any replies that were waiting on it.
                 if (item.replyToId == null) {
                     val waiting = pendingByGroupId.remove(uniqueId)?.also { pendingCount -= it.size }
                     waiting?.forEach { reply ->
@@ -355,11 +306,6 @@ class PostCommentsService(
         state.flow.value = sorted
     }
 
-    /**
-     * Post a comment (or one-level reply) against [postId]. A top-level comment uses
-     * `groupId = postId`; a reply uses `groupId = replyToCommentId`. Recipients are the post's
-     * audience minus self.
-     */
     suspend fun postComment(
         postId: Uuid,
         body: String,
@@ -367,25 +313,16 @@ class PostCommentsService(
         replyToCommentId: Uuid? = null,
         commentUniqueId: Uuid = Uuid.random(),
     ): PostCommentResult {
-        // The post header drives the target drive, recipients AND encryption: a comment must mirror
-        // the parent post's encryption + ACL, or a comment on a PUBLIC post would be encrypted +
-        // Owner-locked and invisible to public/anonymous viewers (broken public commenting).
-        // Refuse rather than guess — an unresolved header used to silently produce an encrypted,
-        // recipient-less, distribution-off comment that looked posted but never reached the author.
+        // The post header drives target drive, recipients AND encryption. Refuse rather than guess: an
+        // unresolved header used to produce an encrypted, recipient-less comment that looked posted but
+        // never reached the author.
         val (drive, post) = findPostLocally(postId)
             ?: error("Parent post $postId not found locally; refusing to post a comment")
         val recipients = recipientsFromPost(post)
         val groupId = replyToCommentId ?: postId
 
-        // Public post (unencrypted) → unencrypted comment with an Anonymous ACL; encrypted post →
-        // encrypted comment readable by AutoConnected. Mirrors FeedPostSenderService.createPost.
-        //
-        // Deliberate divergence from the web on ONE case: dotyoucore-js overrides the ACL to
-        // AutoConnected for every comment written over peer (`saveComment`'s peer branch),
-        // including comments on an unencrypted public post. Anonymous is kept here because a
-        // comment on a public post that only connections can read is invisible to exactly the
-        // audience the post was written for. Encryption still follows the parent post either way,
-        // and `allowDistribution` is already true whenever there are recipients — matching web.
+        // Deliberate divergence from dotyoucore-js, which forces AutoConnected on every peer-written comment:
+        // on a public post that would hide the comment from exactly the audience the post was written for.
         val isPublic = !post.fileMetadata.isEncrypted
         val isEncrypted = !isPublic
         val keyHeader = if (isEncrypted) KeyHeader.newRandom16() else KeyHeader.empty()
@@ -398,8 +335,7 @@ class PostCommentsService(
         )
 
         val attachments = listOfNotNull(attachment)
-        // Plaintext bundle. Encryption preserves payload keys and passes preview thumbs through
-        // unchanged, so `mediaKey` / `previewThumbnail` are derived from this bundle in both paths.
+        // Encryption preserves payload keys and passes preview thumbs through, so both paths derive them here.
         val bundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,
@@ -415,7 +351,6 @@ class PostCommentsService(
             )
         )
 
-        // Unencrypted metadata; the encrypted path lets UploadService apply `encryptContent`.
         val metadata = UploadFileMetadata(
             allowDistribution = !isLocalOnly,
             isEncrypted = isEncrypted,
@@ -437,9 +372,6 @@ class PostCommentsService(
         )
 
         if (isEncrypted) {
-            // Encrypted comment → the shared pipeline (issue #844): it encrypts the bundle +
-            // metadata content, enqueues the durable outbox row, seeds the cache, and writes the
-            // optimistic local row.
             val outcome = uploadService.upload(
                 MediaUploadSpec(
                     driveId = drive,
@@ -456,8 +388,7 @@ class PostCommentsService(
                 error("Failed to enqueue comment for upload (outbox: $outcome)")
             }
         } else {
-            // Public comment → plaintext payloads, no encryptBundle (so #844-compliant to build the
-            // request directly). Enqueue, then write the optimistic row best-effort.
+            // Public comment → plaintext payloads, so the request is built directly with no encryptBundle.
             val request = UploadFileRequest(
                 driveId = drive,
                 keyHeader = keyHeader,
@@ -508,7 +439,7 @@ class PostCommentsService(
         return PostCommentResult(uniqueId = commentUniqueId)
     }
 
-    /** Edit a comment body. AES key reused, empty manifest, replaceEnqueue — mirrors Moments. */
+    /** AES key reused, empty manifest, replaceEnqueue — mirrors Moments. */
     suspend fun updateComment(
         commentUniqueId: Uuid,
         versionTag: Uuid,
@@ -524,9 +455,8 @@ class PostCommentsService(
             runCatching { OdinSystemSerializer.deserialize<PostCommentContent>(raw) }.getOrNull()
         }
 
-        // Recipients + encryption resolve against the OWNING POST (hop a reply's groupId to the
-        // post), never the parent commenter, and must mirror the post's encryption + ACL exactly
-        // like postComment — so an edit to a public comment stays unencrypted/Anonymous.
+        // Resolve against the OWNING POST (hop a reply's groupId), never the parent commenter, so an edit to
+        // a public comment stays unencrypted/Anonymous.
         val post = resolveOwningPost(drive, groupId)
             ?: error("Owning post for comment $commentUniqueId not found locally; refusing to edit")
         val recipients = recipientsFromPost(post)
@@ -610,7 +540,6 @@ class PostCommentsService(
         return PostCommentResult(uniqueId = commentUniqueId)
     }
 
-    /** Soft-delete a comment. Recipients = the parent post/comment audience minus self. */
     suspend fun removeComment(commentUniqueId: Uuid) {
         val (drive, existing) = findCommentLocally(commentUniqueId) ?: run {
             Logger.w(tag = TAG) { "removeComment: comment $commentUniqueId not found locally" }
@@ -638,9 +567,7 @@ class PostCommentsService(
         }
     }
 
-    // -------------------- HELPERS --------------------
 
-    /** Find which source drive holds a comment locally, returning (drive, file). */
     private suspend fun findCommentLocally(commentUniqueId: Uuid): Pair<Uuid, HomebaseFile>? {
         val credentials = credentialsManager.requireActiveCredentials()
         for (drive in sourceDrives) {
@@ -652,7 +579,6 @@ class PostCommentsService(
         return null
     }
 
-    /** Locate a post locally across the source drives, as (drive, header). */
     private suspend fun findPostLocally(postId: Uuid): Pair<Uuid, HomebaseFile>? {
         for (drive in sourceDrives) {
             readPostHeader(drive, postId)?.let { return drive to it }
@@ -660,13 +586,8 @@ class PostCommentsService(
         return null
     }
 
-    /**
-     * Read a header on [drive] addressed by [id], or null when it isn't present locally.
-     *
-     * [id] is a uniqueId for our own files, but a followed identity's post is aggregated onto the
-     * feed drive with NO uniqueId — [toFeedPostItem] then falls back to the globalTransitId, so
-     * [FeedPostItem.id] is a gtid for every such post and the uniqueId select can never hit it.
-     */
+    // [id] is a uniqueId for our own files, but a followed post is aggregated with NO uniqueId and falls back
+    // to its globalTransitId — so the uniqueId select can never hit it.
     private suspend fun readPostHeader(drive: Uuid, id: Uuid): HomebaseFile? {
         val identityId = credentialsManager.requireActiveCredentials().getIdentityId()
         val index = databaseManager.driveMainIndex
@@ -675,15 +596,10 @@ class PostCommentsService(
             ?.let { OdinSystemSerializer.deserialize<HomebaseFile>(it.jsonHeader) }
     }
 
-    /**
-     * Resolve the OWNING POST header for a comment's `groupId`. The `groupId` is either the post id
-     * (top-level comment) or a parent COMMENT id (a reply). When it's a reply, read the parent
-     * comment and follow its `groupId` to the post — so recipients/encryption are always resolved
-     * against the post, never the parent commenter. Returns null when nothing resolves locally.
-     */
+    // groupId is either the post id (top-level) or a parent COMMENT id (a reply); hop the reply to the post so
+    // recipients/encryption always resolve against the post.
     private suspend fun resolveOwningPost(drive: Uuid, groupId: Uuid): HomebaseFile? {
         val direct = readPostHeader(drive, groupId) ?: return null
-        // A reply's groupId points at a parent COMMENT (fileType 801). Hop once to the post.
         if (direct.fileMetadata.appData.fileType == FeedProtocol.CommentFileType) {
             val parentGroupId = direct.fileMetadata.appData.groupId ?: return null
             return readPostHeader(drive, parentGroupId)
@@ -691,18 +607,8 @@ class PostCommentsService(
         return direct
     }
 
-    /**
-     * Recipients for a comment given the owning POST header: the post's author minus self. A feed
-     * [PostContent] carries no explicit recipient list (unlike a moment), so the audience is the
-     * post author for an inbound (followed) post, or empty for the user's own post (the server
-     * distributes own posts via the follower system).
-     *
-     * Use `originalAuthor` first: on a follower's copy of an inbound post the server STRIPS
-     * `senderOdinId`, so resolving the author from `senderOdinId` alone returns null → empty
-     * recipients → the comment is written local-only and never reaches the author (the bug where
-     * comments on a followed post silently failed to post). `originalAuthor` survives transit and
-     * names the real author; fall back to `senderOdinId` for the user's own posts.
-     */
+    // Use originalAuthor first: on a follower's copy the server STRIPS senderOdinId, so resolving from it alone
+    // yields empty recipients and the comment never reaches the author. Own posts are distributed by the server.
     private suspend fun recipientsFromPost(post: HomebaseFile?): List<OdinId> {
         if (post == null) return emptyList()
         val self = credentialsManager.getActiveCredentials()?.domain
@@ -710,11 +616,7 @@ class PostCommentsService(
         return listOfNotNull(author).filterNot { it == self }
     }
 
-    /**
-     * Resolve who a comment delete should be sent to: the post's author (`senderOdinId`) minus self.
-     * Follows a reply's `groupId` to the post just like the post/edit paths. Reads the post header
-     * locally — never a server round-trip.
-     */
+    // Follows a reply's groupId to the post, reading the header locally — never a server round-trip.
     private suspend fun resolveCommentRecipients(drive: Uuid, postOrCommentId: Uuid): List<OdinId> =
         recipientsFromPost(resolveOwningPost(drive, postOrCommentId))
 }

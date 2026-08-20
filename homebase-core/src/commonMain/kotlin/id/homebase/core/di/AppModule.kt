@@ -258,9 +258,7 @@ val appModule = module {
     singleOf(::MomentActionService)
     singleOf(::MomentGroupService)
 
-    // Native Feed services — mirror the Moments service triad. FollowProvider is
-    // registered in ApiModule. CoroutineScope/EventBus/DatabaseManager etc. auto-resolve
-    // as for Moments.
+    // Native Feed services. FollowProvider is registered in ApiModule.
     singleOf(::FeedTimelineService)
     singleOf(::ChannelDefinitionService)
     singleOf(::ChannelPostQueryService)
@@ -590,12 +588,9 @@ val appModule = module {
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
 
-                // Native Feed: drop the previous identity's in-memory timeline + comments,
-                // then cold-load + subscribe the FeedDrive + public-channel drive.
                 get<FeedTimelineService>().reset()
                 get<PostCommentsService>().reset()
-                // Permissions are per-identity: a re-login must re-read them, not reuse a
-                // cached security context that belonged to whoever was signed in before.
+                // Permissions are per-identity: a re-login must not reuse the previous user's security context.
                 get<FeedPermissionService>().reset()
                 get<FeedTimelineService>().start()
 
@@ -1047,13 +1042,10 @@ val appModule = module {
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
 
-    // Native Feed ViewModels. PostDetailViewModel is parameterized on the post id.
-    // ponytail: PostComposeViewModel unregistered — the post composer is disabled for now
-    // (PR #802). FeedPostSenderService stays registered (delete-post still uses it). Restore
-    // the composer VM + Route.PostCompose to re-enable compose.
-    // Explicit (not viewModelOf) for the FeedPermissionQualifier: the native feed's drives are
-    // granted by the feed extend-permissions flow, not by the login one the unqualified
-    // ExtendPermissionViewModel checks.
+    // ponytail: PostComposeViewModel unregistered — the post composer is disabled for now. FeedPostSenderService
+    // stays registered (delete-post still uses it). Restore the composer VM + Route.PostCompose to re-enable.
+    // Explicit (not viewModelOf) for the FeedPermissionQualifier: the feed's drives are granted by the feed
+    // extend-permissions flow, not the login one the unqualified ExtendPermissionViewModel checks.
     viewModel {
         FeedTimelineViewModel(
             timelineService = get(),

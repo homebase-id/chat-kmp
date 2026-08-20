@@ -55,16 +55,8 @@ import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
-/**
- * Comments as a bottom-sheet **modal** (vs the web feed's inline expand) — the native, mobile-first
- * way to read/post comments without leaving the stream. Hosts the existing [CommentThread] (one-level
- * replies, per-comment reactions, edit/delete) over a scroll, with a pinned [CommentComposer] that
- * tracks the reply target and respects the IME.
- *
- * Reuses [PostDetailViewModel] keyed by [postId] for everything (comment stream, posting, reply,
- * reactions); the post itself isn't re-rendered here — it's already visible in the feed behind the
- * sheet. Comments are gated off when the post's [ReactAccess] disallows them.
- */
+// Reuses [PostDetailViewModel] keyed by [postId]; the post itself isn't re-rendered here — it's already
+// visible in the feed behind the sheet.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommentsModalSheet(
@@ -78,32 +70,28 @@ fun CommentsModalSheet(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val uriHandler = getUriHandler()
-    // The sheet needs its OWN host: the timeline's Scaffold snackbar renders behind the sheet
-    // (a separate window on Android), so a failed post/edit/delete would otherwise vanish.
+    // The sheet needs its OWN host: the timeline's Scaffold snackbar renders behind it (a separate window on
+    // Android), so a failed post/edit/delete would otherwise vanish.
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val actionFailedMessage = stringResource(MR.string.feed_comment_action_failed)
 
-    // Resolve comment-author names via the contact/connection map the VM streams; fall back
-    // to the raw domain for unknown identities (web `AuthorName` parity).
+    // Falls back to the raw domain for unknown identities.
     val displayNameFor: (OdinId?) -> String = { odinId ->
         odinId?.let { id -> uiState.displayNames[id]?.takeIf { it.isNotBlank() } }
             ?: odinId?.domainName.orEmpty()
     }
 
     val post = uiState.post
-    // Same two gates as the detail screen: the post's own setting, then this viewer's grants.
+    // Two gates: the post's own setting, then this viewer's grants.
     val postAllowsComment = post == null ||
         post.reactAccess == ReactAccess.All ||
         post.reactAccess == ReactAccess.CommentOnly
     val canComment = postAllowsComment && uiState.canReact?.allowsComment != false
 
-    // Read the IME *outside* the sheet: on iOS the sheet lifts its whole surface by the keyboard
-    // height and then reports WindowInsets.ime as 0 to its own content, so the composer can only
-    // learn the keyboard is up from out here. Android keeps a live inset inside instead — hence
-    // the branch below rather than a fixed modifier.
-    // derivedStateOf, not a bare read: getBottom() changes every frame the IME animates, and a
-    // raw read would recompose the whole sheet (comment list included) on each of those frames.
+    // Read the IME *outside* the sheet: on iOS the sheet lifts its whole surface by the keyboard height and
+    // then reports WindowInsets.ime as 0 to its own content; Android keeps a live inset inside instead — hence
+    // the branch below. derivedStateOf, not a bare read: getBottom() changes every frame the IME animates.
     val imeInsets = WindowInsets.ime
     val density = LocalDensity.current
     val keyboardVisible by remember(imeInsets, density) {
@@ -113,19 +101,17 @@ fun CommentsModalSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        // Zero insets: the defaults pad inside the draggable surface, so sheet height tracks
-        // sheet position and the anchors oscillate on fling (#997). The composer below owns
-        // the bottom inset instead.
+        // Zero insets: the defaults pad inside the draggable surface, so sheet height would track sheet position
+        // and the anchors oscillate on fling. The composer below owns the bottom inset instead.
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
     ) {
-        // Read inside the sheet: on Android the sheet content lives in its own window, so the
-        // host's focus manager / keyboard controller don't drive the IME that's actually up.
+        // Read inside the sheet: on Android the sheet content lives in its own window, so the host's focus
+        // manager doesn't drive the IME that's actually up.
         val focusManager = LocalFocusManager.current
         val keyboardController = LocalSoftwareKeyboardController.current
         val commentsScrollState = rememberScrollState()
 
-        // The sheet going away must take the keyboard with it — otherwise it lingers over the
-        // feed with nothing focused. Covers every dismissal path (swipe, scrim, back, nav).
+        // The sheet going away must take the keyboard with it. Covers every dismissal path (swipe, scrim, back, nav).
         DisposableEffect(Unit) {
             onDispose {
                 focusManager.clearFocus()
@@ -133,8 +119,7 @@ fun CommentsModalSheet(
             }
         }
 
-        // Scrolling the thread puts the keyboard away: with the composer pinned, it is the only
-        // way out short of sending.
+        // With the composer pinned, scrolling the thread is the only way to put the keyboard away short of sending.
         LaunchedEffect(commentsScrollState) {
             snapshotFlow { commentsScrollState.isScrollInProgress }.collect { scrolling ->
                 if (scrolling) {
@@ -155,8 +140,7 @@ fun CommentsModalSheet(
 
             Box(modifier = Modifier.weight(1f)) {
                 when {
-                    // Reading comments is never gated — only writing is (web parity: `canReact`
-                    // governs the composer, the list always renders what the post already has).
+                    // Reading comments is never gated — only writing is.
                     uiState.comments.isEmpty() -> CenteredHint(
                         text = stringResource(
                             if (canComment) {
@@ -191,9 +175,8 @@ fun CommentsModalSheet(
                     }
                 }
 
-                // Hosted in the list region, not over the whole sheet: this Box ends where the
-                // composer Surface begins, so the snackbar rides above both the composer and the
-                // keyboard without any inset of its own.
+                // Hosted in the list region, not over the whole sheet, so the snackbar rides above both the
+                // composer and the keyboard without any inset of its own.
                 SnackbarHost(
                     hostState = snackbarHostState,
                     modifier = Modifier.align(Alignment.BottomCenter),
@@ -205,12 +188,9 @@ fun CommentsModalSheet(
                     tonalElevation = 2.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        // Keyboard up: pad by ime alone. On iOS that reads 0 because the sheet has
-                        // already lifted itself by the keyboard height, so the composer lands flush
-                        // on the keyboard; on Android it is the live keyboard inset. Either way the
-                        // nav bar must NOT be added here — the keyboard covers it, and adding it
-                        // parked the composer a home-indicator-height too high (measured on an
-                        // iPhone 17 Pro: a 0.044-of-screen gap where chat's is 0.010).
+                        // Keyboard up: pad by ime alone — on iOS that reads 0 because the sheet already lifted
+                        // itself, on Android it is the live inset. The nav bar must NOT be added here: the
+                        // keyboard covers it, and adding it parked the composer a home-indicator-height too high.
                         // Keyboard down: the nav bar is the only inset that applies.
                         .windowInsetsPadding(
                             if (keyboardVisible) WindowInsets.ime else WindowInsets.navigationBars
@@ -227,9 +207,7 @@ fun CommentsModalSheet(
         }
     }
 
-    // Author taps inside a comment row route up through the VM's event flow; failures land on the
-    // sheet's own snackbar. Shown from a separate scope so a lingering snackbar can't stall the
-    // collector and swallow the next event (PostDetailScreen does the same).
+    // Shown from a separate scope so a lingering snackbar can't stall the collector and swallow the next event.
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {

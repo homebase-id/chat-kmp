@@ -10,20 +10,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
 
-/**
- * Client for the Homebase **followers** controller (`/api/v2/followers/...`). Ports the
- * dotyoucore-js `FollowManager`:
- *
- *  - [follow] / [unfollow] — start/stop following an identity (and, optionally, only some of their
- *    channels).
- *  - [fetchFollowing] — identities the logged-in user follows (cursored).
- *  - [fetchFollowers] — identities that follow the logged-in user (cursored).
- *  - [isFollowing] — whether the user follows a single identity.
- *  - [syncFeedHistory] — backfill a newly-followed identity's existing posts into the FeedDrive.
- *
- * Requests/responses ride the standard shared-secret-encrypted transport from
- * [OdinApiProviderBase].
- */
+// Ports the dotyoucore-js FollowManager over /api/v2/followers/*.
 class FollowProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
@@ -34,11 +21,7 @@ class FollowProvider(
         private const val BASE = "/followers"
     }
 
-    /**
-     * Follow [request.odinId]. The server treats an "already followed" response as success, so a
-     * re-follow is idempotent. After a successful follow the caller should [syncFeedHistory] so the
-     * followed identity's existing posts backfill into the FeedDrive.
-     */
+    /** The server treats "already followed" as success. Call [syncFeedHistory] after to backfill their posts. */
     suspend fun follow(request: FollowRequest) {
         val creds = requireCreds()
         val response = encryptedPostJson(
@@ -52,7 +35,6 @@ class FollowProvider(
         Logger.d(tag = TAG) { "follow: ${request.odinId.domainName} notify=${request.notificationType}" }
     }
 
-    /** Stop following [odinId]. */
     suspend fun unfollow(odinId: OdinId) {
         val creds = requireCreds()
         val response = encryptedPostJson(
@@ -64,7 +46,6 @@ class FollowProvider(
         throwForFailure(response)
     }
 
-    /** The identities the logged-in user follows, paged by [cursor]. */
     suspend fun fetchFollowing(cursor: String? = null, max: Int? = null): CursoredResult<List<String>> {
         val creds = requireCreds()
         val queryString = buildQuery(cursor, max)
@@ -78,7 +59,6 @@ class FollowProvider(
         return toCursoredList(deserialize<FollowPageResponse>(response.body))
     }
 
-    /** The identities that follow the logged-in user, paged by [cursor]. */
     suspend fun fetchFollowers(cursor: String? = null, max: Int? = null): CursoredResult<List<String>> {
         val creds = requireCreds()
         val queryString = buildQuery(cursor, max)
@@ -92,7 +72,6 @@ class FollowProvider(
         return toCursoredList(deserialize<FollowPageResponse>(response.body))
     }
 
-    /** Whether the logged-in user follows [odinId]. */
     suspend fun isFollowing(odinId: OdinId): Boolean {
         val creds = requireCreds()
         val response = encryptedGet(
@@ -108,7 +87,6 @@ class FollowProvider(
         return def != null && def.odinId != null
     }
 
-    /** Backfill [odinId]'s existing posts into the FeedDrive after a fresh follow. */
     suspend fun syncFeedHistory(odinId: OdinId) {
         val creds = requireCreds()
         val response = encryptedPostJson(
@@ -132,17 +110,14 @@ class FollowProvider(
         CursoredResult(results = page.results, cursorState = page.cursorState.orEmpty())
 }
 
-/** How a followed identity's new posts should notify the follower. Mirrors dotyoucore-js. */
 @Serializable
 enum class FollowNotificationType {
     AllNotifications,
     SelectedChannels,
 }
 
-/**
- * A request to follow an identity. When [notificationType] is [FollowNotificationType.SelectedChannels],
- * [channels] lists the channel drives to follow; otherwise it follows all channels and may be null.
- */
+// When [notificationType] is SelectedChannels, [channels] lists the channel drives; otherwise it follows all
+// channels and may be null.
 @Serializable
 data class FollowRequest(
     val odinId: OdinId,
@@ -156,14 +131,12 @@ data class UnfollowRequest(val odinId: OdinId)
 @Serializable
 data class SyncFeedHistoryRequest(val odinId: OdinId)
 
-/** A cursored page of identity domain names from the followers/following endpoints. */
 @Serializable
 data class FollowPageResponse(
     val results: List<String> = emptyList(),
     val cursorState: String? = null,
 )
 
-/** The server's stored follow definition for a single identity (returned by IdentityIFollow). */
 @Serializable
 data class FollowDefinition(
     val odinId: String? = null,

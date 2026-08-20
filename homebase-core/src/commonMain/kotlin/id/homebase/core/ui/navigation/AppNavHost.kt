@@ -200,10 +200,7 @@ import id.homebase.resources.pending_upgrade_message
 import id.homebase.resources.pending_upgrade_confirm
 import id.homebase.resources.upgrade_running_message
 
-/**
- * savedStateHandle flag set on the current destination when its already-selected bottom-nav /
- * rail item is re-tapped. Screens opt in by reading it and clearing it once scrolled.
- */
+// Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
 private const val SCROLL_TO_TOP_KEY = "scrollToTop"
 
 @Composable
@@ -288,8 +285,8 @@ fun AppNavHost(
     // Track if we're showing only the detail pane (list hidden) in a top level screen
     var showingOnlyDetailPane by remember { mutableStateOf(false) }
 
-    // The feed's media viewer is inline in the NavHost (a Dialog paints grey safe-area strips on
-    // iOS), so it renders *under* this Scaffold's bottom bar unless the screen reports it up.
+    // The feed's media viewer is inline in the NavHost (a Dialog paints grey safe-area strips on iOS), so it
+    // renders *under* this Scaffold's bottom bar unless the screen reports it up.
     var isFeedMediaOpen by remember { mutableStateOf(false) }
 
     // Check if current destination is a top-level route. Uses the static route-type
@@ -638,8 +635,7 @@ fun AppNavHost(
                             selected = isSelected,
                             onClick = {
                                 when {
-                                    // Re-tapping the active tab scrolls it to the top instead of
-                                    // re-navigating; only screens that read the flag react.
+                                    // Re-tapping the active tab scrolls to the top instead of re-navigating.
                                     isSelected -> navController.currentBackStackEntry
                                         ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
 
@@ -868,18 +864,14 @@ fun AppNavHost(
 
                         composable<Route.Feed> { entry ->
                             if (isAuthenticated) {
-                                // Feed mode is a Settings toggle: native KMP feed (default) vs the
-                                // legacy WebView feed. Read on each Feed entry so a toggle takes
-                                // effect when the user returns to the tab.
+                                // Read on each Feed entry so the Settings toggle takes effect on return.
                                 val useNativeFeed = koinInject<UserPreferences>().useNativeFeed
                                 if (useNativeFeed) {
                                     val scrollFeedToTop by entry.savedStateHandle
                                         .getStateFlow(SCROLL_TO_TOP_KEY, false)
                                         .collectAsStateWithLifecycle()
-                                    // ponytail: post composer disabled for now (PR #802) — the
-                                    // native feed is read-only for posts (viewing, comments, and
-                                    // reactions stay). Restore the composer nav + the
-                                    // Route.PostCompose destination below to re-enable compose.
+                                    // ponytail: post composer disabled for now — the feed is read-only
+                                    // for posts. Restore the composer nav + Route.PostCompose below.
                                     FeedTimelineScreen(
                                         viewModel = koinViewModel(),
                                         onNavigateToDetail = {
@@ -916,11 +908,9 @@ fun AppNavHost(
                             }
                         }
 
-                        // ponytail: Route.Following is unregistered (PR #802) — the v2 API has no
-                        // followers controller, so the screen could only ever show its 404 empty
-                        // state (homebase-id/odin-core#1611). FollowingScreen / FollowingViewModel
-                        // / FollowProvider are all kept; re-add this destination and the feed
-                        // top-bar action once the routes ship.
+                        // ponytail: Route.Following is unregistered — the v2 API has no followers
+                        // controller, so the screen could only show its 404 empty state. The screen,
+                        // VM and provider are kept; re-add this destination once the routes ship.
 
                         composable<Route.ContactBook> {
                             if (isAuthenticated) {
@@ -1896,11 +1886,8 @@ fun AppNavHost(
 }
 
 
-/**
- * Open an identity's contact detail. Contacts are keyed by `md5(odinId)` (same derivation as
- * GroupSettings' 1:1 contact info), and an author who isn't in the contact book still lands on
- * a usable screen — ContactDetailViewModel.syntheticEntry builds an entry from the route odinId.
- */
+// Contacts are keyed by md5(odinId). An author who isn't in the contact book still lands on a usable screen —
+// ContactDetailViewModel.syntheticEntry builds an entry from the route odinId.
 private fun NavHostController.navigateToIdentity(odinId: String) {
     navigate(
         Route.ContactBookDetail(

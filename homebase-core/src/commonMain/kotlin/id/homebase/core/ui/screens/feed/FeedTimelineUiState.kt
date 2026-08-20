@@ -5,25 +5,9 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.widget.ReactionDisplayItem
 
-/**
- * Flat UI state for the native home timeline ([FeedTimelineScreen]).
- *
- * [isLoading] gates the full-screen spinner shown before the first emission of the
- * timeline; once posts (or an empty-after-load result) land, it flips false and stays
- * false. [isRefreshing] backs the pull-to-refresh indicator and is independent of the
- * cold-start spinner. [endReached] tells the infinite-scroll trigger to stop calling
- * `loadMore`.
- *
- * [errorMessage] is the failure of the last load attempt (null while it succeeded) — it is what
- * separates "the read blew up" from "you follow nobody", which otherwise both render as the
- * empty-feed state. The screen only shows the full-screen error for it when there are no posts to
- * show; over a populated list the same failure surfaces as a snackbar instead. Its text is
- * diagnostic, never rendered — the error state is written from string resources.
- *
- * [reactorsSheet] / [isReactorsLoading] / [selfOdinId] back the inline "who reacted" sheet
- * opened from a tweet/media post's reaction facepile (articles route to the detail screen
- * instead). [reactorsSheet] null == sheet closed; non-null (even empty) == open.
- */
+// [errorMessage] separates "the read blew up" from "you follow nobody", which otherwise both render as the
+// empty-feed state. Its text is diagnostic, never rendered — the error state is written from string resources.
+// [reactorsSheet] null == sheet closed; non-null (even empty) == open.
 @Immutable
 data class FeedTimelineUiState(
     val isLoading: Boolean = false,
@@ -33,13 +17,9 @@ data class FeedTimelineUiState(
     val endReached: Boolean = false,
     val reactorsSheet: List<ReactionDisplayItem>? = null,
     val isReactorsLoading: Boolean = false,
-    /**
-     * Authoritative `emoji → count` for the open sheet, taken from the post header. The roster
-     * itself can only ever list our own identity's rows on someone else's post, so the chips are
-     * labelled from here rather than from [reactorsSheet].
-     */
+    /** The roster only lists our own identity's rows on someone else's post, so chips are labelled from here. */
     val reactorsCounts: Map<String, Int> = emptyMap(),
-    /** True when the open sheet's roster is knowably incomplete — i.e. the post isn't ours. */
+    /** True when the open sheet's roster is knowably incomplete — the post isn't ours. */
     val reactorsPartial: Boolean = false,
     val selfOdinId: OdinId? = null,
 )

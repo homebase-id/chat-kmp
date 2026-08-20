@@ -95,7 +95,7 @@ class PeerFileByGlobalTransitProviderTest {
     }
 
     /**
-     * A followed identity's oversized photo must be refused at the render limit (#845) rather than
+     * A followed identity's oversized photo must be refused at the render limit rather than
      * buffered into RAM — the typed throw is what `HomebaseImageLoader.fetchFullPayloadUncached`
      * catches to keep the already-rendered thumbnail.
      */

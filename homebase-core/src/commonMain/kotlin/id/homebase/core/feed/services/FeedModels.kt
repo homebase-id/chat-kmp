@@ -14,76 +14,51 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
 
-/**
- * Everything the feed list and detail screens need from a single post, with the on-disk
- * descriptor already deserialised. Mirrors [id.homebase.core.moments.services.MomentFeedItem]:
- * drive-level fields ([keyHeader], [payloads]) stay raw so the media widgets can render
- * encrypted payloads directly, while the [PostContent] fields the UI reads are lifted out.
- *
- * Envelope identity ([senderOdinId], [originalAuthor], [createdMs]) comes from the
- * [HomebaseFile]; never from the descriptor (see [PostContent]).
- */
+// Envelope identity ([senderOdinId], [originalAuthor], [createdMs]) comes from the HomebaseFile, never the
+// descriptor. [keyHeader] and [payloads] stay raw so the media widgets can render encrypted payloads directly.
 data class FeedPostItem(
     val id: Uuid,
     val fileId: Uuid,
-    /** The post's global transit id, used to address it as a repost source across identities. */
     val globalTransitId: Uuid?,
     val driveId: Uuid,
     val keyHeader: KeyHeader,
     val payloads: List<PayloadDescriptor>,
-    // ---- deserialized PostContent fields the UI needs ----
     val caption: String,
     val type: PostType,
     val channelId: String,
     val slug: String,
     val reactAccess: ReactAccess,
     val embeddedPost: EmbeddedPost?,
-    // ---- envelope fields ----
     val userDateMs: Long,
-    /**
-     * Server-side creation timestamp — when the post was published. Drives the timeline
-     * sort (newest posted first), distinct from [userDateMs] which may be backdated.
-     */
+    /** When the post was published; drives the timeline sort, distinct from [userDateMs] which may be backdated. */
     val createdMs: Long,
     val previewThumbnail: EmbeddedThumb?,
     val reactionPreview: ReactionSummary?,
-    /** Original sender on a receiving drive; null on the author's own drive copy. */
+    /** Null on the author's own drive copy. */
     val senderOdinId: OdinId?,
-    /** Identity that authored the post — populated on the author's own copy too. */
     val originalAuthor: OdinId?,
-    /** Header version tag, required to submit an in-place edit. Null on an optimistic write. */
+    /** Required to submit an in-place edit. Null on an optimistic write. */
     val versionTag: Uuid?,
-    /** Bare emoji glyphs the current user has reacted with (from `localReactions`). */
     val ownReactions: List<String>,
-    /** Comment count from the embedded reaction/comment preview. */
     val commentCount: Int,
-    /** Public posts ship unencrypted; anything narrower is encrypted. Drives the lock glyph. */
+    /** Public posts ship unencrypted; anything narrower is encrypted. */
     val isEncrypted: Boolean,
-    /** Who the post was shared with. Null when the server didn't return server metadata. */
+    /** Null when the server didn't return server metadata. */
     val acl: AccessControlList?,
 )
 
-/**
- * The identity that wrote this. `originalAuthor` is set on the author's own copy; a post
- * aggregated onto someone else's feed drive carries `senderOdinId` instead. Null only when
- * the server returned neither.
- */
+// originalAuthor is set on the author's own copy; a post aggregated onto someone else's feed drive carries
+// senderOdinId instead.
 val FeedPostItem.authorOdinId: OdinId? get() = originalAuthor ?: senderOdinId
 
-/** @see FeedPostItem.authorOdinId */
 val PostCommentItem.authorOdinId: OdinId? get() = originalAuthor ?: senderOdinId
 
-/** Whether [self] wrote this post — gates the owner-only affordances (edit, delete). */
 fun FeedPostItem.isAuthoredBy(self: OdinId?): Boolean = self != null && authorOdinId == self
 
-/** Whether [self] wrote this comment — gates edit/delete vs. block. */
 fun PostCommentItem.isAuthoredBy(self: OdinId?): Boolean = self != null && authorOdinId == self
 
-/**
- * Who a post is visible to, as the audience chip renders it. Mirrors the web's `AclSummary`
- * mapping (`AclInfo.tsx`): unknown/blank security groups fall back to [Owner], the narrowest
- * reading, so a post is never labelled more public than it is.
- */
+// Mirrors the web's AclSummary: unknown/blank security groups fall back to [Owner], the narrowest reading, so
+// a post is never labelled more public than it is.
 enum class PostAudience {
     Public,
     Authenticated,
@@ -93,18 +68,12 @@ enum class PostAudience {
     Owner,
 }
 
-/** True when the audience is narrower than "anyone" — the closed-padlock case in the web UI. */
 val PostAudience.isRestricted: Boolean
     get() = this != PostAudience.Public && this != PostAudience.Authenticated
 
-/**
- * Map a file's ACL to its [PostAudience]. A file with no ACL at all is public (that's how the
- * server represents an anonymous-readable file); an ACL whose security group is missing or
- * unrecognised is treated as owner-only rather than guessed at.
- *
- * Not routed through [SecurityGroupType.fromString] on purpose — that helper defaults unknown
- * values to `Anonymous`, which would label a post public that we can't actually classify.
- */
+// A file with no ACL at all is public — that's how the server represents an anonymous-readable file.
+// Deliberately not routed through [SecurityGroupType.fromString], which defaults unknown values to Anonymous
+// and would label a post public that we can't actually classify.
 fun AccessControlList?.toPostAudience(): PostAudience {
     if (this == null) return PostAudience.Public
     return when (requiredSecurityGroup?.lowercase()) {
@@ -117,20 +86,15 @@ fun AccessControlList?.toPostAudience(): PostAudience {
     }
 }
 
-/**
- * Everything a comment list/item needs from a single comment file (`fileType = 801`).
- * Mirrors [id.homebase.core.moments.services.MomentCommentItem]; threading is strictly
- * one level — a reply carries its parent comment id in [replyToId].
- */
+// Threading is strictly one level — a reply carries its parent comment id in [replyToId].
 data class PostCommentItem(
     val id: Uuid,
-    /** The post this comment belongs to (the file's `groupId` for a top-level comment). */
     val postId: Uuid,
     val senderOdinId: OdinId?,
     val originalAuthor: OdinId?,
     val body: String,
     val mediaPayloadKey: String?,
-    /** Parent comment id when this is a one-level reply; null for a top-level comment. */
+    /** Null for a top-level comment. */
     val replyToId: Uuid?,
     val userDateMs: Long,
     val createdMs: Long,
@@ -144,18 +108,12 @@ data class PostCommentItem(
     val ownReactions: List<String>,
 )
 
-/**
- * Map a post file into a [FeedPostItem]. Returns null only when the file carries neither a
- * uniqueId nor a globalTransitId — with no stable id the post can't be addressed. A failed
- * [PostContent] parse yields a best-effort item (empty caption, Tweet type) rather than
- * dropping the post entirely. Mirrors `MomentsFeedService.toFeedItem`.
- */
+// Returns null only when the file carries neither a uniqueId nor a globalTransitId. A failed [PostContent]
+// parse yields a best-effort item rather than dropping the post entirely.
 fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     val appData = fileMetadata.appData
-    // Own-drive posts carry a uniqueId. Posts from followed identities are aggregated onto the
-    // feed drive as references that carry only a globalTransitId (no uniqueId) — fall back to it
-    // so followed/public posts surface in the timeline instead of being dropped. Both values
-    // stably identify the post for dedup; they never collide (own posts aren't feed references).
+    // Posts from followed identities are aggregated onto the feed drive as references carrying only a
+    // globalTransitId. Both values stably identify the post for dedup; they never collide.
     val uniqueId = appData.uniqueId ?: fileMetadata.globalTransitId ?: return null
     val content = appData.content?.let { raw ->
         runCatching { OdinSystemSerializer.deserialize<PostContent>(raw) }
@@ -192,15 +150,8 @@ fun HomebaseFile.toFeedPostItem(): FeedPostItem? {
     )
 }
 
-/**
- * Map a comment file into a [PostCommentItem]. Returns null when the file has no uniqueId or
- * no groupId (a comment with no parent post is unaddressable). The parent post id is the file's
- * `groupId` for a top-level comment; for a reply the `groupId` is the parent comment id, which
- * is then exposed as [PostCommentItem.replyToId]. The caller knows which a given query returned.
- *
- * @param topLevelPostId the post the surrounding query was scoped to. When the file's `groupId`
- *   differs from this, the file is treated as a reply and `groupId` becomes [replyToId].
- */
+// The parent post id is the file's groupId for a top-level comment; for a reply the groupId is the parent
+// comment id, exposed as [replyToId]. [topLevelPostId] is the post the surrounding query was scoped to.
 fun HomebaseFile.toCommentItem(topLevelPostId: Uuid): PostCommentItem? {
     val appData = fileMetadata.appData
     val uniqueId = appData.uniqueId ?: return null

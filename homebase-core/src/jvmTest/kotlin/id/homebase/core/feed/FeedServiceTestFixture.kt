@@ -31,28 +31,18 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import id.homebase.api.common.SecureByteArray as Sba
 
-/**
- * Shared scaffolding for the feed sender/comments/reaction tests: a real in-memory [OdinDatabase]
- * (so a real [OutboxSync] persists durable rows we can read back) plus a no-op uploader so nothing
- * actually hits the network. The JDBC SQLite driver is on the homebase-core jvmTest runtime
- * classpath transitively (sqlite-driver → jdbc-driver), so this needs no build-file change.
- */
+// A real in-memory OdinDatabase (so a real OutboxSync persists durable rows we can read back) plus a no-op
+// uploader so nothing hits the network.
 class FeedTestEnv(
     testScope: TestScope,
-    /**
-     * Optional hook to wrap the in-memory driver before [DatabaseManager] opens it — lets a test
-     * inject a failure (e.g. a refused `INSERT INTO Outbox`) so the enqueue-failure / rollback
-     * branches of a service become reachable. Identity by default.
-     */
+    /** Lets a test wrap the driver to inject a failure (e.g. a refused `INSERT INTO Outbox`). Identity by default. */
     wrapDriver: (SqlDriver) -> SqlDriver = { it },
 ) {
-    // The JDBC SQLite driver is on the jvmTest *runtime* classpath (sqlite-driver → jdbc-driver)
-    // but NOT the compile classpath, so we instantiate it reflectively here rather than add a
-    // build-file dependency. DatabaseManager runs OdinDatabase.Schema.create on the driver itself.
+    // The JDBC SQLite driver is on the jvmTest *runtime* classpath but NOT the compile classpath, so it is
+    // instantiated reflectively rather than adding a build-file dependency.
     val driver: SqlDriver = wrapDriver(newInMemoryJdbcDriver())
 
-    // Bind the DB dispatchers to the test scheduler so advanceUntilIdle drains all DB work and the
-    // outbox is quiescent before assertions (mirrors OutboxSyncTest.runOutboxTest).
+    // Bound to the test scheduler so advanceUntilIdle drains all DB work before assertions.
     private val dbDispatcher = StandardTestDispatcher(testScope.testScheduler)
     val databaseManager = DatabaseManager(
         { driver },
@@ -64,12 +54,11 @@ class FeedTestEnv(
     val credentialsManager = CredentialsManager()
     val fileOps: FileOperationsProvider = InMemoryFileOps()
 
-    /** A coroutine scope bound to the test scheduler, for services that launch background work. */
     val scope: CoroutineScope = testScope.backgroundScope
 
     private val noopUploader = object : OutboxUploader {
         override suspend fun upload(outboxRecord: Outbox, eventBus: EventBus) {
-            // Never invoked: the outbox is left offline so rows persist for inspection.
+                // Never invoked: the outbox is left offline so rows persist for inspection.
         }
     }
 
@@ -89,12 +78,7 @@ class FeedTestEnv(
 
     val payloadBundleEncryptor: PayloadBundleEncryptor = PassthroughEncryptor()
 
-    /**
-     * A real [UploadService] over the fixture's outbox / optimistic-writer / encryptor, so a
-     * service migrated onto UploadService (issue #844) still enqueues into the same inspectable
-     * in-memory outbox. Mirrors homebase-chat's `buildTestUploadService`: the cache seeder is
-     * wired over a MockEngine that 500s (only reached by a payload-bearing send).
-     */
+    // The cache seeder is wired over a MockEngine that 500s — only reached by a payload-bearing send.
     val uploadService: UploadService = run {
         val http = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
         val driveFileProvider = DriveFileProvider(
@@ -110,11 +94,8 @@ class FeedTestEnv(
         )
     }
 
-    /**
-     * A [DriveQueryProvider] over a MockEngine that 500s. The feed comment tests only cold-load OWN
-     * posts (null senderOdinId), so the over-peer comment query is never reached — this exists just
-     * to satisfy the [PostCommentsService] constructor.
-     */
+    // Over a MockEngine that 500s: the feed comment tests only cold-load OWN posts, so the over-peer query is
+    // never reached. This exists to satisfy the PostCommentsService constructor.
     val driveQueryProvider: DriveQueryProvider = DriveQueryProvider(
         httpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }),
         credentialsManager = credentialsManager,
@@ -134,18 +115,14 @@ class FeedTestEnv(
         databaseManager.close()
     }
 
-    /** The single pending outbox row for (driveId, uniqueId), or null. */
     suspend fun outboxRow(driveId: kotlin.uuid.Uuid, uniqueId: kotlin.uuid.Uuid): Outbox? =
         databaseManager.outbox.selectByDriveAndUnique(driveId, uniqueId)
 
     suspend fun outboxCount(): Long = databaseManager.outbox.count()
 }
 
-/**
- * Passthrough encryptor: returns the bundle verbatim so payload keys survive into the upload
- * request unchanged. The real encryptor is exercised in chat tests; here we only assert routing
- * (drive, fileType, groupId), not ciphertext.
- */
+// Returns the bundle verbatim so payload keys survive into the upload request unchanged; these tests assert
+// routing (drive, fileType, groupId), not ciphertext.
 private class PassthroughEncryptor : PayloadBundleEncryptor {
     override suspend fun encryptBundle(
         uniqueId: kotlin.uuid.Uuid,
@@ -159,19 +136,14 @@ private class PassthroughEncryptor : PayloadBundleEncryptor {
     )
 }
 
-/**
- * Build an in-memory SQLite [SqlDriver] reflectively. `JdbcSqliteDriver` lives in
- * `app.cash.sqldelight:sqlite-driver`, which is on the jvmTest *runtime* classpath (transitively)
- * but not the compile classpath, so it can't be named directly without a build-file edit. The
- * one-arg `JdbcSqliteDriver(url)` constructor with the `IN_MEMORY` URL is all we need.
- */
+// JdbcSqliteDriver is on the jvmTest *runtime* classpath but not the compile classpath, so it can't be named
+// directly without a build-file edit.
 private fun newInMemoryJdbcDriver(): SqlDriver {
     val cls = Class.forName("app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver")
     val ctor = cls.getConstructor(String::class.java, java.util.Properties::class.java)
     return ctor.newInstance("jdbc:sqlite:", java.util.Properties()) as SqlDriver
 }
 
-/** Minimal in-memory FileOperationsProvider: temp "files" are just synthetic paths. */
 private class InMemoryFileOps : FileOperationsProvider {
     private var counter = 0
     override fun getCacheDirectory(): String = "/tmp/feed-test"

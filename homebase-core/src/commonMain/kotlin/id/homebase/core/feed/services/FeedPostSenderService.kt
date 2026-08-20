@@ -8,15 +8,9 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import kotlin.uuid.Uuid
 
-/**
- * Owner-side post mutations for the native feed. Currently only [deletePost].
- *
- * ponytail: the create/edit/repost send path (createPost/updatePost + the descriptor/metadata
- * builders) was removed while feed compose is disabled (PR #802). It uploaded payloads the
- * pre-#844 way (direct `encryptBundle`); reviving compose means re-adding it on top of the
- * shared [id.homebase.upload.UploadService] pipeline, the way [PostCommentsService.postComment]
- * and the Moments sender now do. [deletePost] stays (it's a soft-delete, no payload upload).
- */
+// ponytail: the create/edit/repost send path was removed while feed compose is disabled. It uploaded payloads
+// the old way (direct encryptBundle); reviving compose means re-adding it on top of the shared UploadService
+// pipeline, as PostCommentsService.postComment now does. [deletePost] stays — a soft-delete, no payload upload.
 class FeedPostSenderService(
     private val outboxSync: OutboxSync,
     private val optimisticWriter: OptimisticWriter,
@@ -26,11 +20,6 @@ class FeedPostSenderService(
         private const val TAG = "FeedPostSenderService"
     }
 
-    /**
-     * Soft-delete a post and bulk-delete all of its comments. The optimistic writer removes the
-     * post from the local feed immediately; the outbox carries the post delete and a
-     * [DeleteFilesByGroupIdOutboxRequest] that cleans up the comment files keyed by `groupId`.
-     */
     suspend fun deletePost(channelId: Uuid, postUniqueId: Uuid) {
         val original = optimisticWriter.writeDelete(channelId, postUniqueId)
         if (original == null) {
@@ -38,7 +27,7 @@ class FeedPostSenderService(
             return
         }
 
-        // 1. Delete the post file itself (recipients null = local + own-host removal).
+        // recipients null = local + own-host removal.
         val postDelete = outboxSync.tryEnqueue(
             request = DeleteLocalFilesByFileIdRequest(
                 driveId = channelId,
@@ -53,7 +42,7 @@ class FeedPostSenderService(
             return
         }
 
-        // 2. Clean up the post's comments by groupId (= the post uniqueId).
+        // The post's comments are keyed by groupId (= the post uniqueId).
         try {
             outboxSync.tryEnqueue(
                 request = DeleteFilesByGroupIdOutboxRequest(

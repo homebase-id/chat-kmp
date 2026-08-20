@@ -71,33 +71,15 @@ import id.homebase.resources.feed_comment_encrypted
 import id.homebase.resources.feed_view_all_comments
 import org.jetbrains.compose.resources.stringResource
 
-/** Emoji applied by the double-tap-to-like media gesture. */
 private const val DOUBLE_TAP_EMOJI = "❤️"
 
-/**
- * Aspect floor (width/height) for a single feed image: a portrait taller than this is
- * center-cropped to it so one post can't take over the scroll. 0.8 == a 4:5 frame (≈1350px at
- * 1080-wide = ~80% of the scrollable viewport, so the next post always peeks below). This is the
- * Instagram "portrait max 4:5" convention; since it equals the gallery's wide-image cap
- * [MomentMediaGallery.MaxFeedMediaAspect], every feed image renders as a uniform 4:5 card. The
- * full image is still shown uncropped in the detail/full-screen view.
- */
+// Aspect floor (width/height) for a single feed image: 0.8 == a 4:5 frame, the Instagram "portrait max 4:5"
+// convention, so the next post always peeks below. Equals MomentMediaGallery.MaxFeedMediaAspect, so every feed
+// image renders as a uniform 4:5 card; the detail view still shows the image uncropped.
 internal const val FeedMinMediaAspect = 0.8f
 
-/**
- * A single feed post: author header → caption → edge-to-edge media → interaction row.
- *
- * M3 Expressive: deliberately NOT a Material `Card`. Each post is a flat full-bleed band on
- * [androidx.compose.material3.ColorScheme.surface]; the list paints a slightly-darker gap between
- * posts (see `FeedTimelineList`), giving the light, modern IG/Facebook stream feel rather than a
- * heavy stack of elevated cards. Media is edge-to-edge. Purely presentational — every action is a
- * callback; double-tapping the media fires the like gesture ([onToggleReaction] with ❤️).
- *
- * @param post the deserialised post the card renders.
- * @param displayName resolved author name (caller-provided).
- * @param channelName optional channel name shown as "to <channel>".
- * @param onMediaClick opens media at the given index (0-based).
- */
+// Deliberately NOT a Material Card: each post is a flat full-bleed band on `surface`, with the list painting
+// the gap between posts.
 @Composable
 fun PostCard(
     post: FeedPostItem,
@@ -133,16 +115,14 @@ fun PostCard(
                 authorOdinId = authorOdinId,
                 displayName = displayName,
                 channelName = channelName,
-                // userDate (author's post time), not createdMs — createdMs is the local feed-drive
-                // aggregation time for followed/public posts, which renders wrong dates (web parity:
-                // Meta.tsx uses appData.userDate). createdMs still drives the timeline sort.
+                // userDate (the author's post time), not createdMs — createdMs is the local aggregation time
+                // for followed posts and renders wrong dates. createdMs still drives the timeline sort.
                 timestampMs = post.userDateMs,
                 onAuthorClick = onAuthorClick,
                 modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp),
                 isPublic = isPublic,
                 isOwnPost = isOwnPost,
-                // Only the author sees the audience: it's their own sharing choice, and on
-                // someone else's post the ACL we hold is just our own copy's (web parity).
+                // Only the author sees the audience: on someone else's post the ACL we hold is just our copy's.
                 audience = post.acl.toPostAudience().takeIf { isOwnPost },
                 onEditPost = onEditPost,
                 onDeletePost = onDeletePost,
@@ -151,9 +131,8 @@ fun PostCard(
             )
         }
 
-        // When the caption is nothing but the URL the link card already represents, drop the bare
-        // URL line so the card stands alone (Slack/X style). A URL embedded in real caption text is
-        // kept — we don't silently edit the author's words.
+        // Drop a caption that is nothing but the URL the link card already shows; a URL embedded in real
+        // caption text is kept — we don't silently edit the author's words.
         val hasLinkCard = post.payloads.any { it.key == FeedProtocol.LinksPayloadKey }
         val captionIsLoneUrl = post.caption.trim().let { c ->
             c.startsWith("http", ignoreCase = true) && c.none { it.isWhitespace() }
@@ -174,14 +153,13 @@ fun PostCard(
             )
         }
 
-        // Link-preview card — only when the post carries a `pst_links` payload (mutually exclusive
-        // with media: the sender saves one or the other). A bare URL with no payload stays plain text.
+        // Mutually exclusive with media: the sender saves one or the other.
         PostLinkPreview(
             post = post,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
 
-        // Edge-to-edge — no horizontal padding, no corner clip — for the full-bleed feed look.
+        // Edge-to-edge — no horizontal padding, no corner clip.
         PostMedia(
             post = post,
             onMediaClick = onMediaClick,
@@ -210,11 +188,7 @@ fun PostCard(
     }
 }
 
-/**
- * FB-style inline preview of the latest 1–3 comments + a "View all" affordance, read straight from
- * the post's [ReactionSummary.comments] (server-supplied with the header — no per-post fetch).
- * Each row and the link open the comments modal. Renders nothing when there are no comments.
- */
+// Read straight from the header's ReactionSummary.comments — server-supplied, no per-post fetch.
 @Composable
 private fun PostCommentPreview(
     summary: ReactionSummary?,
@@ -222,7 +196,7 @@ private fun PostCommentPreview(
     modifier: Modifier = Modifier,
 ) {
     val encryptedLabel = stringResource(MR.string.feed_comment_encrypted)
-    // Drop media-only / unparseable rows (blank body) rather than show an empty line.
+    // Drop media-only / unparseable rows rather than show an empty line.
     val shown = summary?.comments.orEmpty()
         .map { comment ->
             comment.odinId to if (comment.isEncrypted) encryptedLabel else comment.previewBody()
@@ -261,23 +235,16 @@ private fun PostCommentPreview(
     }
 }
 
-/**
- * A quoted / reposted source post rendered inline as a bordered card, mirroring the web feed's
- * `EmbeddedPostContent`: author avatar + name + source timestamp, the source caption, then its
- * media edge-to-edge, with the whole card linking out to the source post's [EmbeddedPost.permalink].
- * Shown whenever a post carries an [EmbeddedPost] (i.e. it's a repost).
- *
- * Renders nothing when the embed yields no author, no caption and no media — a repost of a
- * caption-less photo post otherwise landed here as an empty bordered box.
- */
+// Renders nothing when the embed yields no author, caption or media — a repost of a caption-less photo post
+// otherwise landed here as an empty bordered box.
 @Composable
 private fun QuotedPost(
     embedded: EmbeddedPost,
     authorName: String?,
     modifier: Modifier = Modifier,
 ) {
-    // Wire value, unvalidated: OdinId's constructor throws on a non-domain, which inside a
-    // LazyColumn item would take the whole timeline down.
+    // Wire value, unvalidated: OdinId's constructor throws on a non-domain, which inside a LazyColumn item
+    // would take the whole timeline down.
     val author = remember(embedded.authorOdinId) {
         embedded.authorOdinId?.takeIf { OdinId.isValid(it) }?.let { OdinId(it) }
     }
@@ -359,13 +326,8 @@ private fun QuotedPost(
     }
 }
 
-/**
- * The quoted source post's media. Its payload bytes live on the **source author's** channel drive
- * — a third identity, neither us nor necessarily the reposter — so it reads over peer by the
- * embed's [EmbeddedPost.globalTransitId] from [EmbeddedPost.channelId], exactly the route
- * [PostMedia] uses for a followed identity's own post. Renders nothing when any part of that
- * address is missing or unparseable (older/trimmed embeds carry no payload list at all).
- */
+// The quoted post's bytes live on the SOURCE author's drive — a third identity — so this reads over peer by
+// the embed's globalTransitId. Older/trimmed embeds carry no payload list at all.
 @Composable
 private fun QuotedPostMedia(
     embedded: EmbeddedPost,
@@ -397,8 +359,7 @@ private fun QuotedPostMedia(
         fileId = fileId,
         driveId = driveId,
         previewThumbnail = thumb,
-        // Repost is only offered on public (unencrypted) posts, so these payloads are plaintext and
-        // carry no per-payload iv — MomentMediaItem gates on that and ignores the header entirely.
+        // Repost is only offered on public (unencrypted) posts, so these payloads carry no per-payload iv.
         keyHeader = KeyHeader.empty(),
         modifier = modifier.fillMaxWidth(),
         onMediaClick = onClick?.let { open -> { _: PayloadDescriptor -> open() } },
@@ -412,14 +373,8 @@ private fun QuotedPostMedia(
     )
 }
 
-/**
- * Renders the post's saved link-preview (`pst_links`) payload as a [LinkPreviewCard], reusing the
- * chat receiver-side card. Renders nothing when the post has no such payload or the descriptor
- * can't be parsed — a bare URL in the caption with no preview payload just stays plain text (we
- * never fetch previews on the fly in the timeline). The card's image comes from the drive payload
- * (subject to the same over-peer fetch limits as media); the title/domain/description read straight
- * from the header descriptor, so they show even when the image can't load.
- */
+// Parse-tolerant by design: a bare URL with no preview payload stays plain text — previews are never fetched
+// on the fly in the timeline. Title/domain/description come off the header, so they show even with no image.
 @OptIn(ExperimentalEncodingApi::class)
 @Composable
 private fun PostLinkPreview(
@@ -429,17 +384,14 @@ private fun PostLinkPreview(
     val payload = post.payloads.firstOrNull { it.key == FeedProtocol.LinksPayloadKey } ?: return
     val descriptor = remember(payload.descriptorContent) {
         payload.descriptorContent?.let { content ->
-            // Parse-tolerant: malformed/older descriptors yield null → no card, not a crash.
             runCatching {
                 OdinSystemSerializer.deserialize<List<LinkPreviewDescriptor>>(content).firstOrNull()
             }.getOrNull()
         }
     } ?: return
 
-    // Public feed posts ship the payload plaintext (no per-payload iv) — only encrypted posts carry
-    // one. With an iv, decrypt the image with a payload-scoped key header; without, reuse the post's
-    // own key header (the same one the media path uses for plaintext public posts). Either way the
-    // descriptor text renders; this only governs the image fetch.
+    // Public posts ship the payload plaintext (no per-payload iv); only encrypted posts carry one. This
+    // governs the image fetch only — the descriptor text renders either way.
     val keyHeader = remember(payload.iv, post.keyHeader) {
         payload.iv
             ?.let { runCatching { Base64.decode(it) }.getOrNull() }
@@ -458,19 +410,8 @@ private fun PostLinkPreview(
     )
 }
 
-/**
- * The post's media payloads (key prefix [FeedProtocol.MediaPayloadKeyPrefix]) rendered
- * through the feed-shaped [MomentMediaGallery] — aspect-driven, full-width, with an
- * Instagram-style carousel for 2+. Translates the gallery's payload-keyed click into the
- * card's 0-based [onMediaClick] index and forwards the double-tap-to-like gesture.
- * Renders nothing when the post has no media payloads.
- *
- * A followed identity's media payloads live on the author's drive, not our local feed drive, so for
- * a received post (non-null [FeedPostItem.senderOdinId]) the gallery reads them **over peer** by
- * [FeedPostItem.globalTransitId] from the author's channel drive ([FeedPostItem.channelId]); our own
- * posts (null senderOdinId) stay on the local [FeedPostItem.driveId]. See
- * reference_over_peer_media_v2_route / PeerFileByGlobalTransitProvider.
- */
+// A followed identity's media lives on the author's drive, so a received post (non-null senderOdinId) reads
+// over peer by globalTransitId from the author's channel drive; our own posts stay on the local driveId.
 @Composable
 private fun PostMedia(
     post: FeedPostItem,
@@ -481,9 +422,7 @@ private fun PostMedia(
     val mediaPayloads: List<PayloadDescriptor> =
         post.payloads.filter { it.key.startsWith(FeedProtocol.MediaPayloadKeyPrefix) }
 
-    // Route peer-authored media over-peer. senderOdinId is non-null only on a received (feed-drive)
-    // copy — our own posts stay local. The peer read targets the author's CHANNEL drive
-    // (post.channelId, a drive-alias GUID) keyed by globalTransitId, NOT the local feed drive.
+    // The peer read targets the author's CHANNEL drive (post.channelId), NOT the local feed drive.
     val peerGtid = post.globalTransitId
     val channelDriveAlias = runCatching { Uuid.parse(post.channelId) }.getOrNull()
     val isPeerMedia = post.senderOdinId != null && peerGtid != null && channelDriveAlias != null
@@ -494,7 +433,6 @@ private fun PostMedia(
     val mediaRemoteOdinId = post.senderOdinId?.takeIf { isPeerMedia }
     val mediaGlobalTransitId = peerGtid?.takeIf { isPeerMedia }
 
-    // Each double-tap bumps the tick so [DoubleTapHeartBurst] replays its pop-and-fade ❤️.
     var burstTick by remember { mutableIntStateOf(0) }
 
     Box(modifier = modifier) {
@@ -525,15 +463,7 @@ private fun PostMedia(
     }
 }
 
-/**
- * The signature like gesture: a big ❤️ that springs up with an overshoot and fades, centred over
- * the media — replayed whenever [tick] changes (each double-tap). Renders nothing before the first
- * tap. Purely decorative; the actual reaction is fired by the caller.
- *
- * A faint dark scrim heart sits one layer behind the white one so the burst stays legible over
- * both bright and dark media (the universal IG-style "white heart over photo" — the white tint is
- * deliberately not a theme role since the media beneath it is arbitrary).
- */
+// The white tint is deliberately not a theme role — the media beneath it is arbitrary.
 @Composable
 private fun BoxScope.DoubleTapHeartBurst(tick: Int) {
     if (tick == 0) return
@@ -551,7 +481,7 @@ private fun BoxScope.DoubleTapHeartBurst(tick: Int) {
         )
         alpha.animateTo(0f, tween(durationMillis = 260))
     }
-    // Shadow heart (slightly larger, dark, low alpha) for legibility on light media.
+    // Shadow heart for legibility on light media.
     Icon(
         imageVector = Icons.Filled.Favorite,
         contentDescription = null,

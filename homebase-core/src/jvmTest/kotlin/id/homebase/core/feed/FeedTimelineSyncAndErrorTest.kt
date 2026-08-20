@@ -39,11 +39,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * What a completed drive sync does to an already-paged timeline, and what a failed cold load
- * reports. Both run against the REAL in-memory index ([FeedTestEnv]) so the QueryBatch cursors are
- * the real ones — the paging behaviour under test is entirely about those.
- */
+// Runs against the REAL in-memory index so the QueryBatch cursors are the real ones — the paging behaviour
+// under test is entirely about those.
 class FeedTimelineSyncAndErrorTest {
 
     private val feedDrive = feedLabeledDrive.drive.alias
@@ -56,7 +53,6 @@ class FeedTimelineSyncAndErrorTest {
     private val channelCount = 5
     private val firstPageSize = pageSize + channelCount
 
-    // ---------------------------------------------------------------- sync
 
     @Test
     fun stoppedSyncAfterPagingKeepsThePagedPostsAndMergesNewOnesAtTheHead() =
@@ -122,7 +118,6 @@ class FeedTimelineSyncAndErrorTest {
             assertEquals(firstPageSize + pageSize, service.timeline.value.size)
         }
 
-    // ---------------------------------------------------------------- errors
 
     @Test
     fun failedColdLoadIsReportedOnLoadErrorAndClearsWhenRetrySucceeds() = runTest {
@@ -164,7 +159,6 @@ class FeedTimelineSyncAndErrorTest {
         assertEquals(emptyList(), service.timeline.value)
     }
 
-    // ---------------------------------------------------------------- helpers
 
     private fun stopped(driveId: Uuid, totalCount: Int) = BackendEvent.DriveEvent.Stopped(
         driveId = driveId,
@@ -248,10 +242,7 @@ class FeedTimelineSyncAndErrorTest {
     }
 }
 
-/**
- * Passes everything through to the real in-memory driver until [failReads] is flipped, from which
- * point every read throws — the DB-read failure the cold load has to report rather than swallow.
- */
+// Passes through to the real in-memory driver until [failReads] is flipped, after which every read throws.
 private class FailableReadDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
     var failReads = false
 

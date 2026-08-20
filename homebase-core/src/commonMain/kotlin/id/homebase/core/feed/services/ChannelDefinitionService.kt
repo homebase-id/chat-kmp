@@ -16,17 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
 
-/**
- * Resolves channel-definition files (`fileType = 103`) into a `channelId → [ChannelDefinition]`
- * map so the timeline can render the channel a post was published to.
- *
- * Definitions live on two local drives: the **FeedDrive** ([feedLabeledDrive]) — where followed
- * identities' channels are distributed — and the user's own **public channel drive**
- * ([SystemDriveConstants.publicPostChannelDrive]). Both are queried and merged into one map keyed
- * by the definition file's `appData.uniqueId` (which equals a post's [FeedPostItem.channelId]).
- *
- * A single [refresh] is launched in `init` on the app scope; it's idempotent-safe to call again.
- */
+// Both source drives are merged into one map keyed by the definition file's appData.uniqueId, which equals a
+// post's [FeedPostItem.channelId]. [refresh] is launched in init and is safe to call again.
 class ChannelDefinitionService(
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
@@ -50,7 +41,6 @@ class ChannelDefinitionService(
 
     fun nameFor(channelId: String): String? = channels.value[channelId]?.name
 
-    /** Re-read channel definitions from both source drives and re-emit the merged map. */
     suspend fun refresh() {
         try {
             val active = credentialsManager.getActiveCredentials() ?: return

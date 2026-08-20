@@ -59,7 +59,6 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-/** Default emoji applied by a comment's like affordance. */
 private const val COMMENT_LIKE_EMOJI = "❤️"
 
 /** Block is offered only on someone else's comment, and only when its author is known. */
@@ -72,24 +71,9 @@ private fun PostCommentItem.blockAction(
     return { onBlockAuthor(author) }
 }
 
-/**
- * Renders [comments] as one-level threads: each top-level comment (`replyToId == null`)
- * is followed by its replies (`replyToId == comment.id`), indented. A reply button is
- * only offered on top-level comments — replies cannot themselves be replied to.
- *
- * Purely presentational: name resolution is delegated to [displayNameFor]; every action
- * is a callback. [isMine] decides whether the edit/delete affordances show for a row.
- *
- * @param onToggleCommentReaction toggles the given emoji on a comment.
- * @param onReply starts a reply to a top-level comment.
- * @param onEdit commits an edited body for a comment. The widget owns the inline edit
- *   field (prefilled with the current body) and only invokes this on Save.
- * @param onBlockAuthor blocks the author of someone else's comment (web `CommentHead` offers
- *   exactly this one action on a comment that isn't yours).
- * @param permission the viewer's react/comment grants on the parent post's channel. Like and
- *   Reply follow it exactly as the web's `CommentMeta` does — one verdict resolved for the post,
- *   applied to every row, never re-fetched per comment. Null (unresolved) leaves them visible.
- */
+// One level only: a reply button is offered on top-level comments, and replies cannot be replied to.
+// [permission] is one verdict resolved for the post and applied to every row, never re-fetched per comment;
+// null (unresolved) leaves Like and Reply visible.
 @Composable
 fun CommentThread(
     comments: List<PostCommentItem>,
@@ -107,13 +91,11 @@ fun CommentThread(
     val repliesByParent: Map<Uuid, List<PostCommentItem>> =
         comments.filter { it.replyToId != null }.groupBy { it.replyToId!! }
 
-    // Which comment (if any) is in inline-edit mode. Owned here so the field's draft
-    // and Save/Cancel are local UI state — the VM only hears about the final body.
+    // Owned here so the draft and Save/Cancel stay local UI state — the VM only hears the final body.
     var editingId by remember { mutableStateOf<Uuid?>(null) }
 
-    // Keyed by comment id, not position: the thread is live (a reply arriving under an earlier
-    // comment shifts every row below it), and CommentRow's remembered menu/delete-confirm state
-    // would otherwise re-bind to whichever comment slid into the slot.
+    // Keyed by comment id, not position: the thread is live, and CommentRow's remembered menu/delete-confirm
+    // state would otherwise re-bind to whichever comment slid into the slot.
     Column(modifier = modifier.fillMaxWidth()) {
         topLevel.forEach { comment ->
             key(comment.id) {
@@ -197,9 +179,6 @@ private fun CommentRow(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            // Web `Comment`: a rounded bubble holds the author name + body/media (the avatar sits
-            // outside, to the left). The like/reply/meta row lives BELOW the bubble (web
-            // `CommentMeta`). M3 styling: a faint surfaceContainerLow bubble, 12dp corners.
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shape = RoundedCornerShape(12.dp),
@@ -218,8 +197,7 @@ private fun CommentRow(
                     )
 
                     if (isEditing) {
-                        // Inline edit — replaces the rendered body until Save/Cancel. Prefilled
-                        // with the current body, kept across recomposition by keying on the id.
+                        // Prefilled with the current body, kept across recomposition by keying on the id.
                         var draft by remember(comment.id) { mutableStateOf(comment.body) }
                         OutlinedTextField(
                             value = draft,
@@ -264,9 +242,6 @@ private fun CommentRow(
                 }
             }
 
-            // Web `CommentMeta`: a tight row of text affordances + timestamp, BELOW the bubble,
-            // aligned with the bubble's content. Like/Reply are text links (web uses text, not
-            // icons); edit/delete collapse into a MoreVert overflow menu (web ActionGroup).
             if (!isEditing) {
                 Row(
                     modifier = Modifier
@@ -311,12 +286,8 @@ private fun CommentRow(
                             DropdownMenu(
                                 expanded = menuOpen,
                                 onDismissRequest = { menuOpen = false },
-                                // Focusable so the popup owns input while it's open. On the iOS
-                                // simulator this menu stayed open through repeated taps outside it
-                                // while hosted in CommentsModalSheet; the post-level menu, which
-                                // has no sheet above it, dismissed normally. Synthetic taps can't
-                                // tell the sheet's scrim from the status bar, so that A/B is
-                                // suggestive, not conclusive — worth a real-finger check.
+                                // Focusable so the popup owns input while it's open — without it this menu
+                                // stayed open through repeated taps outside while hosted in the modal sheet.
                                 properties = PopupProperties(focusable = true),
                             ) {
                                 if (isMine) {
@@ -347,8 +318,7 @@ private fun CommentRow(
                             }
                         }
 
-                        // The web deletes a comment straight from the menu; on touch that's one
-                        // stray tap from losing it, and post delete already confirms here.
+                        // The web deletes straight from the menu; on touch that's one stray tap from losing it.
                         if (confirmDelete) {
                             AlertDialog(
                                 onDismissRequest = { confirmDelete = false },
@@ -387,11 +357,6 @@ private fun CommentRow(
     }
 }
 
-/**
- * Renders a comment's single attached image (the payload whose key matches
- * [PostCommentItem.mediaPayloadKey]) through the feed-shaped [MomentMediaGallery].
- * Renders nothing when the comment has no media payload.
- */
 @Composable
 private fun CommentMedia(comment: PostCommentItem) {
     val mediaKey = comment.mediaPayloadKey ?: return

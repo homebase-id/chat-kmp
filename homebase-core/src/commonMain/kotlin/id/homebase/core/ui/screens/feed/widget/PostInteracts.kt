@@ -56,35 +56,10 @@ import id.homebase.resources.feed_post_show_reactors
 import kotlinx.collections.immutable.toImmutableList
 import org.jetbrains.compose.resources.stringResource
 
-/**
- * The interaction row beneath a post: an overlapping-glyph reaction summary (facepile + count), an
- * add-reaction affordance (quick ❤️ 😆 😥 menu + full picker), and a comment button with its count.
- *
- * Visibility follows BOTH the author's [reactAccess] and the viewer's [permission] — the post
- * says what interaction it allows at all, the drive grants say whether this viewer holds it (web
- * splits these the same way: `postDisabled*` in `PostInteracts.tsx` vs `useCanReact`). A null
- * [permission] means "not resolved yet"; the affordance stays visible rather than falsely
- * disappearing, and the write itself is still authorised server-side.
- *
- * Visibility follows [reactAccess], for the WRITE affordances only:
- *  - [ReactAccess.None] hides both the like button and the comment button.
- *  - [ReactAccess.EmojiOnly] hides the comment button.
- *  - [ReactAccess.CommentOnly] hides the like button.
- *  - [ReactAccess.All] shows everything.
- *
- * The reaction summary is NOT gated — a post you may not react to still shows its tally and still
- * opens the roster, exactly as the web feed does.
- *
- * Expressive: action glyphs sit faint at rest ([androidx.compose.material3.ColorScheme.onSurfaceVariant])
- * and spring up — scaling and gaining colour emphasis — while pressed (see [FeedActionButton]),
- * so the bar reads quiet until touched.
- *
- * @param reactionSummary current server-side reaction tallies, or null when none.
- * @param ownReactions bare emoji the current user has reacted with (tints matching chips).
- * @param onToggleReaction add/remove the given emoji.
- * @param onOpenComments open the comment thread.
- * @param onShowReactors open the "who reacted" sheet.
- */
+// Write affordances follow BOTH the author's [reactAccess] and the viewer's [permission] — the post says what
+// it allows at all, the drive grants say whether this viewer holds it. A null [permission] means "not resolved
+// yet": the affordance stays visible rather than falsely disappearing, and the write is still authorised
+// server-side. The reaction summary is never gated — a post you may not react to still shows its tally.
 @Composable
 fun PostInteracts(
     reactionSummary: ReactionSummary?,
@@ -102,8 +77,7 @@ fun PostInteracts(
         (permission?.allowsEmoji ?: true)
     val canComment = (reactAccess == ReactAccess.All || reactAccess == ReactAccess.CommentOnly) &&
         (permission?.allowsComment ?: true)
-    // Repost is offered whenever the post is interactable at all — only a fully locked-down
-    // (ReactAccess.None) post hides it.
+    // Repost is offered whenever the post is interactable at all.
     val canRepost = reactAccess != ReactAccess.None
 
     var showQuickMenu by remember { mutableStateOf(false) }
@@ -117,9 +91,6 @@ fun PostInteracts(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // LEFT (web PostInteracts parity): the Like button — a heart that opens the quick-reaction
-        // menu and shows your own reaction emoji once you've reacted — followed by the reaction
-        // summary facepile. The actions (repost, comment) are pushed to the right.
         if (canReact) {
             Box {
                 LikeButton(
@@ -146,18 +117,14 @@ fun PostInteracts(
             }
         }
 
-        // Web parity (`PostInteracts.tsx`): only the Like button is gated on the viewer's react
-        // permission — `EmojiSummary` renders unconditionally. Keeping the summary inside the
-        // `canReact` branch meant a post you may not react to (reactAccess comment-only, or a
-        // `CanReact.Denied` verdict on the detail screen) showed no tally at all AND lost the only
-        // affordance that opens the "who reacted" roster.
+        // Only the Like button is gated on the viewer's react permission. Keeping the summary inside the
+        // `canReact` branch left a post you may not react to with no tally AND no way into the roster.
         reactionSummary?.let { summary ->
             PostReactionSummary(summary = summary, onClick = onShowReactors)
         }
 
-        // Left-grouped action cluster (like → reactions → repost → comment). No weight spacer:
-        // a far-right split left a large empty middle that read as unbalanced when a post had no
-        // reactions. Grouping them tight reads as an intentional toolbar (IG/stream style).
+        // Left-grouped, no weight spacer: a far-right split left a large empty middle that read as unbalanced
+        // when a post had no reactions.
         if (onRepost != null && canRepost) {
             FeedActionButton(
                 icon = Icons.Outlined.Repeat,
@@ -198,15 +165,8 @@ fun PostInteracts(
     }
 }
 
-/**
- * An expressive feed action: a faint [androidx.compose.material3.ColorScheme.onSurfaceVariant] glyph
- * that springs up — scaling ~1.18× and brightening to `onSurface` — while held, then settles back.
- * The press feedback uses a bouncy spring so the pop reads as a deliberate, springy reaction.
- * (MaterialTheme.motionScheme is internal in JetBrains material3 1.9.0, so we tune a spring here.)
- *
- * When [trailing] is supplied the button renders as a [TextButton] (icon + label, e.g. the comment
- * count); otherwise it is a bare [IconButton].
- */
+// (MaterialTheme.motionScheme is internal in JetBrains material3 1.9.0, so the spring is tuned here.)
+// With [trailing] it renders as a TextButton (icon + label); otherwise a bare IconButton.
 @Composable
 private fun FeedActionButton(
     icon: ImageVector,
@@ -264,12 +224,8 @@ private fun FeedActionButton(
     }
 }
 
-/**
- * The web feed's Like control ([LikeButton.tsx]): a faint heart that springs on press and opens the
- * quick-reaction menu. Once you've reacted it shows your own reaction emoji in place of the heart
- * (mirroring the web's `UIEmoji`), so the control doubles as your reaction state. Sits on the LEFT
- * of the interaction row, before the reaction summary.
- */
+// Once you've reacted it shows your own reaction emoji in place of the heart, so the control doubles as your
+// reaction state.
 @Composable
 private fun LikeButton(
     ownReactions: List<String>,
@@ -306,13 +262,8 @@ private fun LikeButton(
     }
 }
 
-/**
- * Facebook/Instagram-style reaction summary: the top distinct emoji rendered as a stack of
- * overlapping circular glyphs (each disc outlined in the surface colour so the stack reads
- * cleanly), followed by the total reaction count. Tapping opens the "who reacted" roster.
- * Renders nothing when there are no human reactions (machine reactions — a leading `_` code —
- * are skipped, matching the shared ReactionList).
- */
+// Renders nothing when there are no human reactions — machine reactions (a leading `_` code) are skipped,
+// matching the shared ReactionList.
 @Composable
 private fun PostReactionSummary(
     summary: ReactionSummary,
@@ -328,7 +279,7 @@ private fun PostReactionSummary(
     }
     if (emojiCounts.isEmpty()) return
     val total = remember(emojiCounts) { emojiCounts.sumOf { it.second } }
-    // Up to 5 distinct glyphs, matching the web feed's reaction summary.
+    // Up to 5 distinct glyphs, matching the web feed.
     val topEmojis = remember(emojiCounts) {
         emojiCounts.sortedByDescending { it.second }.map { it.first }.distinct().take(5)
     }
@@ -336,8 +287,7 @@ private fun PostReactionSummary(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            // onClickLabel is what a screen reader announces for the tap — without it the facepile
-            // is an unlabelled clickable and the roster is unreachable non-visually.
+            // Without onClickLabel the facepile is an unlabelled clickable and the roster is unreachable non-visually.
             .clickable(onClickLabel = stringResource(MR.string.feed_post_show_reactors)) { onClick() }
             .heightIn(min = 36.dp)
             .padding(horizontal = 6.dp, vertical = 2.dp),
@@ -366,5 +316,4 @@ private fun PostReactionSummary(
     }
 }
 
-/** Feed default quick reactions, shown first in the [ReactionMenu]. */
 private val QUICK_REACTIONS = listOf("❤️", "😆", "😥").toImmutableList()

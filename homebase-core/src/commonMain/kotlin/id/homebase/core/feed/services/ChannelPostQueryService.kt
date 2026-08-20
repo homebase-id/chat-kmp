@@ -15,19 +15,8 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import kotlin.uuid.Uuid
 
-/**
- * Query a single channel drive's posts with a cursor — the per-channel counterpart to
- * [FeedTimelineService] (which aggregates the home timeline). Used by a channel/profile view.
- *
- * Two modes:
- *  - **Local** (default, [ownerOdinId] null): reads the local SQLDelight index via
- *    [QueryBatch.queryBatchAsync] — no HTTP, post payloads are already on each row.
- *  - **Remote** ([ownerOdinId] set): brokers a query-batch over peer via
- *    [DriveQueryProvider.queryBatch] to fetch a remote identity's channel **headers**. Per Task 0
- *    findings, only headers come back over peer in v1 — a remote payload-bytes read is deferred.
- *
- * The result is a [CursoredResult] holding the page and an opaque cursor string for the next page.
- */
+// The per-channel counterpart to FeedTimelineService. With [ownerOdinId] set it brokers a query-batch over
+// peer, which returns HEADERS only — a remote payload-bytes read is deferred.
 class ChannelPostQueryService(
     private val databaseManager: DatabaseManager,
     private val credentialsManager: CredentialsManager,
@@ -39,15 +28,7 @@ class ChannelPostQueryService(
         private const val DefaultPageSize = 10
     }
 
-    /**
-     * Fetch one page of posts on [channelId], newest-first by userDate.
-     *
-     * @param channelId the channel drive alias to read.
-     * @param type optional [PostType] filter (maps to a dataType); null returns all post kinds.
-     * @param cursor opaque cursor from a prior page, or null for the first page.
-     * @param pageSize max posts to return.
-     * @param ownerOdinId set to read a remote identity's channel over peer; null for the user's own.
-     */
+    /** [ownerOdinId] set reads a remote identity's channel over peer; null reads the user's own locally. */
     suspend fun getPosts(
         channelId: Uuid,
         type: PostType? = null,

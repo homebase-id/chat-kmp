@@ -26,18 +26,10 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Default count of skeleton slots painted while the first timeline page loads. */
 const val FEED_SKELETON_COUNT = 4
 
-/**
- * A shimmering placeholder that mirrors a [PostCard]'s skeleton — avatar disc, two text bars,
- * and an edge-to-edge media block — shown while the first page of the timeline loads.
- *
- * The shimmer is a single horizontal gradient sweep. Each placeholder owns one
- * [rememberInfiniteTransition], but because all slots use the same duration and start together
- * they read as one cohesive "loading wave" rather than independent flickers. Purely decorative;
- * no callbacks.
- */
+// Each placeholder owns one rememberInfiniteTransition, but all slots share a duration and start together, so
+// they read as one loading wave rather than independent flickers.
 @Composable
 fun PostSkeleton(modifier: Modifier = Modifier) {
     val brush = rememberShimmerBrush()
@@ -48,7 +40,6 @@ fun PostSkeleton(modifier: Modifier = Modifier) {
             .background(MaterialTheme.colorScheme.surface)
             .padding(bottom = 8.dp),
     ) {
-        // Author header: avatar + name/meta bars.
         Row(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
             ShimmerBlock(brush = brush, shape = CircleShape, modifier = Modifier.size(40.dp))
             Spacer(Modifier.size(12.dp))
@@ -61,7 +52,6 @@ fun PostSkeleton(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(14.dp))
 
-        // Caption lines.
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             ShimmerBar(brush = brush, widthFraction = 1f, height = 12.dp)
             Spacer(Modifier.height(8.dp))
@@ -70,7 +60,6 @@ fun PostSkeleton(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(14.dp))
 
-        // Edge-to-edge media block.
         ShimmerBlock(
             brush = brush,
             shape = RoundedCornerShape(0.dp),
@@ -81,7 +70,6 @@ fun PostSkeleton(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(12.dp))
 
-        // Action row stub.
         ShimmerBar(
             brush = brush,
             widthFraction = 0.35f,
@@ -91,7 +79,6 @@ fun PostSkeleton(modifier: Modifier = Modifier) {
     }
 }
 
-/** A rounded text-bar placeholder occupying [widthFraction] of the available width. */
 @Composable
 private fun ShimmerBar(
     brush: Brush,
@@ -108,7 +95,6 @@ private fun ShimmerBar(
     )
 }
 
-/** A shape-clipped surface painted with the moving shimmer [brush]. */
 @Composable
 private fun ShimmerBlock(
     brush: Brush,
@@ -122,11 +108,6 @@ private fun ShimmerBlock(
     )
 }
 
-/**
- * A horizontal `surfaceVariant → highlight → surfaceVariant` gradient that sweeps left-to-right
- * forever. The animated offset shifts the gradient stops so the bright band travels across the
- * placeholder.
- */
 @Composable
 private fun rememberShimmerBrush(): Brush {
     val base = MaterialTheme.colorScheme.surfaceVariant

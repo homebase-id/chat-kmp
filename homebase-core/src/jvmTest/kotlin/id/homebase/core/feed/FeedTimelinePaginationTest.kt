@@ -33,23 +33,17 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-/**
- * Cursored paging over the two source drives, exercised against a REAL in-memory index
- * ([FeedTestEnv]) — the stub driver in `FeedTimelineServiceTest` hands back an empty cursor, so it
- * can only cover the incremental (`BatchReceived`) path, never the QueryBatch cursor itself.
- *
- * The service is driven through directly-awaited suspend calls ([FeedTimelineService.refresh] /
- * [FeedTimelineService.loadMore]) rather than `start()` + `advanceUntilIdle()`: the cold-load
- * `start()` launches into the service's own scope is NOT drained by `advanceUntilIdle`, so a test
- * that relied on it would race its own assertions (and leave a second cold-load in flight, which
- * the generation guard would then make one of the two discard).
- */
+// Runs against a REAL in-memory index: the stub driver in FeedTimelineServiceTest hands back an empty cursor,
+// so it can only cover the incremental path, never the QueryBatch cursor itself.
+// Driven through directly-awaited suspend calls rather than start() + advanceUntilIdle(): the cold-load start()
+// launches into the service's own scope is NOT drained by advanceUntilIdle, so a test relying on it would race
+// its own assertions.
 class FeedTimelinePaginationTest {
 
     private val feedDrive = feedLabeledDrive.drive.alias
     private val channelDrive = SystemDriveConstants.publicPostChannelDrive.alias
 
-    /** Mirrors the service's private `PageSize`; the assertions below are about that boundary. */
+    /** Mirrors the service's private `PageSize`. */
     private val pageSize = 30
 
     private val feedCount = 70
@@ -58,7 +52,6 @@ class FeedTimelinePaginationTest {
     /** Feed drive is deeper than one page; channel drive fits in one. */
     private val firstPageSize = pageSize + channelCount
 
-    // ---------------------------------------------------------------- tests
 
     @Test
     fun coldLoadEmitsOnlyTheFirstPagePerDriveAndEndReachedStaysFalse() = feedTest { env, service ->
@@ -173,9 +166,7 @@ class FeedTimelinePaginationTest {
         assertEquals(1, service.timeline.value.count { it.id == shared })
     }
 
-    // ---------------------------------------------------------------- helpers
 
-    /** Pages to exhaustion, returning the timeline size after each page. */
     private suspend fun drain(service: FeedTimelineService): List<Int> {
         val sizes = mutableListOf<Int>()
         // Bounded so a cursor that stops advancing fails the test instead of hanging it.

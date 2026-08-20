@@ -25,17 +25,12 @@ import id.homebase.resources.feed_post_read_less
 import id.homebase.resources.feed_post_read_more
 import org.jetbrains.compose.resources.stringResource
 
-/** Code-point budget after which a post caption collapses behind a "More" toggle. */
 private const val READ_MORE_LIMIT = 400
 
-/**
- * Newlines kept in a collapsed caption before the rest are flattened to spaces — mirrors the
- * web feed (`Body.tsx`: `splitCaption.slice(0, 7)`), which limits a teaser to 7 lines so a
- * tall newline-heavy post can't dominate the timeline.
- */
+// Newlines kept in a collapsed caption before the rest flatten to spaces — the web limits a teaser to 7 lines
+// so a newline-heavy post can't dominate the timeline.
 private const val MAX_TEASER_LINES = 7
 
-/** Flattens everything past the first [MAX_TEASER_LINES] newlines to spaces, per the web teaser. */
 private fun String.clampTeaserLines(): String {
     val parts = split('\n')
     if (parts.size <= MAX_TEASER_LINES) return this
@@ -43,15 +38,8 @@ private fun String.clampTeaserLines(): String {
         parts.drop(MAX_TEASER_LINES).joinToString(" ")
 }
 
-/**
- * Renders a post [caption] as Signal-style markdown with a "More"/"Less" read-more
- * toggle once the text exceeds [READ_MORE_LIMIT] code points (surrogate-safe).
- *
- * When the full text lives in a `pst_text` overflow payload, the caller passes
- * [onExpandFetchFullText]; it is invoked once on the first expand and its result
- * replaces the rendered text. When it is null, expanding simply reveals the
- * already-supplied [caption] in full.
- */
+// When the full text lives in a `pst_text` overflow payload the caller passes [onExpandFetchFullText], invoked
+// once on the first expand; when null, expanding just reveals [caption] in full.
 @Composable
 fun PostBody(
     caption: String,
@@ -59,7 +47,6 @@ fun PostBody(
     onExpandFetchFullText: (suspend () -> String?)? = null,
 ) {
     var expanded by remember(caption) { mutableStateOf(false) }
-    // Holds the full text once fetched from the pst_text overflow payload.
     var fetchedFullText by remember(caption) { mutableStateOf<String?>(null) }
 
     val overflows = remember(caption) { caption.codePointCount() > READ_MORE_LIMIT }
@@ -79,9 +66,7 @@ fun PostBody(
 
     if (caption.isBlank()) return
 
-    // Expand/collapse animates the height change with a snappy low-bounce spring so
-    // "More"/"Less" reveals smoothly instead of snapping. (MaterialTheme.motionScheme is
-    // internal in JetBrains material3 1.9.0, so we use a hand-tuned spring directly.)
+    // (MaterialTheme.motionScheme is internal in JetBrains material3 1.9.0, so the spring is hand-tuned.)
     val expandSpring = spring<IntSize>(
         dampingRatio = Spring.DampingRatioLowBouncy,
         stiffness = Spring.StiffnessMediumLow,

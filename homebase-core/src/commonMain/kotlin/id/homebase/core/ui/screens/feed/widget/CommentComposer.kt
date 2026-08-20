@@ -74,19 +74,8 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
-/**
- * Bottom comment composer: a text field with an emoji button, a single-image
- * attach affordance, and a send button. When [replyingToName] is non-null a
- * dismissible "Replying to …" banner sits above the field.
- *
- * The picked [PlatformFile] is resolved to an [AttachmentInput] at send time via
- * the shared cross-platform [toImageAttachmentInput] helper (the same path chat's
- * own composers use), so the widget stays free of any feed service/ViewModel.
- *
- * @param onSend fired with the trimmed text and the resolved attachment (or null).
- * @param replyingToName name of the comment being replied to, if any.
- * @param onCancelReply clears the active reply target.
- */
+// The picked PlatformFile is resolved to an AttachmentInput at send time via the shared
+// [toImageAttachmentInput], so this widget stays free of any feed service/ViewModel.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CommentComposer(
@@ -102,22 +91,19 @@ fun CommentComposer(
 
     var text by remember { mutableStateOf("") }
     var pickedImage by remember { mutableStateOf<PlatformFile?>(null) }
-    // One combined expression panel (emoji + stickers), like the chat composer — instead of two
-    // separate emoji/sticker buttons that read as duplicates. It renders inline in the keyboard
-    // area (not a covering modal), so the input row stays visible while picking emojis.
+    // One combined expression panel (emoji + stickers), rendered inline in the keyboard area so the input row
+    // stays visible while picking.
     var showExpressionSheet by remember { mutableStateOf(false) }
     var expressionTab by remember { mutableStateOf(ExpressionTab.Emoji) }
-    // Send is async (materialize + re-encode) and text/pickedImage only clear once it finishes,
-    // so without this an impatient second tap posts a duplicate comment — each `postComment` mints
-    // its own uniqueId. Same guard shape as the chat composer sheets (PollComposerSheet).
+    // Send is async and text/pickedImage only clear once it finishes, so without this an impatient second tap
+    // posts a duplicate — each postComment mints its own uniqueId.
     var sending by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val fieldFocusRequester = remember { FocusRequester() }
 
-    // Chat parity (ConversationContent's replyToMessage effect): starting a reply drops you
-    // straight into the field. Keyed on the null-ness so a late display-name resolution doesn't
-    // re-fire it; the frame wait covers the iOS first-responder race.
+    // Keyed on the null-ness so a late display-name resolution doesn't re-fire it; the frame wait covers the
+    // iOS first-responder race.
     LaunchedEffect(replyingToName != null) {
         if (replyingToName != null) {
             withFrameNanos {}
@@ -133,11 +119,8 @@ fun CommentComposer(
         if (file != null) pickedImage = file
     }
 
-    // Resolve a saved sticker to the SAME AttachmentInput the image picker produces:
-    // StickerService.resolveForSend downloads + decrypts the sticker to a temp file, then
-    // we feed that path through materializeForUpload + toImageAttachmentInput — the exact
-    // path chat's StickerHandler.handleSendSavedSticker uses (re-stage as an image upload).
-    // A sticker-only comment (empty text) is valid.
+    // resolveForSend downloads + decrypts the sticker to a temp file, which is then re-staged as an image
+    // upload — the exact path chat uses. A sticker-only comment (empty text) is valid.
     val sendSticker: (SavedSticker) -> Unit = { sticker ->
         if (!sending) {
             sending = true
@@ -175,8 +158,7 @@ fun CommentComposer(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                // Cancel is the mirror of the focus grab above: hand focus back to nothing
-                // rather than leaving it on a row that's about to leave the composition.
+                // Hand focus back to nothing rather than leaving it on a row about to leave the composition.
                 IconButton(
                     onClick = {
                         onCancelReply()
@@ -252,9 +234,7 @@ fun CommentComposer(
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
                 leadingIcon = {
-                    // One button toggles the combined emoji + sticker panel. Opening it drops the
-                    // field focus and hides the keyboard so the panel takes the keyboard's place,
-                    // with the input row still visible above it.
+                    // Opening the panel drops field focus and hides the keyboard so the panel takes its place.
                     IconButton(onClick = {
                         if (showExpressionSheet) {
                             showExpressionSheet = false
@@ -284,8 +264,7 @@ fun CommentComposer(
 
             Box {
                 IconButton(
-                    // `sending` is re-read here rather than relying on `enabled`: the disable only
-                    // lands on the next recomposition, this read is live.
+                    // `sending` is re-read live here: the `enabled` disable only lands on the next recomposition.
                     onClick = {
                         if (!sending) {
                             sending = true
@@ -318,9 +297,6 @@ fun CommentComposer(
             }
         }
 
-        // Inline keyboard-area expression panel: the input row above stays visible while you pick
-        // emojis (each inserts into the field); tapping the field closes the panel and brings the
-        // keyboard back. A sticker pick sends immediately and closes the panel.
         AnimatedVisibility(visible = showExpressionSheet) {
             Column(modifier = Modifier.fillMaxWidth().height(300.dp)) {
                 ExpressionTabRow(selected = expressionTab, onSelect = { expressionTab = it })
@@ -331,8 +307,8 @@ fun CommentComposer(
                         onBackSpace = { text = text.dropLast(1) },
                         onEmojiSelected = { emoji -> text += emoji },
                     )
-                    // ponytail: long-press (remove) + import are chat-library affordances not
-                    // relevant when picking a sticker for a comment; both are hidden.
+                    // ponytail: long-press (remove) + import are chat-library affordances not relevant when
+                    // picking a sticker for a comment; both are hidden.
                     ExpressionTab.Stickers -> StickerTray(
                         stickers = stickers,
                         isLoaded = stickersLoaded,
@@ -351,13 +327,8 @@ fun CommentComposer(
     }
 }
 
-/** The two panels in the comment composer's combined expression sheet. */
 private enum class ExpressionTab { Emoji, Stickers }
 
-/**
- * Centered icon tab row over the combined emoji/sticker panel (mirrors the chat composer's
- * ExpressionSheet): the active tab is tinted primary and uses the filled icon variant.
- */
 @Composable
 private fun ExpressionTabRow(
     selected: ExpressionTab,
