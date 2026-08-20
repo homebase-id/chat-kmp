@@ -688,7 +688,9 @@ internal class AboveBubblePositionProvider(
 fun FullScreenMediaMenu(
     showMenu: Boolean,
     dismissMenu: () -> Unit,
-    onSave: () -> Unit,
+    // Null when the host has no way to perform the action — the item is then absent
+    // rather than present-but-dead.
+    onSave: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onNavigateToMessage: (() -> Unit)? = null,
     // Only set for payloads whose descriptor is ImageFile(isSticker = true). When
@@ -713,12 +715,14 @@ fun FullScreenMediaMenu(
                     )
                 })
         }
-        DropdownMenuItem(
-            onClick = onSave,
-            text = { Text(text = stringResource(MR.string.save)) },
-            leadingIcon = {
-                Icon(imageVector = Icons.Filled.Download, contentDescription = null)
-            })
+        if (onSave != null) {
+            DropdownMenuItem(
+                onClick = onSave,
+                text = { Text(text = stringResource(MR.string.save)) },
+                leadingIcon = {
+                    Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+                })
+        }
         if (onSaveSticker != null) {
             DropdownMenuItem(
                 onClick = onSaveSticker,

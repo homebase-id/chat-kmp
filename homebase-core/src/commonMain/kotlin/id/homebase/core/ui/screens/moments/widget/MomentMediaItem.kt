@@ -42,6 +42,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoPlayerData
@@ -75,12 +76,7 @@ import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
-/**
- * Moments-specific clone of `id.homebase.chat.widget.MediaItem`.
- *
- * Renders a single media item based on the payload's content type. This file was forked from
- * the chat widget so it can diverge to fit Moments' UX without disturbing chat.
- */
+// Moments-specific clone of `id.homebase.chat.widget.MediaItem`, free to diverge from chat's copy.
 @Composable
 fun MomentMediaItem(
     payload: PayloadDescriptor,
@@ -92,25 +88,15 @@ fun MomentMediaItem(
     keyHeader: KeyHeader,
     imageSize: ImageSize? = ImageSize.THUMB_MEDIUM,
     preserveAspectRatio: Boolean = false,
-    // Fill the box the parent hands us (Fit, whole image visible) instead of
-    // imposing the media's own aspect ratio on the layout. Set when the host
-    // gives an explicit size — e.g. the comments-shrink band or the detail/reels
-    // pager page — so the image collapses into that box like the video tile does
-    // (which fills via plain fillMaxSize). Without this the intrinsic
-    // `.aspectRatio()` modifier below lets the image size to its own ratio inside
-    // a height-constrained pager and overflow the band.
+    // Set when the host gives an explicit size (comments-shrink band, detail/reels pager page): without it the
+    // intrinsic `.aspectRatio()` below sizes the image to its own ratio and overflows that box.
     fitBounds: Boolean = false,
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
-    // Render photos through [ZoomableSubSamplingImage] so the user can
-    // pinch-zoom/pan/double-tap inline (timeline + reels). Off by default so
-    // non-photo contexts and callers that don't want inline zoom keep the
-    // lightweight HomebaseImage/AsyncImage path. Only affects image payloads.
+    // Routes photos through [ZoomableSubSamplingImage] for inline pinch-zoom; only affects image payloads.
     enableZoom: Boolean = false,
-    // Reports `true` while the zoomed-in photo is panned past fit and `false`
-    // when it returns to fit. The host (carousel pager) uses it to suspend
-    // page-swiping so panning a zoomed photo doesn't flip pages.
+    // True while the zoomed photo is panned past fit; the carousel pager uses it to suspend page-swiping.
     onZoomedChanged: ((Boolean) -> Unit)? = null,
     shape: Shape =
         RoundedCornerShape(
@@ -122,6 +108,10 @@ fun MomentMediaItem(
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
     isUploading: Boolean = false,
+    // Must be set together with [globalTransitId]: reads this payload over peer from the followed author's
+    // drive. Null on the local path (Moments, own posts).
+    remoteOdinId: OdinId? = null,
+    globalTransitId: Uuid? = null,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio || fitBounds) ContentScale.Fit else ContentScale.Crop
@@ -234,7 +224,10 @@ fun MomentMediaItem(
                 if (localPath != null) {
                     SubSamplingImageSource.LocalFile(filePath = localPath)
                 } else {
-                    val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                    // A public (unencrypted) post carries no IV — build the source anyway (encrypted
+                    // only when an IV is present). Bailing to null here left public feed images as a
+                    // blank Box that never even requested bytes; matches the non-zoom builder below.
+                    val payloadIv = payload.iv?.let { Base64.decode(it) }
                     val imageData = HomebaseImageData(
                         driveId = driveId,
                         fileId = fileId,
@@ -244,8 +237,12 @@ fun MomentMediaItem(
                         requestedSize = imageSize,
                         availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                         lastModified = payload.lastModified,
-                        isEncrypted = true,
-                        keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey),
+                        isEncrypted = payloadIv != null,
+                        keyHeader = payloadIv
+                            ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
+                            ?: KeyHeader.empty(),
+                        remoteOdinId = remoteOdinId,
+                        globalTransitId = globalTransitId,
                         // Zoom needs the original payload so panning into a
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
@@ -310,7 +307,13 @@ fun MomentMediaItem(
             } else {
                 val imageData =
                     remember(driveId, fileId, payload.key, payload.lastModified, imageSize) {
-                        val payloadIv = payload.iv?.let { Base64.decode(it) } ?: return@remember null
+                        // Public feed posts are unencrypted: a plaintext payload carries
+                        // no IV. Build a plaintext request (isEncrypted=false, empty
+                        // keyHeader) rather than bailing to an empty Box — the server's
+                        // `payloadencrypted=false` header makes the loader return the bytes
+                        // as-is (keyHeader ignored). Encrypted payloads (chat, moments) still
+                        // carry an IV, so they keep the encrypted path unchanged.
+                        val payloadIv = payload.iv?.let { Base64.decode(it) }
                         HomebaseImageData(
                             driveId = driveId,
                             fileId = fileId,
@@ -320,201 +323,168 @@ fun MomentMediaItem(
                             requestedSize = imageSize,
                             availableThumbSizes = thumbSizesFrom(payload.thumbnails),
                             lastModified = payload.lastModified,
-                            isEncrypted = true,
-                            keyHeader = KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
+                            isEncrypted = payloadIv != null,
+                            keyHeader = payloadIv
+                                ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
+                                ?: KeyHeader.empty(),
+                            remoteOdinId = remoteOdinId,
+                            globalTransitId = globalTransitId,
                         )
                     }
 
-                if (imageData != null) {
+                HomebaseImage(
+                    imageData = imageData,
+                    modifier = finalModifier,
+                    contentScale = imageContentScale,
+                    contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                    onClick = onClick,
+                    onLongPress = onLongPress,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                )
+            }
+        }
+
+        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
+            // A public feed post ships its video plaintext, so the payload carries no IV.
+            // Build the player path either way (encrypted only when an IV is present) instead of
+            // bailing to a non-tappable placeholder with no route to the full-screen player —
+            // same divergence the image branches above already make.
+            val payloadIv = remember(payload.iv) {
+                payload.iv?.let { Base64.decode(it) }
+            }
+            val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
+                payloadIv?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
+                    ?: KeyHeader.empty()
+            }
+            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
+                VideoPlayerData(
+                    fileId = fileId,
+                    driveId = driveId,
+                    payloadKey = payload.key,
+                    keyHeader = perPayloadKeyHeader,
+                    descriptorContent = payload.descriptorContent,
+                )
+            }
+            val videoDescriptor = remember(payload.descriptorContent) {
+                payload.descriptorInfo() as? DescriptorContent.VideoFile
+            }
+            var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
+            var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
+            if (!isUploading) {
+                VideoPreloadEffect(
+                    data = videoPlayerData,
+                    onPreloading = { isPreloading = it },
+                    onProgress = { preloadProgress = it },
+                )
+            }
+            val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+                HomebaseImageData(
+                    driveId = driveId,
+                    fileId = fileId,
+                    payloadKey = payload.key,
+                    previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
+                        ?: previewThumbnail,
+                    requestedSize = ImageSize.THUMB_MEDIUM,
+                    availableThumbSizes = thumbSizesFrom(payload.thumbnails),
+                    lastModified = payload.lastModified,
+                    isEncrypted = payloadIv != null,
+                    keyHeader = perPayloadKeyHeader,
+                    remoteOdinId = remoteOdinId,
+                    globalTransitId = globalTransitId,
+                )
+            }
+            val videoLocalContext = localContext as? LocalAttachmentContext.Video
+            val displayDurationMs: Long? = run {
+                val ctx = videoLocalContext
+                if (ctx != null) {
+                    val total = ctx.durationMs ?: 0L
+                    val s = ctx.trimStartMs ?: 0L
+                    val e = ctx.trimEndMs ?: total
+                    (e - s).takeIf { it > 0 }
+                } else videoDescriptor?.durationMs
+            }
+            Box(modifier = finalModifier) {
+                if (videoLocalContext != null) {
+                    val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
+                        videoLocalContext.thumbnailBytes.toImageBitmap()
+                    }
+                    if (uploadBitmap != null) {
+                        val thumbBaseModifier = Modifier.fillMaxSize()
+                        val thumbModifier = if (onClick != null || onLongPress != null) {
+                            thumbBaseModifier.pointerInput(onClick, onLongPress) {
+                                detectTapGestures(
+                                    onTap = { onClick?.invoke() },
+                                    onLongPress = { offset -> onLongPress?.invoke(offset) },
+                                )
+                            }
+                        } else {
+                            thumbBaseModifier
+                        }
+                        Image(
+                            bitmap = uploadBitmap,
+                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
+                            modifier = thumbModifier,
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                } else {
                     HomebaseImage(
                         imageData = imageData,
-                        modifier = finalModifier,
-                        contentScale = imageContentScale,
-                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
                         onClick = onClick,
                         onLongPress = onLongPress,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                     )
-                } else {
-                    Box(modifier = finalModifier)
                 }
-            }
-        }
-
-        contentType.startsWith("video/") || contentType == "application/vnd.apple.mpegurl" -> {
-            val payloadIv = remember(payload.iv) {
-                payload.iv?.let { Base64.decode(it) }
-            }
-            if (payloadIv != null) {
-                val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
-                    KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
-                }
-                val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
-                    VideoPlayerData(
-                        fileId = fileId,
-                        driveId = driveId,
-                        payloadKey = payload.key,
-                        keyHeader = perPayloadKeyHeader,
-                        descriptorContent = payload.descriptorContent,
-                    )
-                }
-                val videoDescriptor = remember(payload.descriptorContent) {
-                    payload.descriptorInfo() as? DescriptorContent.VideoFile
-                }
-                var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
-                var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
                 if (!isUploading) {
-                    VideoPreloadEffect(
-                        data = videoPlayerData,
-                        onPreloading = { isPreloading = it },
-                        onProgress = { preloadProgress = it },
+                    Icon(
+                        imageVector = Icons.Default.PlayCircle,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .align(Alignment.Center),
+                        tint = Color.White.copy(alpha = 0.85f)
                     )
-                }
-                val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
-                    HomebaseImageData(
-                        driveId = driveId,
-                        fileId = fileId,
-                        payloadKey = payload.key,
-                        previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
-                            ?: previewThumbnail,
-                        requestedSize = ImageSize.THUMB_MEDIUM,
-                        availableThumbSizes = thumbSizesFrom(payload.thumbnails),
-                        lastModified = payload.lastModified,
-                        isEncrypted = true,
-                        keyHeader = perPayloadKeyHeader,
-                    )
-                }
-                val videoLocalContext = localContext as? LocalAttachmentContext.Video
-                val displayDurationMs: Long? = run {
-                    val ctx = videoLocalContext
-                    if (ctx != null) {
-                        val total = ctx.durationMs ?: 0L
-                        val s = ctx.trimStartMs ?: 0L
-                        val e = ctx.trimEndMs ?: total
-                        (e - s).takeIf { it > 0 }
-                    } else videoDescriptor?.durationMs
-                }
-                Box(modifier = finalModifier) {
-                    if (videoLocalContext != null) {
-                        val uploadBitmap = remember(videoLocalContext.thumbnailBytes) {
-                            videoLocalContext.thumbnailBytes.toImageBitmap()
-                        }
-                        if (uploadBitmap != null) {
-                            val thumbBaseModifier = Modifier.fillMaxSize()
-                            val thumbModifier = if (onClick != null || onLongPress != null) {
-                                thumbBaseModifier.pointerInput(onClick, onLongPress) {
-                                    detectTapGestures(
-                                        onTap = { onClick?.invoke() },
-                                        onLongPress = { offset -> onLongPress?.invoke(offset) },
-                                    )
-                                }
-                            } else {
-                                thumbBaseModifier
-                            }
-                            Image(
-                                bitmap = uploadBitmap,
-                                contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                                modifier = thumbModifier,
-                                contentScale = ContentScale.Crop,
-                            )
-                        }
-                    } else {
-                        HomebaseImage(
-                            imageData = imageData,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                            onClick = onClick,
-                            onLongPress = onLongPress,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedVisibilityScope = animatedVisibilityScope,
-                        )
-                    }
-                    if (!isUploading) {
-                        Icon(
-                            imageVector = Icons.Default.PlayCircle,
-                            contentDescription = null,
+                    if (displayDurationMs != null) {
+                        Text(
+                            text = formatDurationLabel(displayDurationMs),
+                            color = Color.White,
+                            fontSize = 10.sp,
                             modifier = Modifier
-                                .size(48.dp)
-                                .align(Alignment.Center),
-                            tint = Color.White.copy(alpha = 0.85f)
+                                .align(Alignment.BottomStart)
+                                .padding(4.dp)
+                                .background(
+                                    Color.Black.copy(alpha = 0.55f),
+                                    RoundedCornerShape(4.dp),
+                                )
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
                         )
-                        if (displayDurationMs != null) {
-                            Text(
-                                text = formatDurationLabel(displayDurationMs),
+                    }
+                }
+                if (isPreloading && !isUploading) {
+                    Box(
+                        modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (preloadProgress > 0f) {
+                            CircularProgressIndicator(
+                                progress = { preloadProgress },
+                                modifier = Modifier.size(40.dp),
                                 color = Color.White,
-                                fontSize = 10.sp,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(4.dp)
-                                    .background(
-                                        Color.Black.copy(alpha = 0.55f),
-                                        RoundedCornerShape(4.dp),
-                                    )
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                trackColor = Color.White.copy(alpha = 0.3f),
+                            )
+                        } else {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(40.dp),
+                                color = Color.White,
+                                trackColor = Color.White.copy(alpha = 0.3f),
                             )
                         }
                     }
-                    if (isPreloading && !isUploading) {
-                        Box(
-                            modifier = Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.4f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (preloadProgress > 0f) {
-                                CircularProgressIndicator(
-                                    progress = { preloadProgress },
-                                    modifier = Modifier.size(40.dp),
-                                    color = Color.White,
-                                    trackColor = Color.White.copy(alpha = 0.3f),
-                                )
-                            } else {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(40.dp),
-                                    color = Color.White,
-                                    trackColor = Color.White.copy(alpha = 0.3f),
-                                )
-                            }
-                        }
-                    }
-                }
-            } else {
-                val videoCtx = localContext as? LocalAttachmentContext.Video
-                val imageBitmap = videoCtx?.thumbnailBytes?.let { bytes ->
-                    remember(bytes) { bytes.toImageBitmap() }
-                }
-                val noIvDurationMs: Long? = videoCtx?.let {
-                    val total = it.durationMs ?: 0L
-                    val s = it.trimStartMs ?: 0L
-                    val e = it.trimEndMs ?: total
-                    (e - s).takeIf { d -> d > 0 }
-                }
-                if (imageBitmap != null) {
-                    Box(modifier = finalModifier) {
-                        Image(
-                            bitmap = imageBitmap,
-                            contentDescription = stringResource(MR.string.chat_message_video_thumbnail),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                        if (noIvDurationMs != null) {
-                            Text(
-                                text = formatDurationLabel(noIvDurationMs),
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(4.dp)
-                                    .background(
-                                        Color.Black.copy(alpha = 0.55f),
-                                        RoundedCornerShape(4.dp),
-                                    )
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                            )
-                        }
-                    }
-                } else {
-                    MediaPlaceholder(emoji = "📹", label = "Video", modifier = baseModifier)
                 }
             }
         }

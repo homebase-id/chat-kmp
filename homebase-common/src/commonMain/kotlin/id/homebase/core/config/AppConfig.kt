@@ -113,6 +113,8 @@ val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+val publicChannelLabeledDrive =
+    LabeledDrive(drive = SystemDriveConstants.publicPostChannelDrive, label = "Public Channel")
 val momentsLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
@@ -244,8 +246,20 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // (fileType=77) are indexed locally and available offline (#1105). Display name / avatar
 // continue to come from the public `https://{odinId}/pub/profile` endpoint
 // (PublicProfileProviderCached) — that's a separate, cache-backed path.
+// The feed + public-channel drives are deliberately NOT here. Everything in this list is exempt from
+// AuthConnectionCoordinator's read-grant filter and from drivesToPrune, which is only sound for drives
+// [targetDriveAccessRequest] grants at login. The feed drives are granted by the separate
+// [feedTargetDriveAccessRequest] extend-permissions flow, so listing them here puts an ungranted drive on the
+// WebSocket subscription — the server then closes the socket and the whole session loses live chat. They
+// activate through
+// OptionalDriveActivation like Moments/Vault instead; once registered, the login pre-mount
+// loop mounts them on every device and the sync engine drains the transit inbox as before.
 val mandatorySyncDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive, profileLabeledDrive)
+    listOf(
+        chatLabeledDrive,
+        contactLabeledDrive,
+        profileLabeledDrive,
+    )
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(

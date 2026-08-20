@@ -63,6 +63,10 @@ class DriveQueryProvider(
         driveId: Uuid,
         request: QueryBatchRequest,
         ownerOdinId: OdinId? = null,
+        // Which file-system index to query. Standard by default; pass Comment to read comment files
+        // (fileType 801), which the backend routes by the X-ODIN-FILE-SYSTEM-TYPE header, not the
+        // request body — the FileQueryParams.fileSystemType field alone is ignored for routing.
+        fileSystemType: FileSystemType? = null,
     ): QueryBatchResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -84,7 +88,10 @@ class DriveQueryProvider(
             url = url,
             token = creds.accessToken,
             jsonBody = jsonRequest,
-            secret = creds.secret
+            secret = creds.secret,
+            extraHeaders = fileSystemType
+                ?.let { mapOf("X-ODIN-FILE-SYSTEM-TYPE" to it.name) }
+                ?: emptyMap(),
         )
 
         throwForFailure(apiResponse)
