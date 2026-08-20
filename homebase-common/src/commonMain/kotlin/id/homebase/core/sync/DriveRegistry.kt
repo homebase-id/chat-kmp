@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
@@ -121,27 +122,41 @@ class DriveRegistry(
      * On any fetch failure (offline) or when the server has no registry file, falls back
      * to the local list — so a failed fetch never drops the user's drives.
      *
-     * Reconciling on every login (not just when local is empty) is what lets a drive
-     * activated on ANOTHER device be mounted here at login: it's in the server registry
-     * file but not necessarily in this device's local index yet. Returning the local list
-     * whenever it was non-empty left such a device stuck on its stale cache until some
-     * later chat-drive sync happened to redeliver the registry file — the reconciliation
-     * bug this method now fixes.
+     * Reconciling is what lets a drive activated on ANOTHER device be mounted here at
+     * login: it's in the server registry file but not necessarily in this device's local
+     * index yet. Returning the local list and never reconciling left such a device stuck
+     * on its stale cache until some later chat-drive sync happened to redeliver the
+     * registry file.
      *
-     * This also eliminates the "first WS connect subscribes to mandatory only, then
-     * reconnects after the first sync delivers the registry file" race on fresh
-     * login. Callers should pass the result to both [AuthConnectionCoordinator.connect]
-     * (so the WS subscribes to the full set on the first connect) and [start]'s
-     * `initialBaseline` (so the observer doesn't fire spurious onMount when the
-     * chat-drive sync later writes the same file into the local index).
+     * Callers should pass the result to both [AuthConnectionCoordinator.connect] (so the
+     * WS subscribes to the full set on the first connect) and [start]'s `initialBaseline`
+     * (so the observer doesn't fire spurious onMount when the chat-drive sync later writes
+     * the same file into the local index).
+     *
+     * [deferServerReconcile] serves the local set immediately when it is non-empty and
+     * does NO network at all, leaving the reconciliation to a later
+     * [reconcileWithServer]. Only the connect sequence passes it — everything downstream
+     * of `bootstrap()` there (WS connect, profile load) is otherwise queued behind a
+     * round-trip on every single login. An empty local set still blocks: there is nothing
+     * to serve, and a genuine first run has to ask the server.
      *
      * Concurrent callers (AuthConnectionCoordinator and VaultViewModel both fire
      * `bootstrap()` on fresh login within ~100 ms) share a single in-flight result:
      * the second caller awaits the first's deferred instead of issuing its own server
      * round-trip. Once the in-flight call completes the deferred is cleared, so a
-     * subsequent call (e.g. after the local DB becomes populated) runs fresh.
+     * subsequent call (e.g. after the local DB becomes populated) runs fresh. The
+     * [deferServerReconcile] fast path does no network and so never joins that group.
      */
-    suspend fun bootstrap(): List<LabeledDrive> {
+    suspend fun bootstrap(deferServerReconcile: Boolean = false): List<LabeledDrive> {
+        if (deferServerReconcile) {
+            val local = loadDrives()
+            if (local.isNotEmpty()) {
+                Logger.i(tag = TAG) {
+                    "bootstrap() served ${local.size} local drive(s), server reconcile deferred"
+                }
+                return local
+            }
+        }
         val (deferred, isLeader) = bootstrapMutex.withLock {
             val existing = bootstrapInFlight
             if (existing != null) {
@@ -184,18 +199,7 @@ class DriveRegistry(
         // this device's local index yet, and nothing would mount it at login. (Returning
         // local-when-non-empty was the reconciliation bug — a stale cache never caught up
         // until some later chat-drive sync happened to redeliver the registry file.)
-        val chatDriveId = SystemDriveConstants.chatDrive.alias
-        val server: List<LabeledDrive>? = try {
-            getFileHeaderByUid(chatDriveId, REGISTRY_UNIQUE_ID)?.let { parseRegistryContent(it) }
-        } catch (e: CancellationException) {
-            // Don't swallow cancellation — let the caller's scope tear down cleanly.
-            throw e
-        } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) {
-                "bootstrap server fetch failed — using local registry only (${local.size} drive(s))"
-            }
-            null
-        }
+        val server = fetchServerRegistry()
 
         if (server == null) {
             // Offline / fetch error / no registry file on the server yet. Trust the local
@@ -215,6 +219,47 @@ class DriveRegistry(
             "bootstrap() end (reconciled local=${local.size} + server=${server.size} -> ${merged.size} drive(s))"
         }
         return merged
+    }
+
+    private suspend fun fetchServerRegistry(): List<LabeledDrive>? = try {
+        getFileHeaderByUid(SystemDriveConstants.chatDrive.alias, REGISTRY_UNIQUE_ID)
+            ?.let { parseRegistryContent(it) }
+    } catch (e: CancellationException) {
+        // Don't swallow cancellation — let the caller's scope tear down cleanly.
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "registry server fetch failed — local registry stands" }
+        null
+    }
+
+    /**
+     * The server half of [bootstrap], run after the fact for callers that took the
+     * [bootstrap] `deferServerReconcile` fast path. Fetches the authoritative registry
+     * and emits [onMount] for every drive the server lists that the current baseline
+     * doesn't — a drive activated on ANOTHER device. Removals are deliberately not
+     * emitted here, matching [bootstrap]'s union semantics; [reconcile] propagates those
+     * once the local index catches up.
+     *
+     * A failed fetch is a no-op: the local set already in play stands, and the next
+     * chat-drive sync delivering the registry file reconciles through [reconcile].
+     *
+     * [known] is the drive set the caller has already mounted. It is required because this
+     * also runs on the headless path, where [start] has never been called and the observer
+     * baseline is still empty — without it every already-mounted drive would be re-emitted.
+     * Discovered drives are folded into that baseline too, so a [start] already running
+     * doesn't re-emit them when the chat-drive sync later lands the same file.
+     */
+    suspend fun reconcileWithServer(known: Set<Uuid>, onMount: suspend (LabeledDrive) -> Unit) {
+        val server = fetchServerRegistry() ?: return
+        val added = stateMutex.withLock {
+            val fresh = server.filter { it.drive.alias !in known && it.drive.alias !in currentDriveIds }
+            currentDriveIds = currentDriveIds + fresh.map { it.drive.alias }
+            fresh
+        }
+        Logger.i(tag = TAG) {
+            "reconcileWithServer: server has ${server.size} drive(s), ${added.size} new to this device"
+        }
+        for (drive in added) onMount(drive)
     }
 
     private fun unionByAlias(
@@ -239,6 +284,21 @@ class DriveRegistry(
         updateRegistry { current ->
             if (current.any { it.drive.alias == drive.drive.alias }) current
             else current + drive
+        }
+    }
+
+    // Transport failure only: the drive stays out of the cross-device list until a later
+    // activation re-registers it. Every other failure still propagates.
+    suspend fun addDriveBestEffort(drive: LabeledDrive) {
+        try {
+            addDrive(drive)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            if (!e.isTransientNetworkFailure()) throw e
+            Logger.w(tag = TAG, throwable = e) {
+                "addDrive(${drive.label}) hit a transport failure — not registered this session"
+            }
         }
     }
 

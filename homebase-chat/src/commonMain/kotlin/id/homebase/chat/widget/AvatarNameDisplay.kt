@@ -37,8 +37,9 @@ fun AvatarNameDisplay(
     onClick: (() -> Unit)? = null,
     // Makes the avatar itself tappable (e.g. open the photo full screen).
     // Null leaves the avatar non-clickable — pass null for initials/placeholder
-    // avatars so there's nothing to open. Independent of [onClick], which is the
-    // name-row tap.
+    // avatars so there's nothing to open. A public (URL-backed) avatar only knows
+    // once Coil has loaded it, hence onClickNeedsImage. Independent of [onClick],
+    // which is the name-row tap.
     onAvatarClick: (() -> Unit)? = null,
     sharedTransitionScope: SharedTransitionScope? = null,
     animatedVisibilityScope: AnimatedVisibilityScope? = null,
@@ -55,6 +56,7 @@ fun AvatarNameDisplay(
                     size = 72.dp,
                     fontSize = 24.sp,
                     onClick = onAvatarClick,
+                    onClickNeedsImage = true,
                 ),
                 sharedTransitionScope = sharedTransitionScope,
                 animatedVisibilityScope = animatedVisibilityScope,

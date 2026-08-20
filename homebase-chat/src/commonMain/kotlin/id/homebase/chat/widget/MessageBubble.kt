@@ -57,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -66,6 +67,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
 import id.homebase.chat.conversationlist.UploadStatus
@@ -78,6 +80,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyContext
 import id.homebase.chat.services.ReplyPreview
+import id.homebase.chat.services.content.ActionPolicy
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
@@ -93,9 +96,11 @@ import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.withEmojiFont
+
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.initials
-import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -184,6 +189,8 @@ fun SentMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -198,6 +205,11 @@ fun SentMessageBubble(
     var bubbleWidthPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val haptics = rememberHaptics()
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val openReactionBar: (() -> Unit)? =
+        if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
+            { popupMode = MessagePopupMode.Reaction }
+        } else null
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -216,7 +228,7 @@ fun SentMessageBubble(
             // align with the colored bubble's center, not the bubble+pill.
             val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
             Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
-                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -229,7 +241,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop() && !message.isDeleted) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply.invoke() },
@@ -242,7 +254,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -334,11 +346,9 @@ fun SentMessageBubble(
                                     popupMode = MessagePopupMode.All
                                 }
                             },
-                            onDoubleClick = {
-                                if (onAddReaction != null) {
-                                    popupMode = MessagePopupMode.Reaction
-                                }
-                            },
+                            // Only reaches the padding around the bubble and the typed kinds
+                            // that paint their own surface; MessageBubbleRaw owns the rest.
+                            onDoubleClick = openReactionBar,
                         )
                     } else Modifier,
                 ) {
@@ -358,6 +368,7 @@ fun SentMessageBubble(
                                 popupMode = MessagePopupMode.All
                             }
                         },
+                        onDoubleClick = openReactionBar,
                         onMediaClick = onMediaClick,
                         onClickMessageId = onClickMessageId,
                         onRequestDecryptedFile = onRequestDecryptedFile,
@@ -371,6 +382,8 @@ fun SentMessageBubble(
                         searchQuery = searchQuery,
                         isCurrentSearchResult = isCurrentSearchResult,
                         chainCap = chainCap,
+                        onSaveContactCard = onSaveContactCard,
+                        onMessageIdentity = onMessageIdentity,
                     )
                     message.reactionPreview?.let { reactionSummary ->
                         ReactionList(
@@ -386,6 +399,22 @@ fun SentMessageBubble(
                             onReactionClick = { onShowReactions?.invoke() },
                             onAddEmoji = onAddReaction?.let { { popupMode = MessagePopupMode.Reaction } },
                             ownReactions = message.ownReactions,
+                        )
+                    }
+                    if (isMobile() && popupMode == MessagePopupMode.Reaction && !message.isDeleted) {
+                        BubbleReactionPopup(
+                            message = message,
+                            userDefaultReactions = userDefaultReactions,
+                            alignToBubbleEnd = true,
+                            dismissMenu = { popupMode = MessagePopupMode.None },
+                            onSelectEmoji = { reaction ->
+                                popupMode = MessagePopupMode.None
+                                onAddReaction?.invoke(message.id, reaction)
+                            },
+                            onShowAllEmojis = {
+                                popupMode = MessagePopupMode.None
+                                showEmojiPicker = true
+                            },
                         )
                     }
                 }
@@ -421,6 +450,7 @@ fun SentMessageBubbleDisplayOnly(
             downloadingFiles = emptySet(),
             onRequestDecryptedFile = null,
             onLongClick = {},
+            displayOnly = true,
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
@@ -489,6 +519,8 @@ fun ReceivedMessageBubble(
     searchQuery: String = "",
     isCurrentSearchResult: Boolean = false,
     chainCap: Int? = null,
+    onSaveContactCard: ((ContactCardDescriptor) -> Unit)? = null,
+    onMessageIdentity: ((String) -> Unit)? = null,
 ) {
     var popupMode by remember { mutableStateOf(MessagePopupMode.None) }
     var showEmojiPicker by remember { mutableStateOf(false) }
@@ -512,6 +544,11 @@ fun ReceivedMessageBubble(
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
+    val policy = message.messageContent?.actions ?: ActionPolicy.Standard
+    val openReactionBar: (() -> Unit)? =
+        if (onAddReaction != null && policy.allowInlineReactions && !message.isDeleted) {
+            { popupMode = MessagePopupMode.Reaction }
+        } else null
 
     Row(
         modifier = Modifier.fillMaxWidth()
@@ -555,11 +592,8 @@ fun ReceivedMessageBubble(
                                 popupMode = MessagePopupMode.All
                             }
                         },
-                        onDoubleClick = {
-                            if (onAddReaction != null) {
-                                popupMode = MessagePopupMode.Reaction
-                            }
-                        },
+                        // See SentMessageBubble — MessageBubbleRaw owns the bubble surface.
+                        onDoubleClick = openReactionBar,
                     )
                 } else Modifier.weight(1f, fill = false),
                 contentAlignment = Alignment.CenterStart,
@@ -606,6 +640,7 @@ fun ReceivedMessageBubble(
                                     popupMode = MessagePopupMode.All
                                 }
                             },
+                            onDoubleClick = openReactionBar,
                             onMediaClick = onMediaClick,
                             onClickMessageId = onClickMessageId,
                             onRequestDecryptedFile = onRequestDecryptedFile,
@@ -617,6 +652,8 @@ fun ReceivedMessageBubble(
                             searchQuery = searchQuery,
                             isCurrentSearchResult = isCurrentSearchResult,
                             chainCap = chainCap,
+                            onSaveContactCard = onSaveContactCard,
+                            onMessageIdentity = onMessageIdentity,
                         )
                         message.reactionPreview?.let { reactionSummary ->
                             ReactionList(
@@ -634,6 +671,24 @@ fun ReceivedMessageBubble(
                                 ownReactions = message.ownReactions,
                             )
                         }
+                        if (isMobile() && popupMode == MessagePopupMode.Reaction &&
+                            !message.isDeleted
+                        ) {
+                            BubbleReactionPopup(
+                                message = message,
+                                userDefaultReactions = userDefaultReactions,
+                                alignToBubbleEnd = false,
+                                dismissMenu = { popupMode = MessagePopupMode.None },
+                                onSelectEmoji = { reaction ->
+                                    popupMode = MessagePopupMode.None
+                                    onAddReaction?.invoke(message.id, reaction)
+                                },
+                                onShowAllEmojis = {
+                                    popupMode = MessagePopupMode.None
+                                    showEmojiPicker = true
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -643,7 +698,7 @@ fun ReceivedMessageBubble(
             Row(
                 modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
-                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -656,7 +711,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop() && !message.isDeleted) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply() },
@@ -669,7 +724,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -815,6 +870,7 @@ fun ReceivedMessageBubbleDisplayOnly(
             downloadingFiles = emptySet(),
             onRequestDecryptedFile = null,
             onLongClick = {},
+            displayOnly = true,
         )
         message.reactionPreview?.let { reactionSummary ->
             ReactionList(
@@ -1069,10 +1125,10 @@ fun InlineReplyPreview(
 
     // Mirror the link-preview / Signal QuoteView bounded-block pattern: the body
     // is already capped at 80 codepoints on the header (payload-free), so this is
-    // a pure presentational choice. Desktop has the horizontal room for a second
-    // line; on mobile we keep a single line to stay compact. The author name stays
-    // single-line on every platform.
-    val replyPreviewMaxLines = if (isDesktop()) 2 else 1
+    // a pure presentational choice. Desktop and web have the horizontal room for a
+    // second line; on mobile we keep a single line to stay compact. The author name
+    // stays single-line on every platform.
+    val replyPreviewMaxLines = if (isDesktopOrWeb()) 2 else 1
 
     Row(
         modifier = Modifier
@@ -1101,7 +1157,7 @@ fun InlineReplyPreview(
                     youLabel = stringResource(MR.string.you),
                 )
                 Text(
-                    text = authorDisplayName,
+                    text = authorDisplayName.withEmojiFont(),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
                     maxLines = 1,
@@ -1126,11 +1182,12 @@ fun InlineReplyPreview(
                             }
                         }
                         Text(
-                            text = displayMessage,
+                            text = displayMessage.withEmojiFont(),
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = replyPreviewMaxLines,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT),
                         )
                     }
                 }

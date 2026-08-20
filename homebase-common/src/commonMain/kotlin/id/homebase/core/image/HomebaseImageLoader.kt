@@ -10,8 +10,7 @@ import id.homebase.api.client.withRetry
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.clipboard.platformFileFromPath
-import io.github.vinceglb.filekit.extension
-import io.github.vinceglb.filekit.mimeType
+import id.homebase.core.util.contentType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -305,7 +304,7 @@ suspend fun FileOperationsProvider.loadPendingFile(data: HomebaseImageData): Cac
     return try {
         val file = platformFileFromPath(fileUri)
         val bytes = this.readFileBytes(fileUri)
-        val contentType = file.mimeType()?.toString() ?: file.extension
+        val contentType = file.contentType()
         CachedImage(bytes = bytes, contentType = contentType, size = null)
     } catch (e: Exception) {
         Logger.e(tag = "HomebaseImageLoader") { "Failed to load pending file: ${e.message}" }

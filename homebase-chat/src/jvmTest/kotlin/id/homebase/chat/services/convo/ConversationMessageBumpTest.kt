@@ -185,6 +185,12 @@ class ConversationMessageBumpTest {
         assertEquals(5, updated.first().unreadCount)
     }
 
+    /**
+     * A status message never bumps unread — and since #1153 it doesn't touch
+     * the row at all (no preview, no sort-key advance), because the cold-load
+     * enrichment path can't surface one either. Full parity coverage lives in
+     * [StatusMessagePreviewParityTest].
+     */
     @Test
     fun statusMessage_doesNotBumpUnread() {
         val items = listOf(convo(unread = 5))
@@ -198,8 +204,8 @@ class ConversationMessageBumpTest {
             activeDomain = me,
         )
 
-        assertNotNull(updated)
-        assertEquals(5, updated.first().unreadCount)
+        assertNull(updated)
+        assertEquals(5, items.first().unreadCount)
     }
 
     @Test

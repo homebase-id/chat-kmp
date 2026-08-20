@@ -45,6 +45,7 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.cancel_reply
@@ -165,7 +166,7 @@ fun ReplyPreviewBar(
                         currentOdinId = currentOdinId,
                         resolvedDisplayName = message.displayName,
                         youLabel = stringResource(MR.string.you),
-                    ),
+                    ).withEmojiFont(),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = accentColor,
@@ -184,7 +185,7 @@ fun ReplyPreviewBar(
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
-                        text = previewText,
+                        text = previewText.withEmojiFont(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,

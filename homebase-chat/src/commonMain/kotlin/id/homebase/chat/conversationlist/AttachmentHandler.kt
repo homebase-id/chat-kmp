@@ -10,7 +10,7 @@ import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
-import id.homebase.core.localization.TranslationUtil
+import id.homebase.core.util.contentType
 import id.homebase.chat.services.image.StickerImageProcessor
 import id.homebase.chat.services.image.removeBackground
 import id.homebase.chat.services.image.warmUpBackgroundRemoval
@@ -18,6 +18,16 @@ import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import id.homebase.resources.MR
 import id.homebase.resources.chat_attach_file_failed
+import id.homebase.resources.chat_error_apply_crop
+import id.homebase.resources.chat_error_apply_drawing
+import id.homebase.resources.chat_error_cannot_crop
+import id.homebase.resources.chat_error_cannot_draw
+import id.homebase.resources.chat_error_open_cropper
+import id.homebase.resources.chat_error_open_draw_editor
+import id.homebase.resources.chat_error_paste_image
+import id.homebase.resources.chat_error_send_recording
+import id.homebase.resources.chat_error_start_recording
+import id.homebase.resources.chat_error_unattach_file
 import id.homebase.resources.chat_message_audio_recording_help
 import id.homebase.resources.chat_remove_background_failed
 import io.github.vinceglb.filekit.PlatformFile
@@ -123,7 +133,7 @@ internal class AttachmentHandler(
                 val newFiles = action.files.map { picked ->
                     // Read the type off the PICKED handle first — the copy below is a plain file
                     // whose extension-less photo-picker name resolves to octet-stream (#1149).
-                    val ct = picked.pickedContentType()
+                    val ct = picked.contentType()
                     // Copy the picked file into the sandbox NOW, while the picker's iOS
                     // security scope is still live. The send path later reads the file by
                     // path from a separate coroutine, where a path-rebuilt NSURL has no
@@ -197,10 +207,8 @@ internal class AttachmentHandler(
                 Logger.e("Failed to attach file(s)", e)
                 sendEvent(
                     ShowErrorMessage(
-                        TranslationUtil.getString(
-                            MR.string.chat_attach_file_failed,
-                            e.message ?: ""
-                        )
+                        MR.string.chat_attach_file_failed,
+                        e.message ?: "",
                     )
                 )
             }
@@ -276,10 +284,8 @@ internal class AttachmentHandler(
                 Logger.e("Failed to attach file(s)", e)
                 sendEvent(
                     ShowErrorMessage(
-                        TranslationUtil.getString(
-                            MR.string.chat_attach_file_failed,
-                            e.message ?: ""
-                        )
+                        MR.string.chat_attach_file_failed,
+                        e.message ?: "",
                     )
                 )
             }
@@ -308,7 +314,8 @@ internal class AttachmentHandler(
                 Logger.e("Failed to unattach file", e)
                 sendEvent(
                     ShowErrorMessage(
-                        "Failed to unattach file: ${e.message}"
+                        MR.string.chat_error_unattach_file,
+                        e.message ?: "",
                     )
                 )
             }
@@ -365,7 +372,7 @@ internal class AttachmentHandler(
                 maybeWarmUpBackgroundRemoval(listOf(newFile))
             } catch (e: Exception) {
                 Logger.e("Failed to attach clipboard image", e)
-                sendEvent(ShowErrorMessage("Failed to paste image: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_paste_image, e.message ?: ""))
             }
         }
     }
@@ -384,7 +391,7 @@ internal class AttachmentHandler(
                     else -> null
                 }
                 if (sourcePath == null) {
-                    sendEvent(ShowErrorMessage("Cannot crop this attachment"))
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_cannot_crop))
                     return@launch
                 }
                 val bytes = fileOperationsProvider.readFileBytes(sourcePath)
@@ -406,7 +413,7 @@ internal class AttachmentHandler(
                 sendEvent(ConversationListUiEvent.NavigateToCropper(requestId))
             } catch (e: Exception) {
                 Logger.e("RequestCropAttachment failed", e)
-                sendEvent(ShowErrorMessage("Failed to open cropper: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_open_cropper, e.message ?: ""))
             }
         }
     }
@@ -433,7 +440,7 @@ internal class AttachmentHandler(
                 }
             } catch (e: Exception) {
                 Logger.e("ApplyCropResult failed", e)
-                sendEvent(ShowErrorMessage("Failed to apply crop: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_apply_crop, e.message ?: ""))
             }
         }
     }
@@ -452,7 +459,7 @@ internal class AttachmentHandler(
                     else -> null
                 }
                 if (sourcePath == null) {
-                    sendEvent(ShowErrorMessage("Cannot draw on this attachment"))
+                    sendEvent(ShowErrorMessage(MR.string.chat_error_cannot_draw))
                     return@launch
                 }
                 val bytes = fileOperationsProvider.readFileBytes(sourcePath)
@@ -474,7 +481,7 @@ internal class AttachmentHandler(
                 sendEvent(ConversationListUiEvent.NavigateToDrawer(requestId))
             } catch (e: Exception) {
                 Logger.e("RequestDrawAttachment failed", e)
-                sendEvent(ShowErrorMessage("Failed to open draw editor: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_open_draw_editor, e.message ?: ""))
             }
         }
     }
@@ -501,7 +508,7 @@ internal class AttachmentHandler(
                 }
             } catch (e: Exception) {
                 Logger.e("ApplyDrawResult failed", e)
-                sendEvent(ShowErrorMessage("Failed to apply drawing: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_apply_drawing, e.message ?: ""))
             }
         }
     }
@@ -557,7 +564,7 @@ internal class AttachmentHandler(
                     else -> null
                 }
                 if (sourcePath == null) {
-                    sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+                    sendEvent(ShowErrorMessage(MR.string.chat_remove_background_failed))
                     return@launch
                 }
 
@@ -566,7 +573,7 @@ internal class AttachmentHandler(
                 if (cutOutBytes == null) {
                     // Soft fail: no confident subject, model not available, or
                     // unsupported platform. Leave the original image in place.
-                    sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+                    sendEvent(ShowErrorMessage(MR.string.chat_remove_background_failed))
                     return@launch
                 }
 
@@ -599,7 +606,7 @@ internal class AttachmentHandler(
                 throw e
             } catch (e: Exception) {
                 Logger.e("RemoveBackground failed", e)
-                sendEvent(ShowErrorMessage(TranslationUtil.getString(MR.string.chat_remove_background_failed)))
+                sendEvent(ShowErrorMessage(MR.string.chat_remove_background_failed))
             } finally {
                 setBackgroundRemovalInProgress(action.attachmentId, inProgress = false)
             }
@@ -685,7 +692,7 @@ internal class AttachmentHandler(
                 }
             } catch (e: Exception) {
                 Logger.e("Failed to start recording", e)
-                sendEvent(ShowErrorMessage("Failed to start recording: $e"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_start_recording, e.toString()))
             }
         }
     }
@@ -734,7 +741,7 @@ internal class AttachmentHandler(
                 }
             } catch (e: Exception) {
                 Logger.e("Failed to send recording", e)
-                sendEvent(ShowErrorMessage("Failed to send recording: ${e.message}"))
+                sendEvent(ShowErrorMessage(MR.string.chat_error_send_recording, e.message ?: ""))
             }
             messagesUiState.update { it.copy(recordingData = null) }
         }

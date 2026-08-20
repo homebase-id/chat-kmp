@@ -460,6 +460,14 @@ fun MessageTextFieldExpanded(
                                     onPasteImage.invoke(imageBytes)
                                     true
                                 } else {
+                                    // The browser clipboard is async-only, so the read above
+                                    // always returns null on web. Start the async read and
+                                    // report the event unhandled: consuming it would swallow
+                                    // an ordinary text paste, and we cannot know yet whether
+                                    // the clipboard holds an image.
+                                    pasteScope.launch {
+                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
+                                    }
                                     false
                                 }
                             }
@@ -752,6 +760,14 @@ fun MessageTextFieldCompact(
                                                     onPasteImage.invoke(imageBytes)
                                                     true
                                                 } else {
+                                                    // The browser clipboard is async-only, so the read above
+                                                    // always returns null on web. Start the async read and
+                                                    // report the event unhandled: consuming it would swallow
+                                                    // an ordinary text paste, and we cannot know yet whether
+                                                    // the clipboard holds an image.
+                                                    pasteScope.launch {
+                                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
+                                                    }
                                                     false
                                                 }
                                             }

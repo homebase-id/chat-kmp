@@ -1,6 +1,7 @@
 package id.homebase.core.sync
 
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.NetworkException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.auth.ApiCredentials
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import java.nio.channels.UnresolvedAddressException
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -243,6 +245,51 @@ class DriveRegistryTest {
         db.close()
     }
 
+    // CIO throws UnresolvedAddressException, an IllegalArgumentException — a catch on IOException
+    // misses it.
+    @Test
+    fun addDriveBestEffortSwallowsOfflineTransportFailure() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder(
+            fetchResolver = { throw NetworkException(UnresolvedAddressException()) },
+        )
+        val registry = buildRegistry(db, recorder = recorder)
+
+        registry.addDriveBestEffort(feedLabeledDrive)
+
+        assertTrue(recorder.uploads.isEmpty(), "nothing should have been written")
+        assertTrue(recorder.updates.isEmpty(), "nothing should have been written")
+        db.close()
+    }
+
+    /** Same, for a path that reaches the registry without the API layer's wrap. */
+    @Test
+    fun addDriveBestEffortSwallowsRawCioConnectFailure() = runTest {
+        val db = createTestDatabaseManager()
+        val registry = buildRegistry(
+            db,
+            recorder = WriteRecorder(fetchResolver = { throw UnresolvedAddressException() }),
+        )
+
+        registry.addDriveBestEffort(feedLabeledDrive)
+
+        db.close()
+    }
+
+    @Test
+    fun addDriveBestEffortPropagatesNonTransportFailures() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder(
+            uploadErrorOnCall = { OdinClientErrorCode.UnhandledScenario },
+        )
+        val registry = buildRegistry(db, recorder = recorder)
+
+        assertFailsWith<ClientException> {
+            registry.addDriveBestEffort(feedLabeledDrive)
+        }
+        db.close()
+    }
+
     @Test
     fun removeDriveUpdatesSingletonFileRemovingDrive() = runTest {
         val db = createTestDatabaseManager()
@@ -370,6 +417,181 @@ class DriveRegistryTest {
 
         assertTrue(drives.isEmpty())
         assertEquals(1, recorder.fetchCount)
+        db.close()
+    }
+
+    // ---------- deferred bootstrap + background reconcile ----------
+
+    @Test
+    fun bootstrapWithDeferredReconcileServesLocalWithoutTouchingTheServer() = runTest {
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val activatedElsewhere = makeLabeledDrive("activated-elsewhere")
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive, activatedElsewhere))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val drives = registry.bootstrap(deferServerReconcile = true)
+
+        assertEquals(listOf(feedLabeledDrive.drive.alias), drives.map { it.drive.alias })
+        assertEquals(0, recorder.fetchCount, "deferred bootstrap must not block the caller on a server round-trip")
+        db.close()
+    }
+
+    @Test
+    fun bootstrapWithDeferredReconcileStillFetchesServerWhenLocalEmpty() = runTest {
+        // Genuine first run: there is no local set to serve, so the server fetch still blocks.
+        val db = createTestDatabaseManager()
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val drives = registry.bootstrap(deferServerReconcile = true)
+
+        assertEquals(listOf(feedLabeledDrive.drive.alias), drives.map { it.drive.alias })
+        assertEquals(1, recorder.fetchCount)
+        db.close()
+    }
+
+    @Test
+    fun reconcileWithServerMountsDriveActivatedElsewhereAfterALocalOnlyBootstrap() = runTest {
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val activatedElsewhere = makeLabeledDrive("activated-elsewhere")
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive, activatedElsewhere))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val local = registry.bootstrap(deferServerReconcile = true)
+        registry.start(
+            onMount = {},
+            onUnmount = {},
+            initialBaseline = local.mapTo(HashSet()) { it.drive.alias },
+        )
+
+        val mounted = mutableListOf<LabeledDrive>()
+        registry.reconcileWithServer(local.mapTo(HashSet()) { it.drive.alias }) { mounted += it }
+
+        assertEquals(listOf(activatedElsewhere.drive.alias), mounted.map { it.drive.alias })
+        assertEquals(1, recorder.fetchCount)
+
+        registry.stop()
+        db.close()
+    }
+
+    @Test
+    fun reconcileWithServerDoesNotReMountDrivesAlreadyInTheBaseline() = runTest {
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val local = registry.bootstrap(deferServerReconcile = true)
+        registry.start(
+            onMount = {},
+            onUnmount = {},
+            initialBaseline = local.mapTo(HashSet()) { it.drive.alias },
+        )
+
+        val mounted = mutableListOf<LabeledDrive>()
+        registry.reconcileWithServer(local.mapTo(HashSet()) { it.drive.alias }) { mounted += it }
+
+        assertTrue(mounted.isEmpty(), "warm restore with an unchanged registry must mount nothing")
+
+        registry.stop()
+        db.close()
+    }
+
+    @Test
+    fun reconcileWithServerFoldsDiscoveredDrivesIntoTheObserverBaseline() = runTest {
+        // The chat-drive sync that later lands the same registry file locally must not
+        // re-emit onMount for a drive the background reconcile already surfaced.
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val activatedElsewhere = makeLabeledDrive("activated-elsewhere")
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive, activatedElsewhere))
+        val eventBus = EventBus()
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, eventBus = eventBus, recorder = recorder)
+
+        val local = registry.bootstrap(deferServerReconcile = true)
+        val observed = mutableListOf<LabeledDrive>()
+        val unmounted = mutableListOf<Uuid>()
+        registry.start(
+            onMount = { observed += it },
+            onUnmount = { unmounted += it },
+            initialBaseline = local.mapTo(HashSet()) { it.drive.alias },
+        )
+        advanceUntilIdle()
+
+        val reconciled = mutableListOf<LabeledDrive>()
+        registry.reconcileWithServer(local.mapTo(HashSet()) { it.drive.alias }) { reconciled += it }
+        assertEquals(listOf(activatedElsewhere.drive.alias), reconciled.map { it.drive.alias })
+
+        seedRegistryFile(db, listOf(feedLabeledDrive, activatedElsewhere))
+        launch {
+            eventBus.emit(
+                BackendEvent.DataEvent.BatchReceived(
+                    driveId = SystemDriveConstants.chatDrive.alias,
+                    batchData = listOf(serverFile),
+                )
+            )
+        }.join()
+        advanceUntilIdle()
+
+        assertTrue(observed.isEmpty(), "observer must not double-mount a drive the reconcile already surfaced")
+        assertTrue(unmounted.isEmpty())
+
+        registry.stop()
+        db.close()
+    }
+
+    @Test
+    fun reconcileWithServerHonoursKnownWhenStartWasNeverCalled() = runTest {
+        // The headless wake shape: drives are mounted straight off the deferred bootstrap and
+        // start() never runs, so the observer baseline is empty. Only the elsewhere-activated
+        // drive may be emitted — re-emitting the already-mounted ones would churn the WS.
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val activatedElsewhere = makeLabeledDrive("activated-elsewhere")
+        val serverFile = buildRegistryFile(listOf(feedLabeledDrive, activatedElsewhere))
+        val recorder = WriteRecorder(existingServerFile = serverFile)
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val local = registry.bootstrap(deferServerReconcile = true)
+
+        val mounted = mutableListOf<LabeledDrive>()
+        registry.reconcileWithServer(local.mapTo(HashSet()) { it.drive.alias }) { mounted += it }
+
+        assertEquals(listOf(activatedElsewhere.drive.alias), mounted.map { it.drive.alias })
+        db.close()
+    }
+
+    @Test
+    fun reconcileWithServerIsANoOpWhenTheFetchFails() = runTest {
+        val db = createTestDatabaseManager()
+        seedRegistryFile(db, listOf(feedLabeledDrive))
+        val recorder = WriteRecorder(
+            fetchResolver = { throw RuntimeException("simulated network failure") },
+        )
+        val registry = buildRegistry(db, recorder = recorder)
+
+        val local = registry.bootstrap(deferServerReconcile = true)
+        registry.start(
+            onMount = {},
+            onUnmount = {},
+            initialBaseline = local.mapTo(HashSet()) { it.drive.alias },
+        )
+
+        val mounted = mutableListOf<LabeledDrive>()
+        // Must not throw — the local set already in play stands.
+        registry.reconcileWithServer(local.mapTo(HashSet()) { it.drive.alias }) { mounted += it }
+
+        assertTrue(mounted.isEmpty())
+        assertEquals(1, recorder.fetchCount)
+
+        registry.stop()
         db.close()
     }
 

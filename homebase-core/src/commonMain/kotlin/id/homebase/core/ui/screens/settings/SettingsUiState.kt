@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.settings
 
 import id.homebase.api.client.auth.OwnerSession
+import id.homebase.core.settings.ThemeState
 
 enum class NotificationVerificationStatus { CHECKING, OK, ERROR }
 
@@ -10,6 +11,10 @@ data class SettingsUiState(
     val ownerSession: OwnerSession? = null,
     val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
     val useNativeFeed: Boolean = true,
+    val theme: ThemeState = ThemeState.System,
+    val appVersion: String = "",
+    /** Null until the off-main measurement lands; the row shows a description meanwhile. */
+    val storageUsedBytes: Long? = null,
 
     val uiEvent: SettingsUiEvent? = null,
     val uiDialog: SettingsUiDialog? = null,

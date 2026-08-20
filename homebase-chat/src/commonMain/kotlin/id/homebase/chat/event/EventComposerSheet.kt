@@ -71,7 +71,6 @@ import id.homebase.chat.composer.ComposerEditableField
 import id.homebase.chat.composer.ComposerRow
 import id.homebase.chat.composer.ComposerTitleField
 import id.homebase.chat.conversationlist.materializeForUpload
-import id.homebase.chat.conversationlist.pickedContentType
 import id.homebase.core.location.rememberCurrentGps
 import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.chat.services.ChatMessageSenderService
@@ -82,6 +81,7 @@ import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.widget.GuardedComposerSheet
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.contentType
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -179,13 +179,13 @@ private fun EventComposerContent(
     val coverGalleryPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         if (file != null) scope.launch {
             coverInput = file.materializeForUpload(fileOperationsProvider)
-                .toImageAttachmentInput(fileOperationsProvider, file.pickedContentType())
+                .toImageAttachmentInput(fileOperationsProvider, file.contentType())
         }
     }
     val coverCameraLauncher = rememberCameraManager { file ->
         if (file != null) scope.launch {
             coverInput = file.materializeForUpload(fileOperationsProvider)
-                .toImageAttachmentInput(fileOperationsProvider, file.pickedContentType())
+                .toImageAttachmentInput(fileOperationsProvider, file.contentType())
         }
     }
     // Deferred picker launch — presenting the picker synchronously from the

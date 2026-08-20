@@ -39,6 +39,8 @@ object AppConfig {
     // Deep link scheme for returning from permission extension
     const val DEEP_LINK_SCHEME = "homebase-fchat"
 
+    const val CREATE_ACCOUNT_CALLBACK_HOST = "create-account-callback"
+
     const val REPORT_CONTENT_URL = "https://ravenhosting.cloud/report/content"
 }
 
@@ -64,6 +66,17 @@ expect fun returnUrl(): String
  * Same platform split as [returnUrl]: deep link on mobile, localhost loopback on desktop.
  */
 expect fun dataUpgradeReturnUrl(): String
+
+/**
+ * Return URL the sign-up flow sends the user back to once their new identity is set up,
+ * carrying the created domain as `?domain=`. Null where nothing can catch it: the owner
+ * console would redirect the browser at a scheme the OS doesn't know, so those platforms
+ * ask for no return at all and the user finishes in the browser.
+ *
+ * Mobile only today — desktop could use [id.homebase.api.browser.LocalCallbackServer] the
+ * way [returnUrl] does, once a desktop sign-up is worth the route.
+ */
+expect fun createAccountReturnUrl(): String?
 
 // Circle IDs for connected identities
 const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"

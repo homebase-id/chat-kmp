@@ -241,6 +241,10 @@ sealed class Route {
     @SerialName("location-share")
     data class LocationShare(val conversationId: String) : Route()
 
+    @Serializable
+    @SerialName("chat-share-contact")
+    data class ShareContact(val conversationId: String) : Route()
+
     /** In-app picker to grant emergency-location-access circle membership to one or more
      *  contacts — replaces the old owner-console browser deep link. */
     @Serializable
