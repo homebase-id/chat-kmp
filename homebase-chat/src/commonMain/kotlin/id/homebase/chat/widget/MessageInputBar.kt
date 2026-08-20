@@ -215,13 +215,6 @@ fun MessageInputBar(
     var cancelledUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
     var lastFetchedUrl by remember { mutableStateOf<String?>(null) }
 
-    // Web only: Cmd/Ctrl+V arrives as a DOM paste event carrying the image, which needs no
-    // permission prompt. Mounted once here rather than per text field so a single conversation
-    // never registers two listeners and attaches the same paste twice.
-    ClipboardImagePasteEffect(enabled = onPasteImage != null) { bytes ->
-        onPasteImage?.invoke(bytes)
-    }
-
     LaunchedEffect(textFieldState.annotatedString.text) {
         val text = textFieldState.annotatedString.text
         val match = URL_REGEX.find(text)
@@ -391,6 +384,14 @@ fun MessageTextFieldExpanded(
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
+    var isFieldFocused by remember { mutableStateOf(false) }
+
+    // Web only: a pasted image arrives as a clipboard event on Compose's active clip target,
+    // which only resolves to this field's backing input while the field holds focus.
+    ClipboardImagePasteEffect(enabled = onPasteImage != null && isFieldFocused) { bytes ->
+        onPasteImage?.invoke(bytes)
+    }
+
     Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
@@ -435,6 +436,7 @@ fun MessageTextFieldExpanded(
                 )
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
+                    isFieldFocused = focusState.isFocused
                     if (focusState.isFocused) {
                         onFocused()
                     }
@@ -593,6 +595,11 @@ fun MessageTextFieldCompact(
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
     var isKeyboardFocused by remember { mutableStateOf(false) }
+
+    // See the expanded field: the clip target only resolves while this field has focus.
+    ClipboardImagePasteEffect(enabled = onPasteImage != null && isKeyboardFocused) { bytes ->
+        onPasteImage?.invoke(bytes)
+    }
 
     LaunchedEffect(showSendButton) {
         onSendStateChanged?.invoke(showSendButton)
