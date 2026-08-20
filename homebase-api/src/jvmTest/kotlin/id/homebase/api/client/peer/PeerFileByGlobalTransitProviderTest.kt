@@ -1,11 +1,12 @@
 package id.homebase.api.client.peer
 
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.profile.FakeFileOperationsProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -25,12 +26,20 @@ import kotlin.uuid.Uuid
 
 // The over-peer routes must stay the UnifiedV2 `PeerByGtid` paths — that is what odin-core's
 // `V2DrivePeerQueryByGtidController` serves; the retired V1 `/transit/query/…` shape 404s.
+//
+// FakeFileOperationsProvider points the disk cache at a fixed /tmp path that outlives the test run,
+// so every test that asserts on network behaviour mints a fresh gtid — a reused one would be served
+// from a previous run's cache entry and never reach the engine.
 class PeerFileByGlobalTransitProviderTest {
 
     private val peer = OdinId("author.example.com")
     private val driveId = Uuid.parse("11111111-1111-1111-1111-111111111111")
-    private val gtid = Uuid.parse("22222222-2222-2222-2222-222222222222")
     private val key = "pst0mdi0"
+
+    private fun keyHeader() = KeyHeader(
+        iv = ByteArray(16) { 3 },
+        aesKey = SecureByteArray(ByteArray(16) { 7 }),
+    )
 
     private suspend fun provider(engine: MockEngine): PeerFileByGlobalTransitProvider {
         val cm = CredentialsManager()
@@ -42,16 +51,17 @@ class PeerFileByGlobalTransitProviderTest {
         cm.storeCredentials(creds)
         cm.setActiveCredentials(creds)
         val http = HttpClient(engine)
-        val driveFileProvider = DriveFileProvider(
+        return PeerFileByGlobalTransitProvider(
             httpClient = http,
             credentialsManager = cm,
+            driveFileHttpProvider = DriveFileHttpProvider(http, cm),
             driveCache = DriveFileProviderCached(http, cm, FakeFileOperationsProvider()),
         )
-        return PeerFileByGlobalTransitProvider(http, cm, driveFileProvider)
     }
 
     @Test
     fun payload_hitsV2ByGtidRoute_andReturnsPlaintextBytes() = runTest {
+        val gtid = Uuid.random()
         var path: String? = null
         val bytes = byteArrayOf(1, 2, 3, 4)
         // payloadencrypted absent → decryptBytes returns the bytes untouched (the public-feed case).
@@ -60,7 +70,8 @@ class PeerFileByGlobalTransitProviderTest {
             respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/jpeg"))
         }
 
-        val result = provider(engine).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key)
+        val result = provider(engine)
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader())
 
         assertEquals(
             "/api/v2/peer/$peer/drives/$driveId/files/by-gtid/$gtid/payload/$key",
@@ -71,13 +82,16 @@ class PeerFileByGlobalTransitProviderTest {
 
     @Test
     fun thumb_hitsV2ByGtidThumbRoute() = runTest {
+        val gtid = Uuid.random()
         var path: String? = null
         val engine = MockEngine { request ->
             path = request.url.encodedPath
             respond(byteArrayOf(9), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/webp"))
         }
 
-        provider(engine).getThumbOverPeerByGlobalTransitId(peer, driveId, gtid, key, width = 320, height = 320)
+        provider(engine).getThumbOverPeerByGlobalTransitId(
+            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(),
+        )
 
         assertEquals(
             "/api/v2/peer/$peer/drives/$driveId/files/by-gtid/$gtid/payload/$key/thumb/320/320",
@@ -85,10 +99,63 @@ class PeerFileByGlobalTransitProviderTest {
         )
     }
 
+    // A CDN-served payload carries the ciphertext and `payloadencrypted`, but no
+    // `sharedsecretencryptedheader64` — the origin only mints that per authenticated request. The read
+    // must therefore decrypt with the KeyHeader the caller already holds from its feed-drive row.
+    @Test
+    fun payload_encrypted_decryptsWithCallerKeyHeader_whenResponseCarriesNoKeyHeader() = runTest {
+        val gtid = Uuid.random()
+        val plaintext = "followed post media".encodeToByteArray()
+        val cipher = keyHeader().encryptDataAes(plaintext)
+        val engine = MockEngine {
+            respond(
+                cipher,
+                HttpStatusCode.OK,
+                headersOf("payloadencrypted", listOf("true")),
+            )
+        }
+
+        val result = provider(engine)
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader())
+
+        assertTrue(
+            result != null && result.bytes.contentEquals(plaintext),
+            "caller-supplied KeyHeader decrypts a response with no key header",
+        )
+    }
+
+    // The bug this fixes: every followed-post thumbnail was re-downloaded on every view because the
+    // peer read bypassed the disk cache entirely.
+    @Test
+    fun thumb_secondRead_isServedFromCache_withoutASecondNetworkCall() = runTest {
+        val gtid = Uuid.random()
+        var networkCalls = 0
+        val bytes = byteArrayOf(4, 5, 6)
+        val engine = MockEngine {
+            networkCalls++
+            respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/webp"))
+        }
+        val provider = provider(engine)
+
+        val first = provider.getThumbOverPeerByGlobalTransitId(
+            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(),
+        )
+        val second = provider.getThumbOverPeerByGlobalTransitId(
+            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(),
+        )
+
+        assertEquals(1, networkCalls, "second read served from disk cache")
+        assertTrue(first != null && first.bytes.contentEquals(bytes))
+        assertTrue(second != null && second.bytes.contentEquals(bytes))
+    }
+
     @Test
     fun payload_404_returnsNull() = runTest {
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
-        assertNull(provider(engine).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key))
+        assertNull(
+            provider(engine)
+                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader()),
+        )
     }
 
     // The typed throw is what `HomebaseImageLoader.fetchFullPayloadUncached` catches to keep the
@@ -107,7 +174,8 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         val e = assertFailsWith<PayloadTooLargeException> {
-            provider(engine).getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key)
+            provider(engine)
+                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
         }
         assertEquals(oversized, e.sizeBytes)
         assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES, e.limitBytes)
