@@ -123,6 +123,7 @@ import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
 import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.rememberHaptics
+import id.homebase.core.clipboard.ClipboardImagePasteEffect
 import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.pasteImageContextMenuItem
@@ -383,6 +384,14 @@ fun MessageTextFieldExpanded(
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
+    var isFieldFocused by remember { mutableStateOf(false) }
+
+    // Web only: a pasted image arrives as a clipboard event on Compose's active clip target,
+    // which only resolves to this field's backing input while the field holds focus.
+    ClipboardImagePasteEffect(enabled = onPasteImage != null && isFieldFocused) { bytes ->
+        onPasteImage?.invoke(bytes)
+    }
+
     Column(modifier = modifier) {
         RichTextEditorButtons(
             modifier = Modifier.fillMaxWidth(),
@@ -427,6 +436,7 @@ fun MessageTextFieldExpanded(
                 )
                 .focusRequester(focusRequester)
                 .onFocusChanged { focusState ->
+                    isFieldFocused = focusState.isFocused
                     if (focusState.isFocused) {
                         onFocused()
                     }
@@ -460,14 +470,6 @@ fun MessageTextFieldExpanded(
                                     onPasteImage.invoke(imageBytes)
                                     true
                                 } else {
-                                    // The browser clipboard is async-only, so the read above
-                                    // always returns null on web. Start the async read and
-                                    // report the event unhandled: consuming it would swallow
-                                    // an ordinary text paste, and we cannot know yet whether
-                                    // the clipboard holds an image.
-                                    pasteScope.launch {
-                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                    }
                                     false
                                 }
                             }
@@ -593,6 +595,11 @@ fun MessageTextFieldCompact(
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
     var isKeyboardFocused by remember { mutableStateOf(false) }
+
+    // See the expanded field: the clip target only resolves while this field has focus.
+    ClipboardImagePasteEffect(enabled = onPasteImage != null && isKeyboardFocused) { bytes ->
+        onPasteImage?.invoke(bytes)
+    }
 
     LaunchedEffect(showSendButton) {
         onSendStateChanged?.invoke(showSendButton)
@@ -760,14 +767,6 @@ fun MessageTextFieldCompact(
                                                     onPasteImage.invoke(imageBytes)
                                                     true
                                                 } else {
-                                                    // The browser clipboard is async-only, so the read above
-                                                    // always returns null on web. Start the async read and
-                                                    // report the event unhandled: consuming it would swallow
-                                                    // an ordinary text paste, and we cannot know yet whether
-                                                    // the clipboard holds an image.
-                                                    pasteScope.launch {
-                                                        readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                                    }
                                                     false
                                                 }
                                             }
