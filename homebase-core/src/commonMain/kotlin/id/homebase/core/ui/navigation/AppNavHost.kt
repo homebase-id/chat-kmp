@@ -38,7 +38,6 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,7 +66,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.window.core.layout.WindowSizeClass
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DatabaseUpgradeState
@@ -170,6 +168,7 @@ import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isExpandedLayout
 import kotlinx.io.files.Path
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
@@ -212,7 +211,6 @@ fun AppNavHost(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
     val isAuthenticated = authState is YouAuthState.Authenticated
-    val adaptiveInfo = currentWindowAdaptiveInfo()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
@@ -300,9 +298,7 @@ fun AppNavHost(
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
     val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
-    val showNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
-        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-    )
+    val showNavigationRail = isExpandedLayout()
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
     // The full-screen image editor (newly-picked images) is a state-driven overlay, not a

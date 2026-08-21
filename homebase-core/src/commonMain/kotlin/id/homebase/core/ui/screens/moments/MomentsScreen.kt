@@ -198,7 +198,9 @@ fun MomentsScreen(
     // Self-renders only when the VM transitions to ShowDialog. No-op otherwise.
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
-    val isWide = isExpandedLayout()
+    // WideMomentsLayout's fixed 400dp comments rail squeezes the media column below ~1280dp;
+    // keep it pointer-only until it carries its own width threshold.
+    val isWide = isDesktopOrWeb() && isExpandedLayout()
 
     // Reels has no menu entry on pointer targets, so a persisted/synced Reels
     // preference must be coerced or the user lands there with no way back out.
