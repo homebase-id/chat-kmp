@@ -7,6 +7,6 @@ import io.github.vinceglb.filekit.PlatformFile
 @Composable
 actual fun Modifier.fileDropTarget(
     enabled: Boolean,
-    onDragOverChanged: (Boolean) -> Unit,
+    onDragPreviewChanged: (FileDropPreview?) -> Unit,
     onFilesDropped: (List<PlatformFile>) -> Unit,
 ): Modifier = this

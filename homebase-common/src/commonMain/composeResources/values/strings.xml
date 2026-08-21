@@ -709,7 +709,10 @@
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
     <string name="chat_attach_file_failed">Failed to attach file(s): %s</string>
-    <string name="chat_drop_files_hint">Drop files to attach</string>
+    <string name="chat_drop_files_title">Drop to attach</string>
+    <string name="chat_drop_files_subtitle">Release to add them to this conversation</string>
+    <string name="chat_drop_folders_title">Folders can't be attached</string>
+    <string name="chat_drop_folders_subtitle">Drop individual files instead</string>
     <string name="chat_drop_files_none_usable">Folders can't be attached. Drop files instead.</string>
     <string name="chat_message_camera">Camera</string>
     <string name="chat_message_take_photo">Take photo</string>

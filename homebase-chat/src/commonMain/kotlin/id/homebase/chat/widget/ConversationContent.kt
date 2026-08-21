@@ -294,7 +294,7 @@ fun ConversationContent(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var isFileDragOver by remember { mutableStateOf(false) }
+    var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
     val foldersOnlyDropMessage = stringResource(MR.string.chat_drop_files_none_usable)
 
     LaunchedEffect(uiState.isSearchActive) {
@@ -739,7 +739,7 @@ fun ConversationContent(
     Scaffold(
         modifier = Modifier.fileDropTarget(
             enabled = conversation.acceptsAttachments() && !uiState.isSearchActive,
-            onDragOverChanged = { isFileDragOver = it },
+            onDragPreviewChanged = { dropPreview = it },
             onFilesDropped = { files ->
                 if (files.isEmpty()) {
                     coroutineScope.launch { snackbarHostState.showSnackbar(foldersOnlyDropMessage) }
@@ -1802,7 +1802,7 @@ fun ConversationContent(
             } // AttachmentOptionsDisplay wrapper Box
 
             FileDropOverlay(
-                visible = isFileDragOver,
+                preview = dropPreview,
                 modifier = Modifier.matchParentSize(),
             )
         } // Box (clipToBounds)
