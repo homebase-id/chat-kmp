@@ -3,12 +3,16 @@ package id.homebase.app
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -25,6 +29,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.file.JvmFileSystemUtil
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
@@ -39,8 +45,10 @@ import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.crashlyticsRecordException
+import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
+import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.appearance.getIconForTheme
 import id.homebase.core.ui.screens.appearance.getStringResourceForTheme
 import id.homebase.core.ui.screens.desktop.DesktopUiAction
@@ -48,7 +56,16 @@ import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.util.PlatformInfo
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
+import id.homebase.resources.chat_new_conversation
+import id.homebase.resources.desktop_menu_close_window
+import id.homebase.resources.desktop_menu_file
+import id.homebase.resources.desktop_menu_quit
+import id.homebase.resources.desktop_menu_view
+import id.homebase.resources.desktop_tray_show_window
+import id.homebase.resources.desktop_tray_version
 import id.homebase.resources.homebase_icon_round
+import id.homebase.resources.settings
+import id.homebase.resources.theme
 import id.homebase.resources.update_available
 import io.github.vinceglb.filekit.FileKit
 import kotlinx.coroutines.runBlocking
@@ -57,6 +74,7 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.GlobalContext.startKoin
+import java.awt.Desktop
 import java.io.File
 
 fun main() {
@@ -161,6 +179,7 @@ fun main() {
     // Apply saved locale
     val koin = GlobalContext.get()
     val userPreferences = koin.get<UserPreferences>()
+    val youAuthFlowManager = koin.get<YouAuthFlowManager>()
 
     runBlocking { applyStoredLocale(userPreferences) }
     StartupLogger.checkpoint("locale applied")
@@ -176,7 +195,14 @@ fun main() {
         val uiState by viewModel.uiState.collectAsState()
         val icon = painterResource(MR.drawable.homebase_icon_round)
         var isWindowVisible by remember { mutableStateOf(true) }
+        // compose-native-tray composes its menu in a detached composition, so every tray
+        // label has to be resolved out here.
+        val appName = stringResource(MR.string.app_name)
         val updateAvailable = stringResource(MR.string.update_available)
+        val showWindowLabel = stringResource(MR.string.desktop_tray_show_window)
+        val themeMenuLabel = stringResource(MR.string.theme)
+        val quitLabel = stringResource(MR.string.desktop_menu_quit)
+        val versionLabel = stringResource(MR.string.desktop_tray_version, uiState.version)
         val state = rememberWindowState(
             placement = config.windowPlacement,
             position = config.windowPosition,
@@ -184,6 +210,29 @@ fun main() {
             height = maxOf(config.windowHeightDp, minHeight.dp), // Minimum height
         )
         val themeLabel = uiState.theme.getStringResourceForTheme()
+
+        val authState by youAuthFlowManager.authState.collectAsState()
+        var navigateTo by remember { mutableStateOf<((Route) -> Unit)?>(null) }
+        val canNavigate = navigateTo != null && authState is YouAuthState.Authenticated
+
+        val saveWindowGeometry = {
+            try {
+                config.windowPlacement = state.placement
+                config.windowPosition = state.position
+                config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
+                config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
+            } catch (_: Exception) {
+                // ignore
+            }
+        }
+        val hideWindow = {
+            saveWindowGeometry()
+            isWindowVisible = false
+        }
+        val quitApplication = {
+            saveWindowGeometry()
+            exitApplication()
+        }
 
         val isSingleInstance = SingleInstanceManager.isSingleInstance(
             onRestoreRequest = {
@@ -196,19 +245,32 @@ fun main() {
             return@application
         }
 
+        // macOS resolves the app-menu Quit (and its Cmd+Q) itself, above the JMenuBar, so
+        // without this handler that path exits without persisting the window geometry.
+        DisposableEffect(Unit) {
+            val awtDesktop = if (Desktop.isDesktopSupported()) Desktop.getDesktop() else null
+            val quitHandlerDesktop =
+                awtDesktop?.takeIf { it.isSupported(Desktop.Action.APP_QUIT_HANDLER) }
+            quitHandlerDesktop?.setQuitHandler { _, response ->
+                saveWindowGeometry()
+                response.performQuit()
+            }
+            onDispose { quitHandlerDesktop?.setQuitHandler(null) }
+        }
+
         Tray(
             icon = icon,
-            tooltip = stringResource(MR.string.app_name),
+            tooltip = appName,
             primaryAction = {
                 isWindowVisible = !isWindowVisible
             },
         ) {
-            Item(label = "Show Window") {
+            Item(label = showWindowLabel) {
                 isWindowVisible = true
             }
 
             Divider()
-            Item(label = "Theme", isEnabled = false)
+            Item(label = themeMenuLabel, isEnabled = false)
             Item(
                 label = themeLabel,
                 icon = uiState.theme.getIconForTheme(),
@@ -218,17 +280,8 @@ fun main() {
 
             Divider()
 
-            // Reactive checkable item
-//            CheckableItem(
-//                label = "Notifications",
-//                checked = notificationsEnabled,
-//                onCheckedChange = { notificationsEnabled = it }
-//            )
-//
-//            Divider()
-
-            Item(label = "Homebase Chat", isEnabled = false)
-            Item(label = "Version ${uiState.version}", isEnabled = false)
+            Item(label = appName, isEnabled = false)
+            Item(label = versionLabel, isEnabled = false)
             if (uiState.updateAvailable) {
                 Item(
                     label = updateAvailable,
@@ -240,49 +293,77 @@ fun main() {
 
             Divider()
 
-            // Quit option
-            Item(label = "Quit") {
-                try {
-                    config.windowPlacement = state.placement
-                    config.windowPosition = state.position
-                    config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
-                    config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
-                } catch (_: Exception) {
-                    // ignore
-                }
-                exitApplication()  // This properly exits the application
+            Item(label = quitLabel) {
+                quitApplication()
             }
         }
 
         Window(
-            onCloseRequest = {
-                try {
-                    config.windowPlacement = state.placement
-                    config.windowPosition = state.position
-                    config.windowWidthDp = maxOf(state.size.width, minWidth.dp)
-                    config.windowHeightDp = maxOf(state.size.height, minHeight.dp)
-                } catch (_: Exception) {
-                    // ignore
-                }
-                isWindowVisible = false
-            },
+            onCloseRequest = hideWindow,
             alwaysOnTop = false,
-            title = stringResource(MR.string.app_name),
+            title = appName,
             icon = icon,
             state = state,
             visible = isWindowVisible
         ) {
+            MenuBar {
+                Menu(stringResource(MR.string.desktop_menu_file)) {
+                    Item(
+                        text = stringResource(MR.string.chat_new_conversation),
+                        enabled = canNavigate,
+                        shortcut = menuShortcut(Key.N),
+                        onClick = { navigateTo?.invoke(Route.CreateConversation) },
+                    )
+                    Item(
+                        text = stringResource(MR.string.settings),
+                        enabled = canNavigate,
+                        shortcut = menuShortcut(Key.Comma),
+                        onClick = { navigateTo?.invoke(Route.Settings) },
+                    )
+                    Separator()
+                    Item(
+                        text = stringResource(MR.string.desktop_menu_close_window),
+                        shortcut = menuShortcut(Key.W),
+                        onClick = hideWindow,
+                    )
+                    Item(
+                        text = stringResource(MR.string.desktop_menu_quit),
+                        shortcut = menuShortcut(Key.Q),
+                        onClick = quitApplication,
+                    )
+                }
+                Menu(stringResource(MR.string.desktop_menu_view)) {
+                    Menu(stringResource(MR.string.theme)) {
+                        ThemeState.entries.forEach { option ->
+                            RadioButtonItem(
+                                text = option.getStringResourceForTheme(),
+                                selected = uiState.theme == option,
+                                onClick = {
+                                    viewModel.onUiAction(DesktopUiAction.SetTheme(option))
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
 
             // Provide Desktop-specific LifecycleOwner to the composition tree
             val desktopLifecycleOwner = rememberDesktopLifecycleOwner(isWindowVisible)
             CompositionLocalProvider(LocalLifecycleOwner provides desktopLifecycleOwner) {
-                App()
+                App(onNavigatorReady = { navigateTo = it })
             }
         }
     }
 }
+
+private val usesCommandKey =
+    System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
+
+private fun menuShortcut(key: Key) =
+    KeyShortcut(key, ctrl = !usesCommandKey, meta = usesCommandKey)
 
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
