@@ -173,6 +173,7 @@ import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_auto_connect_connected
+import id.homebase.resources.chat_drop_files_none_usable
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
 import id.homebase.resources.chat_group_rejoin_decline
@@ -242,6 +243,16 @@ import kotlin.uuid.Uuid
  *  follow token is consumed unscrolled (the send failed or was gated out). */
 private const val OWN_SEND_FOLLOW_TIMEOUT_MS = 5_000L
 
+// Mirrors the states in which the composer below is replaced by a banner — keep the two in sync,
+// or a dropped file lands in a conversation with nothing to send it from.
+private fun EnrichedConversationUiModel.acceptsAttachments(): Boolean =
+    conversation.conversationState != ConversationState.Left &&
+        conversation.conversationState != ConversationState.Removed &&
+        conversation.conversationState != ConversationState.RejoinPending &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.NotConnected &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.OutgoingRequestPending &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.IncomingRequestPending
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationContent(
@@ -282,6 +293,9 @@ fun ConversationContent(
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var isFileDragOver by remember { mutableStateOf(false) }
+    val foldersOnlyDropMessage = stringResource(MR.string.chat_drop_files_none_usable)
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -723,7 +737,22 @@ fun ConversationContent(
         LocalSavedContactIdentities provides uiState.savedContactIdentities,
     ) {
     Scaffold(
-        modifier = Modifier,
+        modifier = Modifier.fileDropTarget(
+            enabled = conversation.acceptsAttachments() && !uiState.isSearchActive,
+            onDragOverChanged = { isFileDragOver = it },
+            onFilesDropped = { files ->
+                if (files.isEmpty()) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar(foldersOnlyDropMessage) }
+                } else {
+                    onUiAction(
+                        ConversationListUiAction.AttachPlatformFile(
+                            conversationId = conversation.conversation.id,
+                            files = files,
+                        )
+                    )
+                }
+            },
+        ),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -1771,6 +1800,11 @@ fun ConversationContent(
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
+
+            FileDropOverlay(
+                visible = isFileDragOver,
+                modifier = Modifier.matchParentSize(),
+            )
         } // Box (clipToBounds)
     }
 

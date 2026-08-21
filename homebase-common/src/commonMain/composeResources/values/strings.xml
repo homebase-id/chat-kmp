@@ -709,6 +709,8 @@
     <string name="chat_message_options">Message options</string>
     <string name="chat_message_attachment_options">Attachment options</string>
     <string name="chat_attach_file_failed">Failed to attach file(s): %s</string>
+    <string name="chat_drop_files_hint">Drop files to attach</string>
+    <string name="chat_drop_files_none_usable">Folders can't be attached. Drop files instead.</string>
     <string name="chat_message_camera">Camera</string>
     <string name="chat_message_take_photo">Take photo</string>
     <string name="chat_message_record_video">Record video</string>
