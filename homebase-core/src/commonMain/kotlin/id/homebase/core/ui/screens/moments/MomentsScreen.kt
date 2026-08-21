@@ -198,9 +198,7 @@ fun MomentsScreen(
     // Self-renders only when the VM transitions to ShowDialog. No-op otherwise.
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
-    // WideMomentsLayout's fixed 400dp comments rail squeezes the media column below ~1280dp;
-    // keep it pointer-only until it carries its own width threshold.
-    val isWide = isDesktopOrWeb() && isExpandedLayout()
+    val isWide = isExpandedLayout(MomentsWideMinWidthDp)
 
     // Reels has no menu entry on pointer targets, so a persisted/synced Reels
     // preference must be coerced or the user lands there with no way back out.
@@ -251,6 +249,10 @@ fun MomentsScreen(
         )
     }
 }
+
+// rail 80 + FeedPaneMinWidth 380 + fixed CommentsRailWidth 400 leaves the media column
+// width-860; below this it collapses to a postage stamp (164dp at 1024dp).
+private const val MomentsWideMinWidthDp = 1280
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
