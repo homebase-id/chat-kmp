@@ -8,6 +8,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
@@ -45,7 +46,6 @@ import id.homebase.core.logging.CrashLogger
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.crashlyticsRecordException
-import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.settings.applyStoredLocale
 import id.homebase.core.ui.navigation.Route
@@ -60,11 +60,9 @@ import id.homebase.resources.chat_new_conversation
 import id.homebase.resources.desktop_menu_close_window
 import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
-import id.homebase.resources.desktop_menu_view
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
 import id.homebase.resources.homebase_icon_round
-import id.homebase.resources.settings
 import id.homebase.resources.theme
 import id.homebase.resources.update_available
 import io.github.vinceglb.filekit.FileKit
@@ -245,8 +243,10 @@ fun main() {
             return@application
         }
 
-        // macOS resolves the app-menu Quit (and its Cmd+Q) itself, above the JMenuBar, so
-        // without this handler that path exits without persisting the window geometry.
+        // Quit and Settings belong to the macOS app menu, which AppKit owns above the
+        // JMenuBar — the app-menu Quit would otherwise exit without persisting geometry,
+        // and no Preferences item appears at all until a handler is registered.
+        val currentNavigate = rememberUpdatedState(navigateTo)
         DisposableEffect(Unit) {
             val awtDesktop = if (Desktop.isDesktopSupported()) Desktop.getDesktop() else null
             val quitHandlerDesktop =
@@ -255,7 +255,15 @@ fun main() {
                 saveWindowGeometry()
                 response.performQuit()
             }
-            onDispose { quitHandlerDesktop?.setQuitHandler(null) }
+            val prefsDesktop =
+                awtDesktop?.takeIf { it.isSupported(Desktop.Action.APP_PREFERENCES) }
+            prefsDesktop?.setPreferencesHandler {
+                currentNavigate.value?.invoke(Route.Settings)
+            }
+            onDispose {
+                quitHandlerDesktop?.setQuitHandler(null)
+                prefsDesktop?.setPreferencesHandler(null)
+            }
         }
 
         Tray(
@@ -314,36 +322,12 @@ fun main() {
                         shortcut = menuShortcut(Key.N),
                         onClick = { navigateTo?.invoke(Route.CreateConversation) },
                     )
-                    Item(
-                        text = stringResource(MR.string.settings),
-                        enabled = canNavigate,
-                        shortcut = menuShortcut(Key.Comma),
-                        onClick = { navigateTo?.invoke(Route.Settings) },
-                    )
                     Separator()
                     Item(
                         text = stringResource(MR.string.desktop_menu_close_window),
                         shortcut = menuShortcut(Key.W),
                         onClick = hideWindow,
                     )
-                    Item(
-                        text = stringResource(MR.string.desktop_menu_quit),
-                        shortcut = menuShortcut(Key.Q),
-                        onClick = quitApplication,
-                    )
-                }
-                Menu(stringResource(MR.string.desktop_menu_view)) {
-                    Menu(stringResource(MR.string.theme)) {
-                        ThemeState.entries.forEach { option ->
-                            RadioButtonItem(
-                                text = option.getStringResourceForTheme(),
-                                selected = uiState.theme == option,
-                                onClick = {
-                                    viewModel.onUiAction(DesktopUiAction.SetTheme(option))
-                                },
-                            )
-                        }
-                    }
                 }
             }
 

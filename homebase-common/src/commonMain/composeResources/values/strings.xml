@@ -1953,7 +1953,6 @@
     <string name="settings_notification_content_name_only">Name Only</string>
     <string name="settings_notification_content_no_name_or_content">No Name or Content</string>
     <string name="desktop_menu_file">File</string>
-    <string name="desktop_menu_view">View</string>
     <string name="desktop_menu_close_window">Close Window</string>
     <string name="desktop_menu_quit">Quit</string>
     <string name="desktop_tray_show_window">Show Window</string>

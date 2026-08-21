@@ -47,9 +47,6 @@ class DesktopViewModel(
                 userPreferences.theme = newTheme
             }
 
-            is DesktopUiAction.SetTheme -> {
-                userPreferences.theme = action.theme
-            }
 
             is DesktopUiAction.TriggerUpdate -> {
                 triggerUpdate()
@@ -86,6 +83,5 @@ data class DesktopUiState(
 
 sealed interface DesktopUiAction {
     data object ToggleTheme : DesktopUiAction
-    data class SetTheme(val theme: ThemeState) : DesktopUiAction
     data object TriggerUpdate : DesktopUiAction
 }
