@@ -133,6 +133,9 @@ import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.core.widget.EmojiShortcodePopup
+import id.homebase.core.widget.emojiShortcodeAnchor
+import id.homebase.core.widget.rememberEmojiShortcodeController
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
@@ -385,6 +388,7 @@ fun MessageTextFieldExpanded(
 ) {
     val pasteScope = rememberCoroutineScope()
     var isFieldFocused by remember { mutableStateOf(false) }
+    val emojiShortcodes = rememberEmojiShortcodeController()
 
     // Web only: a pasted image arrives as a clipboard event on Compose's active clip target,
     // which only resolves to this field's backing input while the field holds focus.
@@ -421,6 +425,7 @@ fun MessageTextFieldExpanded(
         RichTextEditor(
             state = state,
             modifier = Modifier.fillMaxWidth()
+                .emojiShortcodeAnchor(emojiShortcodes)
                 .then(pasteModifier)
                 .then(
                     if (onPasteImage != null)
@@ -442,6 +447,10 @@ fun MessageTextFieldExpanded(
                     }
                 }
                 .onPreviewKeyEvent { keyEvent ->
+                    // The shortcode popup owns arrows/Enter/Esc while it is showing. Preview
+                    // events run root-to-leaf, so Enter-to-send below beats it to them otherwise.
+                    if (emojiShortcodes.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
+
                     // Cmd/Ctrl+V image paste works on any platform with a hardware
                     // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
                     // stays desktop/web only; mobile uses the send button.
@@ -496,6 +505,11 @@ fun MessageTextFieldExpanded(
                 unfocusedIndicatorColor = Color.Transparent,
                 disabledIndicatorColor = Color.Transparent,
             ),
+        )
+        EmojiShortcodePopup(
+            state = state,
+            controller = emojiShortcodes,
+            enabled = isFieldFocused && isDesktopOrWeb(),
         )
         Spacer(modifier = Modifier.height(8.dp))
         Row(
@@ -579,6 +593,7 @@ fun MessageTextFieldCompact(
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
+    val emojiShortcodes = rememberEmojiShortcodeController()
     // Send button is shown when there's text OR a user-initiated attachment (not link previews,
     // which are auto-detected from typed URLs and don't on their own indicate intent to send).
     val showSendButton = state.annotatedString.isNotBlank() ||
@@ -717,6 +732,7 @@ fun MessageTextFieldCompact(
                             state = state,
                             modifier = Modifier
                                 .weight(1f)
+                                .emojiShortcodeAnchor(emojiShortcodes)
                                 .then(pasteModifier)
                                 .then(
                                     if (onPasteImage != null)
@@ -738,6 +754,10 @@ fun MessageTextFieldCompact(
                                     }
                                 }
                                 .onPreviewKeyEvent { keyEvent ->
+                                    // The shortcode popup owns arrows/Enter/Esc while it is showing. Preview
+                                    // events run root-to-leaf, so Enter-to-send below beats it to them otherwise.
+                                    if (emojiShortcodes.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
+
                                     // Cmd/Ctrl+V image paste works on any platform with a hardware
                                     // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
                                     // stays desktop/web only; mobile uses the send button.
@@ -873,6 +893,11 @@ fun MessageTextFieldCompact(
                                 capitalization = KeyboardCapitalization.Sentences,
                                 imeAction = ImeAction.Default
                             )
+                        )
+                        EmojiShortcodePopup(
+                            state = state,
+                            controller = emojiShortcodes,
+                            enabled = isKeyboardFocused && isDesktopOrWeb(),
                         )
                         if (showRecordingButton) {
                             // Mic button: a single pointerInput handles the full gesture (press,
@@ -1207,6 +1232,7 @@ fun MessageTextFieldForAttachment(
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
 ) {
     var hasSent by remember { mutableStateOf(false) }
+    val emojiShortcodes = rememberEmojiShortcodeController()
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -1224,8 +1250,10 @@ fun MessageTextFieldForAttachment(
         ) {
             RichTextEditor(
                 state = state,
-                modifier = Modifier.weight(1f).onPreviewKeyEvent { keyEvent ->
-                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                modifier = Modifier.weight(1f).emojiShortcodeAnchor(emojiShortcodes).onPreviewKeyEvent { keyEvent ->
+                    if (emojiShortcodes.handleKeyEvent(keyEvent)) {
+                        true
+                    } else if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
                         if (keyEvent.isShiftPressed) {
                             state.addTextAfterSelection("\n")
                             true
@@ -1265,6 +1293,11 @@ fun MessageTextFieldForAttachment(
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
                 )
+            )
+            EmojiShortcodePopup(
+                state = state,
+                controller = emojiShortcodes,
+                enabled = isDesktopOrWeb(),
             )
             Spacer(modifier = Modifier.width(8.dp))
             if (!isKeyboardVisible) {
