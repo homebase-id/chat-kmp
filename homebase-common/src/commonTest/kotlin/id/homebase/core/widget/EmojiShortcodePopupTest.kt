@@ -39,12 +39,12 @@ class EmojiShortcodePopupTest {
             val richState = rememberRichTextState()
             val controller = rememberEmojiShortcodeController()
             state(richState)
+            // Mirrors MessageInputBar: a Box wrapping ONLY the editor is the popup's anchor.
             Box {
                 RichTextEditor(
                     state = richState,
-                    // Mirrors MessageInputBar: the popup gets first refusal, Enter-to-send behind it.
+                    // The popup gets first refusal on keys, Enter-to-send behind it.
                     modifier = Modifier
-                        .emojiShortcodeAnchor(controller)
                         .onPreviewKeyEvent { event ->
                             if (controller.handleKeyEvent(event)) {
                                 true

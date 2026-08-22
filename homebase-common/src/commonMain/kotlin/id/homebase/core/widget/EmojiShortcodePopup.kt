@@ -21,15 +21,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,7 +46,6 @@ import id.homebase.core.emoji.EmojiParser
 import id.homebase.core.emoji.EmojiShortcodeMaxSuggestions
 import id.homebase.core.emoji.rankEmojiForShortcode
 import id.homebase.core.ui.theme.withEmojiFont
-import kotlin.math.roundToInt
 
 private const val TriggerId = "emoji-shortcode"
 
@@ -65,7 +61,6 @@ private const val TriggerId = "emoji-shortcode"
 @Stable
 class EmojiShortcodeController internal constructor() {
     internal var keyHandler: ((KeyEvent) -> Boolean)? by mutableStateOf(null)
-    internal var anchorBounds: Rect? by mutableStateOf(null)
 
     val isActive: Boolean get() = keyHandler != null
 
@@ -76,19 +71,12 @@ class EmojiShortcodeController internal constructor() {
 fun rememberEmojiShortcodeController(): EmojiShortcodeController =
     remember { EmojiShortcodeController() }
 
-/** Marks the editor the popup should sit above. Attach to the editor's own modifier chain. */
-fun Modifier.emojiShortcodeAnchor(controller: EmojiShortcodeController): Modifier =
-    onGloballyPositioned { coords ->
-        val bounds = coords.boundsInWindow()
-        if (controller.anchorBounds != bounds) controller.anchorBounds = bounds
-    }
-
 /**
  * Types-`:`-to-pick-an-emoji for a [RichTextState] editor.
  *
- * Attach [emojiShortcodeAnchor] to the editor, route the editor's `onPreviewKeyEvent`
- * through [EmojiShortcodeController.handleKeyEvent] first, then place this anywhere in
- * the same composition.
+ * Place this as a sibling of the editor inside a Box that wraps ONLY the editor — the
+ * popup anchors to that Box's bounds. Route the editor's `onPreviewKeyEvent` through
+ * [EmojiShortcodeController.handleKeyEvent] first.
  *
  * Pass the editor's focus state as [enabled]: an active query survives focus loss (it is
  * recomputed only on text and selection changes), so without this the popup hangs around
@@ -127,13 +115,11 @@ fun EmojiShortcodePopup(
         else rankEmojiForShortcode(query.query, available, maxSuggestions)
     }
 
-    val anchor = controller.anchorBounds
-    if (query == null || suggestions.isEmpty() || anchor == null) return
+    if (query == null || suggestions.isEmpty()) return
 
     SuggestionPopup(
         state = state,
         controller = controller,
-        anchor = anchor,
         range = query.range,
         suggestions = suggestions,
         modifier = modifier,
@@ -145,7 +131,6 @@ fun EmojiShortcodePopup(
 private fun SuggestionPopup(
     state: RichTextState,
     controller: EmojiShortcodeController,
-    anchor: Rect,
     range: TextRange,
     suggestions: List<Emoji>,
     modifier: Modifier,
@@ -190,7 +175,7 @@ private fun SuggestionPopup(
     }
 
     val gapPx = with(LocalDensity.current) { 4.dp.roundToPx() }
-    val positionProvider = remember(anchor, gapPx) { AboveAnchorPositionProvider(anchor, gapPx) }
+    val positionProvider = remember(gapPx) { AboveAnchorPositionProvider(gapPx) }
 
     Popup(
         popupPositionProvider = positionProvider,
@@ -259,13 +244,12 @@ private fun SuggestionRow(
  * public is relative to the inner field — offset from the decoration box by the leading
  * icon. A composer-width strip above the input is the honest, stable placement.
  *
- * [anchorBounds] is ignored: the popup is not a child of the editor, so its own parent
- * bounds say nothing useful. [anchor] is the editor's rect in window coordinates.
+ * [anchorBounds] is Compose's own measurement of the parent Box, handed to us during
+ * placement. Deriving the anchor any other way — onGloballyPositioned writing a state
+ * that composition then reads — makes every layout pass invalidate composition, which
+ * re-lays out, which writes again.
  */
-private class AboveAnchorPositionProvider(
-    private val anchor: Rect,
-    private val gapPx: Int,
-) : PopupPositionProvider {
+private class AboveAnchorPositionProvider(private val gapPx: Int) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
@@ -273,11 +257,11 @@ private class AboveAnchorPositionProvider(
         popupContentSize: IntSize,
     ): IntOffset {
         val maxX = (windowSize.width - popupContentSize.width).coerceAtLeast(0)
-        val x = anchor.left.roundToInt().coerceIn(0, maxX)
+        val x = anchorBounds.left.coerceIn(0, maxX)
 
-        val above = anchor.top.roundToInt() - gapPx - popupContentSize.height
+        val above = anchorBounds.top - gapPx - popupContentSize.height
         val maxY = (windowSize.height - popupContentSize.height).coerceAtLeast(0)
-        val y = if (above >= 0) above else (anchor.bottom.roundToInt() + gapPx).coerceIn(0, maxY)
+        val y = if (above >= 0) above else (anchorBounds.bottom + gapPx).coerceIn(0, maxY)
 
         return IntOffset(x, y)
     }
