@@ -2,14 +2,12 @@ package id.homebase.core.util
 
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
+import androidx.window.core.layout.WindowSizeClass
 
-private const val ExpandedWidthBreakpointDp = 800
-
-/** Wide phones and tablets stay single-column: their touch targets and FAB placement
- *  assume one viewport, so the split is limited to pointer-driven targets. */
+// Both the navigation rail and the list/detail scaffolds must read this same gate —
+// if they diverge a tablet gets a rail beside a stretched single column.
 @Composable
 fun isExpandedLayout(): Boolean =
-    isDesktopOrWeb() &&
-        currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(
-            ExpandedWidthBreakpointDp
-        )
+    currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(
+        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
+    )
