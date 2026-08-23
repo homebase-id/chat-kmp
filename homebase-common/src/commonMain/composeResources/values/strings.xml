@@ -1079,6 +1079,35 @@
     <string name="upload_failed_action_delete">Delete moment</string>
     <string name="upload_failed_action_dismiss">Dismiss</string>
 
+    <!-- Email setup — the add-on that turns email on for this identity and manages its
+         keys. Not a mail reader: reading happens in Thunderbird-class clients. -->
+    <string name="email_label">Email setup</string>
+    <string name="email_home_subtitle">Set up and manage your email</string>
+    <string name="email_onboarding_title">Email on your own identity</string>
+    <string name="email_onboarding_body_1">Set up an address that belongs to your Homebase identity, and keep the keys to it on your own drive.</string>
+    <string name="email_onboarding_body_2">You read and write mail in the app you already use. This screen is where you set it up and manage your keys.</string>
+    <string name="email_onboarding_setup">Set it up</string>
+    <string name="email_onboarding_dismiss">Dismiss</string>
+    <string name="email_onboarding_dismiss_hint">Dismissing hides the icon — find Email setup again under Home.</string>
+    <string name="email_permission_dialog_title">Extend Permissions</string>
+    <string name="email_permission_dialog_text">To set up email we need a drive to keep your mail keys and app passwords on.</string>
+    <string name="email_permission_extend">Extend</string>
+    <string name="email_permission_cancel">Cancel</string>
+    <string name="email_no_server_title">This server has no email yet</string>
+    <string name="email_no_server_body_1">Your Homebase server hasn't turned on email for its identities. There is nothing to set up here for now.</string>
+    <string name="email_no_server_body_2">When your server operator enables it, come back and this screen will offer setup.</string>
+    <string name="email_no_server_note">We asked your server and it answered no — this isn't a network problem, and there is nothing wrong with your identity.</string>
+    <string name="email_no_server_retry">Check again</string>
+    <string name="email_no_server_close">Close</string>
+    <string name="email_checking">Checking with your server…</string>
+    <string name="email_settings_section">Email setup</string>
+    <string name="email_settings_open">Open Email setup</string>
+    <string name="email_settings_show_icon">Show Email setup icon in bottom bar</string>
+    <string name="email_settings_biometrics">Biometrics protection</string>
+    <string name="email_biometric_prompt_title">Unlock Email setup</string>
+    <string name="email_biometric_prompt_subtitle">Authenticate to access your mail keys</string>
+    <string name="settings_email_desc">Your address, keys and mail app passwords</string>
+
     <!-- Vault -->
     <string name="vault_label">Vault</string>
     <string name="vault_home_subtitle">Your secure document store</string>

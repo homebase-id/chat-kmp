@@ -12,6 +12,7 @@ data class SettingsActions(
     val onHelp: () -> Unit,
     val onMomentsSettings: () -> Unit,
     val onVaultSettings: () -> Unit,
+    val onEmailSettings: () -> Unit,
     val onLocation: () -> Unit,
     val onContactBookSettings: () -> Unit,
     val onProfileEdit: () -> Unit,

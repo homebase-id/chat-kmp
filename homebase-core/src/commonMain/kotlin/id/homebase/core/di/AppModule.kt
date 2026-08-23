@@ -2,6 +2,10 @@
 
 package id.homebase.core.di
 
+import id.homebase.core.config.getEmailPermissionExtensionConfig
+import id.homebase.core.ui.screens.email.settings.EmailSettingsViewModel
+import id.homebase.core.ui.screens.email.EmailViewModel
+import id.homebase.core.email.EmailPreferences
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
@@ -212,6 +216,7 @@ import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 
 val VaultPermissionQualifier = named("vaultPermission")
+val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 val MomentsPermissionQualifier = named("momentsPermission")
@@ -270,6 +275,7 @@ val appModule = module {
 
     single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
+    single { EmailPreferences(get()) }
 
     // Contact Book add-on (contact manager). Reads from the mandatory Contacts
     // drive; writes through the api-layer ContactsProvider. No optional-drive
@@ -640,6 +646,7 @@ val appModule = module {
                 // endregion
 
                 get<VaultPreferences>().reset()
+            get<EmailPreferences>().reset()
                 get<VaultStream>().apply { reset(); start() }
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
@@ -1103,6 +1110,15 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    viewModel(EmailPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getEmailPermissionExtensionConfig(),
+            autoCheck = false,
+        )
+    }
     viewModel(FeedPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1142,6 +1158,16 @@ val appModule = module {
         )
     }
     viewModelOf(::VaultSettingsViewModel)
+
+    viewModel {
+        EmailViewModel(
+            emailPreferences = get(),
+            emailPermissionViewModel = get(EmailPermissionQualifier),
+            optionalDriveActivation = get(),
+            mailProvider = get(),
+        )
+    }
+    viewModelOf(::EmailSettingsViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(
             sectionId = params[0],
