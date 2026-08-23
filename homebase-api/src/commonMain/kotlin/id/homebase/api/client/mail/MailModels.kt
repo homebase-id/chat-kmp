@@ -52,3 +52,45 @@ data class MailRoundTripChallenge(
     val encryptedNonceBase64: String = "",
     val nonceSha256Base64: String = "",
 )
+
+/** Result of creating the mailbox. */
+@Serializable
+data class MailboxSetupResult(
+    val primaryEmailAddress: String = "",
+    /** False for manual-DNS identities — the records are shown as instructions instead. */
+    val dnsRecordsWritten: Boolean = false,
+    val dkimRecords: List<MailDnsRecord> = emptyList(),
+)
+
+/**
+ * Result of generating a keyring. The private half is NOT here — the server wrote it straight to
+ * the email drive, and [keyFileUniqueId] is where to read it back from.
+ */
+@Serializable
+data class EmailKeyGenerationResult(
+    @Serializable(with = UuidSerializer::class)
+    val keyFileUniqueId: Uuid? = null,
+    val fingerprintHex: String = "",
+    /** Whether the entropy this app collected was actually mixed in. */
+    val clientEntropyUsed: Boolean = false,
+)
+
+/**
+ * A newly issued mail-client credential. [secret] is in transit exactly once — write it to the
+ * drive before showing it to anyone.
+ */
+@Serializable
+data class AppPasswordIssueResult(
+    val id: String = "",
+    val secret: String = "",
+    val label: String = "",
+    val createdAt: Long = 0,
+)
+
+/** Mailbox storage. [available] is false when the mail server does not report usage. */
+@Serializable
+data class MailStorageResult(
+    val available: Boolean = false,
+    val usedBytes: Long = 0,
+    val quotaBytes: Long? = null,
+)
