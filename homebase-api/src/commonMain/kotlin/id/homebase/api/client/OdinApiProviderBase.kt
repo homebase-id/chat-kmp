@@ -135,6 +135,8 @@ abstract class OdinApiProviderBase(
                 rawBody
             }
 
+        CdnAdvertisement.observe(response.headers)
+
         return ApiResponse(
             status = response.status.value,
             headers = response.headers,
@@ -193,6 +195,8 @@ abstract class OdinApiProviderBase(
             response.headers["decryptedcontenttype"]
                 ?: response.headers[HttpHeaders.ContentType]
                 ?: "application/octet-stream"
+
+        CdnAdvertisement.observe(response.headers)
 
         return ByteApiResponse(
             status = response.status.value,

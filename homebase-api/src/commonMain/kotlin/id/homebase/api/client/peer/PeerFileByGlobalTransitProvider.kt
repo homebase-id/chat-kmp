@@ -2,6 +2,7 @@ package id.homebase.api.client.peer
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ByteApiResponse
+import id.homebase.api.client.CdnAdvertisement
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinApiProviderBase
@@ -14,7 +15,6 @@ import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
-import io.ktor.http.Headers
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
@@ -44,11 +44,6 @@ class PeerFileByGlobalTransitProvider(
     private val driveFileHttpProvider: DriveFileHttpProvider,
     private val driveCache: DriveFileProviderCached,
 ) : OdinApiProviderBase(httpClient, credentialsManager) {
-
-    // Every Odin host advertises its CDN base on every response, and one worker serves the fleet, so the
-    // value learned from our own host also addresses the author's. ponytail: assumes a single fleet-wide
-    // CDN — if identities ever point at different workers this must be read from the author's host instead.
-    private var cdnBase: String? = null
 
     // Hosts whose CDN read failed. A host that doesn't share the worker's CDN token hard-401s with no
     // anonymous fallback, and a drive without AllowCdn 404s — both permanent, so retrying per image would
@@ -155,7 +150,6 @@ class PeerFileByGlobalTransitProvider(
         // Only reached on a cache miss, so one line here is exactly one network read.
         Logger.i(tag = TAG) { "GET $url" }
         val response = requestBytes(maxBytes) { httpClient.get(url) { bearerAuth(token) } }
-        learnCdnBase(response.headers)
         // 404 becomes NotFoundException, which the cache memoises so a followed post with no
         // server-side thumbnail stops being re-requested on every scroll past it.
         throwForFailure(response)
@@ -164,16 +158,10 @@ class PeerFileByGlobalTransitProvider(
 
     private suspend fun cdnUrlFor(peer: OdinId, remotePath: String): String? =
         cdnStateLock.withLock {
-            val base = cdnBase ?: return@withLock null
+            val base = CdnAdvertisement.baseUrl ?: return@withLock null
             if (peer.toString() in peerOnlyHosts) return@withLock null
             "$base/?forward=${"https://$peer/api/v2$remotePath".encodeURLParameter()}"
         }
-
-    private suspend fun learnCdnBase(headers: Headers) {
-        if (cdnBase != null) return
-        val advertised = headers[CDN_BASE_HEADER]?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: return
-        cdnStateLock.withLock { if (cdnBase == null) cdnBase = advertised }
-    }
 
     private suspend fun markPeerOnly(peer: OdinId) {
         cdnStateLock.withLock { peerOnlyHosts.add(peer.toString()) }
@@ -193,6 +181,5 @@ class PeerFileByGlobalTransitProvider(
 
     companion object {
         private const val TAG = "PeerFileByGtid"
-        private const val CDN_BASE_HEADER = "x-odin-cdn-payload"
     }
 }
