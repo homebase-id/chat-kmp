@@ -93,8 +93,11 @@ fun EmailScreen(
 
                 setupStep == EmailSetupStep.Complete -> EmailHomeContent(
                     status = uiState.serverStatus,
+                    mailbox = uiState.mailboxStatus,
+                    selectedClient = uiState.selectedMailClient,
                     onOpenSecrets = onNavigateToSecrets,
                     onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                    onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
                     isRefreshing = uiState.isCheckingServer,
                 )
 

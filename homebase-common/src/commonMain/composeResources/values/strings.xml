@@ -1142,6 +1142,14 @@
     <string name="email_secrets_no_delete_note">Old keys are never deleted: mail received under them is only readable while they exist.</string>
     <string name="email_secrets_password_warning">Anyone with this password can read and send your mail. Enter it only in your own mail app.</string>
 
+    <!-- Email setup — mailbox status -->
+    <string name="email_mailbox_unread">%1$d unread</string>
+    <string name="email_mailbox_none_unread">Nothing unread</string>
+    <string name="email_mailbox_junk">%1$d in junk</string>
+    <string name="email_mailbox_queued">%1$d message(s) still trying to send</string>
+    <string name="email_mailbox_open_client">Open %1$s</string>
+    <string name="email_mailbox_open_failed">%1$s does not seem to be installed</string>
+
     <!-- Vault -->
     <string name="vault_label">Vault</string>
     <string name="vault_home_subtitle">Your secure document store</string>

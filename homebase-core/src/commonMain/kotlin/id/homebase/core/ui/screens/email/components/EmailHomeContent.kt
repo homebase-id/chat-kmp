@@ -28,12 +28,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.FilledTonalButton
 import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailboxStatusResult
+import id.homebase.core.email.MailClientDescriptor
+import id.homebase.core.email.canLaunchMailClient
 import id.homebase.resources.MR
 import id.homebase.resources.email_home_address_label
 import id.homebase.resources.email_home_secrets
 import id.homebase.resources.email_home_secrets_detail
 import id.homebase.resources.email_home_status_ok
+import id.homebase.resources.email_mailbox_junk
+import id.homebase.resources.email_mailbox_none_unread
+import id.homebase.resources.email_mailbox_open_client
+import id.homebase.resources.email_mailbox_queued
+import id.homebase.resources.email_mailbox_unread
 import id.homebase.resources.email_no_server_retry
 import org.jetbrains.compose.resources.stringResource
 
@@ -46,8 +55,11 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun EmailHomeContent(
     status: MailAppStatus?,
+    mailbox: MailboxStatusResult?,
+    selectedClient: MailClientDescriptor?,
     onOpenSecrets: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenMailClient: () -> Unit,
     isRefreshing: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -113,6 +125,45 @@ fun EmailHomeContent(
                         text = stringResource(MR.string.email_home_status_ok),
                         style = MaterialTheme.typography.titleSmall,
                     )
+                }
+
+                // Only when the mail server actually answered — showing "0 unread" because the
+                // question failed would be a lie the user would act on.
+                if (mailbox?.available == true) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = if (mailbox.inboxUnread > 0) {
+                            stringResource(MR.string.email_mailbox_unread, mailbox.inboxUnread)
+                        } else {
+                            stringResource(MR.string.email_mailbox_none_unread)
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+
+                    if (mailbox.junkTotal > 0) {
+                        Text(
+                            text = stringResource(MR.string.email_mailbox_junk, mailbox.junkTotal),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    // Anything queued is a delivery problem, so it gets the error colour rather
+                    // than sitting quietly with the other counts.
+                    if (mailbox.queuedOutbound > 0) {
+                        Text(
+                            text = stringResource(MR.string.email_mailbox_queued, mailbox.queuedOutbound),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    if (selectedClient != null && canLaunchMailClient(selectedClient)) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        FilledTonalButton(onClick = onOpenMailClient) {
+                            Text(stringResource(MR.string.email_mailbox_open_client, selectedClient.displayName))
+                        }
+                    }
                 }
 
                 status?.publicKeyFingerprint?.let { fingerprint ->

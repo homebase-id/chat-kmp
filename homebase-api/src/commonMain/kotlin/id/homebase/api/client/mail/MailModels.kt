@@ -87,10 +87,19 @@ data class AppPasswordIssueResult(
     val createdAt: Long = 0,
 )
 
-/** Mailbox storage. [available] is false when the mail server does not report usage. */
+/**
+ * How the mailbox is doing. [available] is false when the mail server does not report, in which
+ * case nothing here should be shown rather than shown as zero.
+ */
 @Serializable
-data class MailStorageResult(
+data class MailboxStatusResult(
     val available: Boolean = false,
     val usedBytes: Long = 0,
     val quotaBytes: Long? = null,
+    val inboxTotal: Int = 0,
+    /** The number worth showing, and what the toolbar badge keys off. */
+    val inboxUnread: Int = 0,
+    val junkTotal: Int = 0,
+    /** Above zero for long means mail is not getting out. */
+    val queuedOutbound: Int = 0,
 )

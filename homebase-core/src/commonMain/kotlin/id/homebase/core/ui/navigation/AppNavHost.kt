@@ -239,6 +239,10 @@ fun AppNavHost(
     val emailPreferences = koinInject<EmailPreferences>()
     val emailIconVisible by emailPreferences.iconVisible.collectAsStateWithLifecycle()
     val emailViewModel: EmailViewModel = koinViewModel()
+    val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val emailUnreadCount = emailUiState.mailboxStatus
+        ?.takeIf { it.available }
+        ?.inboxUnread ?: 0
     // Reactive so flipping the developer menu shows/hides the entry without an app restart.
     val showDeveloperMenu by koinInject<UserPreferences>().preferenceState
         .collectAsStateWithLifecycle()
@@ -650,6 +654,7 @@ fun AppNavHost(
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
                                     showMomentsBadge = momentsUnseenCount > 0,
+                                    showEmailBadge = emailUnreadCount > 0,
                                 )
                             },
                             label = {
@@ -2024,6 +2029,7 @@ sealed class TopLevelRoute(
 private fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
+    showEmailBadge: Boolean = false,
 ) {
     val icon: @Composable () -> Unit = {
         Icon(
@@ -2031,7 +2037,12 @@ private fun TopLevelNavIcon(
             contentDescription = stringResource(topLevelRoute.labelRes),
         )
     }
-    if (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) {
+    val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||
+        // Count-less like Moments: the dot says "there is mail", and the number itself lives on
+        // the Email setup screen where there is room to say what it means.
+        (topLevelRoute is TopLevelRoute.Email && showEmailBadge)
+
+    if (badged) {
         BadgedBox(badge = { Badge() }) { icon() }
     } else {
         icon()

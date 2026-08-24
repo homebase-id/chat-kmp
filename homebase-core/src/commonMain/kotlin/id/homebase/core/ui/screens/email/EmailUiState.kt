@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.email
 
 import id.homebase.api.client.mail.MailAppStatus
+import id.homebase.api.client.mail.MailboxStatusResult
+import id.homebase.core.email.MailClientDescriptor
 
 /**
  * What the Email setup screen renders from.
@@ -22,6 +24,10 @@ data class EmailUiState(
     val driveActivated: Boolean? = null,
     /** Credential files on the drive — the last setup step's signal. */
     val credentialCount: Int = 0,
+    /** null until email is on and the mail server has answered. */
+    val mailboxStatus: MailboxStatusResult? = null,
+    /** The mail app the user picked, if any — decides whether we can offer to open it. */
+    val selectedMailClient: MailClientDescriptor? = null,
 ) {
     /** The server answered, and answered no. Nothing to set up here. */
     val serverHasNoEmail: Boolean
@@ -41,6 +47,9 @@ sealed interface EmailUiAction {
 
     /** Re-ask the server; used by the retry on the no-email screen and on resume. */
     data object RefreshStatusClicked : EmailUiAction
+
+    /** Opens the chosen mail app, if this platform knows how. */
+    data object OpenMailClientClicked : EmailUiAction
 }
 
 sealed interface EmailUiEvent {
@@ -48,6 +57,9 @@ sealed interface EmailUiEvent {
     data object Activated : EmailUiEvent
 
     data object CloseOnboarding : EmailUiEvent
+
+    /** The chosen app could not be launched — almost always because it is not installed. */
+    data class MailClientUnavailable(val displayName: String) : EmailUiEvent
 }
 
 sealed interface EmailError {

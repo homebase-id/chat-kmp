@@ -121,16 +121,16 @@ class MailProvider(
         throwForFailure(response)
     }
 
-    /** Mailbox storage, or available = false when the mail server does not report it. */
-    suspend fun getStorage(): MailStorageResult {
+    /** Mailbox state, or available = false when the mail server does not report it. */
+    suspend fun getMailboxStatus(): MailboxStatusResult {
         val creds = requireCreds()
         val response = encryptedGet(
-            url = apiUrl(creds.domain, "$BASE/storage"),
+            url = apiUrl(creds.domain, "$BASE/mailbox"),
             token = creds.accessToken,
             secret = creds.secret,
         )
         throwForFailure(response)
-        return deserialize<MailStorageResult>(response.body)
+        return deserialize<MailboxStatusResult>(response.body)
     }
 
     /**

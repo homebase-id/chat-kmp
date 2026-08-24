@@ -7,6 +7,8 @@ import id.homebase.api.client.mail.MailProvider
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.emailLabeledDrive
 import id.homebase.core.email.EmailPreferences
+import id.homebase.core.email.MailClientCatalog
+import id.homebase.core.email.launchMailClient
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.email.setup.EmailSetupStep
 import id.homebase.core.ui.screens.email.setup.resolveSetupStep
@@ -71,6 +73,12 @@ class EmailViewModel(
         }
 
         viewModelScope.launch {
+            emailPreferences.selectedMailClientId.collect { id ->
+                _uiState.update { it.copy(selectedMailClient = MailClientCatalog.byId(id)) }
+            }
+        }
+
+        viewModelScope.launch {
             emailStream.credentials.collect { credentials ->
                 _uiState.update { it.copy(credentialCount = credentials.size) }
             }
@@ -116,6 +124,15 @@ class EmailViewModel(
             }
 
             EmailUiAction.RefreshStatusClicked -> refreshStatus()
+
+            EmailUiAction.OpenMailClientClicked -> viewModelScope.launch {
+                val client = MailClientCatalog.byId(emailPreferences.selectedMailClientId.value)
+                    ?: return@launch
+                // False means not installed — say so rather than appearing to do nothing.
+                if (!launchMailClient(client)) {
+                    _events.tryEmit(EmailUiEvent.MailClientUnavailable(client.displayName))
+                }
+            }
         }
     }
 
@@ -125,6 +142,13 @@ class EmailViewModel(
             try {
                 val status = mailProvider.getStatus()
                 _uiState.update { it.copy(serverStatus = status, isCheckingServer = false) }
+
+                // Only once email is actually on: before that there is no mailbox to ask about,
+                // and a failure here must not make the whole screen look broken.
+                if (status.activated) {
+                    val mailbox = runCatching { mailProvider.getMailboxStatus() }.getOrNull()
+                    _uiState.update { it.copy(mailboxStatus = mailbox) }
+                }
             } catch (e: Exception) {
                 // A failed call is not the same answer as "this server has no email" — the user
                 // is told to retry rather than told their server does not support it.
