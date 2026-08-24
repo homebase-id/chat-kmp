@@ -6,6 +6,10 @@ import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.GrantOn
 import id.homebase.api.client.connections.RedactedCircleDefinition
+import id.homebase.api.client.connections.RedactedCircleDriveGrant
+import id.homebase.api.client.connections.RedactedPermissionedDrive
+import id.homebase.api.client.connections.RedactedTargetDrive
+import id.homebase.core.ui.screens.contactbook.review.isGrantableByForTest
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
 import id.homebase.core.ui.screens.contactbook.review.ReviewAppToggle
@@ -208,5 +212,98 @@ class ReviewOutcomeTest {
     @Test
     fun anAppDefaultAloneDoesNotClaimCircleState() {
         assertFalse(state(checkedApps = setOf("app")).addsToCircles)
+    }
+}
+
+private val autoConnectedSystemCircle = circle(
+    id = "9e22b42952f74d2580e11250b651d343",
+    name = "Auto-connected Identities",
+    grantOn = GrantOn.None,
+    designation = CircleDesignation.Personal,
+    members = listOf("frodo.dotyou.cloud"),
+)
+
+private val confirmedSystemCircle = circle(
+    id = "bb2683fa402aff866e771a6495765a15",
+    name = "Confirmed Connected Identities",
+    grantOn = GrantOn.None,
+    designation = CircleDesignation.Personal,
+    members = listOf("frodo.dotyou.cloud"),
+)
+
+/**
+ * The live server returns both legacy system circles as grantOn=None designation=Personal
+ * appId=null — indistinguishable from a user circle — so an auto-connected identity was
+ * classified Circle instead of New.
+ */
+class LegacySystemCircleTest {
+
+    private val states = ContactStates(
+        listOf(chatOnly, family, autoConnectedSystemCircle, confirmedSystemCircle),
+    )
+
+    @Test
+    fun autoConnectedSystemCircleDoesNotPromoteToCircle() {
+        assertEquals(ContactState.New, states.stateFor(reg("frodo.dotyou.cloud")))
+    }
+
+    @Test
+    fun confirmedSystemCircleDoesNotPromoteToCircle() {
+        assertTrue(states.personalCirclesFor("frodo.dotyou.cloud").isEmpty())
+    }
+
+    @Test
+    fun aRealUserCircleStillCounts() {
+        assertEquals(ContactState.Circle, states.stateFor(reg("sam.dotyou.cloud")))
+    }
+}
+
+/**
+ * A circle over a drive this app holds no grant on (Emergency Location Access → Location drive)
+ * would be rejected server-side with CannotSourceDriveStorageKeyForGrant, so the picker must not
+ * offer it as selectable.
+ */
+class CircleGrantabilityTest {
+
+    private val chatDrive = "9ff813af-f2d6-1e2f-9b9d-b189e72d1a11"
+    private val locationDrive = "2e191a14-8640-4ebc-b0c8-aaac913f6fa8"
+    private val appDrives = setOf(chatDrive.replace("-", "").lowercase())
+
+    private fun circleOver(vararg aliases: String) = RedactedCircleDefinition(
+        id = "x",
+        name = "c",
+        grantOn = GrantOn.None,
+        designation = CircleDesignation.Personal,
+        driveGrants = aliases.map {
+            RedactedCircleDriveGrant(
+                RedactedPermissionedDrive(RedactedTargetDrive(alias = it, type = "t"), "read")
+            )
+        },
+    )
+
+    @Test
+    fun circleOverAGrantedDriveIsGrantable() {
+        assertTrue(circleOver(chatDrive).isGrantableByForTest(appDrives))
+    }
+
+    @Test
+    fun circleOverAnotherAppsDriveIsNotGrantable() {
+        assertFalse(circleOver(locationDrive).isGrantableByForTest(appDrives))
+    }
+
+    @Test
+    fun oneUngrantableDriveDisqualifiesTheWholeCircle() {
+        assertFalse(circleOver(chatDrive, locationDrive).isGrantableByForTest(appDrives))
+    }
+
+    @Test
+    fun permissionOnlyCircleIsGrantable() {
+        assertTrue(circleOver().isGrantableByForTest(appDrives))
+    }
+
+    /** Unknown grants must not disable anything — the server stays the backstop. */
+    @Test
+    fun unknownAppDrivesFailsOpen() {
+        assertTrue(circleOver(locationDrive).isGrantableByForTest(null))
     }
 }

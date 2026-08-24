@@ -322,7 +322,7 @@ class ContactBookViewModel(
             statesByOdinId = stateInfos,
             filterCircles = circlesData.circles
                 .map { it.circle }
-                .filter { it.isOwnerGrantedPersonal }
+                .filter { it.countsAsOwnerCircle() }
                 .sortedBy { it.name.lowercase() },
             selectedCircleId = selectedCircleId,
             reviewing = circlesData.reviewing,

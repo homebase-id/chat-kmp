@@ -235,6 +235,12 @@ class ConnectionService(
                 val connected = connectedDeferred.await()
                 val blocked = blockedDeferred.await()
                 Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
+                Logger.d {
+                    "ReviewDiag/connections " + connected.results.joinToString {
+                        "${it.odinId.domainName}[reviewedAt=${it.reviewedAt} vetted=${it.vetted} " +
+                            "origin=${it.connectionRequestOrigin}]"
+                    }
+                }
                 _connections.value = ConnectionState(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
@@ -244,8 +250,13 @@ class ConnectionService(
                     // Verifies the Confirmed (bb2683fa…) / Auto (9e22b429…) system-circle ids
                     // actually come back here so the membership-driven pills are reliable.
                     Logger.d {
-                        "ConnectionService circles: " +
-                            circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
+                        "ReviewDiag/circles " +
+                            circles.joinToString {
+                                "${it.circle.id}(${it.circle.name}) grantOn=${it.circle.grantOn} " +
+                                    "designation=${it.circle.designation} appId=${it.circle.appId} " +
+                                    "ownerPersonal=${it.circle.isOwnerGrantedPersonal} " +
+                                    "members=${it.members.map { m -> m.domainName }}"
+                            }
                     }
                 }
                 runCatching {

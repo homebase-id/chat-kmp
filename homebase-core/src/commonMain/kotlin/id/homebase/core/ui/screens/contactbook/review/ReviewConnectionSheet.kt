@@ -28,12 +28,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
 import id.homebase.resources.review_app_pending
 import id.homebase.resources.review_apps_header
 import id.homebase.resources.review_block
 import id.homebase.resources.review_chat_only_helper
+import id.homebase.resources.review_circles_helper
+import id.homebase.resources.review_circle_other_app
 import id.homebase.resources.review_circles_header
 import id.homebase.resources.review_disconnect
 import id.homebase.resources.review_explainer
@@ -112,10 +115,10 @@ fun ReviewConnectionSheet(
                 )
             } else {
                 SectionLabel(stringResource(MR.string.review_circles_header))
-                // Special-permission circles (Emergency Location Access) sit below a divider so
-                // they read as a deliberate grant rather than another social circle.
-                val (special, ordinary) = uiState.circles.partition { it.special }
-                ordinary.forEach { circle ->
+                // Circles this app can't grant stay visible below a divider rather than
+                // vanishing — a missing circle reads as a bug, a disabled one explains itself.
+                val (grantable, ungrantable) = uiState.circles.partition { it.grantable }
+                grantable.forEach { circle ->
                     CircleCheckbox(
                         circle = circle,
                         checked = circle.id in uiState.selectedCircleIds,
@@ -123,14 +126,15 @@ fun ReviewConnectionSheet(
                         onToggle = { onAction(ReviewConnectionUiAction.CircleToggled(circle.id)) },
                     )
                 }
-                if (special.isNotEmpty()) {
+                if (ungrantable.isNotEmpty()) {
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    special.forEach { circle ->
+                    ungrantable.forEach { circle ->
                         CircleCheckbox(
                             circle = circle,
-                            checked = circle.id in uiState.selectedCircleIds,
-                            enabled = !uiState.submitting,
-                            onToggle = { onAction(ReviewConnectionUiAction.CircleToggled(circle.id)) },
+                            checked = false,
+                            enabled = false,
+                            reason = stringResource(MR.string.review_circle_other_app),
+                            onToggle = {},
                         )
                     }
                 }
@@ -163,15 +167,6 @@ fun ReviewConnectionSheet(
                     checked = uiState.followFeed,
                     enabled = !uiState.submitting,
                     onCheckedChange = { onAction(ReviewConnectionUiAction.FollowFeedToggled(it)) },
-                )
-            }
-
-            if (!uiState.addsToCircles) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(MR.string.review_chat_only_helper),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -221,7 +216,23 @@ fun ReviewConnectionSheet(
                 }
             }
 
-            Spacer(Modifier.height(4.dp))
+            // Supporting text for the button, not a floating remark: it sits tight under the
+            // action it describes and always renders, so switching destination reads as the same
+            // line changing rather than an alert appearing.
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = if (uiState.addsToCircles) {
+                    stringResource(MR.string.review_circles_helper)
+                } else {
+                    stringResource(MR.string.review_chat_only_helper)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -259,19 +270,33 @@ private fun CircleCheckbox(
     checked: Boolean,
     enabled: Boolean,
     onToggle: () -> Unit,
+    reason: String? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() }, enabled = enabled)
-        // Full name, never the abbreviation — this is a roomy context.
-        val label = circle.emoji?.let { "$it ${circle.name}" } ?: circle.name
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            // Full name, never the abbreviation — this is a roomy context.
+            val label = circle.emoji?.let { "$it ${circle.name}" } ?: circle.name
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            if (reason != null) {
+                Text(
+                    text = reason,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

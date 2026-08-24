@@ -1588,6 +1588,7 @@
     <string name="review_introduced_by">You were introduced by %1$s.</string>
     <string name="review_explainer">Add %1$s to one or more circles if you want them to see more of your profile.</string>
     <string name="review_circles_header">Your circles</string>
+    <string name="review_circle_other_app">Managed in another app</string>
     <string name="review_apps_header">App defaults</string>
     <string name="review_apps_summary">Homebase apps</string>
     <string name="review_app_pending">Pending — takes effect when that app next runs</string>
@@ -1595,6 +1596,7 @@
     <string name="review_submit_circles">Add to circles</string>
     <string name="review_submit_chat_only">Chat only</string>
     <string name="review_chat_only_helper">They will see your public profile only. You can add them to circles anytime.</string>
+    <string name="review_circles_helper">They will see the profile details you share with these circles.</string>
     <string name="review_keep_as_new">Keep as new</string>
     <string name="review_disconnect">Disconnect</string>
     <string name="review_block">Block</string>

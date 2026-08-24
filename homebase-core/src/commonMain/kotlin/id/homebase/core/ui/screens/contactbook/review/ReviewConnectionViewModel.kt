@@ -7,9 +7,15 @@ import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.connections.RedactedCircleDefinition
+import id.homebase.api.client.follow.FollowNotificationType
+import id.homebase.api.client.follow.FollowProvider
+import id.homebase.api.client.follow.FollowRequest
+import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.core.ui.screens.contactbook.appDefaultToggles
+import id.homebase.core.ui.screens.contactbook.countsAsOwnerCircle
 import id.homebase.core.ui.screens.contactbook.reviewEnrollment
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +41,8 @@ class ReviewConnectionViewModel(
     private val odinIdArg: String,
     private val connectionService: ConnectionService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
+    private val followProvider: FollowProvider,
+    private val securityContextProvider: SecurityContextProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReviewConnectionUiState(odinId = odinIdArg))
@@ -46,9 +54,38 @@ class ReviewConnectionViewModel(
     private val odinId = OdinId(odinIdArg)
     private var circleSnapshot: List<CircleWithMembers> = emptyList()
 
+    /** Follow state when the modal opened — the switch only calls out when it actually changed. */
+    private var followedAtOpen = false
+
+    /**
+     * Normalized aliases of drives this app token holds a grant on. Null = the security context
+     * couldn't be read; every circle then renders selectable and the server's rejection is the
+     * backstop, rather than disabling circles on a guess.
+     */
+    private var appDriveAliases: Set<String>? = null
+
     init {
         viewModelScope.launch {
+            // Resolve grantability first so circles never render selectable and then flip to
+            // disabled under the user's finger.
+            appDriveAliases = runCatching { securityContextProvider.getSecurityContext() }
+                .getOrNull()
+                ?.permissionContext
+                ?.permissionGroups
+                ?.flatMap { it.driveGrants.orEmpty() }
+                ?.mapTo(mutableSetOf()) { it.permissionedDrive.drive.alias.normalizedGuid() }
+            if (appDriveAliases == null) {
+                Logger.w(TAG) { "security context unavailable — circle grantability unchecked" }
+            }
             connectionService.circles.collect { state -> applyCircles(state.circles) }
+        }
+        viewModelScope.launch {
+            runCatching { followProvider.isFollowing(odinId) }
+                .onSuccess { following ->
+                    followedAtOpen = following
+                    _uiState.update { it.copy(followFeed = following) }
+                }
+                .onFailure { Logger.w(it, TAG) { "isFollowing check failed for $odinIdArg" } }
         }
         viewModelScope.launch {
             connectionService.connections.collect { state ->
@@ -63,14 +100,14 @@ class ReviewConnectionViewModel(
         circleSnapshot = circles
         val options = circles
             .map { it.circle }
-            .filter { it.isOwnerGrantedPersonal && !it.disabled && it.name.isNotBlank() }
+            .filter { it.countsAsOwnerCircle() && !it.disabled && it.name.isNotBlank() }
             .sortedBy { it.name.lowercase() }
             .map {
                 ReviewCircleOption(
                     id = it.id,
                     name = it.name,
                     emoji = it.emoji?.takeIf { e -> e.isNotBlank() },
-                    special = it.permissions?.keys?.isNotEmpty() == true,
+                    grantable = it.isGrantableBy(appDriveAliases),
                 )
             }
         val toggles = appDefaultToggles(circles).map { app ->
@@ -80,6 +117,19 @@ class ReviewConnectionViewModel(
                     ?: app.connectCircles.firstOrNull()?.name.orEmpty(),
                 circleIds = (app.reviewCircles + app.connectCircles).map { it.id },
             )
+        }
+        // ReviewDiag: temporary.
+        Logger.d {
+            "ReviewDiag/modal raw=${circles.size} shown=${options.map { it.name }} " +
+                "ungrantable=${options.filterNot { it.grantable }.map { it.name }} " +
+                "appDrives=${appDriveAliases?.size} " +
+                "toggles=${toggles.map { "${it.label}:${it.appId}" }} " +
+                "rejected=" + circles.map { it.circle }
+                    .filterNot { it.countsAsOwnerCircle() && !it.disabled && it.name.isNotBlank() }
+                    .map {
+                        "${it.name}(owner=${it.countsAsOwnerCircle()},disabled=${it.disabled}," +
+                            "blankName=${it.name.isBlank()})"
+                    }
         }
         _uiState.update { state ->
             state.copy(
@@ -103,6 +153,7 @@ class ReviewConnectionViewModel(
     fun onAction(action: ReviewConnectionUiAction) {
         when (action) {
             is ReviewConnectionUiAction.CircleToggled -> _uiState.update { state ->
+                if (state.circles.none { it.id == action.circleId && it.grantable }) return@update state
                 val next = if (action.circleId in state.selectedCircleIds) {
                     state.selectedCircleIds - action.circleId
                 } else {
@@ -159,6 +210,10 @@ class ReviewConnectionViewModel(
 
             try {
                 connectionService.review(odinId, ids.map { Uuid.parse(it) })
+                // Following is orthogonal to the review — it grants them nothing and is not a
+                // rung on the ladder, so it is its own call and its failure must not fail the
+                // review that already succeeded.
+                applyFollow(state.followFeed)
                 _events.tryEmit(ReviewConnectionUiEvent.Completed(state.addsToCircles))
             } catch (e: ClientException) {
                 Logger.w(e, TAG) { "review failed for $odinIdArg code=${e.errorCode}" }
@@ -168,6 +223,20 @@ class ReviewConnectionViewModel(
                 _uiState.update { it.copy(submitting = false, error = ReviewError.Generic) }
             }
         }
+    }
+
+    private suspend fun applyFollow(follow: Boolean) {
+        if (follow == followedAtOpen) return
+        runCatching {
+            if (follow) {
+                followProvider.follow(
+                    FollowRequest(odinId, FollowNotificationType.AllNotifications),
+                )
+                followProvider.syncFeedHistory(odinId)
+            } else {
+                followProvider.unfollow(odinId)
+            }
+        }.onFailure { Logger.w(it, TAG) { "follow toggle failed for $odinIdArg (review succeeded)" } }
     }
 
     private fun disconnect() = runTerminal(ReviewConnectionUiEvent.Disconnected) {
@@ -200,3 +269,24 @@ private fun OdinClientErrorCode.toReviewError(): ReviewError = when (this) {
     OdinClientErrorCode.CircleNotOwnedByApp -> ReviewError.CircleNotAllowed
     else -> ReviewError.Generic
 }
+
+private fun String.normalizedGuid(): String = replace("-", "").lowercase()
+
+/**
+ * The server needs a storage key for every drive a circle grants (rejecting otherwise with
+ * CannotSourceDriveStorageKeyForGrant). This app can only source keys for drives it holds a grant
+ * on, so an owner circle over another app's drive — Emergency Location Access over the Location
+ * drive — cannot be granted from here. A null [appDriveAliases] means "unknown", so allow it and
+ * let the server decide.
+ */
+internal fun RedactedCircleDefinition.isGrantableBy(appDriveAliases: Set<String>?): Boolean {
+    if (appDriveAliases == null) return true
+    return driveGrants.orEmpty().all { grant ->
+        val alias = grant.permissionedDrive?.drive?.alias ?: return@all true
+        alias.normalizedGuid() in appDriveAliases
+    }
+}
+
+/** Test seam: [isGrantableBy] is the production path and must stay the only implementation. */
+internal fun RedactedCircleDefinition.isGrantableByForTest(appDriveAliases: Set<String>?): Boolean =
+    isGrantableBy(appDriveAliases)

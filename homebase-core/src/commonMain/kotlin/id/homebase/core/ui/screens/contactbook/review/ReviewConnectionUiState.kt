@@ -8,8 +8,11 @@ data class ReviewCircleOption(
     val id: String,
     val name: String,
     val emoji: String?,
-    /** Circles carrying special permissions (Emergency Location Access) render set apart. */
-    val special: Boolean = false,
+    /**
+     * False when this app holds no grant on a drive the circle grants — the server would reject
+     * the enrolment with CannotSourceDriveStorageKeyForGrant. Shown, but not selectable.
+     */
+    val grantable: Boolean = true,
 )
 
 /**

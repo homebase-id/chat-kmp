@@ -1033,6 +1033,8 @@ val appModule = module {
             odinIdArg = params.get(),
             connectionService = get(),
             connectionNetworkProvider = get(),
+            followProvider = get(),
+            securityContextProvider = get(),
         )
     }
     viewModelOf(::ContactDetailViewModel)
