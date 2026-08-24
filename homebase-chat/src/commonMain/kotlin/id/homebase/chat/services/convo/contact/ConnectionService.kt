@@ -165,6 +165,7 @@ class ConnectionService(
         scope.launch {
             hydrateFromCache()
             launchRefresh()
+            drainPendingEnrollments()
         }
     }
 
@@ -182,6 +183,23 @@ class ConnectionService(
         started = false
         _connections.value = ConnectionState(isLoaded = false, map = emptyMap())
         _circles.value = CircleMembershipState()
+    }
+
+    /**
+     * Review decisions that needed this app's key are queued server-side and retried by nothing
+     * else — if no app drains them, the owner's choice silently never takes effect. Failure here
+     * is not fatal to start-up: the next launch retries.
+     */
+    private suspend fun drainPendingEnrollments() {
+        try {
+            val completed = provider.processPendingEnrollments()
+            if (completed > 0) {
+                Logger.i { "ConnectionService completed $completed pending circle enrollments" }
+                refresh()
+            }
+        } catch (e: Exception) {
+            Logger.w(e) { "ConnectionService pending-enrollment drain failed" }
+        }
     }
 
     private suspend fun hydrateFromCache() {
@@ -292,6 +310,36 @@ class ConnectionService(
     suspend fun addToCircle(circleId: Uuid, odinId: OdinId) {
         provider.addToCircle(circleId, odinId)
         refresh()
+    }
+
+    /**
+     * Completes the connection review: stamps `reviewedAt` and enrols [circleIds] atomically.
+     * An empty [circleIds] is the chat-only outcome — it records the decision and grants nothing.
+     *
+     * [circleIds] must already be the full list the server should enrol, including the `Connect`
+     * circle of any checked app the contact isn't yet a member of; the server expands nothing
+     * and warns about nothing. Build it with
+     * `id.homebase.core.ui.screens.contactbook.reviewEnrollment`.
+     */
+    suspend fun review(odinId: OdinId, circleIds: List<Uuid>) {
+        provider.review(odinId, circleIds)
+        refresh()
+    }
+
+    /** Clears the review stamp. Rejected while the contact holds an owner-granted personal circle. */
+    suspend fun unreview(odinId: OdinId) {
+        provider.unreview(odinId)
+        refresh()
+    }
+
+    /**
+     * Drains review decisions queued waiting on this app's key. Nothing else retries them, so an
+     * owner's choice never takes effect if this is never called — it belongs on app start-up.
+     */
+    suspend fun processPendingEnrollments(): Int {
+        val completed = provider.processPendingEnrollments()
+        if (completed > 0) refresh()
+        return completed
     }
 
     /** Revoke [odinId]'s membership in [circleId] — also drops any still-pending deposit. */

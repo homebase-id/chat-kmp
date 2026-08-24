@@ -31,8 +31,48 @@ class ConnectionNetworkProvider(
         const val TAG = "ConnectionNetworkProvider"
     }
 
+    /** Superseded by [review]; kept while the server still serves the pre-V2 shape. */
     suspend fun confirmConnection(odinId: OdinId) {
         postOdinId("/connections/confirm-connection", odinId)
+    }
+
+    /**
+     * Stamps `reviewedAt` and enrolls [circleIds] in one transaction. Empty [circleIds] is the
+     * chat-only outcome. Additive and idempotent — nothing is ever revoked here.
+     *
+     * Callers must pass the full list: the app's checked `Review` circles *and* the `Connect`
+     * circle of any checked app the contact isn't already in. The server expands neither, and a
+     * missing `Connect` circle silently leaves an approved contact without chat write.
+     */
+    suspend fun review(odinId: OdinId, circleIds: List<Uuid>) {
+        post("/connections/review", ReviewConnectionRequest(odinId, circleIds))
+    }
+
+    /**
+     * Clears `reviewedAt`. Throws [id.homebase.api.client.OdinException] with
+     * [id.homebase.api.client.OdinErrorCode.CannotUnreviewCircleMember] while the contact still
+     * holds an owner-granted personal circle — remove them from those circles first.
+     */
+    suspend fun unreview(odinId: OdinId) {
+        postOdinId("/connections/unreview", odinId)
+    }
+
+    /**
+     * Drains review decisions that were queued waiting on *this* app's key. Nothing else retries
+     * them, so this runs at app start-up. Returns how many completed.
+     */
+    suspend fun processPendingEnrollments(): Int {
+        val creds = requireCreds()
+
+        val response = encryptedPostJson(
+            url = apiUrl(creds.domain, "/connections/pending-enrollments/process"),
+            token = creds.accessToken,
+            jsonBody = "{}",
+            secret = creds.secret,
+        )
+
+        throwForFailure(response)
+        return response.body.trim().toIntOrNull() ?: 0
     }
 
     suspend fun verifyConnection(odinId: OdinId): IcrVerificationResult {

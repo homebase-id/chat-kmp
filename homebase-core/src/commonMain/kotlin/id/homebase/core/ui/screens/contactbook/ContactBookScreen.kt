@@ -32,6 +32,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,8 @@ import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
+import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionSheet
+import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionViewModel
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_error_circle_action
@@ -76,6 +79,8 @@ import id.homebase.resources.clear_input
 import id.homebase.resources.menu_back
 import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
@@ -306,6 +311,36 @@ fun ContactBookScreen(
             odinIdLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
         )
         null -> {}
+    }
+
+    uiState.reviewing?.let { entry ->
+        val odinId = entry.odinId
+        if (odinId != null) {
+            val reviewViewModel: ReviewConnectionViewModel = koinViewModel(
+                key = odinId,
+                parameters = { parametersOf(odinId) },
+            )
+            val reviewState by reviewViewModel.uiState.collectAsStateWithLifecycle()
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+            LaunchedEffect(entry.uniqueId) {
+                reviewViewModel.setDisplayName(entry.displayName)
+            }
+            LaunchedEffect(reviewViewModel) {
+                reviewViewModel.events.collect {
+                    // Every outcome closes the sheet; the contact's new state re-renders from
+                    // the refreshed connection data the service already pushed.
+                    viewModel.onAction(ContactBookUiAction.ReviewDismissed)
+                }
+            }
+
+            ReviewConnectionSheet(
+                uiState = reviewState,
+                sheetState = sheetState,
+                onAction = reviewViewModel::onAction,
+                onDismiss = { viewModel.onAction(ContactBookUiAction.ReviewDismissed) },
+            )
+        }
     }
 
     uiState.circleMembers?.let { members ->

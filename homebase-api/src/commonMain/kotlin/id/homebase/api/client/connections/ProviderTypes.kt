@@ -35,6 +35,17 @@ data class AcceptConnectionRequestV2(
     val circleIds: List<Uuid> = emptyList()
 )
 
+/**
+ * Body for `POST /connections/review`. The server enrolls exactly [circleIds] — it does not
+ * expand an app's `GrantOn = Review` defaults for you, and it does not warn when a checked
+ * app's `Connect` circle is missing from the list.
+ */
+@Serializable
+data class ReviewConnectionRequest(
+    val odinId: OdinId,
+    val circleIds: List<Uuid> = emptyList(),
+)
+
 @Serializable
 data class RevokeCircleMembershipRequest(
     val odinId: OdinId,
@@ -72,7 +83,61 @@ data class RedactedCircleDefinition(
     val lastUpdated: Long = 0,
     val permissions: RedactedPermissionSet? = null,
     val driveGrants: List<RedactedCircleDriveGrant>? = null,
-)
+    /** Null = an owner circle; otherwise the app that registered it. */
+    val appId: String? = null,
+    val grantOn: GrantOn = GrantOn.Unknown,
+    val designation: CircleDesignation = CircleDesignation.Unknown,
+    /** May be a multi-codepoint ZWJ sequence — never substring it. */
+    val emoji: String? = null,
+) {
+    /**
+     * A circle the owner deliberately granted, as opposed to one an app enrolls. The same
+     * predicate the server uses to reject un-review (3012), so the two cannot drift: an
+     * app's auto-connect circle may be designated PERSONAL (chat's "Chat-only" is), and
+     * counting those would put every connection in a circle.
+     */
+    val isOwnerGrantedPersonal: Boolean
+        get() = designation == CircleDesignation.Personal && grantOn == GrantOn.None
+}
+
+/**
+ * When the owning app's circle is enrolled. Unrecognized values decode to [Unknown]
+ * (`coerceInputValues`), which keeps [RedactedCircleDefinition.isOwnerGrantedPersonal]
+ * fail-closed against a value added server-side later.
+ */
+@Serializable
+enum class GrantOn {
+    @SerialName("unknown")
+    Unknown,
+
+    @SerialName("none")
+    None,
+
+    @SerialName("connect")
+    Connect,
+
+    @SerialName("ownFlowConnect")
+    OwnFlowConnect,
+
+    @SerialName("review")
+    Review,
+}
+
+/** Presentation and filtering only — never an ACL input. */
+@Serializable
+enum class CircleDesignation {
+    @SerialName("unknown")
+    Unknown,
+
+    @SerialName("personal")
+    Personal,
+
+    @SerialName("audience")
+    Audience,
+
+    @SerialName("vendor")
+    Vendor,
+}
 
 @Serializable
 data class RedactedCircleDriveGrant(
@@ -111,14 +176,21 @@ data class RedactedIdentityConnectionRegistration(
     val hasVerificationHash: Boolean,
     val rku: Boolean,
     /**
-     * True when this identity is connected AND a member of the Confirmed Connections system
-     * circle — server-computed (see issue #919). False covers everyone else who's connected but
-     * unconfirmed: auto-connected/introduced identities, and any plain direct connection that
-     * hasn't been explicitly confirmed. Defaulted so deserialization stays safe against any
-     * response shape that hasn't rolled this field out yet.
+     * When the owner completed the connection review. Null = never reviewed ("New").
+     * Absent on guest-viewer responses, which carry no judgment fields at all.
      */
+    val reviewedAt: Long? = null,
+    /**
+     * Circles the owner chose whose grants aren't in effect yet, because the owning app hasn't
+     * called `pending-enrollments/process` since. Render as pending, not granted.
+     */
+    val pendingCircleEnrollments: List<@Serializable(with = GuidIdUuidSerializer::class) Uuid> = emptyList(),
+    /** Legacy alias, now served as `reviewedAt != null`. Read [isReviewed], not this. */
     val vetted: Boolean = false
-)
+) {
+    /** Tolerates a server still on the pre-V2 shape, where only [vetted] is populated. */
+    val isReviewed: Boolean get() = reviewedAt != null || vetted
+}
 
 // ------------------------------------------------------------
 // ACCESS GRANTS

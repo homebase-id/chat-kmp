@@ -12,7 +12,7 @@ data class CircleMemberPickerUiState(
 )
 
 /** A connected identity shown in the add-to-circle picker. [eligible] is false for a connected
- *  but unvetted (unconfirmed) identity — the server rejects circles/add for those with
+ *  but unreviewed identity — the server rejects circles/add for those with
  *  CannotGrantAutoConnectedMoreCircles, so the row is shown (not hidden) but disabled, with a
  *  reason, rather than silently vanishing from the list. */
 data class CircleMemberCandidate(

@@ -60,7 +60,7 @@ import id.homebase.resources.location_emergency_add_already_member
 import id.homebase.resources.location_emergency_add_none_eligible
 import id.homebase.resources.location_emergency_add_succeeded
 import id.homebase.resources.location_emergency_add_title
-import id.homebase.resources.location_emergency_add_unvetted_reason
+import id.homebase.resources.location_emergency_add_unreviewed_reason
 import id.homebase.resources.menu_back
 import id.homebase.resources.remove
 import kotlinx.coroutines.launch
@@ -131,7 +131,7 @@ private fun EmergencyContactPickerUi(
     searchTextState: TextFieldState,
     onUiAction: (EmergencyContactPickerUiAction) -> Unit,
 ) {
-    val unvettedReason = stringResource(MR.string.location_emergency_add_unvetted_reason)
+    val unreviewedReason = stringResource(MR.string.location_emergency_add_unreviewed_reason)
     Scaffold(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -245,11 +245,11 @@ private fun EmergencyContactPickerUi(
                         }
                     }
                     items(group.contacts, key = { it.odinId.domainName }) { contact ->
-                        val eligible = contact.connection?.vetted == true
+                        val eligible = contact.connection?.isReviewed == true
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,
-                            annotation = if (!eligible) unvettedReason else null,
+                            annotation = if (!eligible) unreviewedReason else null,
                             annotationColor = if (!eligible) HomebaseTheme.extendedColors.warning else null,
                             selectionMode = true,
                             isSelectionEnabled = eligible,
