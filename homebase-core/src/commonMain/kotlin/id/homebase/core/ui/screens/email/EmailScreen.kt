@@ -35,6 +35,8 @@ import id.homebase.resources.email_checking
 import id.homebase.resources.email_home_subtitle
 import id.homebase.resources.email_label
 import id.homebase.resources.email_no_server_retry
+import id.homebase.resources.email_unreachable_body
+import id.homebase.resources.email_unreachable_title
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -142,8 +144,17 @@ private fun EmailStatusUnavailable(onRetry: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = stringResource(MR.string.email_checking),
+            text = stringResource(MR.string.email_unreachable_title),
             style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            // Said explicitly, because the two answers look identical from here and only one of
+            // them means anything about the server's capabilities.
+            text = stringResource(MR.string.email_unreachable_body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(16.dp))

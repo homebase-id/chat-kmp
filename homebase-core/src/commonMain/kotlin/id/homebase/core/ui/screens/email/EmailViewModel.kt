@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.email
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.mail.MailProvider
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.emailLabeledDrive
@@ -39,6 +40,7 @@ class EmailViewModel(
     private val optionalDriveActivation: OptionalDriveActivation,
     private val mailProvider: MailProvider,
     private val emailStream: EmailStream,
+    private val credentialsManager: CredentialsManager,
 ) : ViewModel() {
 
     companion object {
@@ -88,7 +90,18 @@ class EmailViewModel(
         // so the stream is started here too rather than trusting it.
         emailStream.start()
 
-        refreshStatus()
+        // This ViewModel is constructed by AppNavHost at composition — before login. Asking the
+        // server anything then throws on missing credentials and leaves the screen stuck on an
+        // error until the user retries by hand, so wait for credentials instead. Re-firing when
+        // they change also refreshes after a login or an identity switch, which is when the
+        // answer is most likely to have changed.
+        viewModelScope.launch {
+            credentialsManager.credentialsFlow.collect { credentials ->
+                if (credentials != null) {
+                    refreshStatus()
+                }
+            }
+        }
     }
 
     /**

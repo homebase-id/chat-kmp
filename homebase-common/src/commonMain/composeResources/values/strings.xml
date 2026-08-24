@@ -1100,6 +1100,8 @@
     <string name="email_no_server_retry">Check again</string>
     <string name="email_no_server_close">Close</string>
     <string name="email_checking">Checking with your server…</string>
+    <string name="email_unreachable_title">Could not reach your server</string>
+    <string name="email_unreachable_body">This is not the same as your server having no email — we simply did not get an answer.</string>
     <string name="email_settings_section">Email setup</string>
     <string name="email_settings_open">Open Email setup</string>
     <string name="email_settings_show_icon">Show Email setup icon in bottom bar</string>
@@ -1117,7 +1119,9 @@
     <string name="email_setup_step_key_detail">Made for you and kept on your email drive. Mail starts arriving encrypted to it</string>
     <string name="email_setup_step_credential">Mail app password</string>
     <string name="email_setup_step_credential_detail">The password you enter in Thunderbird or any other mail app</string>
-    <string name="email_setup_run">Continue</string>
+    <string name="email_setup_action_mailbox">Create mailbox</string>
+    <string name="email_setup_action_key">Generate key</string>
+    <string name="email_setup_action_credential">Create app password</string>
     <string name="email_setup_retry">Try again</string>
     <string name="email_setup_records_manual">Your DNS is not managed here, so these records have to be added by hand.</string>
     <string name="email_setup_done_title">Email is ready</string>

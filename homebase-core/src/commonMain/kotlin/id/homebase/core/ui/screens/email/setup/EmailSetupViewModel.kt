@@ -38,8 +38,10 @@ class EmailSetupViewModel(
     val uiState: StateFlow<EmailSetupUiState> = _uiState.asStateFlow()
 
     init {
-        // mail@<identity> by default; the user can still change it before the mailbox is created,
-        // after which it is fixed because it is what mail is addressed to.
+        // Always mail@<identity>, and not editable. One address, derived from the identity, is
+        // one less thing to get wrong while the rest of the flow is being proven; additional
+        // names belong to an alias manager, which is a separate feature with its own rules
+        // (each alias has to be provisioned into the mail server and published in WKD).
         viewModelScope.launch {
             val domain = credentialsManager.getActiveCredentials()?.domain?.domainName ?: return@launch
             _uiState.update { state ->
@@ -54,9 +56,6 @@ class EmailSetupViewModel(
 
     fun onAction(action: EmailSetupUiAction) {
         when (action) {
-            is EmailSetupUiAction.AddressChanged ->
-                _uiState.update { it.copy(primaryEmailAddress = action.address) }
-
             EmailSetupUiAction.CreateMailboxClicked -> runStep(EmailSetupStep.NeedsMailbox) {
                 val result = mailProvider.ensureMailbox(_uiState.value.primaryEmailAddress)
                 _uiState.update { it.copy(dnsRecordsWritten = result.dnsRecordsWritten) }
@@ -138,7 +137,6 @@ data class EmailSetupUiState(
 )
 
 sealed interface EmailSetupUiAction {
-    data class AddressChanged(val address: String) : EmailSetupUiAction
     data object CreateMailboxClicked : EmailSetupUiAction
 
     /** Entropy is optional — empty on platforms with no motion sensor. */

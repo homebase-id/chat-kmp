@@ -1171,6 +1171,7 @@ val appModule = module {
             optionalDriveActivation = get(),
             mailProvider = get(),
             emailStream = get(),
+            credentialsManager = get(),
         )
     }
     singleOf(::EmailStream)
