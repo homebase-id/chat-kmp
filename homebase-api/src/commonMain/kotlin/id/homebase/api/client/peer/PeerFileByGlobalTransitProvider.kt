@@ -2,7 +2,6 @@ package id.homebase.api.client.peer
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.ByteApiResponse
-import id.homebase.api.client.CdnAdvertisement
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.OdinApiProviderBase
@@ -118,7 +117,6 @@ class PeerFileByGlobalTransitProvider(
         token: String,
         maxBytes: Long?,
     ): ByteApiResponse {
-        var cdnMissedButPeerMightNot = false
         cdnUrlFor(peer, remotePath)?.let { cdnUrl ->
             try {
                 Logger.i(tag = TAG) { "CDN GET $cdnUrl" }
@@ -128,22 +126,20 @@ class PeerFileByGlobalTransitProvider(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: NotFoundException) {
-                // Could be a genuinely missing file (peer will 404 too) or a drive without AllowCdn
-                // (peer serves it). Distinguished below, once we know what peer says.
-                cdnMissedButPeerMightNot = true
+                // Per-FILE, so it must not mark the host: a restricted post is invisible to the CDN
+                // caller while the same author's public posts stay edge-servable. Marking the host here
+                // let one restricted file knock a whole identity off the CDN for the session.
+                Logger.i(tag = TAG) { "CDN 404 — peer for this file only" }
             } catch (e: Exception) {
+                // Host-wide by construction: a token this host doesn't share, or a drive without
+                // AllowCdn, both surface as 401 and both stay true for every file on it.
                 markPeerOnly(peer)
                 Logger.i(tag = TAG) {
                     "CDN read failed (${e::class.simpleName}) — peer-only for $peer"
                 }
             }
         }
-
-        val response = fetch(peerUrl, token, maxBytes)
-        // Peer served what the CDN 404'd, so the drive isn't CDN-enabled. Stop paying the extra hop.
-        // If peer had 404'd too, fetch() would have thrown and the cache memoises it instead.
-        if (cdnMissedButPeerMightNot) markPeerOnly(peer)
-        return response
+        return fetch(peerUrl, token, maxBytes)
     }
 
     private suspend fun fetch(url: String, token: String, maxBytes: Long?): ByteApiResponse {
@@ -158,7 +154,7 @@ class PeerFileByGlobalTransitProvider(
 
     private suspend fun cdnUrlFor(peer: OdinId, remotePath: String): String? =
         cdnStateLock.withLock {
-            val base = CdnAdvertisement.baseUrl ?: return@withLock null
+            val base = credentialsManager.cdnBaseUrl ?: return@withLock null
             if (peer.toString() in peerOnlyHosts) return@withLock null
             "$base/?forward=${"https://$peer/api/v2$remotePath".encodeURLParameter()}"
         }

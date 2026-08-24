@@ -66,6 +66,7 @@ abstract class OdinApiProviderBase(
 ) {
 
     private val HOST_URL_REGEX = Regex("""^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+""")
+    private val CDN_BASE_HEADER = "x-odin-cdn-payload"
 
     protected data class ActiveCredentials(
         val domain: OdinId,
@@ -135,7 +136,7 @@ abstract class OdinApiProviderBase(
                 rawBody
             }
 
-        CdnAdvertisement.observe(response.headers)
+        credentialsManager.observeCdnBase(response.headers[CDN_BASE_HEADER])
 
         return ApiResponse(
             status = response.status.value,
@@ -196,7 +197,7 @@ abstract class OdinApiProviderBase(
                 ?: response.headers[HttpHeaders.ContentType]
                 ?: "application/octet-stream"
 
-        CdnAdvertisement.observe(response.headers)
+        credentialsManager.observeCdnBase(response.headers[CDN_BASE_HEADER])
 
         return ByteApiResponse(
             status = response.status.value,

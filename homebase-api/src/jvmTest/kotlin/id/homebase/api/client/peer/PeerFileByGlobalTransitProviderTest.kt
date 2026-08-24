@@ -1,6 +1,5 @@
 package id.homebase.api.client.peer
 
-import id.homebase.api.client.CdnAdvertisement
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException
@@ -18,7 +17,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -37,11 +35,6 @@ class PeerFileByGlobalTransitProviderTest {
     private val peer = OdinId("author.example.com")
     private val driveId = Uuid.parse("11111111-1111-1111-1111-111111111111")
     private val key = "pst0mdi0"
-
-    // CdnAdvertisement is a process-wide singleton, so a test that teaches it a base would
-    // otherwise route every later test's read through the CDN and break its path assertion.
-    @BeforeTest
-    fun clearCdnBase() = CdnAdvertisement.reset()
 
     private fun keyHeader() = KeyHeader(
         iv = ByteArray(16) { 3 },
