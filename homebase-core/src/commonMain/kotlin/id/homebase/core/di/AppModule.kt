@@ -1034,7 +1034,6 @@ val appModule = module {
             connectionService = get(),
             connectionNetworkProvider = get(),
             followProvider = get(),
-            securityContextProvider = get(),
         )
     }
     viewModelOf(::ContactDetailViewModel)

@@ -6,10 +6,7 @@ import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.GrantOn
 import id.homebase.api.client.connections.RedactedCircleDefinition
-import id.homebase.api.client.connections.RedactedCircleDriveGrant
-import id.homebase.api.client.connections.RedactedPermissionedDrive
-import id.homebase.api.client.connections.RedactedTargetDrive
-import id.homebase.core.ui.screens.contactbook.review.isGrantableByForTest
+import id.homebase.core.ui.screens.contactbook.review.isGrantableByThisApp
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
 import id.homebase.core.ui.screens.contactbook.review.ReviewAppToggle
@@ -259,51 +256,40 @@ class LegacySystemCircleTest {
 }
 
 /**
- * A circle over a drive this app holds no grant on (Emergency Location Access → Location drive)
- * would be rejected server-side with CannotSourceDriveStorageKeyForGrant, so the picker must not
- * offer it as selectable.
+ * Only this chat app's own circles can take a new member from here — an owner-managed circle
+ * (appId == null) or another app's circle is rejected server-side with CircleNotOwnedByApp.
  */
 class CircleGrantabilityTest {
 
-    private val chatDrive = "9ff813af-f2d6-1e2f-9b9d-b189e72d1a11"
-    private val locationDrive = "2e191a14-8640-4ebc-b0c8-aaac913f6fa8"
-    private val appDrives = setOf(chatDrive.replace("-", "").lowercase())
+    private val thisApp = "2d781401-3804-4b57-b4aa-d8e4e2ef39f4"
+    private val feedApp = "5f887d80-0132-4294-ba40-bda79155551d"
 
-    private fun circleOver(vararg aliases: String) = RedactedCircleDefinition(
+    private fun circleOwnedBy(appId: String?) = RedactedCircleDefinition(
         id = "x",
         name = "c",
         grantOn = GrantOn.None,
         designation = CircleDesignation.Personal,
-        driveGrants = aliases.map {
-            RedactedCircleDriveGrant(
-                RedactedPermissionedDrive(RedactedTargetDrive(alias = it, type = "t"), "read")
-            )
-        },
+        appId = appId,
     )
 
     @Test
-    fun circleOverAGrantedDriveIsGrantable() {
-        assertTrue(circleOver(chatDrive).isGrantableByForTest(appDrives))
+    fun thisAppsOwnCircleIsGrantable() {
+        assertTrue(circleOwnedBy(thisApp).isGrantableByThisApp())
+    }
+
+    /** Matches the dashless AppConfig.APP_ID against the server's hyphenated form. */
+    @Test
+    fun appIdMatchIgnoresGuidFormatting() {
+        assertTrue(circleOwnedBy(thisApp.replace("-", "").uppercase()).isGrantableByThisApp())
     }
 
     @Test
-    fun circleOverAnotherAppsDriveIsNotGrantable() {
-        assertFalse(circleOver(locationDrive).isGrantableByForTest(appDrives))
+    fun ownerManagedCircleIsNotGrantable() {
+        assertFalse(circleOwnedBy(null).isGrantableByThisApp())
     }
 
     @Test
-    fun oneUngrantableDriveDisqualifiesTheWholeCircle() {
-        assertFalse(circleOver(chatDrive, locationDrive).isGrantableByForTest(appDrives))
-    }
-
-    @Test
-    fun permissionOnlyCircleIsGrantable() {
-        assertTrue(circleOver().isGrantableByForTest(appDrives))
-    }
-
-    /** Unknown grants must not disable anything — the server stays the backstop. */
-    @Test
-    fun unknownAppDrivesFailsOpen() {
-        assertTrue(circleOver(locationDrive).isGrantableByForTest(null))
+    fun anotherAppsCircleIsNotGrantable() {
+        assertFalse(circleOwnedBy(feedApp).isGrantableByThisApp())
     }
 }

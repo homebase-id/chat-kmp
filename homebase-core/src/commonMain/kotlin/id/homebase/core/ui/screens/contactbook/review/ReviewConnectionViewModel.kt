@@ -11,9 +11,9 @@ import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.follow.FollowNotificationType
 import id.homebase.api.client.follow.FollowProvider
 import id.homebase.api.client.follow.FollowRequest
-import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.core.config.AppConfig
 import id.homebase.core.ui.screens.contactbook.appDefaultToggles
 import id.homebase.core.ui.screens.contactbook.countsAsOwnerCircle
 import id.homebase.core.ui.screens.contactbook.reviewEnrollment
@@ -42,7 +42,6 @@ class ReviewConnectionViewModel(
     private val connectionService: ConnectionService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val followProvider: FollowProvider,
-    private val securityContextProvider: SecurityContextProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReviewConnectionUiState(odinId = odinIdArg))
@@ -57,26 +56,9 @@ class ReviewConnectionViewModel(
     /** Follow state when the modal opened — the switch only calls out when it actually changed. */
     private var followedAtOpen = false
 
-    /**
-     * Normalized aliases of drives this app token holds a grant on. Null = the security context
-     * couldn't be read; every circle then renders selectable and the server's rejection is the
-     * backstop, rather than disabling circles on a guess.
-     */
-    private var appDriveAliases: Set<String>? = null
 
     init {
         viewModelScope.launch {
-            // Resolve grantability first so circles never render selectable and then flip to
-            // disabled under the user's finger.
-            appDriveAliases = runCatching { securityContextProvider.getSecurityContext() }
-                .getOrNull()
-                ?.permissionContext
-                ?.permissionGroups
-                ?.flatMap { it.driveGrants.orEmpty() }
-                ?.mapTo(mutableSetOf()) { it.permissionedDrive.drive.alias.normalizedGuid() }
-            if (appDriveAliases == null) {
-                Logger.w(TAG) { "security context unavailable — circle grantability unchecked" }
-            }
             connectionService.circles.collect { state -> applyCircles(state.circles) }
         }
         viewModelScope.launch {
@@ -107,7 +89,7 @@ class ReviewConnectionViewModel(
                     id = it.id,
                     name = it.name,
                     emoji = it.emoji?.takeIf { e -> e.isNotBlank() },
-                    grantable = it.isGrantableBy(appDriveAliases),
+                    grantable = it.isGrantableByThisApp(),
                 )
             }
         val toggles = appDefaultToggles(circles).map { app ->
@@ -121,15 +103,11 @@ class ReviewConnectionViewModel(
         // ReviewDiag: temporary.
         Logger.d {
             "ReviewDiag/modal raw=${circles.size} shown=${options.map { it.name }} " +
-                "ungrantable=${options.filterNot { it.grantable }.map { it.name }} " +
-                "appDrives=${appDriveAliases?.size} " +
-                "toggles=${toggles.map { "${it.label}:${it.appId}" }} " +
-                "rejected=" + circles.map { it.circle }
-                    .filterNot { it.countsAsOwnerCircle() && !it.disabled && it.name.isNotBlank() }
-                    .map {
-                        "${it.name}(owner=${it.countsAsOwnerCircle()},disabled=${it.disabled}," +
-                            "blankName=${it.name.isBlank()})"
-                    }
+                "thisApp=$THIS_APP_ID " +
+                "circles=" + circles.map { it.circle }.joinToString { c ->
+                    "${c.name}[appId=${c.appId} grantOn=${c.grantOn} " +
+                        "grantable=${c.isGrantableByThisApp()}]"
+                }
         }
         _uiState.update { state ->
             state.copy(
@@ -272,21 +250,12 @@ private fun OdinClientErrorCode.toReviewError(): ReviewError = when (this) {
 
 private fun String.normalizedGuid(): String = replace("-", "").lowercase()
 
-/**
- * The server needs a storage key for every drive a circle grants (rejecting otherwise with
- * CannotSourceDriveStorageKeyForGrant). This app can only source keys for drives it holds a grant
- * on, so an owner circle over another app's drive — Emergency Location Access over the Location
- * drive — cannot be granted from here. A null [appDriveAliases] means "unknown", so allow it and
- * let the server decide.
- */
-internal fun RedactedCircleDefinition.isGrantableBy(appDriveAliases: Set<String>?): Boolean {
-    if (appDriveAliases == null) return true
-    return driveGrants.orEmpty().all { grant ->
-        val alias = grant.permissionedDrive?.drive?.alias ?: return@all true
-        alias.normalizedGuid() in appDriveAliases
-    }
-}
+private val THIS_APP_ID = AppConfig.APP_ID.normalizedGuid()
 
-/** Test seam: [isGrantableBy] is the production path and must stay the only implementation. */
-internal fun RedactedCircleDefinition.isGrantableByForTest(appDriveAliases: Set<String>?): Boolean =
-    isGrantableBy(appDriveAliases)
+/**
+ * A contact can only be added to circles this chat app owns. An owner-managed circle
+ * (`appId == null`) or another app's circle is rejected server-side with CircleNotOwnedByApp —
+ * only the app that owns a circle can enrol anyone into it.
+ */
+internal fun RedactedCircleDefinition.isGrantableByThisApp(): Boolean =
+    appId?.normalizedGuid() == THIS_APP_ID
