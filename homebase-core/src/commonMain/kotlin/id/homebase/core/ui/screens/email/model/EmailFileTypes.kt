@@ -85,3 +85,34 @@ private inline fun <reified T> HomebaseFile.decodeEmailContent(): T? {
     if (content.isEmpty()) return null
     return runCatching { OdinSystemSerializer.deserialize<T>(content) }.getOrNull()
 }
+
+/**
+ * A keyring as the UI needs it. Carries the armored halves because exporting the private key into
+ * a mail client is the whole reason external clients can read encrypted mail.
+ */
+@androidx.compose.runtime.Immutable
+data class EmailKeyRef(
+    val uniqueId: Uuid,
+    val fingerprintHex: String,
+    val userId: String,
+    val createdUtc: Long,
+    val secretKeyArmored: String,
+    val publicCertificateArmored: String,
+) {
+    /** Grouped in fours, the way OpenPGP fingerprints are normally shown. */
+    val displayFingerprint: String
+        get() = fingerprintHex.chunked(4).joinToString(" ")
+}
+
+/** An issued mail-client credential, as this app recorded it. */
+@androidx.compose.runtime.Immutable
+data class EmailCredential(
+    /** The drive file, for forgetting our record of it. */
+    val fileId: Uuid,
+    /** The mail server's id, for revoking it. */
+    val id: String,
+    val label: String,
+    val secret: String,
+    val emailAddress: String,
+    val createdUtc: Long,
+)

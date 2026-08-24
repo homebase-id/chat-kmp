@@ -1108,6 +1108,40 @@
     <string name="email_biometric_prompt_subtitle">Authenticate to access your mail keys</string>
     <string name="settings_email_desc">Your address, keys and mail app passwords</string>
 
+    <!-- Email setup — the setup flow itself -->
+    <string name="email_setup_title">Setting up email</string>
+    <string name="email_setup_address_label">Your address</string>
+    <string name="email_setup_step_mailbox">Create your mailbox</string>
+    <string name="email_setup_step_mailbox_detail">Claims the address and publishes the records that let mail reach you</string>
+    <string name="email_setup_step_key">Your encryption key</string>
+    <string name="email_setup_step_key_detail">Made for you and kept on your email drive. Mail starts arriving encrypted to it</string>
+    <string name="email_setup_step_credential">Mail app password</string>
+    <string name="email_setup_step_credential_detail">The password you enter in Thunderbird or any other mail app</string>
+    <string name="email_setup_run">Continue</string>
+    <string name="email_setup_retry">Try again</string>
+    <string name="email_setup_records_manual">Your DNS is not managed here, so these records have to be added by hand.</string>
+    <string name="email_setup_done_title">Email is ready</string>
+    <string name="email_home_address_label">Your address</string>
+    <string name="email_home_status_ok">Everything is working</string>
+    <string name="email_home_status_incomplete">Setup is not finished</string>
+    <string name="email_home_storage">Mailbox storage</string>
+    <string name="email_home_storage_unavailable">Not reported by your mail server</string>
+    <string name="email_home_secrets">Email secrets</string>
+    <string name="email_home_secrets_detail">App passwords and encryption keys</string>
+    <string name="email_secrets_title">Email secrets</string>
+    <string name="email_secrets_passwords">Mail app passwords</string>
+    <string name="email_secrets_keys">Encryption keys</string>
+    <string name="email_secrets_reveal">Reveal</string>
+    <string name="email_secrets_hide">Hide</string>
+    <string name="email_secrets_copy">Copy</string>
+    <string name="email_secrets_revoke">Revoke</string>
+    <string name="email_secrets_new_password">Issue another password</string>
+    <string name="email_secrets_current_key">In use</string>
+    <string name="email_secrets_retired_key">Retired — still opens older mail</string>
+    <string name="email_secrets_new_key">Generate a new key</string>
+    <string name="email_secrets_no_delete_note">Old keys are never deleted: mail received under them is only readable while they exist.</string>
+    <string name="email_secrets_password_warning">Anyone with this password can read and send your mail. Enter it only in your own mail app.</string>
+
     <!-- Vault -->
     <string name="vault_label">Vault</string>
     <string name="vault_home_subtitle">Your secure document store</string>

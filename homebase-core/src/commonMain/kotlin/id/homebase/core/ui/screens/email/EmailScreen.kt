@@ -25,7 +25,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.core.ui.screens.email.components.EmailNoServerContent
+import id.homebase.core.ui.screens.email.components.EmailHomeContent
 import id.homebase.core.ui.screens.email.onboarding.EmailOnboardingContent
+import id.homebase.core.ui.screens.email.setup.EmailSetupContent
+import id.homebase.core.ui.screens.email.setup.EmailSetupStep
+import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.resources.MR
 import id.homebase.resources.email_checking
 import id.homebase.resources.email_home_subtitle
@@ -49,11 +53,16 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun EmailScreen(
     viewModel: EmailViewModel,
+    setupViewModel: EmailSetupViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToSecrets: () -> Unit,
 ) {
     ExtendPermissionDialog(viewModel = viewModel.emailExtendPermissionViewModel)
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val setupStep by viewModel.setupStep.collectAsStateWithLifecycle()
+    val setupState by setupViewModel.uiState.collectAsStateWithLifecycle()
+
 
     Scaffold(
         topBar = {
@@ -82,7 +91,18 @@ fun EmailScreen(
                     onAction = viewModel::onAction,
                 )
 
-                else -> EmailSetupInProgress()
+                setupStep == EmailSetupStep.Complete -> EmailHomeContent(
+                    status = uiState.serverStatus,
+                    onOpenSecrets = onNavigateToSecrets,
+                    onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
+                    isRefreshing = uiState.isCheckingServer,
+                )
+
+                else -> EmailSetupContent(
+                    currentStep = setupStep,
+                    uiState = setupState,
+                    onAction = setupViewModel::onAction,
+                )
             }
         }
     }
@@ -130,24 +150,3 @@ private fun EmailStatusUnavailable(onRetry: () -> Unit) {
     }
 }
 
-/**
- * Placeholder for the drive-mounted case. The mailbox, app-password and key steps land in the
- * following steps of this arc; until the server endpoints exist there is genuinely nothing more
- * to show, and inventing a fake progress screen would be worse than saying so.
- */
-@Composable
-private fun EmailSetupInProgress() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = stringResource(MR.string.email_home_subtitle),
-            style = MaterialTheme.typography.titleMedium,
-            textAlign = TextAlign.Center,
-        )
-    }
-}

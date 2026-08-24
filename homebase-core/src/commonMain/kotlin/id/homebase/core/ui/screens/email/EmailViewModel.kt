@@ -8,13 +8,18 @@ import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.core.config.emailLabeledDrive
 import id.homebase.core.email.EmailPreferences
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.ui.screens.email.setup.EmailSetupStep
+import id.homebase.core.ui.screens.email.setup.resolveSetupStep
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -31,6 +36,7 @@ class EmailViewModel(
     private val emailPermissionViewModel: ExtendPermissionViewModel,
     private val optionalDriveActivation: OptionalDriveActivation,
     private val mailProvider: MailProvider,
+    private val emailStream: EmailStream,
 ) : ViewModel() {
 
     companion object {
@@ -64,8 +70,34 @@ class EmailViewModel(
             }
         }
 
+        viewModelScope.launch {
+            emailStream.credentials.collect { credentials ->
+                _uiState.update { it.copy(credentialCount = credentials.size) }
+            }
+        }
+
+        // AppModule notes onPostAuthenticated is deferred and often skipped on a warm relaunch,
+        // so the stream is started here too rather than trusting it.
+        emailStream.start()
+
         refreshStatus()
     }
+
+    /**
+     * Where setup has got to, derived from the four signals rather than remembered. Recomputed
+     * whenever any of them changes, which is what makes an interrupted setup resume itself.
+     */
+    val setupStep: StateFlow<EmailSetupStep> = combine(
+        _uiState,
+        emailPermissionViewModel.permissionsGranted,
+    ) { state, granted ->
+        resolveSetupStep(
+            hasPermissions = granted,
+            driveActivated = state.driveActivated == true,
+            status = state.serverStatus,
+            credentialCount = state.credentialCount,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EmailSetupStep.NeedsPermissions)
 
     fun onAction(action: EmailUiAction) {
         when (action) {

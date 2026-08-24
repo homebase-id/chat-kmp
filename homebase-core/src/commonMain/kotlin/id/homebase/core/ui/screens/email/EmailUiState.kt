@@ -20,6 +20,8 @@ data class EmailUiState(
     val statusError: EmailError? = null,
     /** null while the drive mount state is still resolving. */
     val driveActivated: Boolean? = null,
+    /** Credential files on the drive — the last setup step's signal. */
+    val credentialCount: Int = 0,
 ) {
     /** The server answered, and answered no. Nothing to set up here. */
     val serverHasNoEmail: Boolean

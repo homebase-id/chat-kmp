@@ -2,6 +2,10 @@
 
 package id.homebase.core.di
 
+import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
+import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
+import id.homebase.core.ui.screens.email.EmailService
+import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.config.getEmailPermissionExtensionConfig
 import id.homebase.core.ui.screens.email.settings.EmailSettingsViewModel
 import id.homebase.core.ui.screens.email.EmailViewModel
@@ -647,6 +651,7 @@ val appModule = module {
 
                 get<VaultPreferences>().reset()
             get<EmailPreferences>().reset()
+            get<EmailStream>().apply { reset(); start() }
                 get<VaultStream>().apply { reset(); start() }
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
@@ -1165,8 +1170,13 @@ val appModule = module {
             emailPermissionViewModel = get(EmailPermissionQualifier),
             optionalDriveActivation = get(),
             mailProvider = get(),
+            emailStream = get(),
         )
     }
+    singleOf(::EmailStream)
+    singleOf(::EmailService)
+    viewModelOf(::EmailSetupViewModel)
+    viewModelOf(::EmailSecretsViewModel)
     viewModelOf(::EmailSettingsViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(

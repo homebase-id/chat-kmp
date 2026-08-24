@@ -1,5 +1,6 @@
 package id.homebase.core.ui.navigation
 
+import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.material.icons.outlined.MailOutline
@@ -1791,7 +1792,18 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 EmailScreen(
                                     viewModel = emailViewModel,
+                                    setupViewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToSecrets = { navController.navigate(Route.EmailSecrets) },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailSecrets> {
+                            if (isAuthenticated) {
+                                EmailSecretsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
                                 )
                             }
                         }
