@@ -144,6 +144,7 @@ class HomebaseImageLoader(
                         payloadKey = data.payloadKey,
                         width = nativeSize.pixelWidth,
                         height = nativeSize.pixelHeight,
+                        keyHeader = data.keyHeader,
                     )
                 } else {
                     driveFileProvider.getThumbBytesDecrypted(
@@ -232,6 +233,7 @@ class HomebaseImageLoader(
                         driveId = data.driveId,
                         globalTransitId = data.globalTransitId!!,
                         payloadKey = data.payloadKey,
+                        keyHeader = data.keyHeader,
                     )
                 } else {
                     driveFileProvider.getPayloadBytesDecrypted(

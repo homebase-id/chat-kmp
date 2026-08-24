@@ -1,6 +1,5 @@
 package id.homebase.api.crypto
 
-import kotlin.random.Random
 import kotlin.uuid.Uuid
 
 /**
@@ -259,10 +258,14 @@ object ByteArrayUtil {
     }
 
     /**
-     * Generates a cryptographically safe array of random bytes
+     * Generates a cryptographically safe array of random bytes.
+     *
+     * Delegates to [OdinSecureRandom] — the platform CSPRNG. This used to call
+     * kotlin.random.Random, which is a seeded xorshift PRNG and produces predictable
+     * AES keys, IVs and GCM nonces.
      */
     fun getRndByteArray(nCount: Int): ByteArray {
-        return Random.Default.nextBytes(nCount)
+        return OdinSecureRandom.nextBytes(nCount)
     }
 
     /**

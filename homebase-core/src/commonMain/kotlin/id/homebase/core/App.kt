@@ -15,6 +15,7 @@ import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.navigation.AppNavHost
 import id.homebase.core.ui.navigation.AppViewModel
+import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.theme.HomebaseTheme
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
@@ -24,6 +25,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun App(
     onNavHostReady: suspend (NavController) -> Unit = {},
+    onNavigatorReady: ((Route) -> Unit) -> Unit = {},
 ) {
     remember { StartupLogger.checkpoint("App() first composition") }
     val navController = rememberNavController()
@@ -55,6 +57,9 @@ fun App(
             navController = navController,
             youAuthFlowManager = youAuthFlowManager
         )
-        LaunchedEffect(navController) { onNavHostReady(navController) }
+        LaunchedEffect(navController) {
+            onNavigatorReady { route -> navController.navigate(route) { launchSingleTop = true } }
+            onNavHostReady(navController)
+        }
     }
 }
