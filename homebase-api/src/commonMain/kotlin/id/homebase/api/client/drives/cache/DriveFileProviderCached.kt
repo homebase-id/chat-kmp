@@ -377,6 +377,13 @@ class DriveFileProviderCached(
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse = readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO", fetch)
 
+    // Peer video ranges land in the same isolated chunk cache as local playback (#845), so a followed
+    // identity's video can't evict images and an image burst can't evict warm segments mid-playback.
+    suspend fun readHlsChunkThrough(
+            cacheKey: String,
+            fetch: suspend () -> ByteApiResponse
+    ): ByteApiResponse = readThrough(hlsChunkDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch)
+
     suspend fun getThumbBytesDecrypted(
             driveId: Uuid,
             fileId: Uuid,
