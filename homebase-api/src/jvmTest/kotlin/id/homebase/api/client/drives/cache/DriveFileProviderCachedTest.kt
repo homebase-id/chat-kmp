@@ -255,7 +255,7 @@ class DriveFileProviderCachedTest {
             "corrupted cache must fall through to the network"
         )
         assertTrue(
-            logCollector.hasError(tag = "ThumbIO", substring = "thumb cache-read FAILED"),
+            logCollector.hasError(tag = "ThumbIO", substring = "cache-read FAILED"),
             "expected error log for cache-read corruption; got: ${logCollector.messages("ThumbIO")}"
         )
     }

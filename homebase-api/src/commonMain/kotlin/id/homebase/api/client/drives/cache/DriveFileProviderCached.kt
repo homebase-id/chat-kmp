@@ -193,49 +193,9 @@ class DriveFileProviderCached(
         // cache — split caches would make every seg-0 prefetch a guaranteed
         // playback miss AND pollute the payload LRU.
         val cache = if (options.chunkStart != null) hlsChunkDiskCache else payloadDiskCache
-
-        // 1️⃣ Check in-memory 404 cache first
-        if (cacheKey in notFoundCache) {
-            return ByteApiResponse.EMPTY_404
+        return readThrough(cache, cacheKey, payloadSemaphore, "PayloadIO") {
+            delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
         }
-
-        // 2️⃣ Peek in disk cache and return result if it's there
-        readCachedPayloadOrLog(cache, cacheKey)?.let { return it }
-
-        // 2️⃣ Fetch from network but lock to make sure that we don't load the same
-        // resource twice over the network
-        val mutex: Mutex
-        lock.withLock { mutex = keyLocks.getOrPut(cacheKey) { Mutex() } }
-
-        return mutex.withLock {
-            // Re-try caches JIC there's a thread race
-            if (cacheKey in notFoundCache) {
-                return@withLock ByteApiResponse.EMPTY_404
-            }
-            readCachedPayloadOrLog(cache, cacheKey)?.let { return@withLock it }
-
-            // we allow up to 3 concurrent semaphore payloads over the network
-            return payloadSemaphore.withPermit {
-                try {
-                    val result = delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
-
-                    // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else)
-                    check(result.status in 200..299) {
-                        "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
-                    }
-                    writeToDiskCache(cache, cacheKey, "PayloadIO", result)
-                    result
-                } catch (e: NotFoundException) {
-                    // 404 thrown by network layer — cache it so future calls skip the network
-                    notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
-                    throw e
-                } catch (e: Exception) {
-                    // For other errors (500, network issues, etc.), don't cache and rethrow
-                    Logger.w(tag = "PayloadIO") { "payload network-fetch FAILED (${e::class.simpleName}): ${e.message} key=$cacheKey" }
-                    throw e
-                }
-            }
-        } // Mutex.lock
     }
 
     suspend fun getPayloadBytesDecrypted(
@@ -337,88 +297,85 @@ class DriveFileProviderCached(
             lastModified: Long? = null
     ): ByteApiResponse {
         val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-
-        // 1️⃣ Check in-memory 404 cache first
-        if (cacheKey in notFoundCache) return ByteApiResponse.EMPTY_404
-
-        // 2️⃣ Peek in disk cache and return result if it's there
-        readCachedThumbOrLog(cacheKey)?.let { return it }
-
-        // 2️⃣ Fetch from network but lock to make sure that we don't load the same
-        // resource twice over the network
-        val mutex: Mutex
-        lock.withLock { mutex = keyLocks.getOrPut(cacheKey) { Mutex() } }
-
-        return mutex.withLock {
-            // Re-try caches JIC there's a thread race
-            if (cacheKey in notFoundCache) {
-                return@withLock ByteApiResponse.EMPTY_404
-            }
-            readCachedThumbOrLog(cacheKey)?.let { return@withLock it }
-
-            // we allow up to 30 concurrent semaphore thumbnails over the network
-            return thumbnailSemaphore.withPermit {
-                try {
-                    val result =
-                            delegate.getThumbBytesRawNetwork(
-                                    driveId,
-                                    fileId,
-                                    payloadKey,
-                                    width,
-                                    height,
-                                    lastModified
-                            )
-
-                    // 3️⃣ Store to disk (only 200/206 can reach here — throwForFailure throws for everything else).
-                    check(result.status in 200..299) {
-                        "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
-                    }
-                    writeToDiskCache(thumbDiskCache, cacheKey, "ThumbIO", result)
-                    result
-                } catch (e: NotFoundException) {
-                    // 404 thrown by network layer — cache it so future calls skip the network
-                    notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
-                    throw e
-                } catch (e: Exception) {
-                    // For other errors (500, network issues, etc.), don't cache and rethrow
-                    Logger.w(tag = "ThumbIO") { "thumb network-fetch FAILED (${e::class.simpleName}): ${e.message} key=$cacheKey" }
-                    throw e
-                }
-            }
-        } // Mutex.lock
-    }
-
-    /**
-     * Read a thumb from the disk cache. Returns null on cache miss OR when the
-     * cached file cannot be parsed (corrupted entry, truncated write, etc.).
-     * All exceptions are logged as errors so the caller can fall through to
-     * the network cleanly.
-     */
-    private fun readCachedThumbOrLog(cacheKey: String): ByteApiResponse? {
-        return try {
-            thumbDiskCache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
-                readBytesResponse(snap.data.toString())
-            }
-        } catch (e: Exception) {
-            Logger.e(tag = "ThumbIO", throwable = e) { "thumb cache-read FAILED key=$cacheKey" }
-            null
+        return readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO") {
+            delegate.getThumbBytesRawNetwork(driveId, fileId, payloadKey, width, height, lastModified)
         }
     }
 
     /**
-     * Payload-cache analog of [readCachedThumbOrLog]. Defense-in-depth against
-     * parse failures.
+     * Read from a disk cache. Returns null on cache miss OR when the cached file
+     * cannot be parsed (corrupted entry, truncated write, etc.). All exceptions are
+     * logged as errors so the caller can fall through to the network cleanly.
      */
-    private fun readCachedPayloadOrLog(cache: DiskCache, cacheKey: String): ByteApiResponse? {
+    private fun readCachedOrLog(
+            cache: DiskCache,
+            cacheKey: String,
+            logTag: String
+    ): ByteApiResponse? {
         return try {
             cache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
                 readBytesResponse(snap.data.toString())
             }
         } catch (e: Exception) {
-            Logger.e(tag = "PayloadIO", throwable = e) { "payload cache-read FAILED key=$cacheKey" }
+            Logger.e(tag = logTag, throwable = e) { "cache-read FAILED key=$cacheKey" }
             null
         }
     }
+
+    // Peek, lock, re-peek, fetch, store. Shared by own-drive and peer reads so both get the
+    // same 404 memo, single-flight lock and concurrency cap; a peer read differs only in its
+    // cache key and in which network call [fetch] makes.
+    private suspend fun readThrough(
+            cache: DiskCache,
+            cacheKey: String,
+            semaphore: Semaphore,
+            logTag: String,
+            fetch: suspend () -> ByteApiResponse
+    ): ByteApiResponse {
+        if (cacheKey in notFoundCache) return ByteApiResponse.EMPTY_404
+        readCachedOrLog(cache, cacheKey, logTag)?.let { return it }
+
+        val mutex: Mutex
+        lock.withLock { mutex = keyLocks.getOrPut(cacheKey) { Mutex() } }
+
+        return mutex.withLock {
+            if (cacheKey in notFoundCache) return@withLock ByteApiResponse.EMPTY_404
+            readCachedOrLog(cache, cacheKey, logTag)?.let { return@withLock it }
+
+            semaphore.withPermit {
+                try {
+                    val result = fetch()
+                    check(result.status in 200..299) {
+                        "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
+                    }
+                    writeToDiskCache(cache, cacheKey, logTag, result)
+                    result
+                } catch (e: NotFoundException) {
+                    notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(tag = logTag) {
+                        "network-fetch FAILED (${e::class.simpleName}): ${e.message} key=$cacheKey"
+                    }
+                    throw e
+                }
+            }
+        }
+    }
+
+    // Entry points for reads this class cannot issue itself. A peer read lives in
+    // PeerFileByGlobalTransitProvider, which injecting here would cycle, so it hands in its
+    // own key and fetch instead. Cached bytes stay encrypted — callers decrypt post-read
+    // with the KeyHeader from the file header, since no response headers survive a hit.
+    suspend fun readPayloadThrough(
+            cacheKey: String,
+            fetch: suspend () -> ByteApiResponse
+    ): ByteApiResponse = readThrough(payloadDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch)
+
+    suspend fun readThumbThrough(
+            cacheKey: String,
+            fetch: suspend () -> ByteApiResponse
+    ): ByteApiResponse = readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO", fetch)
 
     suspend fun getThumbBytesDecrypted(
             driveId: Uuid,
