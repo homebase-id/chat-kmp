@@ -671,7 +671,29 @@ class AuthConnectionCoordinator(
             peerOwnersMutex.withLock { peerDriveOwners[drive.drive.alias] = owner to drive.drive }
             peerWebSocketManager.mount(owner, drive.drive)
         } else {
-            refreshWsSubscription.trigger()
+            // An explicit activation means the read grant was JUST obtained — typically seconds
+            // ago, in a browser. [grantedDriveIds] is a snapshot taken at connect time, so it
+            // predates that grant, and [retainGrantedDrives] would filter this very drive out of
+            // the subscription we are rebuilding for it. The drive would stay mounted (HTTP sync
+            // works, the grant is live server-side) but deaf to push: files written afterwards
+            // only surface on the next app start.
+            //
+            // So resolve the grant set first, then rebuild. Runs in [scope], not the caller's:
+            // an add-on activates from a viewModelScope that may die with the screen. A failed
+            // fetch leaves the set null, which disables the filter entirely — the drive is
+            // included rather than dropped, so the socket is rebuilt either way.
+            scope.launch {
+                // Rare and consequential (it closes and reopens the socket), so it says so.
+                Logger.i(tag = "AuthLifecycle") {
+                    "AuthCC: activation of '${drive.label}' (${drive.drive.alias}) — refreshing " +
+                        "drive grants, then rebuilding the WS subscription"
+                }
+                try {
+                    refreshGrantedDriveIds()
+                } finally {
+                    refreshWsSubscription.trigger()
+                }
+            }
         }
     }
 
