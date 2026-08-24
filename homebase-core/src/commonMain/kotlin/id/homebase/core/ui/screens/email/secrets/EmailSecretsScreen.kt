@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.email.secrets
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -49,6 +50,7 @@ import id.homebase.core.ui.screens.email.model.EmailKeyRef
 import id.homebase.resources.MR
 import id.homebase.resources.email_secrets_cancel
 import id.homebase.resources.email_secrets_copy_fingerprint
+import id.homebase.resources.email_secrets_copy_label
 import id.homebase.resources.email_secrets_copy_password
 import id.homebase.resources.email_secrets_copy_private_key
 import id.homebase.resources.email_secrets_copy_public_key
@@ -413,17 +415,37 @@ private fun KeyCard(
                 fontFamily = FontFamily.Monospace,
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onCopyFingerprint) {
+            // One row for all three. The labels drop the repeated "Copy" verb into a single
+            // lead-in so they fit side by side; the private key still routes through the
+            // confirmation dialog, which is where that distinction belongs — not in the layout.
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = stringResource(MR.string.email_secrets_copy_label),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(
+                    onClick = onCopyFingerprint,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
                     Text(stringResource(MR.string.email_secrets_copy_fingerprint))
                 }
-                TextButton(onClick = onCopyPublicKey) {
+                TextButton(
+                    onClick = onCopyPublicKey,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
                     Text(stringResource(MR.string.email_secrets_copy_public_key))
                 }
-            }
-            TextButton(onClick = onCopyPrivateKey) {
-                Text(stringResource(MR.string.email_secrets_copy_private_key))
+                TextButton(
+                    onClick = onCopyPrivateKey,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(stringResource(MR.string.email_secrets_copy_private_key))
+                }
             }
         }
     }

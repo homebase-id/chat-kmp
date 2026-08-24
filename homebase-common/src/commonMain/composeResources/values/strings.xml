@@ -1147,9 +1147,10 @@
     <string name="email_secrets_cancel">Cancel</string>
     <string name="email_secrets_copied">Copied</string>
     <string name="email_secrets_copy_password">Copy password</string>
-    <string name="email_secrets_copy_fingerprint">Copy fingerprint</string>
-    <string name="email_secrets_copy_public_key">Copy public key</string>
-    <string name="email_secrets_copy_private_key">Copy private key</string>
+    <string name="email_secrets_copy_label">Copy:</string>
+    <string name="email_secrets_copy_fingerprint">Fingerprint</string>
+    <string name="email_secrets_copy_public_key">Public key</string>
+    <string name="email_secrets_copy_private_key">Private key</string>
     <string name="email_secrets_private_key_title">Copy your private key?</string>
     <string name="email_secrets_private_key_body">This is the key that opens your mail. Paste it only into your own mail app, and clear your clipboard afterwards.</string>
     <string name="email_secrets_private_key_confirm">Copy it</string>
