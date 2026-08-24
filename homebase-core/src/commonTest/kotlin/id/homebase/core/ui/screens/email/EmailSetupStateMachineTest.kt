@@ -27,13 +27,32 @@ class EmailSetupStateMachineTest {
         currentKeyFileUniqueId = currentKey,
     )
 
+    /**
+     * The drive can only be mounted if the owner approved the request, so a mounted drive settles
+     * the permissions question regardless of what the in-memory check says.
+     *
+     * This is a regression guard: permissionsGranted resets on every app start and is not
+     * re-checked automatically, so checking it first stranded a working identity — drive and
+     * mailbox both present — on a screen with nothing to do.
+     */
     @Test
-    fun withoutPermissionsNothingElseMatters() {
+    fun aMountedDriveMakesThePermissionCheckIrrelevant() {
         val step = resolveSetupStep(
             hasPermissions = false,
             driveActivated = true,
-            status = status(mailbox = true, activated = true, currentKey = keyFile),
-            credentialCount = 1,
+            status = status(mailbox = true),
+            credentialCount = 0,
+        )
+        assertEquals(EmailSetupStep.NeedsKey, step)
+    }
+
+    @Test
+    fun withoutPermissionsOrADriveTheDriveIsTheFirstThingNeeded() {
+        val step = resolveSetupStep(
+            hasPermissions = false,
+            driveActivated = false,
+            status = status(),
+            credentialCount = 0,
         )
         assertEquals(EmailSetupStep.NeedsPermissions, step)
     }

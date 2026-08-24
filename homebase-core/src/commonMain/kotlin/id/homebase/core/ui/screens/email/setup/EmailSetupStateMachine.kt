@@ -56,7 +56,14 @@ fun resolveSetupStep(
     status: MailAppStatus?,
     credentialCount: Int,
 ): EmailSetupStep = when {
-    !hasPermissions -> EmailSetupStep.NeedsPermissions
+    // A mounted drive is itself proof the owner approved the request — it cannot be mounted
+    // otherwise. So permissions are only asked about while the drive is absent.
+    //
+    // Checking them first strands a working identity: permissionsGranted is ViewModel state that
+    // resets on every app start and is deliberately not re-checked automatically, so a restart
+    // mid-setup would report NeedsPermissions for an identity whose drive and mailbox already
+    // exist, on a screen that offers nothing to do about it.
+    !driveActivated && !hasPermissions -> EmailSetupStep.NeedsPermissions
     !driveActivated -> EmailSetupStep.NeedsDrive
 
     // No answer from the server yet: assume nothing is done rather than claiming progress.
