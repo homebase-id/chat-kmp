@@ -36,6 +36,8 @@ import id.homebase.core.email.canLaunchMailClient
 import id.homebase.resources.MR
 import id.homebase.resources.email_home_address_label
 import id.homebase.resources.email_home_secrets
+import id.homebase.resources.email_client_none
+import id.homebase.resources.email_home_client
 import id.homebase.resources.email_home_secrets_detail
 import id.homebase.resources.email_home_status_ok
 import id.homebase.resources.email_mailbox_junk
@@ -58,6 +60,7 @@ fun EmailHomeContent(
     mailbox: MailboxStatusResult?,
     selectedClient: MailClientDescriptor?,
     onOpenSecrets: () -> Unit,
+    onOpenClientPicker: () -> Unit,
     onRefresh: () -> Unit,
     onOpenMailClient: () -> Unit,
     isRefreshing: Boolean,
@@ -184,6 +187,37 @@ fun EmailHomeContent(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenClientPicker)
+                .padding(vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.MailOutline,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(MR.string.email_home_client),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = selectedClient?.displayName ?: stringResource(MR.string.email_client_none),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         Row(
             modifier = Modifier

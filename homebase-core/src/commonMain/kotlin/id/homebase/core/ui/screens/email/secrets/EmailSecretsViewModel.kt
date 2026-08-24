@@ -32,6 +32,9 @@ class EmailSecretsViewModel(
 
     companion object {
         private const val TAG = "EmailSecretsViewModel"
+
+        /** Busy-key for the rotation, which is not tied to any one credential. */
+        const val ROTATING = "rotating-key"
     }
 
     private val _revealed = MutableStateFlow<Set<String>>(emptySet())
@@ -57,6 +60,8 @@ class EmailSecretsViewModel(
 
     fun onAction(action: EmailSecretsUiAction) {
         when (action) {
+            EmailSecretsUiAction.GenerateNewKey -> rotateKey()
+
             is EmailSecretsUiAction.ToggleReveal -> _revealed.update { revealed ->
                 if (action.id in revealed) revealed - action.id else revealed + action.id
             }
@@ -64,6 +69,34 @@ class EmailSecretsViewModel(
             is EmailSecretsUiAction.Revoke -> revoke(action.credential)
 
             EmailSecretsUiAction.ErrorDismissed -> _error.value = null
+        }
+    }
+
+    /**
+     * Rotation: a new keyring, published, with the old one left on the drive. The server does the
+     * work in the right order (durable before published); this only has to name the address the
+     * key is bound to, which is the one the current key already carries.
+     */
+    private fun rotateKey() {
+        if (ROTATING in _busy.value) return
+
+        viewModelScope.launch {
+            _busy.update { it + ROTATING }
+            try {
+                val address = emailStream.keys.value.firstOrNull()?.userId
+                if (address.isNullOrEmpty()) {
+                    _error.value = "There is no existing key to rotate"
+                    return@launch
+                }
+
+                mailProvider.generateKey(primaryEmailAddress = address)
+                emailStream.loadAll()
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "Key rotation failed" }
+                _error.value = e.message ?: "The new key could not be generated"
+            } finally {
+                _busy.update { it - ROTATING }
+            }
         }
     }
 
@@ -102,6 +135,9 @@ data class EmailSecretsUiState(
 )
 
 sealed interface EmailSecretsUiAction {
+    /** Rotate: append a new keyring and publish it. The old one is never deleted. */
+    data object GenerateNewKey : EmailSecretsUiAction
+
     data class ToggleReveal(val id: String) : EmailSecretsUiAction
     data class Revoke(val credential: EmailCredential) : EmailSecretsUiAction
     data object ErrorDismissed : EmailSecretsUiAction

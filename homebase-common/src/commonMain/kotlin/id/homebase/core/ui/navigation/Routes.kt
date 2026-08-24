@@ -112,6 +112,10 @@ sealed class Route {
     data object Email : Route()
 
     @Serializable
+    @SerialName("email-client")
+    data object EmailClientPicker : Route()
+
+    @Serializable
     @SerialName("email-secrets")
     data object EmailSecrets : Route()
 
