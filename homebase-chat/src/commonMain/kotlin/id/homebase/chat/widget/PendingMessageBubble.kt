@@ -37,6 +37,8 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.withEmojiFont
+
 import id.homebase.resources.MR
 import id.homebase.resources.pending_attachment_many
 import id.homebase.resources.pending_attachment_one
@@ -168,7 +170,7 @@ private fun MediaPlaceholderBubble(
 
                 if (hasText) {
                     Text(
-                        text = message.text,
+                        text = message.text.withEmojiFont(),
                         style = MaterialTheme.typography.bodyLarge,
                         color = HomebaseTheme.extendedColors.bubbleSentOnSurface,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -254,7 +256,7 @@ private fun GenericPendingBubble(
                 }
                 if (message.text.isNotEmpty()) {
                     Text(
-                        text = message.text,
+                        text = message.text.withEmojiFont(),
                         style = MaterialTheme.typography.bodyLarge,
                         color = contentColor,
                     )

@@ -120,6 +120,14 @@ class LocationTrackingCoordinator(
         "allowHistory=${preferences.allowLocationHistory.value} liveShare=${liveShareActive()} " +
             "trackerAvailable=${tracker.isAvailable} permission=${isLocationPermissionGranted()}"
 
+    /**
+     * The currently-armed tracking profile's name, or null when GPS isn't running. Read by the #1109
+     * background-transition log (via an injected lambda in AuthConnectionCoordinator) to attribute a
+     * background window to its active location profile. Mirrors [lastProfile], which is null while the
+     * radio is stopped.
+     */
+    fun currentProfileLabel(): String? = lastProfile?.name
+
     /** The acquisition profile for the current foreground state + consumers (#846). */
     private fun currentProfile(): TrackingProfile =
         demand.resolveProfile(isForeground, preferences.allowLocationHistory.value, liveShareActive())

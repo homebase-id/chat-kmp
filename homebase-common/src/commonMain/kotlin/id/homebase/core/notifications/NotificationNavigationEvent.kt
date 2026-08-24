@@ -14,6 +14,16 @@ sealed class NotificationNavigationEvent {
     data class OpenUrl(val url: String) : NotificationNavigationEvent()
 
     /**
+     * Open the contact-detail screen for [odinId] (the requester) so an incoming connection
+     * request can be reviewed and accepted in-app. Emitted for a tapped owner-app
+     * connection-request push, which would otherwise bounce out to the owner web console
+     * (`/owner/connections`) in the browser — the app can review it itself, including the
+     * add-to-circles picker on accept. The screen shows the requester's public profile with
+     * Accept/Reject as long as the request is still pending.
+     */
+    data class OpenConnectionRequest(val odinId: String) : NotificationNavigationEvent()
+
+    /**
      * Open the moments detail (Instagram-Reels-style vertical pager) landing on
      * [momentId]. Emitted for a tapped moment-post or comment notification (both
      * ride on the chat appId; see NotificationService.resolveMomentsTap).

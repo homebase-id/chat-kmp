@@ -45,7 +45,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -62,7 +61,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.window.core.layout.WindowSizeClass
 import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
@@ -72,6 +70,7 @@ import id.homebase.chat.data.ConversationState
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.ui.assets.FeatherEdit
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
@@ -101,10 +100,7 @@ fun ConversationListPane(
     onUiAction: (ConversationListUiAction) -> Unit,
     onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
-    val adaptiveInfo = currentWindowAdaptiveInfo()
-    val twoPaneWindow = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
-        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-    )
+    val twoPaneWindow = isExpandedLayout()
     val listState = rememberLazyListState()
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }

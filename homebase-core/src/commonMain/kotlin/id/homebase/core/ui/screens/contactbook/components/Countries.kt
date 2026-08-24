@@ -31,6 +31,23 @@ fun splitE164(value: String): Pair<Country?, String> {
     return country to national.filter { it.isDigit() }
 }
 
+// A seed like `4155553695` renders as 🇺🇸 +1 | 4155553695 while the caller still holds the raw
+// digits — the field looks right and Save stays disabled until this is published.
+fun seededE164(value: String, fallback: Country): String? {
+    val (country, national) = splitE164(value)
+    if (country != null || national.isBlank()) return null
+    return composeE164(fallback, national).takeIf { it != value }
+}
+
+private val LEADING_ZERO_IS_SIGNIFICANT = setOf("IT", "SM", "CI", "GA", "CG", "BJ")
+
+// Ceiling: only a trunk `0` is dropped; NANP `1` and the CIS `8` trunk codes still ride through.
+fun composeE164(country: Country, national: String): String {
+    val digits = national.filter { it.isDigit() }
+    val nsn = if (country.iso in LEADING_ZERO_IS_SIGNIFICANT) digits else digits.removePrefix("0")
+    return if (nsn.isEmpty()) "" else "+${country.dialCode}$nsn"
+}
+
 /**
  * Formats a stored E.164 number for **display** ("+1 (415) 555-0123") using the dial-code table.
  * NANP numbers get the familiar `(area) prefix-line` shape; everything else is grouped generically

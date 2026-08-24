@@ -49,6 +49,7 @@ import id.homebase.core.haptics.rememberHaptics
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_reaction
+import id.homebase.core.ui.theme.withEmojiFont
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import org.jetbrains.compose.resources.stringResource
@@ -130,7 +131,7 @@ fun ReactionList(
                             .padding(horizontal = 4.dp, vertical = 2.dp),
                     ) {
                         Text(
-                            text = emoji,
+                            text = emoji.withEmojiFont(),
                             fontSize = 16.sp,
                             color = if (isOwn) MaterialTheme.colorScheme.onPrimaryContainer
                             else Color.Unspecified,
@@ -225,7 +226,7 @@ fun ReactionMenu(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = emoji,
+                            text = emoji.withEmojiFont(),
                             fontSize = 24.sp,
                         )
                     }
@@ -269,7 +270,7 @@ fun ReactionIcon(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = emoji,
+                text = emoji.withEmojiFont(),
                 fontSize = 14.sp,
                 style = MaterialTheme.typography.bodyMedium
             )

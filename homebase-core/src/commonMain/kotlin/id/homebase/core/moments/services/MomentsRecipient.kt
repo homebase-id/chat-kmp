@@ -50,4 +50,20 @@ sealed interface MomentsRecipient {
          *  provenance on the moment's [MomentSource.Audience]. */
         val groupId: Uuid,
     ) : MomentsRecipient
+
+    /**
+     * A user-defined circle. [odinIds] is a **snapshot** of the circle's current members at the
+     * time the picker built the list (v1 member-expansion, #1087): posting fans the moment out to
+     * exactly these members, so someone added to the circle after posting won't receive it.
+     */
+    data class Circle(
+        override val id: MomentsRecipientId,
+        override val displayName: String,
+        override val odinIds: List<OdinId>,
+        override val avatarInitials: String,
+        override val avatarUrl: String,
+        val memberCount: Int,
+        /** The underlying circle's id (32-char N-format). */
+        val circleId: String,
+    ) : MomentsRecipient
 }

@@ -340,6 +340,7 @@ class DatabaseManager(
         DriveLocalTagIndexWrapper(
             driver,
             driveLocalTagIndexAdapter,
+            driveMainIndexAdapter,
             this
         )
     }

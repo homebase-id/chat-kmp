@@ -96,6 +96,10 @@ sealed class Route {
     data object DeveloperMenu : Route()
 
     @Serializable
+    @SerialName("dev-scheduled-push-test")
+    data object DevScheduledPushTest : Route()
+
+    @Serializable
     @SerialName("storage-settings")
     data object StorageSettings : Route()
 
@@ -134,6 +138,12 @@ sealed class Route {
     @SerialName("contactbook-detail")
     data class ContactBookDetail(val uniqueId: String, val odinId: String? = null) : Route()
 
+    /** Generic "add contact to circle" picker — reachable from any circle in the Contact
+     *  Book's Circles tab, not just emergency location access. */
+    @Serializable
+    @SerialName("contactbook-circle-member-add")
+    data class CircleMemberAdd(val circleId: String, val circleName: String) : Route()
+
     @Serializable
     @SerialName("contactbook-add")
     // identityOnly: launched from a chat flow, where a contact is only useful if it has a
@@ -144,6 +154,17 @@ sealed class Route {
     @Serializable
     @SerialName("feed")
     data object Feed : Route()
+
+    @Serializable
+    @SerialName("post_detail")
+    data class PostDetail(val postId: String) : Route()
+
+    // ponytail: Route.PostCompose (the post composer) removed while feed compose is disabled
+    // Restore it + the PostCompose destination in AppNavHost to re-enable.
+
+    @Serializable
+    @SerialName("feed_following")
+    data object Following : Route()
 
     @Serializable
     @SerialName("moments")
@@ -219,6 +240,16 @@ sealed class Route {
     @Serializable
     @SerialName("location-share")
     data class LocationShare(val conversationId: String) : Route()
+
+    @Serializable
+    @SerialName("chat-share-contact")
+    data class ShareContact(val conversationId: String) : Route()
+
+    /** In-app picker to grant emergency-location-access circle membership to one or more
+     *  contacts — replaces the old owner-console browser deep link. */
+    @Serializable
+    @SerialName("location-emergency-contact-add")
+    data object LocationEmergencyContactAdd : Route()
 
     @Serializable
     @SerialName("crop")

@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -43,8 +44,11 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.emojiFontFamily
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
 import id.homebase.resources.chat_connection_invitation_received
@@ -52,6 +56,7 @@ import id.homebase.resources.chat_connection_invitation_sent
 import id.homebase.resources.chat_connection_invited
 import id.homebase.resources.chat_connection_not_connected
 import id.homebase.resources.chat_connection_wants_to_connect
+import id.homebase.resources.chat_conversation_draft
 import id.homebase.resources.chat_group_legacy
 import id.homebase.resources.chat_group_rejoin_pending
 import id.homebase.resources.chat_no_messages
@@ -104,10 +109,11 @@ fun ConversationItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val title = if (enrichedData.conversation.isWithSelf)
+                    stringResource(MR.string.chat_note_to_self)
+                else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you))
                 Text(
-                    text = if (enrichedData.conversation.isWithSelf)
-                        stringResource(MR.string.chat_note_to_self)
-                    else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you)),
+                    text = title.withEmojiFont(),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
@@ -143,8 +149,13 @@ fun ConversationItem(
                 horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Strip richeditor's `<br>` empty-paragraph artifacts so a legacy `<br>` message
+                // shows its real text in the list preview, not a stray break / blank line (#1104).
+                val lastMessagePreview = remember(enrichedData.conversation.lastMessage) {
+                    enrichedData.conversation.lastMessage.stripComposerLineBreakArtifacts()
+                }
                 val contentLabel = messageContentLabel(
-                    textContent = enrichedData.conversation.lastMessage,
+                    textContent = lastMessagePreview,
                     isDeleted = enrichedData.conversation.lastMessageIsDeleted,
                     firstPayload = enrichedData.conversation.lastMessageFirstPayload,
                     hasMultiplePayloads = enrichedData.conversation.lastMessageHasMultiplePayloads,
@@ -156,7 +167,7 @@ fun ConversationItem(
                 // actually tells the user what's happening.
                 val pendingSubtitle: String? = if (
                     contentLabel == null &&
-                    enrichedData.conversation.lastMessage.isBlank()
+                    lastMessagePreview.isBlank()
                 ) {
                     when (enrichedData.oneOnOneConnectionStatus) {
                         is OneOnOneConnectionStatus.OutgoingRequestPending ->
@@ -171,7 +182,7 @@ fun ConversationItem(
 
                 val rawPreview = pendingSubtitle
                     ?: contentLabel?.text
-                    ?: enrichedData.conversation.lastMessage
+                    ?: lastMessagePreview
                 val groupSenderName: String? = remember(
                     enrichedData.conversation.isGroupConversation,
                     enrichedData.conversation.lastMessageSender,
@@ -198,11 +209,24 @@ fun ConversationItem(
                 }
                 val iconRes = if (pendingSubtitle != null) null else contentLabel?.icon
 
+                // A non-blank draft takes over the preview line ("Draft: …", tinted)
+                // so the row advertises unsent text the way every messenger does.
+                val draftRaw = enrichedData.conversation.draft
+                val draftPreview = remember(draftRaw) {
+                    draftRaw?.stripComposerLineBreakArtifacts()?.takeIf { it.isNotBlank() }
+                }
+                val draftLabel = stringResource(
+                    MR.string.chat_preview_sender_label,
+                    stringResource(MR.string.chat_conversation_draft),
+                )
+
                 ConversationMessagePreview(
-                    text = rawPreview,
-                    prefix = senderPrefix,
-                    iconRes = iconRes,
-                    isDeleted = enrichedData.conversation.lastMessageIsDeleted,
+                    text = draftPreview ?: rawPreview,
+                    prefix = if (draftPreview != null) draftLabel else senderPrefix,
+                    prefixColor = if (draftPreview != null) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    iconRes = if (draftPreview != null) null else iconRes,
+                    isDeleted = draftPreview == null && enrichedData.conversation.lastMessageIsDeleted,
                     modifier = Modifier.weight(1f)
                 )
 
@@ -220,10 +244,10 @@ fun ConversationItem(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                } else if (enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
+                } else if (draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
                     Spacer(modifier = Modifier.width(4.dp))
                     DeliveryStatus(
-                        isPendingSend = false,
+                        isPendingSend = enrichedData.conversation.lastMessageIsPendingSend,
                         deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus,
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -346,7 +370,9 @@ fun ConversationMessagePreview(
     isDeleted: Boolean,
     modifier: Modifier = Modifier,
     prefix: String? = null,
+    prefixColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
+    val emojiFamily = emojiFontFamily()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -354,9 +380,9 @@ fun ConversationMessagePreview(
     ) {
         if (prefix != null) {
             Text(
-                text = prefix,
+                text = prefix.withEmojiFont(emojiFamily),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                color = prefixColor.copy(
                     alpha = if (isDeleted) 0.5f else 1f
                 ),
                 maxLines = 1,
@@ -379,8 +405,8 @@ fun ConversationMessagePreview(
             // strip is the same AST walk the renderer and previews share, and it
             // sidesteps the old RichTextState infinite-recomposition footgun
             // entirely (no Compose MutableState is mutated during composition).
-            val previewText = remember(text) {
-                markdownToPlainPreview(text, maxCodePoints = 200)
+            val previewText = remember(text, emojiFamily) {
+                markdownToPlainPreview(text, maxCodePoints = 200).withEmojiFont(emojiFamily)
             }
 
             Text(

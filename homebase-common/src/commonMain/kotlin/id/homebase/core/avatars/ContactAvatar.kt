@@ -54,6 +54,8 @@ fun ContactAvatar(
             initials = initials,
             options = options,
             modifier = modifier,
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
             cacheBustKey = cacheBustKey,
         )
     }

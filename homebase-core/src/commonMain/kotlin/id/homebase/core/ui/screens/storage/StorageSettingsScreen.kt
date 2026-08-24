@@ -47,6 +47,7 @@ import id.homebase.api.client.cache.CacheStats
 import id.homebase.common.util.formatBytes
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_storage
@@ -150,8 +151,9 @@ fun StorageSettingsUi(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            SectionHeader(
+            SettingsSectionHeader(
                 title = stringResource(MR.string.storage_caches_header),
+                modifier = Modifier.padding(horizontal = 4.dp),
                 trailing = {
                     Text(
                         text = stringResource(
@@ -208,7 +210,10 @@ fun StorageSettingsUi(
                 }
             }
 
-            SectionHeader(title = stringResource(MR.string.storage_drives_header))
+            SettingsSectionHeader(
+                title = stringResource(MR.string.storage_drives_header),
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 if (uiState.drives.isEmpty()) {
@@ -233,7 +238,10 @@ fun StorageSettingsUi(
                 Text(stringResource(MR.string.storage_defragment_button))
             }
 
-            SectionHeader(title = stringResource(MR.string.storage_other_header))
+            SettingsSectionHeader(
+                title = stringResource(MR.string.storage_other_header),
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
@@ -250,7 +258,10 @@ fun StorageSettingsUi(
             }
 
             if (crashTrigger.enabled) {
-                SectionHeader(title = stringResource(MR.string.storage_diagnostics_header))
+                SettingsSectionHeader(
+                    title = stringResource(MR.string.storage_diagnostics_header),
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column {
                         DiagnosticsCrashRow(
@@ -286,27 +297,6 @@ private fun DiagnosticsCrashRow(label: String, onClick: () -> Unit) {
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.error,
         )
-    }
-}
-
-@Composable
-private fun SectionHeader(
-    title: String,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        if (trailing != null) {
-            trailing()
-        }
     }
 }
 

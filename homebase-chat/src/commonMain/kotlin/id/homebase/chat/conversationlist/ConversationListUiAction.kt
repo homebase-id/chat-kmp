@@ -3,6 +3,7 @@ package id.homebase.chat.conversationlist
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.data.ConversationUiModel
 import id.homebase.chat.data.MessageUiModel
@@ -47,6 +48,23 @@ sealed interface ConversationListUiAction {
     data class IntroduceSendReadyOnly(
         val conversationId: Uuid,
         val readyRecipients: List<id.homebase.api.common.OdinId>,
+        val message: String,
+    ) : ConversationListUiAction
+
+    /**
+     * "Check again" in the preflight dialog — re-runs the preflight call and
+     * replaces the dialog's result with the fresh one. Offered only when the
+     * result contains at least one retryable entry
+     * ([id.homebase.api.client.connections.IntroductionPreflightResult.hasRetryableRecipient]),
+     * i.e. a failure the recipient's server may recover from on its own; a
+     * missing permission or an unconfirmed connection needs a human first and
+     * gets no retry button.
+     *
+     * If the retry comes back all-Ready the introduction is sent, matching what
+     * would have happened had the first preflight succeeded.
+     */
+    data class IntroduceRetryPreflight(
+        val conversationId: Uuid,
         val message: String,
     ) : ConversationListUiAction
 
@@ -158,6 +176,9 @@ sealed interface ConversationListUiAction {
 
     data object EditMessageSave : ConversationListUiAction
     data object CancelEditMessage : ConversationListUiAction
+
+    /** Persist the composer draft for the active conversation right now (#1122). */
+    data object FlushDraft : ConversationListUiAction
     data class DeleteMessage(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForMe(val messageId: Uuid) : ConversationListUiAction
     data class DeleteMessageForEveryone(val messageId: Uuid) : ConversationListUiAction
@@ -186,6 +207,23 @@ sealed interface ConversationListUiAction {
     data class ToggleReaction(val conversationId: Uuid, val messageId: Uuid, val reaction: String) :
         ConversationListUiAction
 
+    // region Pinned messages bar (#887)
+
+    /** Long-press menu pin/unpin toggle. Routes to pin or unpin based on the
+     *  message's current [MessageUiModel.isPinned] state. */
+    data class TogglePinMessage(val messageId: Uuid) : ConversationListUiAction
+
+    /** Remove a message from the pinned bar (trailing icon in the bar / panel). */
+    data class UnpinMessage(val messageId: Uuid) : ConversationListUiAction
+
+    /** Open the "all pinned messages" bottom-sheet panel. */
+    data object ShowPinnedMessagesSheet : ConversationListUiAction
+
+    /** Tap the collapsed bar: advance to the next pin and scroll+highlight it. */
+    data object CyclePinnedBar : ConversationListUiAction
+
+    // endregion
+
     data class ShowReactionDetails(val messageId: Uuid) : ConversationListUiAction
     data class DecryptFile(val messageId: Uuid, val payloadKey: String) : ConversationListUiAction
     data class ScrollToMessageId(val messageId: Uuid) : ConversationListUiAction
@@ -204,6 +242,8 @@ sealed interface ConversationListUiAction {
 
     /** Fetch the next page of older messages into the visible window. */
     data class LoadOlderMessages(val conversationId: Uuid) : ConversationListUiAction
+
+    data class LoadOlderMessagesFromServer(val conversationId: Uuid) : ConversationListUiAction
 
     /** Fetch the next page of newer messages into the visible window. */
     data class LoadNewerMessages(val conversationId: Uuid) : ConversationListUiAction
@@ -383,9 +423,21 @@ sealed interface ConversationListUiAction {
     /** Open the full-screen share-location screen (attachment sheet → Location). */
     data class OpenShareLocation(val conversationId: Uuid) : ConversationListUiAction
 
+    /** Open the contact book picker that sends a contact card (attachment sheet → Contact). The
+     *  contact book lives in :homebase-core, which this module can't see — hence a navigation
+     *  event rather than an in-place sheet. */
+    data class OpenShareContact(val conversationId: Uuid) : ConversationListUiAction
+
     /** Open the location setup screen — from the "set up location" prompt shown when a live share
      *  can't start because location isn't ready. */
     data object OpenLocationSetup : ConversationListUiAction
 
     // endregion
+
+    /** Save a received contact card to the contact book — the editor lives in :homebase-core, so
+     *  this leaves the module the same way OpenShareLocation does. */
+    data class SaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiAction
+
+    /** Open (creating if needed) the 1:1 conversation with the identity on a shared contact card. */
+    data class MessageIdentity(val odinId: String) : ConversationListUiAction
 }

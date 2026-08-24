@@ -33,6 +33,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import id.homebase.chat.services.convo.ConversationAppDataJson
 import id.homebase.chat.services.convo.ConversationLocalAppDataJson
+import id.homebase.chat.services.convo.withDraftLww
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -689,6 +690,23 @@ class OptimisticWriter(
                 // last-message time over a newer one another device already pushed.
                 latestMessageTimestamp = UnixTimeUtc.later(it.latestMessageTimestamp, latestMessageTimestamp),
             )
+        }
+
+    /**
+     * Stamp the conversation's unsent composer [draft] (markdown, or null to
+     * clear) into its owner-private `localAppData.content`, tagged with
+     * [updatedAt] for last-write-wins across the owner's devices. Preserves the
+     * sibling fields (lastRead / exitedAt / sort key) via the shared
+     * read-modify-write, and applies the LWW guard in [withDraftLww]. #1122.
+     */
+    suspend fun stampConversationDraft(
+        driveId: Uuid,
+        conversationId: Uuid,
+        draft: String?,
+        updatedAt: UnixTimeUtc,
+    ): UpdateLocalAppdataContentOutboxRequest? =
+        stampConversationLocalAppData(driveId, conversationId, "stampConversationDraft") {
+            it.withDraftLww(draft, updatedAt)
         }
 
     /**

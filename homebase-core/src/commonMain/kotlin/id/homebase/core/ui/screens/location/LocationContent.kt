@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.location_history_map_disclosure
 import id.homebase.resources.location_map_none
@@ -104,7 +105,10 @@ fun LocationContent(
 
         // ── Permissions ──
         if (uiState.trackingAvailable) {
-            SectionHeader(stringResource(MR.string.location_perm_section))
+            SettingsSectionHeader(
+                title = stringResource(MR.string.location_perm_section),
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     PermissionRow(
@@ -150,7 +154,10 @@ fun LocationContent(
         }
 
         // ── Map ──
-        SectionHeader(stringResource(MR.string.location_map_section))
+        SettingsSectionHeader(
+            title = stringResource(MR.string.location_map_section),
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
         Card(modifier = Modifier.fillMaxWidth()) {
             Column {
                 LocationMapProvider.entries.forEachIndexed { index, provider ->
@@ -194,7 +201,10 @@ fun LocationContent(
         }
 
         // ── Status ──
-        SectionHeader(stringResource(MR.string.location_status_section))
+        SettingsSectionHeader(
+            title = stringResource(MR.string.location_status_section),
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
         Card(modifier = Modifier.fillMaxWidth()) {
             Column {
                 val never = stringResource(MR.string.location_status_never)
@@ -229,16 +239,6 @@ fun LocationContent(
 
         Spacer(modifier = Modifier.height(24.dp))
     }
-}
-
-@Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(horizontal = 4.dp),
-    )
 }
 
 @Composable

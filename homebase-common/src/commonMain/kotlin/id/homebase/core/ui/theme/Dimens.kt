@@ -167,10 +167,10 @@ object Dimens {
         val previewStickerSize = 96.dp
         val previewGutterSize = 16.dp
 
-        // Preferred max edge of a sticker rendered in a chat bubble. Larger than the old
-        // flat 160.dp so cut-outs read clearly (closer to the WhatsApp/Telegram sticker
-        // size) while staying well under Signal's 512 logical-px sticker.
-        val baseSize = 220.dp
+        // Max edge of the sticker IMAGE, not of the visible cut-out: ~12% of each axis is
+        // white halo + crop margin, so the subject renders ~158.dp. Coupled to
+        // StickerImageProcessor.OUTLINE_RADIUS_FRACTION — retune the two together.
+        val baseSize = 180.dp
 
         // The base size is additionally clamped to this fraction of the viewport height so
         // a sticker can never dominate the message list on short/landscape windows. On a

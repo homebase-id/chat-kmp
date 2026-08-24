@@ -34,14 +34,13 @@ import id.homebase.resources.location_consent_decline
 import id.homebase.resources.location_consent_text
 import id.homebase.resources.location_consent_title
 import id.homebase.api.client.location.LocationPreviewProvider
-import id.homebase.core.util.getUriHandler
 import id.homebase.resources.location_dashboard_title
 import id.homebase.resources.location_history_title
-import id.homebase.resources.location_label
 import id.homebase.resources.location_menu_dashboard
 import id.homebase.resources.location_menu_find_device
 import id.homebase.resources.location_menu_more
 import id.homebase.resources.location_menu_setup
+import id.homebase.resources.location_settings_title
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.time.Clock
@@ -54,6 +53,7 @@ fun LocationScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToFindDevice: (Uuid?) -> Unit,
     onNavigateToLiveMap: () -> Unit,
+    onNavigateToEmergencyContactAdd: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -188,7 +188,6 @@ fun LocationScreen(
     )
     val showDashboard = dashboardOverride ?: defaultsToDashboard
     val previewProvider = koinInject<LocationPreviewProvider>()
-    val uriHandler = getUriHandler()
 
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -201,7 +200,7 @@ fun LocationScreen(
                     Text(
                         stringResource(
                             if (showDashboard) MR.string.location_dashboard_title
-                            else MR.string.location_label,
+                            else MR.string.location_settings_title,
                         ),
                     )
                 },
@@ -262,11 +261,15 @@ fun LocationScreen(
                 onStopSharingWithEveryone = { execute(LocationUiAction.StopSharingWithEveryone) },
                 onOpenDevice = { onNavigateToFindDevice(it) },
                 onOpenSetup = { dashboardOverride = false },
-                onManageEmergencyAccess = {
-                    uiState.emergencyManageUrl?.let { uriHandler.openUrl(it) }
-                },
+                onManageEmergencyAccess = onNavigateToEmergencyContactAdd,
                 onLocatableExpandedChange = { execute(LocationUiAction.SetLocatableExpanded(it)) },
                 onLocateContact = { pendingLocate = it },
+                onWhoCanLocateMeExpandedChange = {
+                    execute(LocationUiAction.SetWhoCanLocateMeExpanded(it))
+                },
+                onRemoveEmergencyContact = {
+                    execute(LocationUiAction.RemoveEmergencyContact(it.odinId.domainName))
+                },
             )
         } else {
             LocationContent(

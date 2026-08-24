@@ -8,9 +8,12 @@ import kotlin.uuid.Uuid
 class DriveLocalTagIndexWrapper(
     driver: SqlDriver,
     driveLocalTagIndexAdapter: DriveLocalTagIndex.Adapter,
+    driveMainIndexAdapter: DriveMainIndex.Adapter,
     private val databaseManager: DatabaseManager,
 ) {
-    private val delegate = DriveLocalTagIndexQueries(driver, driveLocalTagIndexAdapter)
+    // DriveMainIndex adapter is required because selectFilesByLocalTagInGroup joins it.
+    private val delegate =
+        DriveLocalTagIndexQueries(driver, driveLocalTagIndexAdapter, driveMainIndexAdapter)
 
     suspend fun <T : Any> selectByFile(
         identityId: Uuid,
@@ -33,6 +36,19 @@ class DriveLocalTagIndexWrapper(
         fileId: Uuid,
     ): List<DriveLocalTagIndex> = databaseManager.readValue("driveLocalTagIndex.selectByFile") {
         delegate.selectByFile(identityId, driveId, fileId).executeAsList()
+    }
+
+    /**
+     * jsonHeaders of active message files in [groupId] carrying [tagId], newest-first.
+     * Powers the pinned-messages bar (tagId = ChatProtocol.MessagePinnedTag).
+     */
+    suspend fun selectJsonHeadersByLocalTagInGroup(
+        identityId: Uuid,
+        driveId: Uuid,
+        tagId: Uuid,
+        groupId: Uuid,
+    ): List<String> = databaseManager.readValue("driveLocalTagIndex.selectFilesByLocalTagInGroup") {
+        delegate.selectFilesByLocalTagInGroup(identityId, driveId, tagId, groupId).executeAsList()
     }
 
     suspend fun countAll(): Long = databaseManager.readValue("driveLocalTagIndex.countAll") {

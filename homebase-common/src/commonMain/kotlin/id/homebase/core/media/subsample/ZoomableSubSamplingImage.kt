@@ -102,6 +102,7 @@ fun ZoomableSubSamplingImage(
             }
         }
         is SubSamplingImageSource.LocalFile -> source.filePath
+        is SubSamplingImageSource.Url -> source.url
     }
 
     var imageLoaded by remember(model) { mutableStateOf(false) }

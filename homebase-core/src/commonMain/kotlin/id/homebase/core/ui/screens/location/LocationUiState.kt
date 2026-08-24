@@ -42,6 +42,18 @@ data class LocationUiState(
     val whoCanLocateMe: List<ContactUiModel> = emptyList(),
     /** False until circle membership has loaded at least once (drives the loading spinner). */
     val whoCanLocateMeLoaded: Boolean = false,
+    /**
+     * Contacts whose emergency-circle grant is still a sealed deposit rather than a real
+     * [whoCanLocateMe] entry — live-read via a per-contact `/connections/status` fan-out
+     * triggered on section expand (there is no bulk "list pending" endpoint), never cached
+     * across app restarts. Empty until the section has been expanded at least once.
+     */
+    val whoCanLocateMePending: List<ContactUiModel> = emptyList(),
+    /** True while the expand-triggered pending-status fan-out is in flight. */
+    val whoCanLocateMePendingChecking: Boolean = false,
+    /** odinId domains currently being removed from the emergency circle — drives a per-row
+     *  spinner in place of the remove "X" so a tap has visible feedback while in flight. */
+    val removingEmergencyContacts: Set<String> = emptySet(),
     /** Contacts we can locate (the `iCanLocate` app-data flag) — the "who you can locate" list. */
     val whoICanLocate: List<ContactUiModel> = emptyList(),
     /** False until the locatable-contacts list has loaded at least once (drives the spinner). */
@@ -49,9 +61,6 @@ data class LocationUiState(
     /** Per-entry temporal-verify status for the "who I can locate" list, keyed by odinId.domainName.
      *  Absent key = not yet requested (renders nothing until the section is expanded). */
     val whoICanLocateStatus: Map<String, LocateVerifyStatus> = emptyMap(),
-    /** Owner-console deep link to manage the Emergency Location Access circle (the actual location
-     *  drive grant); null until the identity is known. */
-    val emergencyManageUrl: String? = null,
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
     val liveSharingVisible: Boolean = false,
@@ -203,6 +212,14 @@ sealed interface LocationUiAction {
      *  link-freshness verify loop (immediate first pass, then every [LOCATE_VERIFY_TTL_MS]);
      *  collapsed cancels it. */
     data class SetLocatableExpanded(val expanded: Boolean) : LocationUiAction
+
+    /** "Who can locate me" section expanded/collapsed. Expanded triggers a one-shot live
+     *  pending-status fan-out (see [LocationUiState.whoCanLocateMePending]). */
+    data class SetWhoCanLocateMeExpanded(val expanded: Boolean) : LocationUiAction
+
+    /** Revoke an emergency-circle grant (real or still-pending) for [odinId]. */
+    data class RemoveEmergencyContact(val odinId: String) : LocationUiAction
+
     data object RequestWhileInUseClicked : LocationUiAction
     data object RequestAlwaysClicked : LocationUiAction
     data object OpenSystemSettingsClicked : LocationUiAction
@@ -227,4 +244,7 @@ sealed interface LocationUiEvent {
 
     /** Emergency retrieval failed (the request notice was still sent) — snackbar. */
     data object LocateFetchFailed : LocationUiEvent
+
+    /** An add/remove call against the emergency-location circle failed — snackbar. */
+    data object EmergencyContactActionFailed : LocationUiEvent
 }

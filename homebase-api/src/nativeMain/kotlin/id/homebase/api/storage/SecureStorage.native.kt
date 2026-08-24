@@ -21,6 +21,7 @@ import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.NSUserDefaults
 import platform.Foundation.create
 import platform.Foundation.dataUsingEncoding
 import platform.Security.SecItemAdd
@@ -50,6 +51,38 @@ import platform.Security.kSecValueData
  */
 actual object SecureStorage {
     private const val SERVICE_NAME = "id.homebase.api.securestorage"
+
+    /**
+     * Marker written to NSUserDefaults on first use. UserDefaults lives in the app container and
+     * IS destroyed when the app is deleted; the Keychain is NOT. Its absence therefore means
+     * "this install has never run before".
+     */
+    private const val INSTALL_MARKER = "id.homebase.api.securestorage.installed"
+
+    init {
+        purgeKeychainIfFreshInstall()
+    }
+
+    /**
+     * Drop Keychain state left behind by a previous install.
+     *
+     * iOS deliberately preserves Keychain items across app deletion, which for us is actively
+     * harmful: this service holds both the YouAuth credentials and the SQLCipher key
+     * ([id.homebase.api.sync.database.DatabaseKeyManager]), while the database file itself lives
+     * in the app container and IS deleted. A reinstall would otherwise restore a session for an
+     * identity whose local data is gone, and hand a brand-new empty database the key of the old
+     * one — a mismatch that makes every subsequent DB read throw.
+     *
+     * Keeping this in `init` means it runs exactly once, on the first touch of this object,
+     * before any get/put can observe stale values — no startup-ordering wiring required.
+     */
+    private fun purgeKeychainIfFreshInstall() {
+        val defaults = NSUserDefaults.standardUserDefaults
+        if (defaults.boolForKey(INSTALL_MARKER)) return
+
+        clear()
+        defaults.setBool(true, INSTALL_MARKER)
+    }
 
     private fun createBaseQuery(key: String): CFDictionaryRef? {
         val dict = CFDictionaryCreateMutable(

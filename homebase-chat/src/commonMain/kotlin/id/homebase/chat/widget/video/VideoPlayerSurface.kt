@@ -97,4 +97,17 @@ expect fun VideoPlayerSurface(
      * unaffected.
      */
     paused: Boolean = false,
+    /**
+     * Fires with a localized, user-facing message when playback fails (decode
+     * error, unsupported codec, content-resolution failure). The surface also
+     * renders that message centred in its own bounds — but a caller that draws
+     * a thumbnail *over* the surface (the moments inline tile keeps its poster
+     * up until [onFirstFrame], which a failed playback never reaches) would
+     * hide it completely, so the error has to be re-raised above that overlay
+     * by the caller (#959).
+     *
+     * May fire more than once for a single mount if the player reports
+     * successive errors; the latest message wins.
+     */
+    onError: (String) -> Unit = {},
 )

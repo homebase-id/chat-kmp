@@ -3,6 +3,7 @@ package id.homebase.core.image
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.common.OdinId
 import kotlin.math.max
 import kotlin.uuid.Uuid
 
@@ -52,7 +53,13 @@ data class HomebaseImageData(
     val payloadContentType: String? = null,
     /** KeyHeader for decryption of the payload */
     val keyHeader: KeyHeader,
+    /** Set with [globalTransitId] to fetch over peer; both null for local media. */
+    val remoteOdinId: OdinId? = null,
+    val globalTransitId: Uuid? = null,
 ) {
+    val isOverPeer: Boolean
+        get() = remoteOdinId != null && globalTransitId != null
+
     companion object {
         /** Create data for a pending (not yet uploaded) image */
         fun pending(

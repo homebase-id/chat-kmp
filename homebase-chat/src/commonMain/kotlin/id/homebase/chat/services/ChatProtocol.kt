@@ -32,8 +32,8 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. Poll is 214; pick the next free
-     * integer when adding one.
+     * off `appData.dataType` to choose a renderer. ContactCard is 215; pick the next
+     * free integer when adding one.
      */
     const val ChatEventMessageDataType = 210
 
@@ -75,6 +75,13 @@ object ChatProtocol {
      */
     const val ChatPollMessageDataType = 214
 
+    /**
+     * Shared contact card — name, organization, phones, emails parsed from a vCard the user
+     * shared into the app. The full descriptor lives in `appData.content` — no payloads, no
+     * fetch on scroll. See [id.homebase.chat.contactcard.ContactCardDescriptor].
+     */
+    const val ChatContactCardMessageDataType = 215
+
     const val MessageFileType = 7878
 
     /** Derives a deterministic uniqueId for the admin file from a conversationId. */
@@ -106,6 +113,36 @@ object ChatProtocol {
 
     /** Local metadata tag: conversation has been pinned by the user */
     val ConversationPinnedTag = Uuid.parse("3f7e4c1d-5a2b-4f89-b3e7-9c1d2e3f4a5b")
+
+    /**
+     * Local metadata tag: an individual message has been pinned by the user into
+     * the per-conversation pinned-messages bar. Personal + synced (rides the same
+     * `localAppData.tags` lane as [ConversationPinnedTag], so it propagates to the
+     * user's other devices via the update-local-metadata-tags endpoint) but never
+     * shared with peers.
+     */
+    val MessagePinnedTag = Uuid.parse("2595aec2-0852-4d3d-a20e-d955cb4553b1")
+
+    /**
+     * Local metadata tag: the user has manually unpinned an auto-pin-eligible message
+     * (Poll/Event/Groodle/live-location). Durable + synced (same `localAppData.tags`
+     * lane as [MessagePinnedTag]) so auto-pin never resurrects a message the user
+     * dismissed — on this device after a restart, or on another device. Distinguishes
+     * "user dismissed" from "never evaluated", which the per-session in-memory set
+     * cannot. Set on a user unpin, cleared on a manual re-pin; NOT set by an auto-expiry
+     * unpin (an ended event is already blocked by [ChatMessageStream.shouldAutoPin]).
+     */
+    val AutoPinDismissedTag = Uuid.parse("9d4f1a2b-8c3e-4a5f-b6d7-1e2c3a4b5d6e")
+
+    /**
+     * Local metadata tag: the pin was created by a deliberate **manual** pin (menu),
+     * not by auto-pin. Durable + synced (same `localAppData.tags` lane as
+     * [MessagePinnedTag]). Marks the pin **sticky** — the on-open auto-expiry prune
+     * (ended events, stale live-shares) leaves a manually-pinned message alone, so a
+     * user who pins an already-ended event keeps it pinned. Set only by a manual pin,
+     * cleared by any unpin.
+     */
+    val ManualPinnedTag = Uuid.parse("c7a2f5e9-3b18-4d6a-9f21-8e4c1b0a5d3f")
 
     /** Server-side appData tag: conversation was originally created as a group (never removed) */
     val ConversationGroupTag = Uuid.parse("b4e3c2d1-7f6a-4e8b-9c5d-1a2b3c4d5e6f")

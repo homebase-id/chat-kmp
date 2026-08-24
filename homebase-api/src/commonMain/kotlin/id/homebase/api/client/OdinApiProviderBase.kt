@@ -2,7 +2,6 @@ package id.homebase.api.client
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.upload.DriveUploadProvider.Companion.TAG
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
@@ -12,6 +11,7 @@ import io.ktor.client.call.body
 import io.ktor.client.request.accept
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.patch
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
@@ -459,7 +459,10 @@ abstract class OdinApiProviderBase(
         url: String,
         token: String,
         jsonBody: String,
-        secret: SecureByteArray
+        secret: SecureByteArray,
+        // Extra request headers (e.g. X-ODIN-FILE-SYSTEM-TYPE for a Comment-filesystem query).
+        // Empty by default so existing callers are unaffected.
+        extraHeaders: Map<String, String> = emptyMap(),
     ): ApiResponse {
         requireHostInUrl(url)
 
@@ -469,6 +472,7 @@ abstract class OdinApiProviderBase(
                     bearerAuth(token)
                     contentType(ContentType.Application.Json)
                     accept(ContentType.Application.Json)
+                    extraHeaders.forEach { (name, value) -> header(name, value) }
                     setBody(
                         TextContent(
                             OdinSystemSerializer.serialize(
@@ -523,7 +527,7 @@ abstract class OdinApiProviderBase(
         when (response.status) {
             400 -> {
                 val problem = deserialize<ProblemDetails>(response.body)
-                Logger.e(tag = TAG) {
+                Logger.e(tag = "HttpIO") {
                     "BadRequest (400) Returned from Server - code: ${problem.errorCodeEnumOrUnhandled()} (raw: ${problem.errorCode()}).  title: ${problem.title}"
                 }
 
@@ -538,7 +542,14 @@ abstract class OdinApiProviderBase(
 
             401 -> throw UnauthorizedException()
 
-            403 -> throw ForbiddenException()
+            403 -> {
+                // OdinSecurityException carries no errorCode (always NoErrorCode/0), but its
+                // title is a real, specific reason ("Forbidden: sam.example.com must have valid
+                // connection to be added to a circle") — parse it best-effort for logging/support
+                // triage. Never branch app logic on this text; there's no structured code to match.
+                val problem = runCatching { deserialize<ProblemDetails>(response.body) }.getOrNull()
+                throw ForbiddenException(problem)
+            }
 
             404 -> throw NotFoundException()
 

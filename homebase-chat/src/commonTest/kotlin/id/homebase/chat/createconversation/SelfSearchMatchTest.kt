@@ -84,6 +84,7 @@ class SelfSearchMatchTest {
     fun filterAndGroup_idle_showsStandingActions_andNoSelfRow() {
         val items = filterAndGroup(
             contacts = listOf(contact("Frodo Baggins", "frodo.baggins.demo.rocks")),
+            groupConversations = emptyList(),
             query = "",
             self = session("Samwise Gamgee"),
         )
@@ -96,7 +97,12 @@ class SelfSearchMatchTest {
     @Test
     fun filterAndGroup_selfMatch_emitsSelfRowWithAvatarData() {
         val self = session("Samwise Gamgee")
-        val items = filterAndGroup(contacts = emptyList(), query = "sam", self = self)
+        val items = filterAndGroup(
+            contacts = emptyList(),
+            groupConversations = emptyList(),
+            query = "sam",
+            self = self,
+        )
 
         val ref = assertNotNull(
             items.filterIsInstance<CreateConversationListItem.NoteToSelf>().single().self
@@ -114,6 +120,7 @@ class SelfSearchMatchTest {
                 contact("Samwise Gamgee", "samwise.gamgee.demo.rocks"), // self, as a stored contact
                 contact("Samwise Gamgee", "samwisegamgee.me"),          // a DIFFERENT Samwise
             ),
+            groupConversations = emptyList(),
             query = "sam",
             self = self,
         )
@@ -128,6 +135,7 @@ class SelfSearchMatchTest {
     fun filterAndGroup_noSelfMatch_emitsNoSelfRow() {
         val items = filterAndGroup(
             contacts = emptyList(),
+            groupConversations = emptyList(),
             query = "mordor",
             self = session("Samwise Gamgee"),
         )

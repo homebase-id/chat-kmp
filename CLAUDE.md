@@ -247,6 +247,48 @@ GitHub Actions workflows in `.github/workflows/`:
 
 Do NOT use slash (/) in Git branch names
 
+## Stacked PRs
+
+GitHub's native stacked pull requests: an ordered chain where each branch targets the branch
+below it instead of `main`, so each layer is reviewed on its own diff and the stack merges
+atomically. Driven by `gh extension install github/gh-stack` — run `gh stack --help`.
+
+Use a stack only when:
+
+- A single PR has grown too big to review in one sitting and splits cleanly into layers.
+- The work spans `homebase-api` → `homebase-chat`/`homebase-common` → `homebase-core` and the
+  upper layers can't compile without the lower ones.
+
+Otherwise open one normal PR. Two independent bugfixes are two PRs, not a stack.
+
+Rules:
+
+- Bottom layers first: API/schema/instrumentation below, the feature that consumes them above.
+- Every layer must be correct on its own — `main` stays green if the layers above never merge.
+- If two layers can only be reviewed together, they're one PR.
+- Work blocked on an undecided question is a separate issue, not a stack layer.
+- CI must be green on every layer before merging — the stack merge is all-or-nothing.
+- Branch names still must not contain `/`.
+
+## Comments
+
+Default to none. This codebase is over-commented; do not add to it.
+
+Don't write:
+
+- What the code already says. `// increment the counter`, `/** Returns the user's name. */`.
+- KDoc restating parameter names, or a header block on every function.
+- Narrative about how the code got here, alternatives considered, or how it was tested.
+- Issue and PR numbers. `git blame` already links the line to its commit and PR.
+
+Do write, as one terse line: a **why** that isn't derivable from the code — a landmine,
+an ordering constraint, a workaround for someone else's bug, a deliberate simplification
+and its ceiling.
+
+If the comment is longer than the code it explains, delete it. Rename the variable
+instead — a self-explaining name beats any comment. Put the reasoning in the PR
+description, not the source.
+
 ## UI & Design Quality
 
 All UI code must follow **Material 3** guidelines and the **kmp-compose-multiplatform** skill. Before

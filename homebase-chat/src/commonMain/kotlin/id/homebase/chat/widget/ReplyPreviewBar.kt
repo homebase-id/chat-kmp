@@ -45,6 +45,8 @@ import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.withEmojiFont
+import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.cancel_reply
 import id.homebase.resources.cd_reply_thumbnail
@@ -114,15 +116,18 @@ fun ReplyPreviewBar(
         )
     }
 
+    // Strip richeditor's `<br>` empty-paragraph artifacts so replying to a legacy `<br>` message
+    // shows its real text in the composer bar, not a stray break / blank preview (#1104).
+    val replyBarText = remember(message.content) { message.content.stripComposerLineBreakArtifacts() }
     // Content label for media-only messages (no text)
     val contentLabel = messageContentLabel(
-        textContent = message.content,
+        textContent = replyBarText,
         isDeleted = message.isDeleted,
         firstPayload = firstPayload,
         hasMultiplePayloads = hasMultiplePayloads,
     )
 
-    val previewText = contentLabel?.text ?: message.content.trim().truncateToCodePoints(80)
+    val previewText = contentLabel?.text ?: replyBarText.trim().truncateToCodePoints(80)
 
     val eventDescriptor = (message.messageContent as? MessageContent.Event)?.descriptor
     val eventStartLocal = eventDescriptor?.let { rememberEventTimes(it).viewerStartLocal }
@@ -161,7 +166,7 @@ fun ReplyPreviewBar(
                         currentOdinId = currentOdinId,
                         resolvedDisplayName = message.displayName,
                         youLabel = stringResource(MR.string.you),
-                    ),
+                    ).withEmojiFont(),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
                     color = accentColor,
@@ -180,7 +185,7 @@ fun ReplyPreviewBar(
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
-                        text = previewText,
+                        text = previewText.withEmojiFont(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,

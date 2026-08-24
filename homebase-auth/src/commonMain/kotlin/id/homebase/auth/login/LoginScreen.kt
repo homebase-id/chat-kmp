@@ -53,7 +53,6 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.util.cleanDomain
-import id.homebase.api.isIos
 import id.homebase.core.auth.BrowserLauncher
 import id.homebase.core.util.InAppBrowser
 import id.homebase.core.ui.assets.Homebase
@@ -70,6 +69,7 @@ import id.homebase.resources.failed
 import id.homebase.resources.homebase_logo
 import id.homebase.resources.loading
 import id.homebase.resources.login_authenticating
+import id.homebase.resources.login_waiting_for_browser
 import id.homebase.resources.login_continue_button
 import id.homebase.resources.login_create_account_button
 import id.homebase.resources.login_id_label
@@ -138,15 +138,11 @@ fun LoginScreen(
             }
 
             is LoginUiEvent.OpenUrl -> {
-                // On iOS launchAuthBrowser is a no-op, so the sign-up URL is silently dropped
-                // (#1054). Open it in an in-app SFSafariViewController — no ASWebAuthenticationSession
-                // "…Sign In" consent prompt, which is wrong for sign-up. Other platforms open it
-                // directly. Consume only after the open is issued, never before.
-                if (isIos()) {
-                    InAppBrowser.open(uiEvent.url)
-                } else {
-                    launchAuthBrowser(uiEvent.url)
-                }
+                // Sign-up is a plain web page, not an OAuth callback: no shared session or token
+                // hand-back, just a page the user must be able to get back out of. That's
+                // InAppBrowser, not the auth-callback launcher. Consume only after the open is
+                // issued, never before.
+                InAppBrowser.open(uiEvent.url)
                 viewModel.eventConsumed()
             }
 
@@ -210,7 +206,8 @@ fun LoginUi(
                 pendingAuthUrl != null -> LoginPopupBlocked(onContinue = onContinueAuth)
                 uiState.isLoading -> LoginLoading(
                     driveProgresses = uiState.driveProgresses,
-                    isPinging = uiState.isPinging
+                    isPinging = uiState.isPinging,
+                    isAwaitingAuthConfirmation = uiState.isAwaitingAuthConfirmation,
                 )
                 uiState.isAuthenticated -> LoginSuccess()
                 else ->
@@ -304,7 +301,11 @@ private fun LoginPopupBlocked(onContinue: () -> Unit) {
 /* ---------- STATES ---------- */
 
 @Composable
-private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPinging: Boolean = false) {
+private fun LoginLoading(
+    driveProgresses: ImmutableList<DriveProgress>,
+    isPinging: Boolean = false,
+    isAwaitingAuthConfirmation: Boolean = false,
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = stringResource(MR.string.loading),
@@ -317,7 +318,10 @@ private fun LoginLoading(driveProgresses: ImmutableList<DriveProgress>, isPingin
             CircularProgressIndicator()
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = stringResource(MR.string.login_authenticating),
+                text = stringResource(
+                    if (isAwaitingAuthConfirmation) MR.string.login_waiting_for_browser
+                    else MR.string.login_authenticating
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.testTag("authenticating_text"),
@@ -463,6 +467,15 @@ private fun LoginForm(
         mutableStateOf(TextFieldValue(homebaseId, selection = TextRange(homebaseId.length)))
     }
 
+    // The field owns what the user types, so it seeds from state rather than reading it. Re-seed
+    // when a new value does arrive: sign-up hands back the domain it created while this screen is
+    // already composed, and a once-only seed would drop it.
+    LaunchedEffect(homebaseId) {
+        if (homebaseId.isNotBlank() && homebaseId != homebaseIdField.text) {
+            homebaseIdField = TextFieldValue(homebaseId, selection = TextRange(homebaseId.length))
+        }
+    }
+
     // Focus the ID field once on first entry — not on every re-entry/recomposition, which kept
     // re-popping the keyboard (#1054).
     var didFocus by rememberSaveable { mutableStateOf(false) }
@@ -509,13 +522,13 @@ private fun LoginForm(
             placeholder = { Text(stringResource(MR.string.login_id_placeholder)) },
             focusRequester = focusRequester,
             imeAction = ImeAction.Done,
-            onImeAction = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
+            onImeAction = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)) },
         )
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false)) },
+            onClick = { onLoginClick(homebaseIdField.text.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)) },
             modifier = Modifier.fillMaxWidth().testTag(if (errorMessage != null) "try_again_button" else "login_button"),
         ) {
             if (errorMessage != null) Text(stringResource(MR.string.login_try_again_button)) else Text(stringResource(MR.string.login_sign_in_button))

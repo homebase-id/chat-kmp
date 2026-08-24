@@ -64,6 +64,7 @@ enum class OdinClientErrorCode(val value: Int) {
     // Notification Errors 20xx
     InvalidNotificationType(2001),
     UnknownNotificationId(2002),
+    TooManyScheduledNotifications(2003),
 
     // Circle Errors 30xx
     AtLeastOneDriveOrPermissionRequiredForCircle(3001),
@@ -125,6 +126,12 @@ enum class OdinClientErrorCode(val value: Int) {
     MissingPayloadKeys(4170),
     ThumbnailTooLarge(4171),
     MustRotateKeyHeaderIvWhenUpdating(4172),
+    /** Circle-add rejected because this app lacks the storage key for one of the drives the
+     *  circle grants — the app genuinely can't be granted this circle, not a transient/generic
+     *  403. Server sends this as the errorCode on an otherwise-opaque 403 Forbidden response
+     *  (POST /connections/circles/add), unlike every other 403 cause on that endpoint (missing
+     *  ManageCircleMembership, contact not connected), which stay codeless. */
+    CannotSourceDriveStorageKeyForGrant(4173),
 
     // Connection errors 50xx
     NotAnAutoConnection(5001),

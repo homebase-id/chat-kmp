@@ -12,4 +12,8 @@
     <color name="crash_on_surface">#1B1B1D</color>
     <color name="crash_surface_variant">#E7EBF3</color>
     <color name="crash_on_surface_variant">#545863</color>
+
+    <!-- Splash background follows the system theme — plain white/black, brand colour comes
+         from the logo alone. Night value in values-night/colors.xml. -->
+    <color name="splash_background">#FFFFFF</color>
 </resources>

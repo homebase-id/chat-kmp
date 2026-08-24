@@ -2,6 +2,8 @@
 
 package id.homebase.core.util
 
+import id.homebase.api.util.truncateToCodePoints
+
 fun String.isEmojiContentOnly(): Boolean {
     if (this.isBlank()) return false
     if (this.lines().all { it.isBlank() }) return false
@@ -159,10 +161,12 @@ fun String.initials(): String {
 
     return when {
         tokens.size >= 2 ->
-            "${tokens.first().first()}${tokens.last().first()}".uppercase().trim()
+            "${tokens.first().truncateToCodePoints(1)}${tokens.last().truncateToCodePoints(1)}"
+                .uppercase()
+                .trim()
 
         tokens.size == 1 ->
-            tokens.first().first().uppercaseChar().toString().trim()
+            tokens.first().truncateToCodePoints(1).uppercase().trim()
 
         else -> ""
     }

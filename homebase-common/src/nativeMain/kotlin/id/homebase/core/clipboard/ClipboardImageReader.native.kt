@@ -41,6 +41,8 @@ actual fun getImageFromClipboard(): ByteArray? {
     return data.toByteArray()
 }
 
+actual suspend fun readClipboardImage(): ByteArray? = getImageFromClipboard()
+
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 private fun NSData.toByteArray(): ByteArray? {
     val length = this.length.toInt()

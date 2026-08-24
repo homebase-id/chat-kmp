@@ -185,14 +185,18 @@ class NotificationTapColdStartTest {
      * subsequent popBackStack(ChatList, inclusive=false) then brings ChatList
      * back to the top, which reads pendingConversationId and routes.
      */
-    @Ignore(
-        "CMP SkikoComposeUiTest.closeScene moves a still-INITIALIZED NavBackStackEntry " +
-            "(destination=TestDetail) to DESTROYED during desktop scene teardown, throwing " +
-            "IllegalStateException AFTER the test body passes. Harness bug, not product. The " +
-            "back-stack gate regression is covered meanwhile by BackStackGateTest. Remove " +
-            "@Ignore when CMP fixes desktop nav teardown — natural trigger is the " +
-            "composeMultiplatform 1.10.3 -> 1.11.0 bump."
-    )
+    // Ignored: CMP SkikoComposeUiTest.closeScene moves a still-INITIALIZED
+    // NavBackStackEntry (destination=TestDetail) to DESTROYED during desktop scene
+    // teardown, throwing IllegalStateException AFTER the test body passes. Harness
+    // bug, not product. The back-stack gate regression is covered meanwhile by
+    // BackStackGateTest. Remove @Ignore when CMP fixes desktop nav teardown —
+    // natural trigger is the composeMultiplatform 1.10.3 -> 1.11.0 bump.
+    //
+    // The reason is a comment, not an @Ignore("…") argument: this is commonTest, and
+    // kotlin.test.Ignore only takes a value on JVM/Android (where it typealiases to
+    // org.junit.Ignore). On native/JS it has no parameters, so the argument form
+    // compiles on JVM but breaks compileTestKotlinIosSimulatorArm64.
+    @Ignore
     @Test
     fun warm_start_notification_tap_from_detail_navigates_via_chatlist() = runComposeUiTest {
         val events = Channel<NotificationNavigationEvent>(Channel.BUFFERED)
@@ -269,14 +273,11 @@ class NotificationTapColdStartTest {
         kotlin.test.assertNotNull(navControllerRef)
     }
 
-    @Ignore(
-        "CMP SkikoComposeUiTest.closeScene moves a still-INITIALIZED NavBackStackEntry " +
-            "(destination=TestDetail) to DESTROYED during desktop scene teardown, throwing " +
-            "IllegalStateException AFTER the test body passes. Harness bug, not product. The " +
-            "back-stack gate regression is covered meanwhile by BackStackGateTest. Remove " +
-            "@Ignore when CMP fixes desktop nav teardown — natural trigger is the " +
-            "composeMultiplatform 1.10.3 -> 1.11.0 bump."
-    )
+    // Ignored for the same CMP desktop nav-teardown harness bug as
+    // warm_start_notification_tap_from_detail_navigates_via_chatlist above — see the
+    // full note there, including why the reason is a comment rather than an
+    // @Ignore("…") argument.
+    @Ignore
     @Test
     fun broken_top_only_gate_hangs_when_on_detail() = runComposeUiTest {
         // Negative control: same warm-on-Detail scenario as the test above,

@@ -49,7 +49,7 @@ class ContactService(
                         connection == null -> ContactConnectionState.NotConnected
                         connection.status == ConnectionStatus.Blocked -> ContactConnectionState.Blocked
                         connection.status == ConnectionStatus.Connected -> ContactConnectionState.Connected
-                        connection.status == ConnectionStatus.Pending -> ContactConnectionState.Pending
+                        connection.status == ConnectionStatus.None -> ContactConnectionState.Pending
                         else -> ContactConnectionState.Unknown
                     }
 

@@ -54,10 +54,9 @@ object VideoCompressionService : VideoCompressor, VideoProber {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
-    ): String? =
+    ): String =
         heavyOpLock.withLock {
-            compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality, allowTenBit)
+            compressor.compress(inputPath, onProgress, trimStartMs, trimEndMs, quality)
         }
 
     override suspend fun segment(

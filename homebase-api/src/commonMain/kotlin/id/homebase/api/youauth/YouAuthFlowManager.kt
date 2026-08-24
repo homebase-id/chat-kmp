@@ -23,6 +23,7 @@ import id.homebase.api.storage.SecureStorage
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.share.ShareAuthBridge
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,6 +33,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /** Authentication state for the YouAuth flow. */
 @Immutable
@@ -61,6 +64,20 @@ private data class AuthCodeFlowState(
     val identity: OdinId,
     val password: SecureByteArray,
     val keyPair: EccKeyPair
+)
+
+/**
+ * [AuthCodeFlowState] flattened for persistence across a full-page redirect (web seamless
+ * login). The popup flow keeps the app — and the in-memory [AuthCodeFlowState] — alive; the
+ * redirect flow reloads the whole app, so everything `completeAuth` needs must survive in
+ * storage. The private key inside [keyPair] is already encrypted with [passwordB64]'s bytes.
+ */
+@Serializable
+private data class PersistedRedirectFlow(
+    val identityDomain: String,
+    val passwordB64: String,
+    val keyPair: EccKeyPair,
+    val state: String
 )
 
 /**
@@ -96,6 +113,7 @@ class YouAuthFlowManager(
 
     companion object {
         private val TAG = "YouAuthFlowManager"
+        private val json = Json { ignoreUnknownKeys = true }
     }
 
     init {
@@ -183,6 +201,10 @@ class YouAuthFlowManager(
      * @param appId Application ID
      * @param appName Application name
      * @param drives List of drive access requests
+     * @param persistForRedirect Persist the flow state (ECC key pair, password, CSRF state) to
+     *   [SecureStorage] so `completeAuth` can restore it after a full-page navigation. Used by
+     *   the web seamless-login path, which redirects the top window to the authorize endpoint
+     *   (unloading the app) instead of opening a popup. See issue #853.
      */
     suspend fun authorize(
         identity: OdinId,
@@ -193,7 +215,8 @@ class YouAuthFlowManager(
         circlePermissions: List<AppCirclePermissionType>? = null,
         circleDrives: List<TargetDriveAccessRequest>? = null,
         circles: List<String>? = null,
-        clientFriendlyName: String? = null
+        clientFriendlyName: String? = null,
+        persistForRedirect: Boolean = false
     ): String {
         if (_authState.value == YouAuthState.Authenticating ||
             _authState.value is YouAuthState.Authenticated
@@ -214,6 +237,21 @@ class YouAuthFlowManager(
 
             // Register for callback
             callbackRegistry[state] = authCodeFlowState
+
+            if (persistForRedirect) {
+                SecureStorage.put(
+                    YouAuthStorageKeys.PENDING_REDIRECT_FLOW,
+                    json.encodeToString(
+                        PersistedRedirectFlow.serializer(),
+                        PersistedRedirectFlow(
+                            identityDomain = identity.domainName,
+                            passwordB64 = Base64.encode(password.unsafeBytes),
+                            keyPair = keyPair,
+                            state = state
+                        )
+                    )
+                )
+            }
 
             // Build redirect URI
             val redirectUri = RedirectConfig.buildRedirectUri(appId)
@@ -260,7 +298,7 @@ class YouAuthFlowManager(
 
     /** Complete the authentication flow after browser callback. */
     private suspend fun completeAuth(url: String, state: String, queryParams: Map<String, String>) {
-        val authCodeFlowState = callbackRegistry[state]
+        val authCodeFlowState = callbackRegistry[state] ?: restorePersistedRedirectFlow(state)
         if (authCodeFlowState == null) {
             // Duplicate or late callback — registry entry was already consumed.
             // Don't stomp on the current _authState.
@@ -327,21 +365,67 @@ class YouAuthFlowManager(
             _authState.value = YouAuthState.Error(e.message ?: "Unknown error")
         } finally {
             callbackRegistry.remove(state)
+            SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
             callbackReceived = false
         }
     }
 
-    /** Logout and clear credentials. */
-    suspend fun logout() {
-        // Notify the backend first — this needs valid credentials.
-        try {
-            val credentials = CredentialStorage.getCredentials()
-            if (credentials != null) {
-                val provider = YouAuthProvider(httpClient, credentials.identity)
-                provider.logout()
+    /**
+     * Restore a redirect-flow [AuthCodeFlowState] persisted by [authorize] with
+     * `persistForRedirect = true`. Returns null unless a persisted flow exists AND its CSRF
+     * `state` matches the callback's — a mismatched state means the callback is stale or forged
+     * and must not consume the pending flow's key material.
+     *
+     * On success, flips [authState] to [YouAuthState.Authenticating]: this app instance booted
+     * fresh after the redirect (restoreSession found no credentials and reported
+     * Unauthenticated), and the token exchange is now genuinely in progress.
+     */
+    private fun restorePersistedRedirectFlow(state: String): AuthCodeFlowState? {
+        val serialized = SecureStorage.get(YouAuthStorageKeys.PENDING_REDIRECT_FLOW) ?: return null
+        return try {
+            val persisted = json.decodeFromString(PersistedRedirectFlow.serializer(), serialized)
+            if (persisted.state != state) {
+                Logger.w(tag = TAG) { "Persisted redirect flow state mismatch — ignoring callback" }
+                null
+            } else {
+                _authState.value = YouAuthState.Authenticating
+                AuthCodeFlowState(
+                    identity = OdinId(persisted.identityDomain),
+                    password = SecureByteArray(persisted.passwordB64),
+                    keyPair = persisted.keyPair
+                )
             }
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Error during logout" }
+            Logger.e(throwable = e, tag = TAG) { "Failed to restore persisted redirect flow" }
+            SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
+            null
+        }
+    }
+
+    /**
+     * Logout and clear credentials.
+     *
+     * Every teardown step is individually guarded: once we've decided to log out, no single
+     * failing step may block the `_authState` flip below. A corrupted shared secret or DB key
+     * makes calls like [DriveSyncManager.clearStorage] throw, and an unguarded throw here used
+     * to leave the app wedged half-authenticated with a dead logout button — recoverable only
+     * by clearing app data.
+     *
+     * Pass [force] to skip the backend notify entirely (dev menu escape hatch) — the server
+     * round-trip needs valid credentials, which is exactly what's broken in that state.
+     */
+    suspend fun logout(force: Boolean = false) {
+        // Notify the backend first — this needs valid credentials.
+        if (!force) {
+            try {
+                val credentials = CredentialStorage.getCredentials()
+                if (credentials != null) {
+                    val provider = YouAuthProvider(httpClient, credentials.identity)
+                    provider.logout()
+                }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "Error during logout" }
+            }
         }
 
         // Tear down background work that reads credentials BEFORE nulling them.
@@ -351,29 +435,35 @@ class YouAuthFlowManager(
         // IllegalStateException: No active credentials set). stop() is idempotent;
         // AuthConnectionCoordinator.disconnect() will call it again when the
         // authState flip below lands.
-        driveSyncManager.stop()
+        stepOrLog("driveSyncManager.stop") { driveSyncManager.stop() }
 
         // Wipe all identity-scoped state BEFORE flipping _authState to Unauthenticated.
         // Emitting Unauthenticated tears down the authenticated nav graph (and with it
         // SettingsViewModel.viewModelScope, which is the coroutine currently running
         // this logout). If we emit first, driveSyncManager.clearStorage() — and any
         // other cache clears — get cancelled mid-flight, leaving stale DB rows behind.
-        credentialsManager.removeActiveCredentials()
-        driveSyncManager.clearStorage()
-        driveFileProviderCached.clearCaches()
-        publicProfileProviderCached.clearCaches()
+        //
+        // Credentials go first. They are what "logged in" actually means: CredentialStorage is
+        // the persistent copy that restoreSession() reads on the next launch, so if it survives,
+        // the user is silently signed back in no matter what the UI showed. Everything below it
+        // is cache/row cleanup — worth doing, but none of it can un-log-you-out. Ordering the
+        // fragile DB teardown ahead of the credential wipe (as this used to) meant a throwing
+        // clearStorage() left the Keychain populated.
+        stepOrLog("removeActiveCredentials") { credentialsManager.removeActiveCredentials() }
+        stepOrLog("clearCredentials") { CredentialStorage.clearCredentials() }
+        stepOrLog("clearAuth") { ShareAuthBridge.clearAuth() }
+
+        stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
+        stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }
+        stepOrLog("publicProfileProvider.clearCaches") { publicProfileProviderCached.clearCaches() }
         // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
-        // else the app-level module wants to flush). Wrapped in runCatching so a
-        // failing hook can't block the authState flip that follows — we'd rather
-        // log out with a stale Coil entry than get stuck half-authenticated.
-        runCatching { clearPlatformCaches() }
-            .onFailure { Logger.e(throwable = it, tag = TAG) { "clearPlatformCaches failed" } }
-        CredentialStorage.clearCredentials()
-        ShareAuthBridge.clearAuth()
+        // else the app-level module wants to flush).
+        stepOrLog("clearPlatformCaches") { clearPlatformCaches() }
 
         _authState.value = YouAuthState.Unauthenticated
         Logger.i(tag = TAG) { "User logged out" }
     }
+
 
     /** Check if authentication is in progress. */
     val isAuthenticating: Boolean
@@ -387,6 +477,7 @@ class YouAuthFlowManager(
         if (_authState.value == YouAuthState.Authenticating) {
             Logger.i(tag = TAG) { "Authentication cancelled by user" }
             callbackRegistry.clear()
+            SecureStorage.remove(YouAuthStorageKeys.PENDING_REDIRECT_FLOW)
             callbackReceived = false
             _authState.value = YouAuthState.Unauthenticated
             credentialsManager.removeActiveCredentials()
@@ -414,5 +505,20 @@ class YouAuthFlowManager(
                 cancelAuth()
             }
         }
+    }
+}
+
+/**
+ * Run one logout teardown step, logging and swallowing any failure so the caller can always
+ * reach the `_authState` flip. Cancellation is rethrown — it means our own scope is going away,
+ * which is a different situation from a step that simply failed.
+ */
+internal suspend fun stepOrLog(name: String, step: suspend () -> Unit) {
+    try {
+        step()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.e(throwable = e, tag = "YouAuth") { "Logout step '$name' failed — continuing" }
     }
 }

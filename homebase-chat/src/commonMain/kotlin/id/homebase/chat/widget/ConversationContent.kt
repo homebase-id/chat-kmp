@@ -51,6 +51,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -78,6 +80,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -104,12 +107,19 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.chat.data.MessageUiModel
+import kotlinx.collections.immutable.ImmutableList
 import id.homebase.api.common.OdinId
+import id.homebase.chat.contactcard.LocalSavedContactIdentities
 import id.homebase.chat.conversationlist.AutoConnectRowState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import co.touchlab.kermit.Logger
@@ -142,6 +152,7 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
@@ -151,6 +162,7 @@ import id.homebase.core.util.isWeb
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.rememberImeOffsetState
 import id.homebase.core.util.programmaticBackspace
+import id.homebase.core.util.toMessageMarkdown
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.rememberVideoRecorderManager
 import id.homebase.core.widget.ContactName
@@ -171,9 +183,14 @@ import id.homebase.resources.chat_message_block
 import id.homebase.resources.chat_message_block_confirm_body
 import id.homebase.resources.chat_message_block_confirm_title
 import id.homebase.resources.chat_message_forward_to
+import id.homebase.resources.chat_pinned_icon
+import id.homebase.resources.chat_pinned_messages_empty
+import id.homebase.resources.chat_pinned_messages_title
+import id.homebase.resources.chat_unpin_message
 import id.homebase.resources.chat_message_search_no_results
 import id.homebase.resources.chat_message_search_result_count
 import id.homebase.resources.chat_next_result
+import id.homebase.resources.chat_load_older_messages
 import id.homebase.resources.chat_no_messages
 import id.homebase.resources.chat_not_connected_description
 import id.homebase.resources.chat_not_connected_incoming_description
@@ -509,6 +526,14 @@ fun ConversationContent(
         computeBattleChainCap(conversation.conversation.participants.size)
     }
 
+    // Save the draft whenever this thread stops — navigating away, or the app going
+    // to background (where the OS may kill the process without warning). Makes the
+    // periodic save the only thing the draft actually depends on: nothing here has
+    // to fire for the draft to survive, it just narrows the window (#1122).
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        onUiAction(ConversationListUiAction.FlushDraft)
+    }
+
     @Suppress("DEPRECATION") BackHandler(uiState.isSearchActive || showEmojiSheet || showAttachmentSheet || isKeyboardVisible || uiState.isEditingMessageId != null) {
         if (uiState.isSearchActive) {
             onUiAction(ConversationListUiAction.SearchMessagesBackClicked)
@@ -518,7 +543,13 @@ fun ConversationContent(
         showEmojiSheet = false
         showAttachmentSheet = false
         keyboardController?.hide()
-        onUiAction(ConversationListUiAction.CancelEditMessage)
+        // Only a back that's actually cancelling an in-progress edit should reset
+        // the composer — CancelEditMessage clears it. A back that's merely
+        // dismissing the keyboard must leave the typed text (and its draft) intact
+        // (#1122; previously it wiped whatever you were composing).
+        if (uiState.isEditingMessageId != null) {
+            onUiAction(ConversationListUiAction.CancelEditMessage)
+        }
     }
 
     val cameraLauncher = rememberCameraManager { file ->
@@ -689,6 +720,7 @@ fun ConversationContent(
     CompositionLocalProvider(
         LocalCurrentOdinId provides (uiState.ownerSession?.odinId?.domainName ?: ""),
         LocalUploadConnected provides uiState.isConnected,
+        LocalSavedContactIdentities provides uiState.savedContactIdentities,
     ) {
     Scaffold(
         modifier = Modifier,
@@ -723,15 +755,14 @@ fun ConversationContent(
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
-                                    Text(
-                                        text = if (conversation.conversation.isWithSelf) stringResource(
-                                            MR.string.chat_note_to_self
-                                        )
+                                    val conversationTitle =
+                                        if (conversation.conversation.isWithSelf)
+                                            stringResource(MR.string.chat_note_to_self)
                                         else conversation.getDisplayName(
-                                            youLabel = stringResource(
-                                                MR.string.you
-                                            )
-                                        ),
+                                            youLabel = stringResource(MR.string.you),
+                                        )
+                                    Text(
+                                        text = conversationTitle.withEmojiFont(),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -903,6 +934,14 @@ fun ConversationContent(
                     }
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             ) {
+                PinnedMessagesBar(
+                    pinnedMessages = uiState.pinnedMessages,
+                    currentPinIndex = uiState.currentPinIndex,
+                    onUiAction = onUiAction,
+                )
+
+                JumpTargetWaitingBar(isWaiting = uiState.awaitingJumpMessageId != null)
+
                 if (conversation.conversation.isGroupConversation && conversation.missingConnections.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
@@ -963,6 +1002,43 @@ fun ConversationContent(
                         }
                         result.addAll(pending)
                         result.toList()
+                    }
+                }
+
+                // Prepend compensation (#1223): when an older page lands while the viewport
+                // is parked on a top marker row, key-based anchoring can't hold a message
+                // steady — the "Load more" pill's key vanishes and the spinner row sits
+                // ABOVE the insertion point — so the viewport teleports to the top of the
+                // prepended block and the proximity trigger chain-loads from there. Pin the
+                // first visible message row at its previous pixel offset instead; only
+                // Message/pending rows are stable anchors (a date Section moves up when
+                // older same-day messages land above it). requestScrollToItem applies at
+                // the next measure, so there is no intermediate frame.
+                var prevMergedItems by remember(conversation.conversation.id) {
+                    mutableStateOf(mergedItems)
+                }
+                SideEffect {
+                    if (prevMergedItems === mergedItems) return@SideEffect
+                    prevMergedItems = mergedItems
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    val firstKey = visible.firstOrNull()?.key
+                    if (firstKey != MessageListContentModel.LoadServerHistory.id &&
+                        firstKey != MessageListContentModel.LoadingOlder.id
+                    ) return@SideEffect
+                    val indexByKey = HashMap<String, Int>(mergedItems.size)
+                    mergedItems.forEachIndexed { i, item ->
+                        when (item) {
+                            is MessageListContentModel.Message -> indexByKey[item.id] = i
+                            is PendingOutgoingMessage -> indexByKey["pending-${item.id}"] = i
+                            else -> {}
+                        }
+                    }
+                    val anchor = visible.firstOrNull {
+                        (it.key as? String)?.let(indexByKey::containsKey) == true
+                    } ?: return@SideEffect
+                    val newIndex = indexByKey.getValue(anchor.key as String)
+                    if (newIndex > anchor.index) {
+                        listState.requestScrollToItem(newIndex, -anchor.offset)
                     }
                 }
 
@@ -1179,16 +1255,54 @@ fun ConversationContent(
 
                                     is MessageListContentModel.LoadingOlder,
                                     is MessageListContentModel.LoadingNewer -> {
+                                        // The row is a "more exists" placeholder keeping the Header
+                                        // honest; it only animates while a fetch is in flight — an
+                                        // idle perpetual spinner reads as a hang.
+                                        val isFetching =
+                                            if (item is MessageListContentModel.LoadingOlder) uiState.isLoadingOlder
+                                            else uiState.isLoadingNewer
                                         Box(
                                             modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
                                                 .fillMaxWidth()
                                                 .padding(vertical = 16.dp),
                                             contentAlignment = Alignment.Center,
                                         ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(24.dp),
-                                                strokeWidth = 2.dp,
-                                            )
+                                            Box(modifier = Modifier.size(24.dp)) {
+                                                if (isFetching) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(24.dp),
+                                                        strokeWidth = 2.dp,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    is MessageListContentModel.LoadServerHistory -> {
+                                        Box(
+                                            modifier = (if (animationsEnabled) Modifier.animateItem() else Modifier)
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            if (uiState.isLoadingOlderFromServer) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(24.dp),
+                                                    strokeWidth = 2.dp,
+                                                )
+                                            } else {
+                                                TextButton(
+                                                    onClick = {
+                                                        onUiAction(
+                                                            ConversationListUiAction.LoadOlderMessagesFromServer(
+                                                                conversation.conversation.id
+                                                            )
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text(stringResource(MR.string.chat_load_older_messages))
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1503,7 +1617,7 @@ fun ConversationContent(
                             isRecordingActive = isRecordingActive,
                             isSendingMessage = uiState.isSendingMessage,
                             onSendMessage = {
-                                performSend(textFieldState.toMarkdown(), payloadRenderers)
+                                performSend(textFieldState.toMessageMarkdown(), payloadRenderers)
                             },
                             onCancelEdit = {
                                 onUiAction(ConversationListUiAction.CancelEditMessage)
@@ -1633,6 +1747,9 @@ fun ConversationContent(
                         fileLauncher.launch()
                     }, onContactClick = {
                         showAttachmentSheet = false
+                        onUiAction(
+                            ConversationListUiAction.OpenShareContact(conversation.conversation.id)
+                        )
                     }, onLocationClick = {
                         Logger.d(tag = "LocationShare") { "share location clicked" }
                         showAttachmentSheet = false
@@ -1833,6 +1950,91 @@ fun ConversationContentSheets(
                     }
                 }
             }
+        }
+
+        is MessageListUiSheet.PinnedMessages -> {
+            PinnedMessagesSheet(
+                pinnedMessages = uiState.pinnedMessages,
+                onUiAction = onUiAction,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PinnedMessagesSheet(
+    pinnedMessages: ImmutableList<MessageUiModel>,
+    onUiAction: (ConversationListUiAction) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = { onUiAction(ConversationListUiAction.DismissSheet) },
+        sheetState = sheetState,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = stringResource(MR.string.chat_pinned_messages_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 12.dp),
+            )
+            if (pinnedMessages.isEmpty()) {
+                Text(
+                    text = stringResource(MR.string.chat_pinned_messages_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 24.dp),
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    items(pinnedMessages, key = { it.id }) { message ->
+                        val sender = message.displayName
+                            .ifBlank { message.originalAuthor?.domainName.orEmpty() }
+                        val body = message.pinnedPreviewBody().truncateToCodePoints(80)
+                        val previewText = if (sender.isBlank()) body else "$sender: $body"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onUiAction(ConversationListUiAction.DismissSheet)
+                                    onUiAction(ConversationListUiAction.ScrollToMessageId(message.id))
+                                }
+                                .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PushPin,
+                                contentDescription = stringResource(MR.string.chat_pinned_icon),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = previewText.withEmojiFont(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = { onUiAction(ConversationListUiAction.UnpinMessage(message.id)) },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = stringResource(MR.string.chat_unpin_message),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

@@ -81,6 +81,7 @@ import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.widget.GuardedComposerSheet
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.contentType
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -178,13 +179,13 @@ private fun EventComposerContent(
     val coverGalleryPicker = rememberFilePickerLauncher(type = FileKitType.Image) { file ->
         if (file != null) scope.launch {
             coverInput = file.materializeForUpload(fileOperationsProvider)
-                .toImageAttachmentInput(fileOperationsProvider)
+                .toImageAttachmentInput(fileOperationsProvider, file.contentType())
         }
     }
     val coverCameraLauncher = rememberCameraManager { file ->
         if (file != null) scope.launch {
             coverInput = file.materializeForUpload(fileOperationsProvider)
-                .toImageAttachmentInput(fileOperationsProvider)
+                .toImageAttachmentInput(fileOperationsProvider, file.contentType())
         }
     }
     // Deferred picker launch — presenting the picker synchronously from the

@@ -39,6 +39,8 @@ object AppConfig {
     // Deep link scheme for returning from permission extension
     const val DEEP_LINK_SCHEME = "homebase-fchat"
 
+    const val CREATE_ACCOUNT_CALLBACK_HOST = "create-account-callback"
+
     const val REPORT_CONTENT_URL = "https://ravenhosting.cloud/report/content"
 }
 
@@ -64,6 +66,17 @@ expect fun returnUrl(): String
  * Same platform split as [returnUrl]: deep link on mobile, localhost loopback on desktop.
  */
 expect fun dataUpgradeReturnUrl(): String
+
+/**
+ * Return URL the sign-up flow sends the user back to once their new identity is set up,
+ * carrying the created domain as `?domain=`. Null where nothing can catch it: the owner
+ * console would redirect the browser at a scheme the OS doesn't know, so those platforms
+ * ask for no return at all and the user finishes in the browser.
+ *
+ * Mobile only today — desktop could use [id.homebase.api.browser.LocalCallbackServer] the
+ * way [returnUrl] does, once a desktop sign-up is worth the route.
+ */
+expect fun createAccountReturnUrl(): String?
 
 // Circle IDs for connected identities
 const val CONFIRMED_CONNECTIONS_CIRCLE_ID = "bb2683fa402aff866e771a6495765a15"
@@ -100,6 +113,8 @@ val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+val publicChannelLabeledDrive =
+    LabeledDrive(drive = SystemDriveConstants.publicPostChannelDrive, label = "Public Channel")
 val momentsLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
@@ -227,14 +242,24 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // Chat and Contacts power messaging.
 // See ADDING_ADDON_APPS.md §"Mandatory vs Optional Drives" for the full model.
 //
-// Profile drive intentionally omitted: owner display name / avatar are loaded via
-// the public unauthenticated `https://{odinId}/pub/profile` endpoint
-// (PublicProfileProviderCached), not through the drive sync engine. Adding
-// profileLabeledDrive here would start additional HTTP polling on every login for
-// content nothing currently reads — wire it in only when a feature actually needs
-// the profile drive synced into the local SQLDelight index.
+// Profile drive is synced like Chat/Contacts so the owner's standard-profile attributes
+// (fileType=77) are indexed locally and available offline (#1105). Display name / avatar
+// continue to come from the public `https://{odinId}/pub/profile` endpoint
+// (PublicProfileProviderCached) — that's a separate, cache-backed path.
+// The feed + public-channel drives are deliberately NOT here. Everything in this list is exempt from
+// AuthConnectionCoordinator's read-grant filter and from drivesToPrune, which is only sound for drives
+// [targetDriveAccessRequest] grants at login. The feed drives are granted by the separate
+// [feedTargetDriveAccessRequest] extend-permissions flow, so listing them here puts an ungranted drive on the
+// WebSocket subscription — the server then closes the socket and the whole session loses live chat. They
+// activate through
+// OptionalDriveActivation like Moments/Vault instead; once registered, the login pre-mount
+// loop mounts them on every device and the sync engine drains the transit inbox as before.
 val mandatorySyncDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive /*, profileLabeledDrive */)
+    listOf(
+        chatLabeledDrive,
+        contactLabeledDrive,
+        profileLabeledDrive,
+    )
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(

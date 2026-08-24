@@ -5,4 +5,8 @@
     <style name="Theme.Homebase.Crash" parent="Theme.Homebase.Crash.Base">
         <item name="android:windowLightStatusBar">false</item>
     </style>
+
+    <style name="Theme.Homebase.Splash" parent="Theme.Homebase.Splash.Base">
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

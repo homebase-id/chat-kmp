@@ -9,6 +9,7 @@ import co.touchlab.kermit.Logger
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import id.homebase.api.client.isMlKitTeardownFailure
+import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.core.crash.CrashMetadata
 import id.homebase.core.crash.CrashReporting
@@ -63,10 +64,12 @@ object GlobalCrashHandler {
             if (isContainableNonFatal(throwable)) {
                 runCatching { Firebase.crashlytics.recordException(throwable) }
                 Logger.w(tag = TAG) {
-                    val kind = if (throwable.isMlKitTeardownFailure()) {
-                        "ML Kit/MediaPipe failure (background removal degrades to no cutout)"
-                    } else {
-                        "Transient network failure"
+                    val kind = when {
+                        throwable.isMlKitTeardownFailure() ->
+                            "ML Kit/MediaPipe failure (background removal degrades to no cutout)"
+                        throwable.isRecoverableServerConflict() ->
+                            "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
+                        else -> "Transient network failure"
                     }
                     "$kind on '${thread.name}'; contained, not crashing: ${throwable.message}"
                 }
@@ -112,15 +115,19 @@ object GlobalCrashHandler {
      * A failure we contain (record + keep running) instead of terminating the process for:
      *  - a transient network blip — dropped socket, DNS, timeout, **or a TLS handshake
      *    failure**, including a TLS-inspecting VPN/proxy/AV presenting an untrusted cert; and
-     *  - an ML Kit / MediaPipe teardown (best-effort background removal on native threads).
+     *  - an ML Kit / MediaPipe teardown (best-effort background removal on native threads); and
+     *  - a recoverable optimistic-concurrency conflict (a 400 VersionTagMismatch — the write was
+     *    dropped because the file's versionTag advanced; drive-sync reconciles). See #1008.
      *
-     * Both routinely leak from a coroutine launched on a scope without its own
+     * These routinely leak from a coroutine launched on a scope without its own
      * CoroutineExceptionHandler (e.g. a bare `viewModelScope.launch`). Killing the process for
      * them is the very thing PR #737 set out to avoid — and what the `finally` below used to do
      * anyway. Pure so it's unit-testable.
      */
     internal fun isContainableNonFatal(throwable: Throwable): Boolean =
-        throwable.isTransientNetworkFailure() || throwable.isMlKitTeardownFailure()
+        throwable.isTransientNetworkFailure() ||
+            throwable.isMlKitTeardownFailure() ||
+            throwable.isRecoverableServerConflict()
 
     /**
      * Whether to launch the [CrashActivity] recovery screen for this crash. Pure so it

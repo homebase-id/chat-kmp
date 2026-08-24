@@ -1,7 +1,6 @@
 package id.homebase.api.video
 
 import java.io.File
-import java.io.InputStream
 import kotlin.io.copyTo
 import kotlin.io.outputStream
 import kotlin.io.use
@@ -64,20 +63,29 @@ object FFmpegBinaryManager {
     private fun extractBinary(name: String): File {
         val outputFile = File(tempDir, "$platformKey-$name")
 
-        if (outputFile.exists() && outputFile.canExecute()) {
-            return outputFile
-        }
-
         val resourcePath = "/ffmpeg/$platformKey/$name"
-        val inputStream: InputStream =
-                FFmpegBinaryManager::class.java.getResourceAsStream(resourcePath)
+        val resourceUrl =
+                FFmpegBinaryManager::class.java.getResource(resourcePath)
                         ?: throw kotlin.IllegalStateException(
                             "FFmpeg binary not found for platform $platformKey. " +
                                     "Expected resource at: $resourcePath. " +
                                     "Please add the binary to composeApp/src/desktopMain/resources/ffmpeg/$platformKey/"
                         )
 
-        inputStream.use { input ->
+        // Reuse the previously-extracted binary only if it matches the bundled one
+        // by byte length. The temp dir is shared and un-versioned, so without this
+        // an app update that ships a new ffmpeg keeps serving the stale binary
+        // sitting there from the old version (#1035).
+        // ponytail: size is a cheap proxy for "same build" — two different ffmpeg
+        // builds of identical byte length don't happen in practice. Swap to a
+        // content hash only if that ever bites.
+        val bundledSize = resourceUrl.openConnection().contentLengthLong
+        if (outputFile.exists() && outputFile.canExecute() &&
+                bundledSize > 0 && outputFile.length() == bundledSize) {
+            return outputFile
+        }
+
+        resourceUrl.openStream().use { input ->
             outputFile.outputStream().use { output -> input.copyTo(output) }
         }
 

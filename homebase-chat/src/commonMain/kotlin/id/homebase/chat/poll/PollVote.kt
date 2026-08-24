@@ -1,7 +1,9 @@
 package id.homebase.chat.poll
 
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.common.OdinId
 import id.homebase.chat.services.decodeReactionCode
+import id.homebase.core.widget.EmojiReaction
 
 /**
  * Encodes/decodes poll votes as chat reaction codes. A vote for option index
@@ -56,4 +58,54 @@ object PollVote {
         }
         return out
     }
+
+    /**
+     * Merges the two disagreeing sources the detail screen has to reconcile:
+     * the header [ReactionSummary] (what the bubble counts — authoritative for
+     * HOW MANY) and the fetched per-user [roster] (authoritative for WHO, but
+     * possibly short — see `ChatMessageActionService.getReactions`).
+     *
+     * The reported count is `max(summaryCount, votersShown)` so the detail
+     * screen can never claim fewer votes than the bubble, nor fewer than the
+     * rows it is actually rendering. [selfOdinId] sorts first in every option's
+     * voter list.
+     */
+    fun tally(
+        summary: ReactionSummary?,
+        roster: List<EmojiReaction>?,
+        optionCount: Int,
+        selfOdinId: OdinId?,
+    ): List<PollOptionTally> {
+        val counts = counts(summary, optionCount)
+        val votersByOption = roster.orEmpty()
+            .mapNotNull { reaction -> optionOf(reaction.emoji)?.let { it to reaction.odinId } }
+            .filter { (option, _) -> option in 0 until optionCount }
+            .groupBy({ it.first }, { it.second })
+
+        return (0 until optionCount).map { option ->
+            val voters = votersByOption[option].orEmpty()
+                .distinct()
+                .sortedByDescending { it == selfOdinId }
+            PollOptionTally(
+                index = option,
+                count = maxOf(counts[option], voters.size),
+                voters = voters,
+            )
+        }
+    }
+}
+
+/**
+ * One option's row in the poll detail roster.
+ *
+ * [count] comes from the header summary, [voters] from the live per-user read.
+ * [isPartial] means we know about more votes than we can name — the screen must
+ * say so rather than silently under-report the roster.
+ */
+data class PollOptionTally(
+    val index: Int,
+    val count: Int,
+    val voters: List<OdinId>,
+) {
+    val isPartial: Boolean get() = voters.size < count
 }

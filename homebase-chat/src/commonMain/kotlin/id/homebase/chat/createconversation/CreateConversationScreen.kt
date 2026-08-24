@@ -71,6 +71,7 @@ import id.homebase.resources.cd_not_selected
 import id.homebase.resources.cd_selected
 import id.homebase.resources.contactbook_self_you
 import id.homebase.resources.contacts
+import id.homebase.resources.groups
 import id.homebase.resources.menu_back
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
@@ -295,6 +296,27 @@ fun CreateConversationUi(
                                     imageVector = Icons.Default.Group,
                                     text = stringResource(MR.string.chat_new_conversation_new_group),
                                     onClick = { onUiAction(CreateConversationUiAction.CreateNewGroup) }
+                                )
+                            }
+                        }
+
+                        is CreateConversationListItem.Groups -> {
+                            item {
+                                Text(
+                                    modifier = Modifier.padding(top = 8.dp, bottom = 16.dp, start = 16.dp),
+                                    text = stringResource(MR.string.groups),
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                            }
+                            items(item.groups, key = { it.id }) { group ->
+                                GroupOrConversationItem(
+                                    avatarModel = group.avatarModel,
+                                    name = group.name,
+                                    onContactClick = {
+                                        onUiAction(
+                                            CreateConversationUiAction.ExistingConversationClicked(group.id)
+                                        )
+                                    },
                                 )
                             }
                         }

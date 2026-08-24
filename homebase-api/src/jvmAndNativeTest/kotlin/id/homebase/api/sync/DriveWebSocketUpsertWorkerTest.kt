@@ -5,6 +5,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.createInMemoryDatabase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -354,6 +355,62 @@ class DriveWebSocketUpsertWorkerTest {
     }
 
     @Test
+    fun submit_deleteRejectedByGuard_stillEmitsBatchReceived() = runBlocking {
+        // Regression for #1042. A sender-delete can be applied to the DB by the
+        // silent REST DriveSync path FIRST; the WS push for the same delete then
+        // hits the DriveMainIndex timestamp guard (same `updated`, nothing newer)
+        // and writes nothing. DriveSync emits no BatchReceived, so if the worker
+        // ALSO skips the guard-rejected delete, the open conversation is never
+        // told and keeps showing the message until a cold reload. Unlike the
+        // stale statisticsChanged case, a delete must always surface live.
+        val identityId = Uuid.random()
+        val driveId = Uuid.random()
+        val eventBus = EventBus()
+
+        val collected = mutableListOf<BackendEvent.DataEvent.BatchReceived>()
+        val collector = launch {
+            eventBus.events.collect { event ->
+                if (event is BackendEvent.DataEvent.BatchReceived) collected.add(event)
+            }
+        }
+        delay(20)
+
+        val fileId = Uuid.random()
+        val uniqueId = Uuid.random()
+        val deleteUpdatedMs = 2_000_000_000_000L
+
+        // Simulate DriveSync REST applying the delete to the DB first — silent,
+        // no BatchReceived, exactly like the real DriveSync path.
+        val delete = makeFile(fileId, driveId, uniqueId, updatedMs = deleteUpdatedMs, fileState = "deleted")
+        MainIndexMetaHelpers.HomebaseFileProcessor(db)
+            .baseUpsertEntryZapZap(identityId, driveId, listOf(delete), cursor = null)
+        assertEquals(0, collected.size, "the DriveSync-path write must not emit a BatchReceived")
+
+        val worker = DriveWebSocketUpsertWorker(
+            identityId = identityId,
+            driveId = driveId,
+            databaseManager = db,
+            eventBus = eventBus,
+            scope = workerScope,
+        )
+
+        // WS push for the SAME delete (same fileId + `updated`) → guard rejects it
+        // (nothing newer to write). It must STILL emit so the live stream reconciles.
+        worker.submit(makeFile(fileId, driveId, uniqueId, updatedMs = deleteUpdatedMs, fileState = "deleted"))
+
+        val emitted = withTimeoutOrNull(5.seconds) {
+            while (collected.isEmpty()) delay(20)
+            collected.first()
+        }
+        assertNotNull(emitted, "a guard-rejected delete must still emit a live BatchReceived (#1042)")
+        assertEquals(1, emitted.batchData.size)
+        assertEquals(fileId, emitted.batchData.first().fileId)
+        assertTrue(emitted.batchData.first().isSoftDeleted(), "the emitted row must be the delete")
+
+        collector.cancel()
+    }
+
+    @Test
     fun cancel_doesNotProduceMoreThanOneBatch() = runBlocking {
         val identityId = Uuid.random()
         val driveId = Uuid.random()
@@ -397,12 +454,13 @@ class DriveWebSocketUpsertWorkerTest {
         driveId: Uuid,
         uniqueId: Uuid = Uuid.random(),
         updatedMs: Long = Clock.System.now().epochSeconds * 1000,
+        fileState: String = "active",
     ): HomebaseFile {
         val now = Clock.System.now().epochSeconds
         val json = """{
             "fileId": "$fileId",
             "driveId": "$driveId",
-            "fileState": "active",
+            "fileState": "$fileState",
             "fileSystemType": "standard",
             "serverFileIsEncrypted": "true",
             "keyHeader": {

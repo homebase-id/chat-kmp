@@ -107,30 +107,90 @@ class DriveSync(
             return null
         }
         syncing.value = true // Atomic — mirrors the sync-lock lifetime below
-        job = scope.launch {
-            try {
-                performSync()
-            } finally {
-                job = null
-                syncing.value = false
-                lastStoppedAt.value = UnixTimeUtc().milliseconds
-                mutex.unlock()
-            }
-            if (killroy.value) {
-                Logger.i("DriveSync: killroy triggered recursive sync for drive $driveId")
-                sync()
-            }
-        }
-
+        job = launchRound(prefetched = null)
         return job
     }
 
-    private suspend fun performSync() {
+    /** True when this drive is hosted on a peer (community owner) — excluded from the own-host collection. */
+    internal val isRemote: Boolean get() = ownerOdinId != null
+
+    /** Witness that [beginBatchedRound] holds the sync lock; must be handed back to [resumeBatchedRound]. */
+    internal class BatchedRound(val request: QueryBatchRequest?)
+
+    /**
+     * Batched-round entry: takes the sync lock and returns this round's page-1 request so
+     * [DriveSyncManager.syncAll] can fold it into one query-batch-collection call. Null = a round
+     * is already in flight (killroy set — identical semantics to [sync]). A null [BatchedRound.request]
+     * means "hold the lock but run a plain round" (fresh sync whose policy pre-steps move the cursor
+     * before page 1). The lock stays held across the collection round trip, so killroy coalescing and
+     * cursor confinement keep exactly [sync]'s semantics; the caller MUST always follow up with
+     * [resumeBatchedRound], on every path.
+     *
+     * Started is emitted HERE, not at resume — the round begins now, and the drive must show
+     * Synchronizing while the collection round trip is in flight.
+     */
+    internal suspend fun beginBatchedRound(): BatchedRound? {
+        if (!mutex.tryLock()) {
+            killroy.value = true // Atomic
+            return null
+        }
+        syncing.value = true // Atomic
+        eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+        val prefetchable = cursor != null ||
+            (policy.fullSyncWindow == null && policy.initialQueries.isEmpty())
+        return BatchedRound(if (prefetchable) buildPageRequest() else null)
+    }
+
+    /**
+     * Batched-round completion: runs the normal sync round, consuming [prefetched] as page 1 when
+     * given. `prefetched = null` runs a plain per-drive round — that IS the fallback for a failed
+     * or missing collection section.
+     */
+    internal fun resumeBatchedRound(@Suppress("UNUSED_PARAMETER") round: BatchedRound, prefetched: QueryBatchResponse?): Job {
+        val newJob = launchRound(prefetched, startedEmitted = true)
+        job = newJob
+        return newJob
+    }
+
+    private fun launchRound(prefetched: QueryBatchResponse?, startedEmitted: Boolean = false): Job = scope.launch {
+        try {
+            performSync(prefetched, startedEmitted)
+        } finally {
+            job = null
+            syncing.value = false
+            lastStoppedAt.value = UnixTimeUtc().milliseconds
+            mutex.unlock()
+        }
+        if (killroy.value) {
+            Logger.i("DriveSync: killroy triggered recursive sync for drive $driveId")
+            sync()
+        }
+    }
+
+    // The single request shape for a sync page — the per-drive loop and the batched section are
+    // both built here so the two paths can never drift. The collection drops maxRecords at
+    // conversion (the budget is collection-level).
+    private fun buildPageRequest() = QueryBatchRequest(
+        queryParams = FileQueryParams(
+            // we want deleted too since we resync when the socket gets a file deleted event
+        ),
+        resultOptionsRequest = QueryBatchResultOptionsRequest(
+            maxRecords = batchSize,
+            includeMetadataHeader = true,
+            cursorState = cursor?.toJson(),
+            includeTransferHistory = true,
+            ordering = QueryBatchSortOrder.OldestFirst,
+            sorting = QueryBatchSortField.AnyChangeDate
+        )
+    )
+
+    private suspend fun performSync(prefetched: QueryBatchResponse? = null, startedEmitted: Boolean = false) {
         var totalCount = 0
         var queryBatchResponse: QueryBatchResponse? = null
         var pendingDbJob: Deferred<Unit>? = null
+        var pendingPrefetch = prefetched
 
-        eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
+        if (!startedEmitted) eventBus.emit(BackendEvent.DriveEvent.Started(driveId))
 
         // Snapshot fresh-sync state BEFORE the windowed loop below mutates `cursor`.
         // Fresh = first login or a discarded stale cursor (loadCursor returned null).
@@ -160,25 +220,19 @@ class DriveSync(
 
         while (true) {
             Logger.i("Synchronizing drive $driveId")
-            val request = QueryBatchRequest(
-                queryParams = FileQueryParams(
-                    // we want deleted too since we resync when the socket gets a file deleted event
-                ),
-                resultOptionsRequest = QueryBatchResultOptionsRequest(
-                    maxRecords = batchSize,
-                    includeMetadataHeader = true,
-                    cursorState = cursor?.toJson(),
-                    includeTransferHistory = true,
-                    ordering = QueryBatchSortOrder.OldestFirst,
-                    sorting = QueryBatchSortField.AnyChangeDate
-                )
-            )
+            val request = buildPageRequest()
+            // Consume the collection-prefetched page 1 exactly once. Don't clear killroy on
+            // that iteration — a change signalled during the collection round trip must
+            // survive into the post-round recursive re-sync.
+            val fromPrefetch = pendingPrefetch != null
 
             var recordsRead = 0
             val durationMs = measureTimedValue {
                 try {
-                    killroy.value = false // Atomic
-                    queryBatchResponse = driveQueryProvider.queryBatch(driveId, request, ownerOdinId)
+                    if (!fromPrefetch) killroy.value = false // Atomic
+                    queryBatchResponse = pendingPrefetch
+                        ?: driveQueryProvider.queryBatch(driveId, request, ownerOdinId)
+                    pendingPrefetch = null
 
                     if (queryBatchResponse.cursorState != null)
                         cursor = QueryBatchCursor.fromJson(queryBatchResponse.cursorState)
@@ -276,7 +330,8 @@ class DriveSync(
                 }
             }
 
-            if (recordsRead > 0) {
+            // A prefetched page has ~0ms duration — adapting on it would spuriously double batchSize.
+            if (recordsRead > 0 && !fromPrefetch) {
                 val batchWas = batchSize
                 if (durationMs.duration.inWholeMilliseconds > 2000)
                     batchSize = ((batchSize * 3) / 4).coerceIn(50, 1000)

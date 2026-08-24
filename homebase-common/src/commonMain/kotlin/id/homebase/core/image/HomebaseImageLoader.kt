@@ -5,12 +5,12 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.client.withRetry
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.clipboard.platformFileFromPath
-import io.github.vinceglb.filekit.extension
-import io.github.vinceglb.filekit.mimeType
+import id.homebase.core.util.contentType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
@@ -41,6 +41,7 @@ data class CachedImage(val bytes: ByteArray, val contentType: String, val size: 
 class HomebaseImageLoader(
     private val driveFileProvider: DriveFileProvider,
     private val fileOperationsProvider: FileOperationsProvider,
+    private val peerFileProvider: PeerFileByGlobalTransitProvider,
 ) {
     // Durable scope hosting full-payload loads so a cancelled caller (e.g. a
     // prefetch whose grid item left composition) does not abort a load that
@@ -132,15 +133,29 @@ class HomebaseImageLoader(
         // Fetch from server with retry
         return withRetry(retryConfig, TAG) {
             val response = try {
-                driveFileProvider.getThumbBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    payloadKey = data.payloadKey,
-                    keyHeader = data.keyHeader,
-                    width = nativeSize.pixelWidth,
-                    height = nativeSize.pixelHeight,
-                    lastModified = data.lastModified,
-                )
+                if (data.isOverPeer) {
+                    // Followed-post media lives on the author's drive: read the thumbnail over peer
+                    // by globalTransitId. On 404 (no server thumb) the caller keeps the embedded
+                    // preview — no regression.
+                    peerFileProvider.getThumbOverPeerByGlobalTransitId(
+                        peer = data.remoteOdinId!!,
+                        driveId = data.driveId,
+                        globalTransitId = data.globalTransitId!!,
+                        payloadKey = data.payloadKey,
+                        width = nativeSize.pixelWidth,
+                        height = nativeSize.pixelHeight,
+                    )
+                } else {
+                    driveFileProvider.getThumbBytesDecrypted(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        payloadKey = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                        width = nativeSize.pixelWidth,
+                        height = nativeSize.pixelHeight,
+                        lastModified = data.lastModified,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -204,19 +219,28 @@ class HomebaseImageLoader(
     }
 
     private fun fullPayloadCacheKey(data: HomebaseImageData): String =
-        "${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
+        "${data.remoteOdinId?.let { "$it@" } ?: ""}${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
 
     private suspend fun fetchFullPayloadUncached(
         data: HomebaseImageData, retryConfig: RetryConfig
     ): CachedImage? {
         return withRetry(retryConfig, TAG) {
             val response = try {
-                driveFileProvider.getPayloadBytesDecrypted(
-                    driveId = data.driveId,
-                    fileId = data.fileId,
-                    key = data.payloadKey,
-                    keyHeader = data.keyHeader
-                )
+                if (data.isOverPeer) {
+                    peerFileProvider.getPayloadOverPeerByGlobalTransitId(
+                        peer = data.remoteOdinId!!,
+                        driveId = data.driveId,
+                        globalTransitId = data.globalTransitId!!,
+                        payloadKey = data.payloadKey,
+                    )
+                } else {
+                    driveFileProvider.getPayloadBytesDecrypted(
+                        driveId = data.driveId,
+                        fileId = data.fileId,
+                        key = data.payloadKey,
+                        keyHeader = data.keyHeader,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PayloadTooLargeException) {
@@ -278,7 +302,7 @@ suspend fun FileOperationsProvider.loadPendingFile(data: HomebaseImageData): Cac
     return try {
         val file = platformFileFromPath(fileUri)
         val bytes = this.readFileBytes(fileUri)
-        val contentType = file.mimeType()?.toString() ?: file.extension
+        val contentType = file.contentType()
         CachedImage(bytes = bytes, contentType = contentType, size = null)
     } catch (e: Exception) {
         Logger.e(tag = "HomebaseImageLoader") { "Failed to load pending file: ${e.message}" }

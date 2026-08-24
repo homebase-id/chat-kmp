@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.ContactPage
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
@@ -74,6 +75,7 @@ import id.homebase.core.util.noRippleClickable
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_attachment_file
 import id.homebase.resources.chat_message_attachment_gallery
+import id.homebase.resources.chat_contact_share
 import id.homebase.resources.chat_dice_share
 import id.homebase.resources.chat_event_share
 import id.homebase.resources.chat_groodle_share
@@ -439,6 +441,14 @@ fun AttachmentOptions(
                     icon = Icons.Default.UploadFile,
                     label = stringResource(MR.string.chat_message_attachment_file),
                     onClick = onFileClick
+                )
+            }
+            item {
+                AttachmentOption(
+                    modifier = Modifier.testTag("attachment_contact"),
+                    icon = Icons.Default.ContactPage,
+                    label = stringResource(MR.string.chat_contact_share),
+                    onClick = onContactClick,
                 )
             }
             if (isMobile()) {

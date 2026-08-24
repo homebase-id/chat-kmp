@@ -13,4 +13,12 @@ object YouAuthStorageKeys {
 
     /** The last used username */
     const val USERNAME = "youauth_username"
+
+    /**
+     * Serialized in-flight auth flow state (ECC key pair + password + CSRF state) for the
+     * web redirect flow, where a full-page navigation to the authorize endpoint unloads the
+     * app and the in-memory callback registry with it. See [YouAuthFlowManager.authorize]
+     * with `persistForRedirect = true`.
+     */
+    const val PENDING_REDIRECT_FLOW = "youauth_pending_redirect_flow"
 }

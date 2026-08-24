@@ -15,12 +15,13 @@ class MessageContentParserTest {
 
     @Test
     fun parse_returns_unknown_for_unrecognized_non_zero_datatype() {
-        // A future Poll = 215 (or any non-allowlisted dataType) arriving at an
+        // A future kind = 216 (or any non-allowlisted dataType) arriving at an
         // older client must surface as Unknown so the user sees an "update the
-        // app" chip rather than a vanished message.
-        val parsed = MessageContentParser.parse(dataType = 215, content = "{\"foo\":1}")
+        // app" chip rather than a vanished message. Bump this past the highest
+        // reserved dataType in ChatProtocol whenever a new kind lands.
+        val parsed = MessageContentParser.parse(dataType = 216, content = "{\"foo\":1}")
         val unknown = assertIs<MessageContent.Unknown>(parsed)
-        assertEquals(215, unknown.dataType)
+        assertEquals(216, unknown.dataType)
         assertEquals(MessageContent.UNKNOWN_LABEL, unknown.displayLabel)
     }
 

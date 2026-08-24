@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.moments
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.moments.services.MomentCreateFlowState
@@ -11,6 +12,10 @@ import id.homebase.core.moments.services.MomentsPostSenderService
 import id.homebase.core.moments.services.MomentsRecipient
 import id.homebase.core.moments.services.MomentsRecipientId
 import id.homebase.core.moments.services.MomentsRecipientLookupService
+import id.homebase.core.ui.screens.contactbook.CircleMembersUi
+import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
+import id.homebase.core.ui.screens.contactbook.resolveCircleMemberEntries
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,6 +31,7 @@ class MomentAudienceViewModel(
     private val recipientLookup: MomentsRecipientLookupService,
     private val postSender: MomentsPostSenderService,
     private val flowState: MomentCreateFlowState,
+    private val contactRepository: ContactRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -36,6 +42,10 @@ class MomentAudienceViewModel(
     private val _events = MutableSharedFlow<MomentAudienceUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<MomentAudienceUiEvent> = _events.asSharedFlow()
 
+    // Address-book entries, kept current so the circle-roster sheet can resolve each snapshot
+    // odinId to a name/avatar (falling back to a synthetic domain row for non-contacts).
+    private var latestContacts: List<ContactBookEntry> = emptyList()
+
     init {
         viewModelScope.launch {
             recipientLookup.recipients.collect { list ->
@@ -45,6 +55,12 @@ class MomentAudienceViewModel(
         viewModelScope.launch {
             flowState.draft.collect { draft ->
                 _uiState.update { it.copy(draftReady = draft != null) }
+            }
+        }
+        viewModelScope.launch { contactRepository.ensureLoaded() }
+        viewModelScope.launch {
+            contactRepository.contacts.collect { list ->
+                latestContacts = list.mapNotNull { it.toContactBookEntry() }
             }
         }
     }
@@ -71,6 +87,40 @@ class MomentAudienceViewModel(
                 }
 
             MomentAudienceUiAction.PostClicked -> post()
+
+            is MomentAudienceUiAction.ShowCircleMembers -> showCircleMembers(action.id)
+
+            MomentAudienceUiAction.DismissCircleMembers ->
+                _uiState.update { it.copy(circleDetail = null) }
+        }
+    }
+
+    /**
+     * Opens the view-only roster for a circle recipient. The roster is built purely from the
+     * recipient's member snapshot (the exact set the moment fans out to), resolved against the
+     * address book — no live pending-member fan-out, since a pending (not-yet-real) grant is NOT
+     * part of the snapshot and would not receive the moment, so listing it here would misrepresent
+     * the audience.
+     */
+    private fun showCircleMembers(id: MomentsRecipientId) {
+        val circle = _uiState.value.recipients.all
+            .filterIsInstance<MomentsRecipient.Circle>()
+            .firstOrNull { it.id == id } ?: return
+        val members = resolveCircleMemberEntries(
+            circle.odinIds.map { it.domainName }.toSet(),
+            latestContacts,
+        ).sortedBy { it.sortKey }
+        _uiState.update {
+            it.copy(
+                circleDetail = CircleMembersUi(
+                    circleId = circle.circleId,
+                    circleName = circle.displayName,
+                    manageable = false,
+                    members = members,
+                    isLoading = false,
+                    pendingChecking = false,
+                ),
+            )
         }
     }
 

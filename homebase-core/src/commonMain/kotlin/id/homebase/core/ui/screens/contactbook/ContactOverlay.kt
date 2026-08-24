@@ -45,6 +45,7 @@ fun ContactBookEntry.withOverride(overlay: ContactFieldOverlay?): ContactBookEnt
         syncedOverlay = syncedOriginals.takeUnless { it.isEmpty },
         additionalPhones = overlay.additionalPhones,
         additionalEmails = overlay.additionalEmails,
+        organization = overlay.organization ?: organization,
     )
 }
 

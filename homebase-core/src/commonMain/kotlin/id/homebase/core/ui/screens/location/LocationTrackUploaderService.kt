@@ -272,7 +272,14 @@ class LocationTrackUploaderService(
         val (headerJson, stored) = LocationTrackCodec.encodeHeader(deviceId.value, hourStartMs, points)
         val overflow = stored.size < points.size
 
-        val existing = findExistingFile(uid)
+        // Only treat the file as updatable when it carries a usable versionTag. A local index row
+        // can exist for an hour whose CREATE never landed server-side (offline): it has no
+        // versionTag until the server assigns one on a successful create. Updating such a file
+        // would send a null tag → 400 MissingVersionTag → outbox drop → re-flush into the same
+        // failing update forever (#1077). Nulling it here routes to create (coalesces via
+        // replace=true; self-heals to an update via DriveOutboxUploader.retryAsUpdate if it does
+        // exist server-side).
+        val existing = findExistingFile(uid)?.takeIf { isUsableVersionTag(it.fileMetadata.versionTag) }
         val enqueued = if (existing == null) {
             enqueueCreate(uid, hourStartMs, headerJson, if (overflow) points else null)
         } else {
@@ -614,6 +621,13 @@ internal enum class HourFlushOutcome {
  */
 internal fun shouldKickDrain(outcomes: List<HourFlushOutcome>): Boolean =
     outcomes.any { it == HourFlushOutcome.Enqueued || it == HourFlushOutcome.Refused }
+
+/**
+ * Whether [tag] can back a file *update*: present and not the all-zero placeholder. A local index
+ * row whose CREATE never landed server-side carries no versionTag; updating it sends a null tag →
+ * 400 MissingVersionTag → a permanent-drop/re-flush loop (#1077). Such a file is routed to create.
+ */
+internal fun isUsableVersionTag(tag: Uuid?): Boolean = tag != null && tag != Uuid.NIL
 
 /** What an outbox event means for the location point buffer. */
 internal enum class BufferAction {

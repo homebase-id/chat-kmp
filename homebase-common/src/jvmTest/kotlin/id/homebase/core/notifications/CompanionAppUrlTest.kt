@@ -7,6 +7,9 @@ import id.homebase.core.config.COMMUNITY_APP_ID
 import id.homebase.core.config.FEED_APP_ID
 import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
+import id.homebase.core.config.OWNER_CONNECTION_ACCEPTED_TYPE_ID
+import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
+import id.homebase.core.config.OWNER_FOLLOWER_TYPE_ID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -192,6 +195,73 @@ class CompanionAppUrlTest {
 
         assertNull(
             resolveCompanionAppUrlEvent(COMMUNITY_APP_ID, authState, "c", "m", 2.seconds)
+        )
+    }
+
+    // endregion
+
+    // region buildConnectionRequestTapEvent — the one owner tap that stays in-app
+
+    @Test
+    fun connectionRequest_opensRequesterContactDetail() {
+        // The sender is the identity asking to connect, so their contact detail — where the
+        // request is reviewed and accepted — is what opens, NOT the owner web console.
+        assertEquals(
+            NotificationNavigationEvent.OpenConnectionRequest("sam.dotyou.cloud"),
+            buildConnectionRequestTapEvent(
+                appId = OWNER_APP_ID,
+                typeId = OWNER_CONNECTION_REQUEST_TYPE_ID,
+                senderId = "sam.dotyou.cloud",
+            ),
+        )
+    }
+
+    @Test
+    fun connectionRequest_normalizesSenderCase() {
+        // The contact uniqueId is md5 of the lowercased domain, so the event must carry the
+        // lowercased form or the screen keys onto a different (non-existent) contact.
+        assertEquals(
+            NotificationNavigationEvent.OpenConnectionRequest("sam.dotyou.cloud"),
+            buildConnectionRequestTapEvent(
+                OWNER_APP_ID, OWNER_CONNECTION_REQUEST_TYPE_ID, " Sam.DotYou.Cloud "
+            ),
+        )
+    }
+
+    @Test
+    fun connectionRequest_withoutSender_fallsThroughToCompanionUrl() {
+        // No domain means no contact screen to open — the tap must fall through to the owner
+        // web console rather than navigating somewhere meaningless.
+        assertNull(
+            buildConnectionRequestTapEvent(OWNER_APP_ID, OWNER_CONNECTION_REQUEST_TYPE_ID, null)
+        )
+        assertNull(
+            buildConnectionRequestTapEvent(OWNER_APP_ID, OWNER_CONNECTION_REQUEST_TYPE_ID, "  ")
+        )
+    }
+
+    @Test
+    fun otherOwnerNotifications_stillOpenTheWebConsole() {
+        // Only the connection-request type is handled in-app; followers, accepted connections
+        // and introductions keep going to /owner/connections.
+        assertNull(
+            buildConnectionRequestTapEvent(OWNER_APP_ID, OWNER_FOLLOWER_TYPE_ID, "sam.dotyou.cloud")
+        )
+        assertNull(
+            buildConnectionRequestTapEvent(
+                OWNER_APP_ID, OWNER_CONNECTION_ACCEPTED_TYPE_ID, "sam.dotyou.cloud"
+            )
+        )
+    }
+
+    @Test
+    fun nonOwnerApp_withSameTypeId_returnsNull() {
+        // typeId alone must not trigger the in-app route — it's only meaningful under the
+        // owner appId (chat reuses typeId as the conversation id).
+        assertNull(
+            buildConnectionRequestTapEvent(
+                AppConfig.APP_ID, OWNER_CONNECTION_REQUEST_TYPE_ID, "sam.dotyou.cloud"
+            )
         )
     }
 

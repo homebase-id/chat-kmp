@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import co.touchlab.kermit.Logger
 import com.mmk.kmpnotifier.extensions.onCreateOrOnNewIntent
@@ -17,6 +18,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.config.AppConfig
+import id.homebase.core.util.CreatedIdentityRelay
 import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationIntentDecision
 import id.homebase.core.notifications.NotificationNavigationEvent
@@ -42,6 +45,9 @@ class MainActivity : AppCompatActivity() {
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must run before super.onCreate — swaps Theme.Homebase.Splash for the real app
+        // theme (postSplashScreenTheme) once the window exists.
+        installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
@@ -172,6 +178,19 @@ class MainActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     eventBus.emit(BackendEvent.DataUpgradeReturned)
                 }
+                intent.data = null
+                return
+            }
+
+            // Sign-up return carrying the identity that was just created.
+            // Path: homebase-fchat://create-account-callback?domain=…
+            // The in-app browser catches this in its own WebView; this is the path for a
+            // delivery that comes back through the OS instead, which would otherwise fall
+            // through to the auth callback below and be parsed as a YouAuth response.
+            if (data.host == AppConfig.CREATE_ACCOUNT_CALLBACK_HOST) {
+                val domain = data.getQueryParameter("domain")
+                Logger.i(tag = "MainActivity") { "Create-account deep link (domain=$domain)" }
+                domain?.takeIf { it.isNotBlank() }?.let { CreatedIdentityRelay.deliver(it) }
                 intent.data = null
                 return
             }

@@ -1,14 +1,21 @@
 package id.homebase.core.ui.screens.notifications
 
+import id.homebase.resources.MR
+import id.homebase.resources.settings_notification_content_name_content_actions
+import id.homebase.resources.settings_notification_content_name_only
+import id.homebase.resources.settings_notification_content_no_name_or_content
+import org.jetbrains.compose.resources.StringResource
+
 /** Notification content display levels. */
-enum class NotificationContentLevel(val code: String, val displayName: String) {
+enum class NotificationContentLevel(val code: String, val label: StringResource) {
     NAME_CONTENT_ACTIONS(
         "name_content_actions",
-        "Name, Content, and Actions"
+        MR.string.settings_notification_content_name_content_actions,
     ),
-    NAME_ONLY("name_only", "Name Only"), NO_NAME_OR_CONTENT(
+    NAME_ONLY("name_only", MR.string.settings_notification_content_name_only),
+    NO_NAME_OR_CONTENT(
         "no_name_or_content",
-        "No Name or Content"
+        MR.string.settings_notification_content_no_name_or_content,
     );
 
     companion object {

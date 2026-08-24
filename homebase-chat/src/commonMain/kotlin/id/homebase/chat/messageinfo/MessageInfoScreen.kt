@@ -41,8 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.common.OdinId
@@ -56,6 +54,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.util.formateDateTime
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_info
 import id.homebase.resources.delivered_to
@@ -603,18 +602,12 @@ fun MessageInfoUi(
     }
 }
 
+// The rule under the label is this screen's own separator, not part of the header contract.
 @Composable
 private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .padding(bottom = 4.dp)
-                .semantics { heading() },
-        )
+        SettingsSectionHeader(title = text, modifier = Modifier.padding(bottom = 4.dp))
         HorizontalDivider()
         Spacer(modifier = Modifier.height(4.dp))
     }

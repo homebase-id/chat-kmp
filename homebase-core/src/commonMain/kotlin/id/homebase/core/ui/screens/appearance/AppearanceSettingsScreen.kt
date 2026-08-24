@@ -1,10 +1,11 @@
 package id.homebase.core.ui.screens.appearance
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,6 +14,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -22,6 +26,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -30,9 +37,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.settings.Language
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.setPlatformSystemLocale
-import id.homebase.core.widget.SettingsClickableRow
-import id.homebase.core.widget.SettingsRowItemData
-import id.homebase.core.widget.SettingsToggleRow
+import id.homebase.core.widget.SettingsOptionRow
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
 import id.homebase.resources.language
 import id.homebase.resources.language_danish
@@ -46,7 +53,6 @@ import id.homebase.resources.theme
 import id.homebase.resources.theme_dark
 import id.homebase.resources.theme_light
 import id.homebase.resources.theme_system
-import kotlinx.collections.immutable.toPersistentList
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -99,56 +105,81 @@ fun AppearanceSettingsUi(
             )
         },
     ) { innerPadding ->
+        var languageExpanded by rememberSaveable { mutableStateOf(false) }
+        var themeExpanded by rememberSaveable { mutableStateOf(false) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            SettingsClickableRow(
-                label = stringResource(MR.string.language),
-                selectedValue = SettingsRowItemData(
-                    displayName = stringResource(getStringResourceForLanguage(uiState.selectedLanguage)),
-                    data = uiState.selectedLanguage
-                ),
-                options = uiState.availableLanguages.map {
-                    SettingsRowItemData(
-                        displayName = stringResource(getStringResourceForLanguage(it)),
-                        data = it,
-                    )
-                }.toPersistentList(),
-                onSelected = {
-                    onAction(AppearanceSettingsUiAction.LanguageSelected(it))
-                },
-            )
+            Spacer(modifier = Modifier.height(8.dp))
 
-            SettingsClickableRow(
-                label = stringResource(MR.string.theme),
-                selectedValue = SettingsRowItemData(
-                    displayName = uiState.selectedTheme.getStringResourceForTheme(),
-                    data = uiState.selectedTheme
+            SettingsRow(
+                modifier = Modifier.testTag("languageRow"),
+                icon = Icons.Outlined.Language,
+                title = stringResource(MR.string.language),
+                supportingText = stringResource(getStringResourceForLanguage(uiState.selectedLanguage)),
+                action = SettingsRowAction.Expand(
+                    expanded = languageExpanded,
+                    onExpandedChange = { languageExpanded = it },
                 ),
-                options = ThemeState.entries.map {
-                    SettingsRowItemData(
-                        displayName = it.getStringResourceForTheme(),
-                        data = it,
-                    )
-                }.toPersistentList(),
-                onSelected = {
-                    onAction(AppearanceSettingsUiAction.ThemeSelected(it))
-                },
             )
+            AnimatedVisibility(visible = languageExpanded) {
+                Column {
+                    uiState.availableLanguages.forEach { language ->
+                        SettingsOptionRow(
+                            label = stringResource(getStringResourceForLanguage(language)),
+                            selected = language == uiState.selectedLanguage,
+                            onClick = {
+                                languageExpanded = false
+                                onAction(AppearanceSettingsUiAction.LanguageSelected(language))
+                            },
+                        )
+                    }
+                }
+            }
 
-            SettingsToggleRow(
+            SettingsRow(
+                modifier = Modifier.testTag("themeRow"),
+                icon = Icons.Outlined.Brightness6,
+                title = stringResource(MR.string.theme),
+                supportingText = uiState.selectedTheme.getStringResourceForTheme(),
+                action = SettingsRowAction.Expand(
+                    expanded = themeExpanded,
+                    onExpandedChange = { themeExpanded = it },
+                ),
+            )
+            AnimatedVisibility(visible = themeExpanded) {
+                Column {
+                    ThemeState.entries.forEach { theme ->
+                        SettingsOptionRow(
+                            label = theme.getStringResourceForTheme(),
+                            selected = theme == uiState.selectedTheme,
+                            onClick = {
+                                themeExpanded = false
+                                onAction(AppearanceSettingsUiAction.ThemeSelected(theme))
+                            },
+                        )
+                    }
+                }
+            }
+
+            SettingsRow(
                 modifier = Modifier.testTag("hapticFeedbackToggle"),
-                label = stringResource(MR.string.settings_haptic_feedback),
-                checked = uiState.hapticsEnabled,
-                onCheckedChange = { onAction(AppearanceSettingsUiAction.HapticsEnabledChanged(it)) },
-                contentPadding = PaddingValues(0.dp),
+                icon = Icons.Outlined.Vibration,
+                title = stringResource(MR.string.settings_haptic_feedback),
+                action = SettingsRowAction.Toggle(
+                    checked = uiState.hapticsEnabled,
+                    onCheckedChange = {
+                        onAction(AppearanceSettingsUiAction.HapticsEnabledChanged(it))
+                    },
+                ),
             )
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

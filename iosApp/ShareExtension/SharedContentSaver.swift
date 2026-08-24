@@ -100,7 +100,10 @@ struct SharedContentSaver {
                 if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
                     group.enter()
                     provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, _ in
-                        if let string = item as? String {
+                        // A blank vend must not overwrite a real `text`, nor stand in as one:
+                        // a blank-but-non-nil text shadows `url` on the Kotlin side and sends an
+                        // empty message. Mirrors the attributedContentText guard above (#1097).
+                        if let string = item as? String, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             text = string
                         }
                         group.leave()
@@ -141,6 +144,17 @@ struct SharedContentSaver {
                                 fileNames.append(result.name)
                                 mimeTypes.append(result.mimeType)
                             }
+                        } else if let videoData = item as? Data {
+                            if let result = writeData(
+                                videoData,
+                                from: provider,
+                                conformingTo: .movie,
+                                fallbackExtension: "mov",
+                                to: filesDir
+                            ) {
+                                fileNames.append(result.name)
+                                mimeTypes.append(result.mimeType)
+                            }
                         }
                         group.leave()
                     }
@@ -153,6 +167,17 @@ struct SharedContentSaver {
                     provider.loadItem(forTypeIdentifier: UTType.data.identifier, options: nil) { item, _ in
                         if let fileURL = item as? URL {
                             if let result = copyFile(from: fileURL, to: filesDir) {
+                                fileNames.append(result.name)
+                                mimeTypes.append(result.mimeType)
+                            }
+                        } else if let fileData = item as? Data {
+                            if let result = writeData(
+                                fileData,
+                                from: provider,
+                                conformingTo: .data,
+                                fallbackExtension: "dat",
+                                to: filesDir
+                            ) {
                                 fileNames.append(result.name)
                                 mimeTypes.append(result.mimeType)
                             }
@@ -224,6 +249,46 @@ struct SharedContentSaver {
         } catch {
             return nil
         }
+    }
+
+    private static func writeData(
+        _ data: Data,
+        from provider: NSItemProvider,
+        conformingTo type: UTType,
+        fallbackExtension: String,
+        to directory: URL
+    ) -> CopyResult? {
+        let ext = dataExtension(for: provider, conformingTo: type, fallback: fallbackExtension)
+        let name = "share_\(Int(Date().timeIntervalSince1970 * 1000))_\(Int.random(in: 0...9999)).\(ext)"
+        let destURL = directory.appendingPathComponent(name)
+
+        do {
+            try data.write(to: destURL)
+            return CopyResult(name: name, mimeType: mimeTypeForExtension(ext))
+        } catch {
+            return nil
+        }
+    }
+
+    /// Only the extension is taken from `suggestedName`: it is cross-process input and must
+    /// never become a path component of its own.
+    private static func dataExtension(
+        for provider: NSItemProvider,
+        conformingTo type: UTType,
+        fallback: String
+    ) -> String {
+        if let suggested = provider.suggestedName {
+            let ext = (suggested as NSString).pathExtension
+            if !ext.isEmpty { return ext }
+        }
+        for identifier in provider.registeredTypeIdentifiers {
+            guard let registered = UTType(identifier),
+                  registered.conforms(to: type),
+                  let ext = registered.preferredFilenameExtension
+            else { continue }
+            return ext
+        }
+        return fallback
     }
 
     private static func mimeTypeForExtension(_ ext: String) -> String {

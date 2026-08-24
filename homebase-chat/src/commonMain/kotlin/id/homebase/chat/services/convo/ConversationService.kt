@@ -156,6 +156,20 @@ class ConversationService(
     private var lastReadFlushJob: Job? = null
     // endregion
 
+    // region draft (#1122)
+    // The per-conversation composer draft rides `localAppData.content` alongside
+    // lastRead (owner-private, synced across the owner's devices, never sent to
+    // peers). Debouncing lives in the caller (the composer snapshotFlow); here we
+    // only dedup identical writes so restoring a draft can't echo back into the
+    // outbox, and cap the stored text so it stays within the header budget.
+    private val draftMutex = Mutex()
+    private var lastPersistedDraft: Pair<Uuid, String?>? = null
+    // ponytail: 2000 codepoints keeps the header comfortably under the 7 KB cap
+    // for normal text; a longer draft is truncated (raise only with a payload
+    // carrier, which v1 deliberately skips).
+    private val draftMaxCodepoints = 2000
+    // endregion
+
     private val mapper: ConversationMapper = ConversationMapper(
         credentialsManager = credentialsManager,
         dbm = dbm
@@ -1027,7 +1041,7 @@ class ConversationService(
         val domain = credentialsManager.requireActiveDomain()
         val leaveFile = getConversationHomebaseFile(conversationId)
         val preVersionTag = leaveFile?.fileMetadata?.versionTag
-        Logger.d { "leaveGroup START: conversationId=$conversationId forceLocalOnly=$forceLocalOnly isEncrypted=${leaveFile?.fileMetadata?.isEncrypted} aesKey=${leaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
+        Logger.d { "leaveGroup START: conversationId=$conversationId forceLocalOnly=$forceLocalOnly isEncrypted=${leaveFile?.fileMetadata?.isEncrypted}" }
         audit.pre("convo: isGroup=${conversation.isGroupConversation} legacyGroup=${conversation.isLegacyGroup} state=${conversation.conversationState} participants=${conversation.participants.size} admins=${conversation.admins.size} amIAdmin=${conversation.admins.contains(domain)}")
         audit.pre("file: exists=${leaveFile != null} versionTag=$preVersionTag")
 
@@ -1175,8 +1189,6 @@ class ConversationService(
 //                outboxSync.tryEnqueue(it)
 //            }
 
-//        val postLeaveFile = getConversationHomebaseFile(conversationId)
-//        Logger.d { "leaveGroup END: conversationId=$conversationId aesKey=${postLeaveFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
     }
 
     suspend fun acceptRejoin(conversationId: Uuid) {
@@ -1341,7 +1353,7 @@ class ConversationService(
         if (conversationFile == null) error("No conversation found")
         val preVersionTag = conversationFile.fileMetadata.versionTag
 
-        Logger.d { "updateConversationInternal: conversationId=$conversationId isEncrypted=${conversationFile.fileMetadata.isEncrypted} aesKey=${conversationFile.keyHeader.aesKey.unsafeBytes.toBase64()} ivLen=${conversationFile.keyHeader.iv.size} keyLen=${conversationFile.keyHeader.aesKey.unsafeBytes.size}" }
+        Logger.d { "updateConversationInternal: conversationId=$conversationId isEncrypted=${conversationFile.fileMetadata.isEncrypted} ivLen=${conversationFile.keyHeader.iv.size} keyLen=${conversationFile.keyHeader.aesKey.unsafeBytes.size}" }
 
         val keyHeader = KeyHeader(
             iv = ByteArrayUtil.getRndByteArray(16),
@@ -1454,7 +1466,7 @@ class ConversationService(
                 manifest = manifest
             )
 
-        Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} versionTag=${conversationFile.fileMetadata.versionTag}" }
+        Logger.d { "updateConversationInternal PRE-REQUEST: conversationId=$conversationId versionTag=${conversationFile.fileMetadata.versionTag}" }
 
         // Full-shape log of what we're about to enqueue. Lets us read the
         // log and see exactly which recipients are on this push, whether the
@@ -1487,7 +1499,7 @@ class ConversationService(
                 thumbnails = thumbs
             )
 
-        Logger.d { "updateConversationInternal POST-ENCRYPT: conversationId=$conversationId aesKey=${keyHeader.aesKey.unsafeBytes.toBase64()} requestKeyHeader=${request.keyHeader?.aesKey?.unsafeBytes?.toBase64()}" }
+        Logger.d { "updateConversationInternal POST-ENCRYPT: conversationId=$conversationId keyHeaderPresent=${request.keyHeader != null}" }
 
         // Optimistically apply the participant/content change to the local DB immediately.
         // This ensures that any code running after this call (e.g. updateConversationTags)
@@ -2085,7 +2097,7 @@ class ConversationService(
         // tag"), and the outbox then pointlessly retries for hours. Skip the
         // server roundtrip and delete the local row directly.
         val isLocalOnlyPlaceholder = deleteFile != null && deleteFile.fileMetadata.versionTag == null
-        Logger.d { "deleteConversation: conversationId=$conversationId localOnly=$isLocalOnlyPlaceholder isEncrypted=${deleteFile?.fileMetadata?.isEncrypted} aesKey=${deleteFile?.keyHeader?.aesKey?.unsafeBytes?.toBase64() ?: "NO FILE"}" }
+        Logger.d { "deleteConversation: conversationId=$conversationId localOnly=$isLocalOnlyPlaceholder isEncrypted=${deleteFile?.fileMetadata?.isEncrypted}" }
 
         if (isLocalOnlyPlaceholder) {
             audit.step(1, "local-only placeholder — bypass server, delete local row + remove in-memory entry")
@@ -2261,7 +2273,9 @@ class ConversationService(
                     targetDrive = chatTargetDrive
                 ),
                 versionTag = file.fileMetadata.localAppData?.versionTag?.toString(),
-                tags = newTags.map { it.toString() }
+                tags = newTags.map { it.toString() },
+                // Stable id so the uploader resolves the current fileId at send time.
+                uniqueId = conversationId
             ),
             driveId = chatDrive,
             uniqueId = Uuid.random(),
@@ -2569,6 +2583,71 @@ class ConversationService(
                 }
             }
         }
+    }
+
+    /**
+     * The persisted composer draft for [conversationId] (markdown), or null when
+     * there is none. Reads the owner-private `localAppData.content` from the local
+     * index — which the drive-sync has already merged with any peer-device draft —
+     * so it is offline-safe. Also seeds the dedup guard so restoring this draft
+     * into the composer can't immediately echo back out to the outbox. #1122.
+     */
+    suspend fun readDraft(conversationId: Uuid): String? {
+        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
+        val file = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, conversationId)
+            ?: return null
+        val draft = file.fileMetadata.localAppData?.content?.let {
+            try {
+                OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it).draft
+            } catch (_: Throwable) {
+                null
+            }
+        }
+        draftMutex.withLock { lastPersistedDraft = conversationId to draft }
+        return draft
+    }
+
+    /**
+     * Persist the composer [draft] for [conversationId] (null/blank to clear).
+     * Caps to the header budget, skips a write that matches what we last stored
+     * (so a burst of identical edits — or the restore echo — makes no outbox
+     * traffic), then optimistically stamps it locally and enqueues the synced
+     * push. The caller samples; this is the per-edit sink. #1122.
+     *
+     * The guard only advances once the local write has actually landed. Advancing
+     * it up-front would let a write that never happened — cancelled mid-flight by
+     * the `collectLatest` on a conversation switch, or skipped because the conv
+     * file isn't in the local index yet — still claim the draft was stored, making
+     * the very next attempt (the leaving-the-thread save) a silent no-op and
+     * losing the draft.
+     */
+    suspend fun updateLocalDraft(conversationId: Uuid, draft: String?) {
+        val capped = draft?.truncateToCodePoints(draftMaxCodepoints)?.ifBlank { null }
+        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to capped)) return
+        val request = optimisticWriter
+            .stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
+            ?: return
+        outboxSync.tryEnqueue(request)
+        draftMutex.withLock { lastPersistedDraft = conversationId to capped }
+    }
+
+    /**
+     * Clear the persisted draft for [conversationId] on a successful send. Stamps
+     * `now()` so it wins last-write-wins over any in-flight edit on another
+     * device, and updates the dedup guard so the composer's post-send blank can't
+     * re-write it. #1122.
+     *
+     * Nothing stored means nothing to clear — and that's the common case, since
+     * composing straight through and sending never trips the idle debounce. Without
+     * this check every send would bill a stamp + outbox push to erase a draft that
+     * was never written. The guard is accurate by send time: [readDraft] seeds it
+     * (null included) when the conversation is opened.
+     */
+    suspend fun clearLocalDraft(conversationId: Uuid) {
+        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to null)) return
+        draftMutex.withLock { lastPersistedDraft = conversationId to null }
+        optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
+            ?.let { outboxSync.tryEnqueue(it) }
     }
 
     /**

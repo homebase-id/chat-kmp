@@ -301,6 +301,7 @@ class MomentDetailViewModel(
         self: OdinId?,
     ): List<RecipientBaseUiModel> {
         return moment.recipients
+            .distinct()
             .filter { it != self }
             .map { odinId ->
                 RecipientBaseUiModel(
@@ -354,7 +355,7 @@ class MomentDetailViewModel(
         // for individuals-only posts and for legacy moments that still carry
         // recipients but no source. Filter self so the receiver doesn't see
         // their own address listed.
-        val flatRecipients = moment.recipients.filter { it != self }
+        val flatRecipients = moment.recipients.distinct().filter { it != self }
         if (flatRecipients.isEmpty()) {
             // "Private" means the author kept this with no recipients. For a
             // received moment (sender != self), an empty co-recipient list
@@ -974,18 +975,20 @@ class MomentDetailViewModel(
         viewModelScope.launch {
             try {
                 val history = driveFileProvider.getTransferHistory(driveId, fileId)
-                val entries = history?.history?.results.orEmpty().map { entry ->
-                    val odinId = OdinId(entry.recipient)
-                    val displayName = contactService.resolveByOdinId(odinId)?.name
-                        ?.takeIf { it.isNotBlank() }
-                        ?: odinId.domainName
-                    RecipientDeliveryUiModel(
-                        odinId = entry.recipient,
-                        displayName = displayName,
-                        deliveryStatus = entry.toChatDeliveryStatus(),
-                        errorDetailRes = entry.latestTransferStatus.toErrorDetailRes(),
-                    )
-                }
+                val entries = history?.history?.results.orEmpty()
+                    .distinctBy { it.recipient.lowercase() }
+                    .map { entry ->
+                        val odinId = OdinId(entry.recipient)
+                        val displayName = contactService.resolveByOdinId(odinId)?.name
+                            ?.takeIf { it.isNotBlank() }
+                            ?: odinId.domainName
+                        RecipientDeliveryUiModel(
+                            odinId = entry.recipient,
+                            displayName = displayName,
+                            deliveryStatus = entry.toChatDeliveryStatus(),
+                            errorDetailRes = entry.latestTransferStatus.toErrorDetailRes(),
+                        )
+                    }
                 _screenLocal.update {
                     it.copy(
                         recipientDeliveries = entries,

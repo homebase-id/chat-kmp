@@ -235,6 +235,12 @@ private fun AddRecipientRow(
                 options = avatarOptions,
                 imageVector = Icons.Default.People,
             )
+
+            is MomentsRecipient.Circle -> FallbackAvatar(
+                initials = recipient.avatarInitials,
+                options = avatarOptions,
+                imageVector = Icons.Default.People,
+            )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(

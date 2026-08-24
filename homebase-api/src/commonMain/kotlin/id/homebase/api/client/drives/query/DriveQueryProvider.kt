@@ -4,6 +4,10 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.client.drives.QueryBatchCollectionRequest
+import id.homebase.api.client.drives.QueryBatchCollectionResponse
+import id.homebase.api.client.drives.QueryBatchCollectionSection
+import id.homebase.api.client.drives.QueryBatchSectionStatus
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResponse
 import id.homebase.api.client.drives.ServerFile
@@ -59,6 +63,10 @@ class DriveQueryProvider(
         driveId: Uuid,
         request: QueryBatchRequest,
         ownerOdinId: OdinId? = null,
+        // Which file-system index to query. Standard by default; pass Comment to read comment files
+        // (fileType 801), which the backend routes by the X-ODIN-FILE-SYSTEM-TYPE header, not the
+        // request body — the FileQueryParams.fileSystemType field alone is ignored for routing.
+        fileSystemType: FileSystemType? = null,
     ): QueryBatchResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -80,12 +88,71 @@ class DriveQueryProvider(
             url = url,
             token = creds.accessToken,
             jsonBody = jsonRequest,
-            secret = creds.secret
+            secret = creds.secret,
+            extraHeaders = fileSystemType
+                ?.let { mapOf("X-ODIN-FILE-SYSTEM-TYPE" to it.name) }
+                ?: emptyMap(),
         )
 
         throwForFailure(apiResponse)
 
         return mapQueryBatchResponse(apiResponse.body, creds.secret)
+    }
+
+    /**
+     * Run multiple named query-batch sections against one or more drives in a single round
+     * trip: POST /drives/query-batch-collection. Each section is matched back to its request by
+     * [QueryBatchCollectionSection.name]; a section-level fault never fails the collection, it comes
+     * back with a [QueryBatchSectionStatus].
+     */
+    suspend fun queryBatchCollection(request: QueryBatchCollectionRequest): QueryBatchCollectionResponse {
+        request.queries.forEach { ValidationUtil.requireValidUuid(it.driveId, "driveId") }
+        require(request.maxRecords >= 1) { "maxRecords must be at least 1" }
+
+        val creds = requireCreds()
+        val url = apiUrl(creds.domain, "/drives/query-batch-collection")
+
+        val jsonRequest = OdinSystemSerializer.serialize(request)
+
+        val apiResponse = encryptedPostJson(
+            url = url,
+            token = creds.accessToken,
+            jsonBody = jsonRequest,
+            secret = creds.secret
+        )
+
+        throwForFailure(apiResponse)
+
+        val internal = deserialize<QueryBatchCollectionResponseInternalRaw>(apiResponse.body)
+        val results = internal.results.map { section -> mapCollectionSection(section, creds.secret) }
+        return QueryBatchCollectionResponse(results = results)
+    }
+
+    private suspend fun mapCollectionSection(
+        internal: QueryBatchCollectionSectionInternalRaw,
+        secret: SecureByteArray,
+    ): QueryBatchCollectionSection {
+        // A failed section carries no rows, but its cursor still matters: a budgetExhausted section
+        // echoes back the cursor we submitted, and dropping it would silently lose or replay records.
+        val files =
+            if (internal.invalidDrive) {
+                emptyList()
+            } else {
+                internal.searchResults.map { createServerFileWithSafeMetadata(it, secret) }
+            }
+
+        return QueryBatchCollectionSection(
+            name = internal.name,
+            invalidDrive = internal.invalidDrive,
+            status = internal.status,
+            errorMessage = internal.errorMessage,
+            errorCode = internal.errorCode,
+            queryTime = internal.queryTime,
+            includeMetadataHeader = internal.includeMetadataHeader,
+            cursorState = internal.cursorState,
+            searchResults = files,
+            hasMoreRows = internal.hasMoreRows
+        )
     }
 
     /**
@@ -103,7 +170,13 @@ class DriveQueryProvider(
         secret: SecureByteArray,
     ): QueryBatchResponse {
         val internal = deserialize<QueryBatchResponseInternalRaw>(body)
+        return mapQueryBatchResponseInternal(internal, secret)
+    }
 
+    private suspend fun mapQueryBatchResponseInternal(
+        internal: QueryBatchResponseInternalRaw,
+        secret: SecureByteArray,
+    ): QueryBatchResponse {
         if (internal.invalidDrive) {
             return QueryBatchResponse.fromInvalidDrive(internal.name ?: "")
         }
@@ -222,6 +295,27 @@ data class QueryBatchResponseInternalRaw(
     val cursorState: String? = null,
     val searchResults: List<JsonObject> = emptyList(),
     val hasMoreRows: Boolean = false
+)
+
+@Serializable
+data class QueryBatchCollectionSectionInternalRaw(
+    val name: String? = null,
+    val invalidDrive: Boolean = false,
+    // Nullable so an unknown status from a newer server, or none at all from an older one, decodes
+    // to null under coerceInputValues rather than throwing or masquerading as a known value.
+    val status: QueryBatchSectionStatus? = null,
+    val errorMessage: String? = null,
+    val errorCode: String? = null,
+    val queryTime: UnixTimeUtc = UnixTimeUtc.ZeroTime,
+    val includeMetadataHeader: Boolean = false,
+    val cursorState: String? = null,
+    val searchResults: List<JsonObject> = emptyList(),
+    val hasMoreRows: Boolean = false
+)
+
+@Serializable
+data class QueryBatchCollectionResponseInternalRaw(
+    val results: List<QueryBatchCollectionSectionInternalRaw> = emptyList()
 )
 
 @Serializable

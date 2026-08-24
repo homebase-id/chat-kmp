@@ -129,6 +129,9 @@ fun VaultScreen(
     onNavigateToNoteEditor: (sectionId: String, entryId: String?) -> Unit = { _, _ -> },
     onNavigateToCropper: (Uuid) -> Unit = {},
     onNavigateToDrawer: (Uuid) -> Unit = {},
+    /** Set by the host when the already-selected Vault tab is re-tapped. */
+    scrollToTop: Boolean = false,
+    onScrollToTopHandled: () -> Unit = {},
 ) {
     val vaultPreferences = koinInject<VaultPreferences>()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -156,6 +159,16 @@ fun VaultScreen(
             savedScrollOffset = vaultListState.firstVisibleItemScrollOffset
         } else if (savedScrollIndex > 0 || savedScrollOffset > 0) {
             vaultListState.scrollToItem(savedScrollIndex, savedScrollOffset)
+        }
+    }
+
+    LaunchedEffect(scrollToTop) {
+        if (scrollToTop) {
+            // Clear the saved position too, or closing the gallery would scroll back down.
+            savedScrollIndex = 0
+            savedScrollOffset = 0
+            vaultListState.animateScrollToItem(0)
+            onScrollToTopHandled()
         }
     }
 

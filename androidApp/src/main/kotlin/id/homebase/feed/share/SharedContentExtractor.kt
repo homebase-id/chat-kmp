@@ -127,6 +127,7 @@ object SharedContentExtractor {
             mimeType.startsWith("video/") -> "mp4"
             mimeType.startsWith("audio/") -> "m4a"
             mimeType.startsWith("application/pdf") -> "pdf"
+            mimeType.startsWith("text/vcard") || mimeType.startsWith("text/x-vcard") -> "vcf"
             mimeType.startsWith("text/") -> "txt"
             else -> "bin"
         }

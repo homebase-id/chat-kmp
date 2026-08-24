@@ -1,5 +1,7 @@
 package id.homebase.api.client.contacts
 
+import id.homebase.api.util.truncateToCodePoints
+
 /**
  * Single source of truth for turning a contact's [ContactName] into the values UIs render, shared
  * by every consumer of [ContactRepository] so display-name/initials logic can't drift.
@@ -34,15 +36,18 @@ fun ContactName?.resolveDisplayName(
  * first/last whitespace tokens of `displayName`, else `"?"`.
  */
 fun ContactName?.initials(): String {
-    val first = this?.givenName?.trim()?.takeIf { it.isNotEmpty() }?.firstOrNull()
-    val last = this?.surname?.trim()?.takeIf { it.isNotEmpty() }?.firstOrNull()
+    val first = this?.givenName?.trim()?.takeIf { it.isNotEmpty() }?.truncateToCodePoints(1)
+    val last = this?.surname?.trim()?.takeIf { it.isNotEmpty() }?.truncateToCodePoints(1)
     if (first != null && last != null) return "$first$last".uppercase()
 
     val display = this?.displayName ?: return "?"
     val tokens = display.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }
     return when {
-        tokens.size >= 2 -> "${tokens.first().first()}${tokens.last().first()}".uppercase()
-        tokens.size == 1 -> tokens.first().first().uppercaseChar().toString()
+        tokens.size >= 2 ->
+            "${tokens.first().truncateToCodePoints(1)}${tokens.last().truncateToCodePoints(1)}"
+                .uppercase()
+
+        tokens.size == 1 -> tokens.first().truncateToCodePoints(1).uppercase()
         else -> "?"
     }
 }

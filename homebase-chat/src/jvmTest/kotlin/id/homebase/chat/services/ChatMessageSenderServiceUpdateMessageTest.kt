@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DriveOutboxUploader
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
@@ -606,6 +607,110 @@ class ChatMessageSenderServiceUpdateMessageTest {
                 originalUserDate,
                 storedUserDate,
                 "the optimistic write must keep the SQL userDate invariant across a coalesced edit (#900)",
+            )
+        }
+    }
+
+    /**
+     * Editing the caption of a delivered image must not touch the image (#1155).
+     *
+     * The enqueued update is a delta: a media key absent from the manifest is
+     * preserved server-side, and only `dflt_key` (the text-overflow payload) is
+     * ever listed for deletion. So the media key must appear nowhere — neither as
+     * an AppendOrOverwrite (which would re-upload the bytes) nor as a
+     * DeletePayload (which would destroy the image).
+     *
+     * This is also what makes the `isCreate = false` progress gate safe: chat's
+     * edit path enqueues an UpdateFile row that never carries media, so its byte
+     * progress must not drive the media upload overlay.
+     */
+    @Test
+    fun `updateMessage on a delivered image edits the caption without re-uploading or deleting the media`() = runTest {
+        val messageLookup = SeedableMessageLookup()
+        val mediaKey = "chat_web0"
+
+        ChatMessageSenderServiceTestFixture().use { fixture ->
+            val service = fixture.build(
+                messageLookup = { _: DatabaseManager -> messageLookup },
+            )
+            messageLookup.backFilesWith(fixture)
+
+            val conversationId = fixture.seedConversation(others = listOf("bob.test"))
+            val messageId = Uuid.random()
+            val versionTag = Uuid.random()
+            val keyHeader = KeyHeader.newRandom16()
+
+            fixture.optimisticWriter.writeNewFile(
+                driveId = fixture.chatDriveId,
+                keyHeader = keyHeader,
+                unecryptedMetadata = UploadFileMetadata(
+                    allowDistribution = true,
+                    isEncrypted = true,
+                    appData = UploadAppFileMetaData(
+                        uniqueId = messageId,
+                        groupId = conversationId,
+                        fileType = ChatProtocol.MessageFileType,
+                        userDate = 1_000L,
+                        content = "original caption",
+                    ),
+                ),
+                originalRecipientCount = 1,
+                fileSystemType = FileSystemType.Standard,
+            )
+
+            messageLookup.seed(
+                MessageUiModel(
+                    id = messageId,
+                    globalTransitId = null,
+                    fileId = Uuid.random(),
+                    conversationId = conversationId,
+                    content = "original caption",
+                    userDate = Instant.fromEpochMilliseconds(1_000L),
+                    modified = null,
+                    created = Instant.fromEpochMilliseconds(1_000L),
+                    originalAuthor = OdinId(fixture.testDomain),
+                    sender = OdinId(fixture.testDomain),
+                    displayName = fixture.testDomain,
+                    isDeleted = false,
+                    isPendingSend = false,
+                    versionTag = versionTag,
+                    messageAppData = MessageAppData(),
+                    reactionPreview = null,
+                    previewThumbnail = null,
+                    payloads = persistentListOf(
+                        PayloadDescriptor(key = mediaKey, contentType = "image/jpeg"),
+                    ),
+                    keyHeader = keyHeader,
+                    hasMore = false,
+                    messageContent = null,
+                )
+            )
+
+            service.updateMessage(
+                messageId = messageId,
+                versionTag = versionTag,
+                content = "edited caption",
+            )
+
+            val rows = fixture.drainOutboxInDependencyOrder()
+            val updateRow = rows.mapNotNull { it.asUpdateFileRequestOrNull() }.firstOrNull()
+            assertNotNull(updateRow, "a caption edit on a delivered message must enqueue an UpdateFile row")
+
+            val manifestKeys = updateRow.instructions.manifest?.payloadDescriptors.orEmpty()
+            assertTrue(
+                manifestKeys.none { it.payloadKey == mediaKey },
+                "the media key must not appear in the update manifest — found ${manifestKeys.map { it.payloadKey to it.operationType }}",
+            )
+            // Pins that the edit touches ONE key and it is the text-overflow one, so
+            // the assertion above can't pass just because the manifest came out empty.
+            assertEquals(
+                listOf(ChatProtocol.DefaultPayloadKey),
+                manifestKeys.map { it.payloadKey },
+                "a short caption edit must reference only the text-overflow payload",
+            )
+            assertTrue(
+                updateRow.payloads.orEmpty().none { it.key == mediaKey },
+                "the update must not re-send the media bytes",
             )
         }
     }

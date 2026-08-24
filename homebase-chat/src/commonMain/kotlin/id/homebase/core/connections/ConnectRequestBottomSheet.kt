@@ -213,7 +213,7 @@ private fun ComposeRequestSheetContent(
             onValueChange = { incoming ->
                 val normalizedSpaces = incoming.text.cleanDomain().replace('.', ' ')
                 fieldValue = incoming.copy(text = normalizedSpaces)
-                val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false)
+                val dotted = normalizedSpaces.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false)
                 if (dotted != recipient) onRecipientChange(dotted)
             },
             label = { Text(stringResource(MR.string.connections_recipient_label)) },

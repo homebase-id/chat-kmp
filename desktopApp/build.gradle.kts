@@ -102,6 +102,11 @@ kotlin {
     }
 }
 
+// SwingDoubleBufferSizeGuardTest reflects into RepaintManager's private display-change state.
+tasks.withType<Test>().configureEach {
+    jvmArgs("--add-opens=java.desktop/javax.swing=ALL-UNNAMED")
+}
+
 dependencies {
     // Platform-specific homebase-chat JARs
     linuxAmd64(project(":homebase-chat", configuration = "jvmJarLinuxX64"))

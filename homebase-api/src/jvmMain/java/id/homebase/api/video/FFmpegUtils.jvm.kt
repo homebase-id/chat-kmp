@@ -123,12 +123,15 @@ actual object FFmpegUtils {
         trimStartMs: Long?,
         trimEndMs: Long?,
         quality: VideoQuality,
-        allowTenBit: Boolean,
-    ): String? = withContext(Dispatchers.IO) {
-        if (!FFmpegBinaryManager.isAvailable()) return@withContext null
+    ): String = withContext(Dispatchers.IO) {
+        if (!FFmpegBinaryManager.isAvailable()) {
+            throw VideoCompressionFailedException(inputPath, "no bundled ffmpeg for this platform")
+        }
 
         val inputFile = File(inputPath)
-        if (!inputFile.exists()) return@withContext null
+        if (!inputFile.exists()) {
+            throw VideoCompressionFailedException(inputPath, "input file not found")
+        }
 
         val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
         val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
@@ -136,7 +139,6 @@ actual object FFmpegUtils {
         val outputPath =
             "${scratchDirPath}/compressed_${inputFile.name}"
         val sourceDurationMs = getDurationMs(inputPath)
-        val inputBytes = inputFile.length()
         val probe = probeVideoTrackViaFfprobe(inputPath)
         // ffprobe reports raw container dims; rotation rides on the side-data
         // displaymatrix. Planner needs both so portrait phone captures don't
@@ -157,19 +159,8 @@ actual object FFmpegUtils {
             trimEndMs = effectiveTrimEnd,
             probedWidthPx = probe.widthPx,
             probedHeightPx = probe.heightPx,
-            probedCodecMime = probe.codec,
-            inputDurationMs = sourceDurationMs,
-            inputBytes = inputBytes,
             rotationDegrees = rotation,
-            probedBitDepth = probe.bitDepth,
-            probedIsHdr = probe.isHdr,
-            allowTenBit = allowTenBit,
         )
-
-        if (plan.skipReason != null) {
-            println("compressVideo: AlreadyOptimal — ${plan.skipReason}")
-            return@withContext null
-        }
 
         // Planner emits "argv after ffmpeg" — Desktop's ProcessBuilder needs
         // the binary path prepended. We also append the JVM-specific progress-
@@ -192,7 +183,7 @@ actual object FFmpegUtils {
         } else {
             // FFmpeg failed — delete the partial/empty output (see #5).
             deleteFailedFfmpegOutput(outputPath)
-            null
+            throw VideoCompressionFailedException(inputPath, "ffmpeg exited ${result.exitCode}")
         }
     }
 
@@ -206,8 +197,8 @@ actual object FFmpegUtils {
         val codec: String?,
         val widthPx: Int,
         val heightPx: Int,
-        val bitDepth: Int = 8,
-        val isHdr: Boolean = false,
+        val bitDepth: Int? = null,
+        val isHdr: Boolean? = null,
     )
 
     actual suspend fun probeVideo(inputPath: String): VideoTrackInfo? = withContext(Dispatchers.IO) {
@@ -242,27 +233,6 @@ actual object FFmpegUtils {
             isHdr = isHdrFromColorTags(colorTransfer, colorPrimaries),
         )
     }
-
-    /**
-     * Luma bit depth inferred from ffprobe's `pix_fmt` token. ffmpeg names
-     * 10/12-bit formats with a `10`/`12` infix (e.g. `yuv420p10le`, `p010le`).
-     * Defaults to 8 for any 8-bit or unrecognised format.
-     */
-    private fun bitDepthFromPixFmt(pixFmt: String): Int = when {
-        pixFmt.isBlank() -> 8
-        "12" in pixFmt -> 12
-        "10" in pixFmt || pixFmt.startsWith("p010") -> 10
-        else -> 8
-    }
-
-    /**
-     * HDR detection from ffprobe colour tags: a PQ (`smpte2084`) or HLG
-     * (`arib-std-b67`) transfer, or BT.2020 primaries.
-     */
-    private fun isHdrFromColorTags(colorTransfer: String, colorPrimaries: String): Boolean =
-        colorTransfer == "smpte2084" ||
-            colorTransfer == "arib-std-b67" ||
-            colorPrimaries.startsWith("bt2020")
 
     private fun formatSeconds(ms: Long): String {
         // Locale-safe (avoid comma decimal separator in some default locales).

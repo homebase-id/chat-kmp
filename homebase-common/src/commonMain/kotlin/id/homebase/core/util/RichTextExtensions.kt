@@ -44,6 +44,32 @@ fun RichTextState.programmaticBackspace() {
     removeTextRange(TextRange(start = start, end = end))
 }
 
+/**
+ * richeditor serialises an empty paragraph as a standalone `<br>` line — its WYSIWYG empty-line
+ * marker. So a composer holding a stray blank line round-trips through [RichTextState.toMarkdown]
+ * as `"\n<br>"`, and a link with an empty line above it as `"\n<br>\nhttps://…"` (both byte-verified
+ * against rc14). That `<br>` is editor noise, not content: it renders as a literal `<br>` on the web
+ * client and a blank line on mobile, and a pure-`<br>` body reads as an empty message (#1104).
+ *
+ * This drops standalone `<br>` lines and the leading/trailing blank lines they leave behind, while
+ * preserving real text and intentional paragraph breaks (an intended blank line between paragraphs
+ * serialises as plain `\n\n`, never `<br>`, so it survives untouched).
+ */
+fun String.stripComposerLineBreakArtifacts(): String =
+    lines()
+        .filterNot { it.trim() == "<br>" }
+        .dropWhile { it.isBlank() }
+        .dropLastWhile { it.isBlank() }
+        .joinToString("\n")
+
+/**
+ * The composer's markdown body as it should be sent: [RichTextState.toMarkdown] with richeditor's
+ * `<br>` empty-paragraph artifacts stripped (see [stripComposerLineBreakArtifacts]). Use this — not
+ * raw `toMarkdown()` — for every composer send and send-gate decision so a stray blank line can
+ * never go out as a `<br>`/blank message (#1104).
+ */
+fun RichTextState.toMessageMarkdown(): String = toMarkdown().stripComposerLineBreakArtifacts()
+
 fun RichTextState.applyDefaultStyling(
     linkColor: Color = LightColors.Primary,
 ): RichTextState {
@@ -72,47 +98,18 @@ fun RichTextState.applyMarkDownContent(
     return this.apply {
         try {
             setMarkdown(content)
-        } catch (_: Exception) {
-            try {
-                setMarkdown(fixProblematicMarkdownText(content))
-            } catch (e: Exception) {
-                Logger.e(tag = "RichTextExtensions") { "Error setting markdown: $e" }
-                setText(content)
-            }
+            // richeditor's setMarkdown silently drops some structure (e.g. leading
+            // spaces on an indented block after a blank line) without throwing, and
+            // toMarkdown() would then persist that lossy form on the next save and
+            // trip the editor's dirty check. setText round-trips the exact bytes, so
+            // prefer it whenever the rich parse isn't byte-faithful — the note reads
+            // as raw markdown but nothing is silently mangled (issue #927 Section B).
+            if (toMarkdown() != content) setText(content)
+        } catch (e: Exception) {
+            Logger.e(tag = "RichTextExtensions") { "setMarkdown failed, preserving raw text: $e" }
+            setText(content)
         }
     }
-}
-
-/*
-This fixed Markdown that is invalid for RichTextState by removing empty lines if follow by non-empty lines with initial spaces
- */
-private fun fixProblematicMarkdownText(input: String) : String {
-    val lines = input.lines()
-    val result = mutableListOf<String>()
-
-    var i = 0
-    while (i < lines.size) {
-        val currentLine = lines[i]
-        val isCurrentEmpty = currentLine.isBlank()
-
-        // Check if current line is empty and there's a next line
-        if (isCurrentEmpty && i < lines.size - 1) {
-            val nextLine = lines[i + 1]
-            val nextHasContent = nextLine.isNotBlank()
-            val nextStartsWithSpaces = nextLine.isNotEmpty() && nextLine[0].isWhitespace() && nextLine[0] != '\n'
-
-            // Skip this empty line if next line has content and starts with spaces
-            if (nextHasContent && nextStartsWithSpaces) {
-                i++
-                continue
-            }
-        }
-
-        result.add(currentLine)
-        i++
-    }
-
-    return result.joinToString("\n")
 }
 
 private fun findPrecedingCharacterStart(text: String, offset: Int): Int {

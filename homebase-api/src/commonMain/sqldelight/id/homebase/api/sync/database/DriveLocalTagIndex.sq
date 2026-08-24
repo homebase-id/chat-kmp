@@ -19,6 +19,20 @@ selectByFile:
 SELECT * FROM DriveLocalTagIndex
 WHERE identityId = ? AND driveId = ? AND fileId = ?;
 
+-- Active message files in a conversation carrying a given local tag, newest-first.
+-- Joins to DriveMainIndex for the header columns; powers the pinned-messages bar.
+-- fileState = 1 (Active) AND archivalStatus != 2 mirror the soft-delete double-check
+-- used by ChatReadCount.sq (HomebaseFile.isSoftDeleted() ORs both markers).
+selectFilesByLocalTagInGroup:
+SELECT m.jsonHeader
+FROM DriveLocalTagIndex t
+JOIN DriveMainIndex m
+  ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId
+WHERE t.identityId = ? AND t.driveId = ? AND t.tagId = ?
+  AND m.groupId = ? AND m.fileType = 7878
+  AND m.fileState = 1 AND m.archivalStatus != 2
+ORDER BY m.userDate DESC;
+
 -- Delete all local tags (for testing)
 deleteByFile:
 DELETE FROM DriveLocalTagIndex

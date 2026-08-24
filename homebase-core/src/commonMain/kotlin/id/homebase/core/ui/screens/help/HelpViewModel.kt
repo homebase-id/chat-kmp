@@ -13,6 +13,10 @@ import id.homebase.core.ui.screens.help.HelpUiEvent.ShareFile
 import id.homebase.core.ui.screens.help.HelpUiEvent.ShowError
 import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.PlatformInfo
+import id.homebase.resources.MR
+import id.homebase.resources.help_developer_menu_enabled
+import id.homebase.resources.help_logging_not_initialized
+import id.homebase.resources.help_no_log_files
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -70,10 +74,14 @@ class HelpViewModel(
                     if (logFile != null) {
                         _uiState.update { it.copy(uiEvent = ShareFile(logFile)) }
                     } else {
-                        _uiState.update { it.copy(uiEvent = ShowError("No log files found")) }
+                        _uiState.update {
+                            it.copy(uiEvent = ShowError(MR.string.help_no_log_files))
+                        }
                     }
                 } else {
-                    _uiState.update { it.copy(uiEvent = ShowError("Logging not initialized")) }
+                    _uiState.update {
+                        it.copy(uiEvent = ShowError(MR.string.help_logging_not_initialized))
+                    }
                 }
             }
 
@@ -100,11 +108,10 @@ class HelpViewModel(
                     userPreferences.showDeveloperMenu = true
                     Logger.d { "Developer menu enabled after $developerTapCount taps" }
 
-                    // Optional: Show a confirmation message
                     _uiState.update {
                         it.copy(
                             showDeveloperMenu = true,
-                            uiEvent = ShowError("Developer menu enabled!"),
+                            uiEvent = ShowError(MR.string.help_developer_menu_enabled),
                         )
                     }
 

@@ -27,6 +27,7 @@ import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
+import id.homebase.resources.video_error_generic
 import id.homebase.resources.video_web_large_playback_unsupported
 import kotlin.io.encoding.Base64
 import org.jetbrains.compose.resources.stringResource
@@ -63,6 +64,7 @@ actual fun VideoPlayerSurface(
     // web playback is partial, so the flag is accepted to satisfy the expect
     // signature but not wired here.
     @Suppress("UNUSED_PARAMETER") paused: Boolean,
+    onError: (String) -> Unit,
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val density = LocalDensity.current.density
@@ -76,6 +78,11 @@ actual fun VideoPlayerSurface(
     var objectUrl by remember(data) { mutableStateOf<String?>(null) }
     var bounds by remember(data) { mutableStateOf<Rect?>(null) }
     var started by remember(data) { mutableStateOf(false) }
+
+    // Resolved in composable scope — stringResource can't run inside the
+    // LaunchedEffect below (#959).
+    val genericPlaybackError = stringResource(MR.string.video_error_generic)
+    val hlsUnsupportedError = stringResource(MR.string.video_web_large_playback_unsupported)
 
     LaunchedEffect(data) {
         onProgress(0f)
@@ -119,11 +126,15 @@ actual fun VideoPlayerSurface(
                     // .m3u8 blob and we don't remux on web yet. Show a message instead of a dark
                     // stuck player.
                     state = WebVps.HlsUnsupported
+                    onError(hlsUnsupportedError)
                     onProgress(1f)
                 }
             }
         } catch (e: Exception) {
-            state = WebVps.Error(e.message ?: "Playback error")
+            // Localized message for the UI; also raised to the caller, whose
+            // thumbnail overlay would hide our own centred Text (#959).
+            state = WebVps.Error(genericPlaybackError)
+            onError(genericPlaybackError)
             onProgress(1f)
         }
     }

@@ -2,6 +2,7 @@ package id.homebase.api.client.auth
 
 import androidx.compose.runtime.Immutable
 import id.homebase.api.common.OdinId
+import id.homebase.api.util.truncateToCodePoints
 
 @Immutable
 data class OwnerSession(
@@ -21,13 +22,13 @@ fun OwnerSession.initials(): String {
         firstName
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-            ?.firstOrNull()
+            ?.truncateToCodePoints(1)
 
     val last =
         surName
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
-            ?.firstOrNull()
+            ?.truncateToCodePoints(1)
 
     if (first != null && last != null) {
         return "${first}${last}".uppercase()
@@ -42,10 +43,11 @@ fun OwnerSession.initials(): String {
 
     return when {
         tokens.size >= 2 ->
-            "${tokens.first().first()}${tokens.last().first()}".uppercase()
+            "${tokens.first().truncateToCodePoints(1)}${tokens.last().truncateToCodePoints(1)}"
+                .uppercase()
 
         tokens.size == 1 ->
-            tokens.first().first().uppercaseChar().toString()
+            tokens.first().truncateToCodePoints(1).uppercase()
 
         else ->
             "?"

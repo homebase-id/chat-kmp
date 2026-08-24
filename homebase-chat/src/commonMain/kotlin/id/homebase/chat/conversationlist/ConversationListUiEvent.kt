@@ -1,6 +1,7 @@
 package id.homebase.chat.conversationlist
 
 import id.homebase.api.common.OdinId
+import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.data.MessageUiModel
 import org.jetbrains.compose.resources.StringResource
 
@@ -11,7 +12,7 @@ sealed interface ConversationListUiEvent {
     data class NavigateToGroupSettings(val conversationId: String) : ConversationListUiEvent
     data class NavigateToConversationSettings(val conversationId: String) : ConversationListUiEvent
     data class NavigateToMessageInfo(val message: MessageUiModel) : ConversationListUiEvent
-    data class ShowErrorMessage(val message: String) : ConversationListUiEvent
+    data class ShowErrorMessage(val res: StringResource, val detail: String? = null) : ConversationListUiEvent
     data class ShowInfoMessage(val res: StringResource) : ConversationListUiEvent
     data class ShareText(val text: String) : ConversationListUiEvent
     data class ShareFile(val filePath: String) : ConversationListUiEvent
@@ -38,6 +39,12 @@ sealed interface ConversationListUiEvent {
     /** Open the full-screen share-location screen for a conversation (attachment sheet → Location). */
     data class NavigateToShareLocation(val conversationId: String) : ConversationListUiEvent
 
+    /** Open the contact book picker for a conversation (attachment sheet → Contact). */
+    data class NavigateToShareContact(val conversationId: String) : ConversationListUiEvent
+
     /** Open the location setup screen (from the "set up location" prompt before a live share). */
     data object NavigateToLocationSetup : ConversationListUiEvent
+
+    /** Hand a received contact card to the contact editor in :homebase-core. */
+    data class NavigateToSaveContactCard(val descriptor: ContactCardDescriptor) : ConversationListUiEvent
 }

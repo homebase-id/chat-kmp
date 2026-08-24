@@ -88,6 +88,9 @@ data class ContactBookEntry(
     /** Extra, app-local phone numbers / emails the user added beyond the single canonical slot. */
     val additionalPhones: List<String> = emptyList(),
     val additionalEmails: List<String> = emptyList(),
+    /** App-local company/organization — [ContactContent] has no slot for it, so like the two
+     *  above it round-trips through [ContactFieldOverlay], not through the contact content. */
+    val organization: String? = null,
 ) {
     /** Has a Homebase identity behind it (vs a plain phone/email contact). */
     val hasOdinId: Boolean get() = !odinId.isNullOrBlank()

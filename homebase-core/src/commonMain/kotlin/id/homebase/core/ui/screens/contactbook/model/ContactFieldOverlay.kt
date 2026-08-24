@@ -34,9 +34,12 @@ data class ContactFieldOverlay(
      */
     val additionalPhones: List<String> = emptyList(),
     val additionalEmails: List<String> = emptyList(),
+    /** Additive like the two above — the contact schema has no company/organization slot at all,
+     *  so this is never an override of a synced value and never appears in the synced originals. */
+    val organization: String? = null,
 ) {
     val isEmpty: Boolean
         get() = givenName == null && surname == null && phone == null && email == null &&
             city == null && country == null && birthday == null &&
-            additionalPhones.isEmpty() && additionalEmails.isEmpty()
+            additionalPhones.isEmpty() && additionalEmails.isEmpty() && organization == null
 }

@@ -218,6 +218,67 @@ class ChatMessageActionServiceTest {
     }
 
     @Test
+    fun markAsReadByFiles_clampsToNewestRenderedMessage_notTheConversationsLatest() = runTest {
+        // #1135: loadConversation raced a sync batch and the thread's tail was
+        // missing, so `latestMessageTimestamp` was ~10h ahead of anything on
+        // screen. Advancing lastRead to it marked never-rendered messages read and
+        // cleared the badge — the only signal the tail was missing.
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+            val peer = "alice.test"
+
+            val rendered = listOf(100L, 200L).map {
+                fixture.seedMessage(conversationId = convoId, senderDomain = peer, userDateMs = it)
+            }
+            fixture.participantLookup.setLastRead(
+                convoId,
+                lastRead = kotlin.time.Instant.fromEpochMilliseconds(0L),
+                latestMessageTimestamp = kotlin.time.Instant.fromEpochMilliseconds(999_999L),
+            )
+
+            service.markAsReadByFiles(convoId, rendered)
+
+            assertEquals(
+                200L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
+                "lastRead must stop at the newest rendered message, never at a message " +
+                    "that only exists in the conversation's latestMessageTimestamp",
+            )
+            assertEquals(
+                200L,
+                fixture.localLastReadUpdater.calls.single().newLastReadTime.milliseconds,
+            )
+        }
+    }
+
+    @Test
+    fun markAsReadByFiles_advancesOnSqlUserDate_notTheClampedDisplayUserDate() = runTest {
+        // The counterpart the removed `latestMessageTimestamp` floor used to cover:
+        // MessageUiModel.userDate is clamped to transitCreated for display, while
+        // selectAllUnreadCount filters on the un-clamped DriveMainIndex.userDate.
+        // Advancing on the clamped value leaves the badge stuck on a message the
+        // user has demonstrably read.
+        ChatMessageActionServiceTestFixture().use { fixture ->
+            val service = fixture.build(scope = this)
+            val convoId = Uuid.random()
+
+            val clampedTail = fixture.seedMessage(
+                conversationId = convoId,
+                senderDomain = "alice.test",
+                userDateMs = 200L,
+                sqlUserDateMs = 500L,
+            )
+
+            service.markAsReadByFiles(convoId, listOf(clampedTail))
+
+            assertEquals(
+                500L, fixture.dbm.chatReadCount.selectLastReadTimeMs(convoId),
+                "read bookkeeping must run on the SQL userDate the unread count queries",
+            )
+        }
+    }
+
+    @Test
     fun markAsReadByFiles_enrichesTargetConversation() = runTest {
         ChatMessageActionServiceTestFixture().use { fixture ->
             val service = fixture.build(scope = this)

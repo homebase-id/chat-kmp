@@ -24,12 +24,11 @@ import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.vault.model.VaultEntry
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
-import id.homebase.core.util.resolveContentType
+import id.homebase.core.util.contentType
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.DriveState
-import io.github.vinceglb.filekit.mimeType
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -448,11 +447,11 @@ class VaultViewModel(
         val firstName = files.first().name
         // The user-typed value is the entry's editable label, NOT its file name.
         val label = action.entryName?.ifBlank { null }
-        val firstContentType = resolveContentType(firstName, files.first().mimeType()?.toString())
+        val firstContentType = files.first().contentType()
         val pendingId = Uuid.random()
 
         val fileContentTypes = files.map { file ->
-            resolveContentType(file.name, file.mimeType()?.toString())
+            file.contentType()
         }
 
         val placeholderDescriptors = fileContentTypes.mapIndexed { index, contentType ->
@@ -617,7 +616,7 @@ class VaultViewModel(
 
     private fun handleAppendPages(action: VaultUiAction.AppendPages) {
         val fileData = action.newFiles.map { file ->
-            val ct = resolveContentType(file.name, file.mimeType()?.toString())
+            val ct = file.contentType()
             file.pathCompat to ct
         }
 
@@ -673,7 +672,7 @@ class VaultViewModel(
     // region Add-pictures editor (reuses image-editor-ui's crop/draw seam)
 
     private fun stageAttachment(file: PlatformFile): AttachmentPendingFile {
-        val ct = resolveContentType(file.name, file.mimeType()?.toString())
+        val ct = file.contentType()
         return if (ct.startsWith("image/")) {
             AttachmentPendingFile.FileImage(id = Uuid.random(), file = file)
         } else {

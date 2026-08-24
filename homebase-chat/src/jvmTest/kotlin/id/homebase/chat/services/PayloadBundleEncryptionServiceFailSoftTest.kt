@@ -9,7 +9,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.upload.VideoEncodePolicy
 import kotlinx.coroutines.test.runTest
 import okio.Path.Companion.toPath
 import okio.fakefilesystem.FakeFileSystem
@@ -40,7 +39,6 @@ class PayloadBundleEncryptionServiceFailSoftTest {
             fileOps = fileOps,
             videoProcessor = VideoPayloadProcessor(fileOps),
             eventBus = EventBus(),
-            videoEncodePolicy = object : VideoEncodePolicy { override val allowTenBitVideo = false },
         )
 
     private fun bundle(vararg payloads: PayloadFile) =

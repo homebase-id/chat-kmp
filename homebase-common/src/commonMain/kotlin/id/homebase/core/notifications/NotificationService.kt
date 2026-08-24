@@ -15,6 +15,7 @@ import id.homebase.core.config.COMMUNITY_APP_ID
 import id.homebase.core.config.FEED_APP_ID
 import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
+import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
 import id.homebase.core.navigation.ActiveConversation
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.sync.awaitAuthRestored
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -94,6 +96,30 @@ internal fun buildCompanionAppUrlEvent(
 internal val COMPANION_APP_IDS = setOf(COMMUNITY_APP_ID, OWNER_APP_ID, MAIL_APP_ID, FEED_APP_ID)
 
 /**
+ * Routes a tapped owner-app connection-request notification to the in-app contact detail for the
+ * requester, where it can be reviewed and accepted (with the add-to-circles picker) — instead of
+ * the owner web console in the browser, which is where every other owner notification goes via
+ * [buildCompanionAppUrlEvent].
+ *
+ * Unlike the companion URLs, this one is keyed on the *sender*: they're the identity asking to
+ * connect, so their contact detail is the thing to open. Their host is never contacted for a
+ * session — the screen reads our own pending-request list and their public profile.
+ *
+ * @return the event to emit, or null when this isn't an owner connection-request tap or the
+ *   payload carries no sender — both fall through to the normal companion-URL handling, since
+ *   without a domain there is no contact screen to open.
+ */
+internal fun buildConnectionRequestTapEvent(
+    appId: String,
+    typeId: String,
+    senderId: String?,
+): NotificationNavigationEvent.OpenConnectionRequest? {
+    if (appId != OWNER_APP_ID || typeId != OWNER_CONNECTION_REQUEST_TYPE_ID) return null
+    val sender = senderId?.trim()?.lowercase()?.ifBlank { null } ?: return null
+    return NotificationNavigationEvent.OpenConnectionRequest(sender)
+}
+
+/**
  * How long a companion-app tap waits for credentials to be restored before
  * giving up. Mirrors BackgroundSyncOrchestrator's AUTH_RESTORE_TIMEOUT: the
  * observed cold-wake restore window is ~12 ms, and 2 s leaves headroom for a
@@ -106,6 +132,10 @@ private val COMPANION_AUTH_RESTORE_TIMEOUT = 2.seconds
  * content. Keep in sync with the same literal in the iOS NotificationServiceExtension.
  */
 private const val CONTENTLESS_PLACEHOLDER = "You have a new message"
+
+/** Budget for the in-app message resolve on push receipt (#859) before falling back to the
+ *  generic body — a single-message local read or server header fetch must fit comfortably. */
+private const val NOTIFICATION_RESOLVE_TIMEOUT_MS = 4_000L
 
 /**
  * Resolves the companion-app redirect event, AWAITING auth restoration so a tap
@@ -151,6 +181,12 @@ class NotificationService(
      * resolver unit-testable — same pattern as [id.homebase.core.sync.BackgroundSyncOrchestrator].
      */
     private val authState: StateFlow<YouAuthState>,
+    /**
+     * Resolves real chat message content in-app for the notification body (#859). Optional —
+     * null on platforms/builds that don't provide it (iOS NSE, tests), where the generic body
+     * is kept. Injected from homebase-chat via [NotificationMessageResolver].
+     */
+    private val messageResolver: NotificationMessageResolver? = null,
 ) {
 
     private var isListening = false
@@ -413,18 +449,20 @@ class NotificationService(
                     "no_name_or_content" -> Pair("Homebase", "New notification")
                     else -> Pair(appName, bodyText)
                 }
+                // Full content is shown at name_content_actions (and the default/unknown case,
+                // which fromCode() treats as that level) — never at the redacted levels.
+                val showsRealContent =
+                    contentLevel != "name_only" && contentLevel != "no_name_or_content"
 
                 // Track per-conversation message count for summary display
                 val messageCount = if (conversationId != null) {
                     counts.increment(conversationId)
                 } else 1
 
-                // Override body with count summary when multiple messages accumulated
-                val finalBody = if (messageCount > 1) {
-                    "$messageCount new messages"
-                } else {
-                    displayBody
-                }
+                // When real content is shown, keep the per-message body and let the Android
+                // displayer stack the recent messages (MessagingStyle). Only collapse to a
+                // count at the redacted levels, where there's no content to show anyway.
+                val finalBody = notificationBody(displayBody, messageCount, showsRealContent)
 
                 // Chime cooldown: suppress alert sound if one played recently
                 val shouldAlert = lastAlertMark.elapsedNow() >= ALERT_COOLDOWN
@@ -448,6 +486,7 @@ class NotificationService(
                     payloadData = payloadMap,
                     silent = !shouldAlert,
                     hasContent = hasContent,
+                    showsRealContent = showsRealContent,
                 )
 
                 if (isAppInForeground) {
@@ -503,18 +542,30 @@ class NotificationService(
      *
      * For now, falls back to unEncryptedMessage.
      */
-    private fun decryptNotificationBody(notification: PushNotification): String? {
-        val options = notification.options
-        if (options.keyHeader != null && options.encryptedBody != null) {
-            // TODO: Implement decryption when backend support is ready:
-            // val keyHeader = EncryptedKeyHeader.fromBase64(options.keyHeader)
-            //     .decryptAesToKeyHeader(sharedSecret)
-            // return keyHeader.decrypt(Base64.decode(options.encryptedBody)).decodeToString()
-            Logger.w(tag = "NotificationService") {
-                "Encrypted notification body received but decryption not yet implemented"
+    private suspend fun decryptNotificationBody(notification: PushNotification): String? {
+        // In-app resolve+decrypt of the referenced chat message (#859): reuses the same
+        // decrypt + typed-preview pipeline as the chat UI via the injected resolver (which lives
+        // in homebase-chat). Bounded by a timeout to stay within the push-handler budget; any
+        // miss/timeout/failure falls through to the sender-provided generic body.
+        val resolver = messageResolver
+        if (resolver != null && resolveConversationId(notification) != null) {
+            val ids = extractChatTapIds(notification.options.typeId, notification.options.tagId)
+            if (ids != null) {
+                val (conversationId, messageId) = ids
+                val preview = try {
+                    withTimeoutOrNull(NOTIFICATION_RESOLVE_TIMEOUT_MS) {
+                        resolver.resolvePreview(conversationId, messageId)?.preview
+                    }
+                } catch (e: Exception) {
+                    Logger.w(tag = "NotificationService") {
+                        "in-app notification content resolve failed: ${e.message}"
+                    }
+                    null
+                }
+                if (!preview.isNullOrBlank()) return preview
             }
         }
-        return options.unEncryptedMessage
+        return notification.options.unEncryptedMessage
     }
 
     /** Resolves the notification channel based on the app type. */
@@ -564,6 +615,8 @@ class NotificationService(
             val momentsTap = if (appId == Uuid.parse(AppConfig.APP_ID).toString()) {
                 resolveMomentsTap(typeId, tagId)
             } else null
+            val connectionRequestTap =
+                buildConnectionRequestTapEvent(appId, typeId, notification.senderId)
             when {
                 // Moments posts/comments ride on the chat appId but are routed to the
                 // moments detail (reels) screen, not ChatList. A post carries
@@ -606,6 +659,20 @@ class NotificationService(
                     // leaving other senders' notifications in the tray.
                     clearConversationNotifications(typeId)
                     emitNavigationEvent(NotificationNavigationEvent.OpenConversation(typeId))
+                }
+
+                // An incoming connection request is reviewable in-app (contact detail shows the
+                // requester's public profile with Accept/Reject + the circle picker), so it opens
+                // there instead of bouncing to the owner web console like the owner app's other
+                // notifications. Sits ahead of the companion branch, which OWNER_APP_ID would
+                // otherwise claim; a payload with no sender leaves this null and falls through to
+                // it unchanged, since without a domain there's no contact to open.
+                connectionRequestTap != null -> {
+                    Logger.i(tag = "NotificationService") {
+                        "Connection-request tap — opening contact detail for " +
+                                connectionRequestTap.odinId
+                    }
+                    emitNavigationEvent(connectionRequestTap)
                 }
 
                 appId in COMPANION_APP_IDS -> {
@@ -902,6 +969,20 @@ internal fun resolveMomentsTap(typeId: String, tagId: String): MomentsTapTarget?
 /** Convenience predicate over [resolveMomentsTap]. */
 internal fun isMomentsTap(typeId: String, tagId: String): Boolean =
     resolveMomentsTap(typeId, tagId) != null
+
+/**
+ * The body to display for a chat notification. When real content is shown
+ * ([showsRealContent] — the name_content_actions level), always the message itself: the Android
+ * displayer stacks multiple per-conversation messages via MessagingStyle, so no count summary is
+ * needed. At the redacted levels, collapse to a "$count new messages" summary once more than one
+ * message has accumulated (there's no content to stack there anyway).
+ */
+internal fun notificationBody(
+    displayBody: String,
+    messageCount: Int,
+    showsRealContent: Boolean,
+): String =
+    if (!showsRealContent && messageCount > 1) "$messageCount new messages" else displayBody
 
 /**
  * Reserved offset so a conversation's group-summary id never collides with a

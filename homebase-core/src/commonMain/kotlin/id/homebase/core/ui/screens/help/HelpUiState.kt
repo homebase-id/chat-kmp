@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.help
 
 import kotlinx.io.files.Path
+import org.jetbrains.compose.resources.StringResource
 
 data class HelpUiState(
     val appVersion: String,
@@ -29,5 +30,5 @@ sealed interface HelpUiEvent {
     data object OpenDeveloperMenu : HelpUiEvent
     data class OpenUrl(val url: String) : HelpUiEvent
     data class ShareFile(val filePath: Path) : HelpUiEvent
-    data class ShowError(val message: String) : HelpUiEvent
+    data class ShowError(val res: StringResource) : HelpUiEvent
 }

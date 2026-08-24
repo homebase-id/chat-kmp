@@ -5,6 +5,7 @@ import id.homebase.api.client.connections.IntroductionPreflightStatus
 import id.homebase.api.client.drives.files.TransferStatus
 import id.homebase.api.client.peer.FileExistsOnPeerResponse
 import id.homebase.api.common.OdinId
+import id.homebase.chat.conversationsettings.ConversationOverview
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.data.ConversationUiModel
 import kotlin.uuid.Uuid
@@ -51,6 +52,12 @@ data class GroupSettingsUiState(
      *  on non-group / legacy-group conversations (legacy groups inline admins, so a
      *  separate "DB-admin: absent" row would be a false positive). */
     val filesDiagnostic: GroupFilesDiagnostic? = null,
+    /** Media/files/audio/dice/location shared in this group, for the "Recent media"
+     *  strip + "See all" (#1157 — groups previously showed none of this, only 1:1 did).
+     *  Loaded independently of the rest so the header paints before the message scan
+     *  finishes; null while loading or when the scan failed. */
+    val overview: ConversationOverview? = null,
+    val isOverviewLoading: Boolean = true,
     val uiEvent: GroupSettingsUiEvent? = null,
     val uiDialog: GroupSettingsUiDialog? = null,
     val uiSheet: GroupSettingsUiSheet? = null,

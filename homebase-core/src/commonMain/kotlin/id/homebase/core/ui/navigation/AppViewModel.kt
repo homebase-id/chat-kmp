@@ -60,7 +60,24 @@ class AppViewModel(
     private var credentialsJob: Job? = null
     private var upgradeCheckJob: Job? = null
 
+    // Diagnostic only. AppViewModel must be resolved with koinViewModel() so the
+    // Activity's ViewModelStore owns exactly one live instance and clears it on
+    // destroy. When it was resolved with koinInject() instead, every Activity
+    // recreation leaked another instance whose collectNotificationEvents() kept
+    // competing for NotificationService's single-consumer nav Channel — an orphan
+    // winning a turn swallowed the tap. That failure was invisible in the log
+    // (one "forwarded" line either way); this makes it loud.
+    private val instanceId = ++instancesCreated
+
     init {
+        liveInstances++
+        if (liveInstances > 1) {
+            Logger.w(tag = "AppViewModel") {
+                "instance #$instanceId created while $liveInstances are live — notification " +
+                    "taps will be round-robined into orphan channels. AppViewModel must be " +
+                    "resolved with koinViewModel(), not koinInject()."
+            }
+        }
         collectNotificationEvents()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
         registerMomentShareHandler { handleMomentShareIntent() }
@@ -91,6 +108,7 @@ class AppViewModel(
 
     override fun onCleared() {
         super.onCleared()
+        liveInstances--
         unregisterShareHandler()
         unregisterMomentShareHandler()
         unregisterPermissionCallbackHandler()
@@ -131,7 +149,9 @@ class AppViewModel(
     private fun collectNotificationEvents() {
         viewModelScope.launch {
             notificationService.navigationEvents.collect { event ->
-                Logger.i(tag = "AppViewModel") { "navigationEvent forwarded: $event" }
+                Logger.i(tag = "AppViewModel") {
+                    "navigationEvent forwarded (vm#$instanceId): $event"
+                }
                 _navigationEvents.trySend(event)
             }
         }
@@ -227,6 +247,11 @@ class AppViewModel(
         _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
     }
 
+    private companion object {
+        // Main-thread only (ViewModel construction / clearing), so plain vars.
+        var instancesCreated = 0
+        var liveInstances = 0
+    }
 }
 
 @Immutable

@@ -5,6 +5,14 @@
          manifest; the app module declares the runtime permissions
          (ACCESS_BACKGROUND_LOCATION, RECEIVE_BOOT_COMPLETED). -->
     <application>
+        <!-- In-app browser (#1089). No launchMode/taskAffinity: it must stay in the caller's
+             task so Back returns to the app rather than the launcher. -->
+        <activity
+            android:name="id.homebase.core.util.InAppBrowserActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode" />
+
         <receiver
             android:name="id.homebase.core.location.tracking.LocationUpdatesReceiver"
             android:enabled="true"

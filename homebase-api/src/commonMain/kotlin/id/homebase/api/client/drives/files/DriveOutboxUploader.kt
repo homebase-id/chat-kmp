@@ -279,7 +279,9 @@ class DriveOutboxUploader(
         val gate = WholePercentProgressGate()
         val updateResult = driveUploadProvider.updateFileByUniqueId(updateRequest, onProgress = { sent, total ->
             gate.admit(percentOf(sent, total))?.let { pct ->
-                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent))
+                // isCreate stays true: update-shaped on the wire, but this row is a
+                // create and still carries `original.payloads` — real media bytes.
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent, isCreate = true))
             }
         })
         val rStatus = updateResult?.recipientStatus
@@ -306,7 +308,7 @@ class DriveOutboxUploader(
         val gate = WholePercentProgressGate()
         val result = driveUploadProvider.updateFileByUniqueId(request, onProgress = { sent, total ->
             gate.admit(percentOf(sent, total))?.let { pct ->
-                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent))
+                eventBus.emit(BackendEvent.OutboxEvent.ItemProgress(outboxRecord.driveId, outboxRecord.uniqueId, pct, sent, isCreate = false))
             }
         })
         val rStatus = result?.recipientStatus
@@ -337,24 +339,36 @@ class DriveOutboxUploader(
 
     private suspend fun updateLocalMetadataTags(outboxRecord: Outbox) {
         val request = OdinSystemSerializer.deserialize<UpdateLocalMetadataTagsOutboxRequest>(outboxRecord.json.decodeToString())
+        val driveId = request.file.targetDrive.alias
         Logger.d(tag = "MarkAsRead") {
-            "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} hasRequestVersionTag=${request.versionTag != null}"
+            "DriveOutboxUploader.updateLocalMetadataTags: outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} hasRequestVersionTag=${request.versionTag != null}"
         }
-        // Falling back to versionTag=null when both the request and the local header
-        // are missing causes the server to reject with VersionTagMismatch and the
-        // outbox to retry for ~48h. Treat the missing local file as a permanent
-        // failure (NotFoundException is dropped by OutboxSync.isPermanentFailure).
-        val versionTag = request.versionTag
-            ?: fileProvider.getFileHeader(request.file.targetDrive.alias, Uuid.parse(request.file.fileId))
-                ?.fileMetadata?.localAppData?.versionTag?.toString()
-            ?: run {
-                Logger.w(tag = "MarkAsRead") {
-                    "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=${request.file.targetDrive.alias} fileId=${request.file.fileId} — no version tag in request and local file gone"
-                }
-                throw NotFoundException()
+        // Resolve the CURRENT server file at send time, not the fileId captured at
+        // enqueue. For an own-send that enqueue-time fileId is a temp id the create
+        // rekeys to the server id (rekeyCacheAfterCreate). Resolving by the stable
+        // uniqueId via getFileHeaderByUid returns the real server fileId + its current
+        // localAppData.versionTag even before the local DriveMainIndex row has rekeyed
+        // (that only happens on sync-back), so a just-confirmed message pins on the
+        // first attempt. Both branches hit the server — same cost as the pre-existing
+        // fileId lookup — so the drop-guard stays server-authoritative: a genuinely
+        // missing file 404s → drop (mirrors updateLocalMetadataContent). A null
+        // versionTag is fine — the FIRST localAppData write is treated as a create; the
+        // old "null versionTag ⇒ NotFound" guard wrongly conflated a missing versionTag
+        // with a missing file.
+        val header = if (request.uniqueId != null) {
+            fileProvider.getFileHeaderByUid(driveId, request.uniqueId)
+        } else {
+            fileProvider.getFileHeader(driveId, Uuid.parse(request.file.fileId))
+        }
+        if (header == null) {
+            Logger.w(tag = "MarkAsRead") {
+                "DriveOutboxUploader.updateLocalMetadataTags: dropping outboxRow=${outboxRecord.uniqueId} drive=$driveId fileId=${request.file.fileId} uniqueId=${request.uniqueId} — file no longer present on server"
             }
+            throw NotFoundException()
+        }
+        val versionTag = request.versionTag ?: header.fileMetadata.localAppData?.versionTag?.toString()
         driveUploadProvider.uploadLocalMetadataTags(
-            file = request.file,
+            file = request.file.copy(fileId = header.fileId.toString()),
             localAppData = LocalAppData(versionTag = versionTag, tags = request.tags)
         )
     }

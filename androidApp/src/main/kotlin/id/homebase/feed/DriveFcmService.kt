@@ -10,6 +10,7 @@ import androidx.work.WorkManager
 import co.touchlab.kermit.Logger
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import id.homebase.api.diagnostics.BgTrace
 import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.notifications.NotificationService
 import kotlinx.coroutines.runBlocking
@@ -37,6 +38,8 @@ class DriveFcmService : FirebaseMessagingService() {
             "received: priority=${pri(message.priority)} originalPriority=${pri(message.originalPriority)}" +
                 "$downgraded dataKeys=${message.data.size} notif=${message.notification != null}"
         }
+        // #1109 background wake-cause attribution (an FCM push woke the process).
+        BgTrace.log(BgTrace.wake("fcm", "priority=${pri(message.priority)}"))
 
         // Hand the FCM payload to the shared NotificationEntry via a worker —
         // the worker runs the same onPushArrived(...) body iOS calls inline,
