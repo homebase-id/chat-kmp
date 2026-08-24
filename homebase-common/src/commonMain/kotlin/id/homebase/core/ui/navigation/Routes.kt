@@ -108,6 +108,22 @@ sealed class Route {
     data object Defragmenter : Route()
 
     @Serializable
+    @SerialName("email")
+    data object Email : Route()
+
+    @Serializable
+    @SerialName("email-client")
+    data object EmailClientPicker : Route()
+
+    @Serializable
+    @SerialName("email-secrets")
+    data object EmailSecrets : Route()
+
+    @Serializable
+    @SerialName("email-settings")
+    data object EmailSettings : Route()
+
+    @Serializable
     @SerialName("vault")
     data object Vault : Route()
 

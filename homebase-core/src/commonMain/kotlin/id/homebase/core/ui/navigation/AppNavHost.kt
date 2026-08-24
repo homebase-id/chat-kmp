@@ -1,5 +1,14 @@
 package id.homebase.core.ui.navigation
 
+import id.homebase.core.ui.screens.email.clients.EmailClientPickerScreen
+import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
+import id.homebase.resources.email_label
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.material.icons.outlined.MailOutline
+import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
+import id.homebase.core.ui.screens.email.EmailViewModel
+import id.homebase.core.ui.screens.email.EmailScreen
+import id.homebase.core.email.EmailPreferences
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -228,7 +237,25 @@ fun AppNavHost(
     val contactBookIconVisible by contactBookPreferences.iconVisible.collectAsStateWithLifecycle()
     val contactBookOnboardingComplete by contactBookPreferences.onboardingComplete.collectAsStateWithLifecycle()
     val contactBookViewModel: ContactBookViewModel = koinViewModel()
-    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible, contactBookIconVisible) {
+    val emailPreferences = koinInject<EmailPreferences>()
+    val emailIconVisible by emailPreferences.iconVisible.collectAsStateWithLifecycle()
+    val emailViewModel: EmailViewModel = koinViewModel()
+    val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val emailUnreadCount = emailUiState.mailboxStatus
+        ?.takeIf { it.available }
+        ?.inboxUnread ?: 0
+    // Reactive so flipping the developer menu shows/hides the entry without an app restart.
+    val showDeveloperMenu by koinInject<UserPreferences>().preferenceState
+        .collectAsStateWithLifecycle()
+        .let { state -> remember { derivedStateOf { state.value.showDeveloperMenu } } }
+    val topLevelRoutes = remember(
+        momentsIconVisible,
+        vaultIconVisible,
+        locationIconVisible,
+        contactBookIconVisible,
+        emailIconVisible,
+        showDeveloperMenu,
+    ) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
@@ -236,7 +263,17 @@ fun AppNavHost(
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             if (locationIconVisible) add(TopLevelRoute.Location)
             if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
+            // Email setup rides the developer menu until the feature flag can be turned on
+            // anywhere — today every host answers "no email here".
+            if (showDeveloperMenu && emailIconVisible) add(TopLevelRoute.Email)
             add(TopLevelRoute.Home)
+        }
+    }
+    val openEmail: () -> Unit = {
+        navController.navigate(Route.Email) {
+            popUpTo(Route.ChatList) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
         }
     }
     val openContactBook: () -> Unit = {
@@ -618,6 +655,7 @@ fun AppNavHost(
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
                                     showMomentsBadge = momentsUnseenCount > 0,
+                                    showEmailBadge = emailUnreadCount > 0,
                                 )
                             },
                             label = {
@@ -637,6 +675,7 @@ fun AppNavHost(
 
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
                                     topLevelRoute is TopLevelRoute.Location -> openLocation()
                                     topLevelRoute is TopLevelRoute.ContactBook -> openContactBook()
                                     else -> navController.navigate(topLevelRoute.route) {
@@ -677,6 +716,7 @@ fun AppNavHost(
 
                                         topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                         topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
                                         topLevelRoute is TopLevelRoute.Location -> openLocation()
                                         else -> navController.navigate(topLevelRoute.route) {
                                             popUpTo(Route.ChatList) { saveState = true }
@@ -1365,6 +1405,7 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
+                                    showDeveloperMenu = showDeveloperMenu,
                                     actions = SettingsActions(
                                         onBack = { navController.popBackStack() },
                                         onNotifications = {
@@ -1384,6 +1425,9 @@ fun AppNavHost(
                                         },
                                         onVaultSettings = {
                                             navController.navigate(Route.VaultSettings)
+                                        },
+                                        onEmailSettings = {
+                                            navController.navigate(Route.EmailSettings)
                                         },
                                         onLocation = openLocation,
                                         onContactBookSettings = {
@@ -1750,6 +1794,46 @@ fun AppNavHost(
                             }
                         }
 
+                        composable<Route.Email> {
+                            if (isAuthenticated) {
+                                EmailScreen(
+                                    viewModel = emailViewModel,
+                                    setupViewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToSecrets = { navController.navigate(Route.EmailSecrets) },
+                                    onNavigateToClientPicker = { navController.navigate(Route.EmailClientPicker) },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailClientPicker> {
+                            if (isAuthenticated) {
+                                EmailClientPickerScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailSecrets> {
+                            if (isAuthenticated) {
+                                EmailSecretsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailSettings> {
+                            if (isAuthenticated) {
+                                EmailSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenEmail = openEmail,
+                                )
+                            }
+                        }
+
                         composable<Route.VaultSettings> {
                             if (isAuthenticated) {
                                 val fromVault = navController.previousBackStackEntry
@@ -1917,6 +2001,7 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.Moments::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
             this?.hasRoute(Route.Vault::class) == true ||
+            this?.hasRoute(Route.Email::class) == true ||
             this?.hasRoute(Route.Location::class) == true ||
             this?.hasRoute(Route.ContactBook::class) == true
 }
@@ -1939,6 +2024,7 @@ sealed class TopLevelRoute(
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+    data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Outlined.MailOutline)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
     data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
 }
@@ -1954,6 +2040,7 @@ sealed class TopLevelRoute(
 private fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
+    showEmailBadge: Boolean = false,
 ) {
     val icon: @Composable () -> Unit = {
         Icon(
@@ -1961,7 +2048,12 @@ private fun TopLevelNavIcon(
             contentDescription = stringResource(topLevelRoute.labelRes),
         )
     }
-    if (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) {
+    val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||
+        // Count-less like Moments: the dot says "there is mail", and the number itself lives on
+        // the Email setup screen where there is room to say what it means.
+        (topLevelRoute is TopLevelRoute.Email && showEmailBadge)
+
+    if (badged) {
         BadgedBox(badge = { Badge() }) { icon() }
     } else {
         icon()

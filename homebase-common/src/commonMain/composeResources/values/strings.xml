@@ -1079,6 +1079,105 @@
     <string name="upload_failed_action_delete">Delete moment</string>
     <string name="upload_failed_action_dismiss">Dismiss</string>
 
+    <!-- Email setup — the add-on that turns email on for this identity and manages its
+         keys. Not a mail reader: reading happens in Thunderbird-class clients. -->
+    <string name="email_label">Email setup</string>
+    <string name="email_home_subtitle">Set up and manage your email</string>
+    <string name="email_onboarding_title">Email on your own identity</string>
+    <string name="email_onboarding_body_1">Set up an address that belongs to your Homebase identity, and keep the keys to it on your own drive.</string>
+    <string name="email_onboarding_body_2">You read and write mail in the app you already use. This screen is where you set it up and manage your keys.</string>
+    <string name="email_onboarding_setup">Set it up</string>
+    <string name="email_onboarding_dismiss">Dismiss</string>
+    <string name="email_onboarding_dismiss_hint">Dismissing hides the icon — find Email setup again under Home.</string>
+    <string name="email_permission_dialog_title">Extend Permissions</string>
+    <string name="email_permission_dialog_text">To set up email we need a drive to keep your mail keys and app passwords on.</string>
+    <string name="email_permission_extend">Extend</string>
+    <string name="email_permission_cancel">Cancel</string>
+    <string name="email_no_server_title">This server has no email yet</string>
+    <string name="email_no_server_body_1">Your Homebase server hasn't turned on email for its identities. There is nothing to set up here for now.</string>
+    <string name="email_no_server_body_2">When your server operator enables it, come back and this screen will offer setup.</string>
+    <string name="email_no_server_note">We asked your server and it answered no — this isn't a network problem, and there is nothing wrong with your identity.</string>
+    <string name="email_no_server_retry">Check again</string>
+    <string name="email_no_server_close">Close</string>
+    <string name="email_checking">Checking with your server…</string>
+    <string name="email_unreachable_title">Could not reach your server</string>
+    <string name="email_unreachable_body">This is not the same as your server having no email — we simply did not get an answer.</string>
+    <string name="email_settings_section">Email setup</string>
+    <string name="email_settings_open">Open Email setup</string>
+    <string name="email_settings_show_icon">Show Email setup icon in bottom bar</string>
+    <string name="email_settings_biometrics">Biometrics protection</string>
+    <string name="email_biometric_prompt_title">Unlock Email setup</string>
+    <string name="email_biometric_prompt_subtitle">Authenticate to access your mail keys</string>
+    <string name="settings_email_desc">Your address, keys and mail app passwords</string>
+
+    <!-- Email setup — the setup flow itself -->
+    <string name="email_setup_title">Setting up email</string>
+    <string name="email_setup_address_label">Your address</string>
+    <string name="email_setup_step_mailbox">Create your mailbox</string>
+    <string name="email_setup_step_mailbox_detail">Claims the address and publishes the records that let mail reach you</string>
+    <string name="email_setup_step_key">Your encryption key</string>
+    <string name="email_setup_step_key_detail">Made for you and kept on your email drive. Mail starts arriving encrypted to it</string>
+    <string name="email_setup_step_credential">Mail app password</string>
+    <string name="email_setup_step_credential_detail">The password you enter in Thunderbird or any other mail app</string>
+    <string name="email_setup_action_start">Set up email</string>
+    <string name="email_setup_action_resume">Finish setting up</string>
+    <string name="email_setup_running">Setting up…</string>
+    <string name="email_setup_failed">Setup did not complete.</string>
+    <string name="email_setup_stalled">That step reported success but nothing changed, so setup stopped rather than repeating it.</string>
+    <string name="email_setup_retry">Try again</string>
+    <string name="email_setup_records_manual">Your DNS is not managed here, so these records have to be added by hand.</string>
+    <string name="email_setup_done_title">Email is ready</string>
+    <string name="email_home_address_label">Your address</string>
+    <string name="email_home_status_ok">Everything is working</string>
+    <string name="email_home_status_incomplete">Setup is not finished</string>
+    <string name="email_home_storage">Mailbox storage</string>
+    <string name="email_home_storage_unavailable">Not reported by your mail server</string>
+    <string name="email_home_secrets">Email secrets</string>
+    <string name="email_home_secrets_detail">App passwords and encryption keys</string>
+    <string name="email_secrets_title">Email secrets</string>
+    <string name="email_secrets_passwords">Mail app passwords</string>
+    <string name="email_secrets_keys">Encryption keys</string>
+    <string name="email_secrets_reveal">Reveal</string>
+    <string name="email_secrets_hide">Hide</string>
+    <string name="email_secrets_copy">Copy</string>
+    <string name="email_secrets_revoke">Revoke</string>
+    <string name="email_secrets_revoke_title">Revoke this password?</string>
+    <string name="email_secrets_revoke_body">%1$s stops working immediately and cannot be brought back. Any mail app using it will stop sending and receiving until you issue a new one.</string>
+    <string name="email_secrets_revoke_confirm">Revoke it</string>
+    <string name="email_secrets_cancel">Cancel</string>
+    <string name="email_secrets_copied">Copied</string>
+    <string name="email_secrets_copy_password">Copy password</string>
+    <string name="email_secrets_copy_label">Copy:</string>
+    <string name="email_secrets_copy_fingerprint">Fingerprint</string>
+    <string name="email_secrets_copy_public_key">Public key</string>
+    <string name="email_secrets_copy_private_key">Private key</string>
+    <string name="email_secrets_private_key_title">Copy your private key?</string>
+    <string name="email_secrets_private_key_body">This is the key that opens your mail. Paste it only into your own mail app, and clear your clipboard afterwards.</string>
+    <string name="email_secrets_private_key_confirm">Copy it</string>
+    <string name="email_secrets_key_current">In use</string>
+    <string name="email_secrets_key_retired">Retired</string>
+    <string name="email_secrets_new_password">Issue another password</string>
+    <string name="email_secrets_current_key">In use</string>
+    <string name="email_secrets_retired_key">Retired — still opens older mail</string>
+    <string name="email_secrets_new_key">Generate a new key</string>
+    <string name="email_secrets_new_key_title">Generate a new key?</string>
+    <string name="email_secrets_new_key_body">New mail will be encrypted to the new key. Your mail app cannot read it until you import the new key there. The old key is kept, so older mail still opens.</string>
+    <string name="email_secrets_new_key_confirm">Generate</string>
+    <string name="email_client_title">Your mail app</string>
+    <string name="email_client_intro">Pick the app you read mail in. We keep its setup steps one tap away.</string>
+    <string name="email_client_none">Not chosen yet</string>
+    <string name="email_home_client">Mail app</string>
+    <string name="email_secrets_no_delete_note">Old keys are never deleted: mail received under them is only readable while they exist.</string>
+    <string name="email_secrets_password_warning">Anyone with this password can read and send your mail. Enter it only in your own mail app.</string>
+
+    <!-- Email setup — mailbox status -->
+    <string name="email_mailbox_unread">%1$d unread</string>
+    <string name="email_mailbox_none_unread">Nothing unread</string>
+    <string name="email_mailbox_junk">%1$d in junk</string>
+    <string name="email_mailbox_queued">%1$d message(s) still trying to send</string>
+    <string name="email_mailbox_open_client">Open %1$s</string>
+    <string name="email_mailbox_open_failed">%1$s does not seem to be installed</string>
+
     <!-- Vault -->
     <string name="vault_label">Vault</string>
     <string name="vault_home_subtitle">Your secure document store</string>

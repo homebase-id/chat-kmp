@@ -10,6 +10,7 @@ class UserPreferences(private val settings: Settings) {
         PreferenceState(
             theme = theme,
             hapticsEnabled = hapticsEnabled,
+            showDeveloperMenu = showDeveloperMenu,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -28,9 +29,17 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(theme = value)
         }
 
+    /**
+     * Mirrored into [preferenceState] because it now gates UI chrome that must react immediately:
+     * the Email setup toolbar entry is built from this in AppNavHost, and reading the plain
+     * property there would leave the icon missing until the next app start.
+     */
     var showDeveloperMenu: Boolean
         get() = settings.getBoolean("show_developer_menu", false)
-        set(value) = settings.putBoolean("show_developer_menu", value)
+        set(value) {
+            settings.putBoolean("show_developer_menu", value)
+            _preferenceState.value = _preferenceState.value.copy(showDeveloperMenu = value)
+        }
 
     /**
      * Feed tab mode: the native KMP feed (default) vs the legacy WebView feed. Lets users opt back
@@ -113,6 +122,7 @@ class UserPreferences(private val settings: Settings) {
 data class PreferenceState(
     val theme: ThemeState,
     val hapticsEnabled: Boolean,
+    val showDeveloperMenu: Boolean = false,
 )
 
 enum class ThemeState {

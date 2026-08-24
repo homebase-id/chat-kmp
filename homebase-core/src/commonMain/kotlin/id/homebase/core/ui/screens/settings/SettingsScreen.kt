@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
@@ -119,6 +120,8 @@ import id.homebase.resources.settings_storage
 import id.homebase.resources.settings_storage_desc
 import id.homebase.resources.settings_storage_used
 import id.homebase.resources.settings_vault_desc
+import id.homebase.resources.settings_email_desc
+import id.homebase.resources.email_settings_section
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.stringResource
 
@@ -126,6 +129,7 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     actions: SettingsActions,
+    showDeveloperMenu: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -187,6 +191,7 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             actions = actions,
+            showDeveloperMenu = showDeveloperMenu,
         )
 
         if (uiState.isLoggingOut) {
@@ -241,6 +246,8 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     actions: SettingsActions,
+    // Defaults to hidden so previews and tests that do not care stay unchanged.
+    showDeveloperMenu: Boolean = false,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -358,6 +365,19 @@ fun SettingsUi(
                     supportingText = stringResource(MR.string.settings_vault_desc),
                     action = SettingsRowAction.Navigate(actions.onVaultSettings),
                 )
+            }
+            // Email setup is developer-menu gated while the arc is in progress: every host has
+            // Email:TenantMail:Enabled off, so the screen can only say "no email here" today.
+            if (showDeveloperMenu) {
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("emailSettingsButton"),
+                        icon = Icons.Outlined.MailOutline,
+                        title = stringResource(MR.string.email_settings_section),
+                        supportingText = stringResource(MR.string.settings_email_desc),
+                        action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                    )
+                }
             }
             item {
                 SettingsRow(
@@ -575,6 +595,7 @@ fun SettingsUiPreview() {
                 onHelp = {},
                 onMomentsSettings = {},
                 onVaultSettings = {},
+                onEmailSettings = {},
                 onLocation = {},
                 onContactBookSettings = {},
                 onProfileEdit = {},
