@@ -150,7 +150,11 @@ class EmailViewModel(
     }
 
     fun refreshStatus() {
-        viewModelScope.launch {
+        viewModelScope.launch { refreshStatusNow() }
+    }
+
+    /** Awaitable form: setup needs the new status before deciding what to do next. */
+    suspend fun refreshStatusNow() {
             _uiState.update { it.copy(isCheckingServer = true, statusError = null) }
             try {
                 val status = mailProvider.getStatus()
@@ -171,7 +175,6 @@ class EmailViewModel(
                 }
             }
         }
-    }
 
     private suspend fun activateDrive() {
         optionalDriveActivation.activate(emailLabeledDrive)

@@ -8,7 +8,10 @@ import id.homebase.api.client.mail.MailProvider
 import id.homebase.core.ui.screens.email.EmailService
 import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.ui.screens.email.model.EmailCredentialContent
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -37,6 +40,15 @@ class EmailSetupViewModel(
     private val _uiState = MutableStateFlow(EmailSetupUiState())
     val uiState: StateFlow<EmailSetupUiState> = _uiState.asStateFlow()
 
+    /**
+     * Emitted after a step completes. The server's status is what decides which step is current,
+     * and this ViewModel does not own it — without this the checklist never advances, the button
+     * keeps offering the step that just succeeded, and pressing it again silently does the work
+     * a second time. For key generation that means a real extra rotation each press.
+     */
+    private val _stepCompleted = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+    val stepCompleted: SharedFlow<Unit> = _stepCompleted.asSharedFlow()
+
     init {
         // Always mail@<identity>, and not editable. One address, derived from the identity, is
         // one less thing to get wrong while the rest of the flow is being proven; additional
@@ -56,24 +68,73 @@ class EmailSetupViewModel(
 
     fun onAction(action: EmailSetupUiAction) {
         when (action) {
-            EmailSetupUiAction.CreateMailboxClicked -> runStep(EmailSetupStep.NeedsMailbox) {
+            EmailSetupUiAction.ErrorDismissed -> _uiState.update { it.copy(error = null) }
+        }
+    }
+
+    /**
+     * Runs setup to completion: mailbox, then key, then the first app password.
+     *
+     * One action rather than a button per step, because the steps are not choices — the order is
+     * fixed by the server (no credential before a published key) and every one of them is
+     * something the user wants. A button per step also made it possible to press the same one
+     * twice, and for key generation a second press is a real key rotation.
+     *
+     * Which step runs is read back from [currentStep] after each one, so this resumes an
+     * interrupted setup and never repeats work that is already done. That is what guarantees
+     * exactly one key: the key step is only reachable while the identity has none.
+     */
+    fun runSetup(currentStep: () -> EmailSetupStep, refresh: suspend () -> Unit) {
+        if (_uiState.value.runningStep != null) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(error = null) }
+
+            try {
+                while (true) {
+                    val step = currentStep()
+                    val work = workFor(step) ?: break
+
+                    _uiState.update { it.copy(runningStep = step) }
+                    work()
+                    emailStream.loadAll()
+                    refresh()
+
+                    // The step must advance. If it does not, the server disagrees with us about
+                    // what just happened, and looping would redo the work — which for the key step
+                    // means rotating again on every pass.
+                    if (currentStep() == step) {
+                        _uiState.update { it.copy(error = EmailSetupError.Stalled) }
+                        break
+                    }
+                }
+            } catch (e: Exception) {
+                Logger.e(e, TAG) { "Setup stopped" }
+                _uiState.update { it.copy(error = EmailSetupError.Failed(e.message)) }
+            } finally {
+                _uiState.update { it.copy(runningStep = null) }
+            }
+        }
+    }
+
+    private fun workFor(step: EmailSetupStep): (suspend () -> Unit)? = when (step) {
+        EmailSetupStep.NeedsMailbox -> {
+            {
                 val result = mailProvider.ensureMailbox(_uiState.value.primaryEmailAddress)
                 _uiState.update { it.copy(dnsRecordsWritten = result.dnsRecordsWritten) }
             }
-
-            is EmailSetupUiAction.GenerateKeyClicked -> runStep(EmailSetupStep.NeedsKey) {
-                mailProvider.generateKey(
-                    primaryEmailAddress = _uiState.value.primaryEmailAddress,
-                    clientEntropyBase64 = action.clientEntropyBase64,
-                )
-            }
-
-            EmailSetupUiAction.IssueCredentialClicked -> runStep(EmailSetupStep.NeedsAppPassword) {
-                issueFirstCredential()
-            }
-
-            EmailSetupUiAction.ErrorDismissed -> _uiState.update { it.copy(error = null) }
         }
+
+        EmailSetupStep.NeedsKey -> {
+            { mailProvider.generateKey(primaryEmailAddress = _uiState.value.primaryEmailAddress) }
+        }
+
+        EmailSetupStep.NeedsAppPassword -> {
+            { issueCredential(FIRST_CREDENTIAL_LABEL) }
+        }
+
+        // Permissions and the drive happen before this screen; Complete is done.
+        else -> null
     }
 
     /**
@@ -105,44 +166,18 @@ class EmailSetupViewModel(
 
     private suspend fun issueFirstCredential() = issueCredential(FIRST_CREDENTIAL_LABEL)
 
-    /**
-     * Runs one step, then refreshes the drive so the derived step advances. Failures surface as a
-     * message rather than a crash: every step here is retryable by design.
-     */
-    private fun runStep(step: EmailSetupStep, block: suspend () -> Unit) {
-        if (_uiState.value.runningStep != null) return
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(runningStep = step, error = null) }
-            try {
-                block()
-                emailStream.loadAll()
-            } catch (e: Exception) {
-                Logger.e(e, TAG) { "Setup step $step failed" }
-                _uiState.update { it.copy(error = e.message ?: "That step did not complete") }
-            } finally {
-                _uiState.update { it.copy(runningStep = null) }
-            }
-        }
-    }
 }
 
 data class EmailSetupUiState(
     val primaryEmailAddress: String = "",
     /** Which step is in flight, so the UI can disable the rest. */
     val runningStep: EmailSetupStep? = null,
-    val error: String? = null,
+    val error: EmailSetupError? = null,
     /** False for manual-DNS identities: the records are instructions, not something we wrote. */
     val dnsRecordsWritten: Boolean = true,
 )
 
 sealed interface EmailSetupUiAction {
-    data object CreateMailboxClicked : EmailSetupUiAction
-
-    /** Entropy is optional — empty on platforms with no motion sensor. */
-    data class GenerateKeyClicked(val clientEntropyBase64: String = "") : EmailSetupUiAction
-
-    data object IssueCredentialClicked : EmailSetupUiAction
     data object ErrorDismissed : EmailSetupUiAction
 }
 
@@ -157,4 +192,16 @@ private fun EmailSetupStep.order(): Int = when (this) {
     EmailSetupStep.NeedsKey -> 3
     EmailSetupStep.NeedsAppPassword -> 4
     EmailSetupStep.Complete -> 5
+}
+
+/**
+ * Why setup stopped. Typed rather than a message, so the wording lives with the other strings and
+ * can be translated — a ViewModel is the wrong place to keep English.
+ */
+sealed interface EmailSetupError {
+    /** The step reported success but the server still says it is pending. */
+    data object Stalled : EmailSetupError
+
+    /** Something threw; [message] is the server's own words where there are any. */
+    data class Failed(val message: String?) : EmailSetupError
 }

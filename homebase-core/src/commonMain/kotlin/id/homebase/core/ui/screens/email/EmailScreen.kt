@@ -107,6 +107,12 @@ fun EmailScreen(
                     currentStep = setupStep,
                     uiState = setupState,
                     onAction = setupViewModel::onAction,
+                    onRun = {
+                        setupViewModel.runSetup(
+                            currentStep = { viewModel.setupStep.value },
+                            refresh = { viewModel.refreshStatusNow() },
+                        )
+                    },
                 )
             }
         }

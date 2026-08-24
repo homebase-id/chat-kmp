@@ -1119,9 +1119,11 @@
     <string name="email_setup_step_key_detail">Made for you and kept on your email drive. Mail starts arriving encrypted to it</string>
     <string name="email_setup_step_credential">Mail app password</string>
     <string name="email_setup_step_credential_detail">The password you enter in Thunderbird or any other mail app</string>
-    <string name="email_setup_action_mailbox">Create mailbox</string>
-    <string name="email_setup_action_key">Generate key</string>
-    <string name="email_setup_action_credential">Create app password</string>
+    <string name="email_setup_action_start">Set up email</string>
+    <string name="email_setup_action_resume">Finish setting up</string>
+    <string name="email_setup_running">Setting up…</string>
+    <string name="email_setup_failed">Setup did not complete.</string>
+    <string name="email_setup_stalled">That step reported success but nothing changed, so setup stopped rather than repeating it.</string>
     <string name="email_setup_retry">Try again</string>
     <string name="email_setup_records_manual">Your DNS is not managed here, so these records have to be added by hand.</string>
     <string name="email_setup_done_title">Email is ready</string>

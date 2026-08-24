@@ -27,9 +27,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.resources.MR
-import id.homebase.resources.email_setup_action_credential
-import id.homebase.resources.email_setup_action_key
-import id.homebase.resources.email_setup_action_mailbox
+import id.homebase.resources.email_setup_action_resume
+import id.homebase.resources.email_setup_action_start
+import id.homebase.resources.email_setup_failed
+import id.homebase.resources.email_setup_running
+import id.homebase.resources.email_setup_stalled
 import id.homebase.resources.email_setup_address_label
 import id.homebase.resources.email_setup_records_manual
 import id.homebase.resources.email_setup_retry
@@ -39,7 +41,6 @@ import id.homebase.resources.email_setup_step_key
 import id.homebase.resources.email_setup_step_key_detail
 import id.homebase.resources.email_setup_step_mailbox
 import id.homebase.resources.email_setup_step_mailbox_detail
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -58,6 +59,7 @@ fun EmailSetupContent(
     currentStep: EmailSetupStep,
     uiState: EmailSetupUiState,
     onAction: (EmailSetupUiAction) -> Unit,
+    onRun: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -89,22 +91,36 @@ fun EmailSetupContent(
             }
         }
 
-        actionFor(currentStep)?.let { action ->
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { onAction(action.uiAction) },
-                enabled = uiState.runningStep == null && uiState.primaryEmailAddress.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (uiState.runningStep != null) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // One action for the whole flow. The steps are not choices — their order is fixed by the
+        // server and each one is something the user wants — so the screen runs them through and
+        // reports progress, rather than asking three times.
+        Button(
+            onClick = onRun,
+            enabled = uiState.runningStep == null,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (uiState.runningStep != null) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(stringResource(MR.string.email_setup_running))
+            } else {
+                Text(
+                    stringResource(
+                        // "Finish" when some of it already happened — a restart mid-flow should
+                        // not look like it is starting over.
+                        if (currentStep == EmailSetupStep.NeedsMailbox) {
+                            MR.string.email_setup_action_start
+                        } else {
+                            MR.string.email_setup_action_resume
+                        }
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                }
-                Text(stringResource(action.label))
+                )
             }
         }
 
@@ -161,7 +177,11 @@ fun EmailSetupContent(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = message,
+                        text = when (message) {
+                            EmailSetupError.Stalled -> stringResource(MR.string.email_setup_stalled)
+                            is EmailSetupError.Failed ->
+                                message.message ?: stringResource(MR.string.email_setup_failed)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                     )
@@ -173,23 +193,6 @@ fun EmailSetupContent(
             }
         }
     }
-}
-
-private class StepAction(val label: StringResource, val uiAction: EmailSetupUiAction)
-
-/** What the button does here, named for the step. "Continue" begs the question at this point. */
-private fun actionFor(step: EmailSetupStep): StepAction? = when (step) {
-    EmailSetupStep.NeedsMailbox ->
-        StepAction(MR.string.email_setup_action_mailbox, EmailSetupUiAction.CreateMailboxClicked)
-
-    EmailSetupStep.NeedsKey ->
-        StepAction(MR.string.email_setup_action_key, EmailSetupUiAction.GenerateKeyClicked())
-
-    EmailSetupStep.NeedsAppPassword ->
-        StepAction(MR.string.email_setup_action_credential, EmailSetupUiAction.IssueCredentialClicked)
-
-    // Permissions and the drive are dealt with before this screen; Complete has nothing left.
-    else -> null
 }
 
 @Composable
