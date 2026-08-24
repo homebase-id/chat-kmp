@@ -47,6 +47,7 @@ class DesktopViewModel(
                 userPreferences.theme = newTheme
             }
 
+
             is DesktopUiAction.TriggerUpdate -> {
                 triggerUpdate()
             }
