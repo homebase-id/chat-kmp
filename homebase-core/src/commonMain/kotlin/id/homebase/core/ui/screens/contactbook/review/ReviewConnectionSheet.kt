@@ -36,8 +36,10 @@ import id.homebase.resources.review_apps_header
 import id.homebase.resources.review_block
 import id.homebase.resources.review_chat_only_helper
 import id.homebase.resources.review_circles_helper
-import id.homebase.resources.review_circle_other_app
 import id.homebase.resources.review_circles_header
+import id.homebase.resources.review_no_grantable_circles
+import id.homebase.resources.review_other_circles_explainer
+import id.homebase.resources.review_other_circles_header
 import id.homebase.resources.review_disconnect
 import id.homebase.resources.review_explainer
 import id.homebase.resources.review_failed
@@ -107,36 +109,42 @@ fun ReviewConnectionSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            if (uiState.circles.isEmpty()) {
-                Text(
-                    text = stringResource(MR.string.review_no_circles),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                SectionLabel(stringResource(MR.string.review_circles_header))
-                // Circles this app can't grant stay visible below a divider rather than
-                // vanishing — a missing circle reads as a bug, a disabled one explains itself.
-                val (grantable, ungrantable) = uiState.circles.partition { it.grantable }
-                grantable.forEach { circle ->
-                    CircleCheckbox(
-                        circle = circle,
-                        checked = circle.id in uiState.selectedCircleIds,
-                        enabled = !uiState.submitting,
-                        onToggle = { onAction(ReviewConnectionUiAction.CircleToggled(circle.id)) },
-                    )
-                }
-                if (ungrantable.isNotEmpty()) {
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    ungrantable.forEach { circle ->
+            // Circles this app can't grant stay visible in their own section rather than
+            // vanishing — a missing circle reads as a bug. The reason belongs to the section,
+            // not to every row in it.
+            val (grantable, ungrantable) = uiState.circles.partition { it.grantable }
+
+            when {
+                uiState.circles.isEmpty() -> Explainer(stringResource(MR.string.review_no_circles))
+
+                grantable.isEmpty() ->
+                    Explainer(stringResource(MR.string.review_no_grantable_circles))
+
+                else -> {
+                    SectionLabel(stringResource(MR.string.review_circles_header))
+                    grantable.forEach { circle ->
                         CircleCheckbox(
                             circle = circle,
-                            checked = false,
-                            enabled = false,
-                            reason = stringResource(MR.string.review_circle_other_app),
-                            onToggle = {},
+                            checked = circle.id in uiState.selectedCircleIds,
+                            enabled = !uiState.submitting,
+                            onToggle = { onAction(ReviewConnectionUiAction.CircleToggled(circle.id)) },
                         )
                     }
+                }
+            }
+
+            if (ungrantable.isNotEmpty()) {
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                SectionLabel(stringResource(MR.string.review_other_circles_header))
+                Explainer(stringResource(MR.string.review_other_circles_explainer))
+                Spacer(Modifier.height(4.dp))
+                ungrantable.forEach { circle ->
+                    CircleCheckbox(
+                        circle = circle,
+                        checked = false,
+                        enabled = false,
+                        onToggle = {},
+                    )
                 }
             }
 
@@ -255,6 +263,15 @@ fun ReviewConnectionSheet(
 }
 
 @Composable
+private fun Explainer(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
 private fun SectionLabel(text: String) {
     Text(
         text = text,
@@ -270,33 +287,24 @@ private fun CircleCheckbox(
     checked: Boolean,
     enabled: Boolean,
     onToggle: () -> Unit,
-    reason: String? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = { onToggle() }, enabled = enabled)
-        Column(modifier = Modifier.weight(1f)) {
-            // Full name, never the abbreviation — this is a roomy context.
-            val label = circle.emoji?.let { "$it ${circle.name}" } ?: circle.name
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (enabled) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-            if (reason != null) {
-                Text(
-                    text = reason,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        // Full name, never the abbreviation — this is a roomy context.
+        val label = circle.emoji?.let { "$it ${circle.name}" } ?: circle.name
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

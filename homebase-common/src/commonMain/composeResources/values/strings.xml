@@ -1588,7 +1588,9 @@
     <string name="review_introduced_by">You were introduced by %1$s.</string>
     <string name="review_explainer">Add %1$s to one or more circles if you want them to see more of your profile.</string>
     <string name="review_circles_header">Your circles</string>
-    <string name="review_circle_other_app">Can only be managed where it was created</string>
+    <string name="review_other_circles_header">Other circles</string>
+    <string name="review_other_circles_explainer">These can only be managed where they were created.</string>
+    <string name="review_no_grantable_circles">Chat has no circles you can add contacts to yet.</string>
     <string name="review_apps_header">App defaults</string>
     <string name="review_apps_summary">Homebase apps</string>
     <string name="review_app_pending">Pending — takes effect when that app next runs</string>
