@@ -221,9 +221,11 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.DateTimeUnit
@@ -236,12 +238,15 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Upper bound on waiting for an own send to appear in the list before the
  *  follow token is consumed unscrolled (the send failed or was gated out). */
 private const val OWN_SEND_FOLLOW_TIMEOUT_MS = 5_000L
+
+private const val SCROLL_TO_NEWEST_ATTEMPTS = 4
 
 // Mirrors the states in which the composer below is replaced by a banner — keep the two in sync,
 // or a dropped file lands in a conversation with nothing to send it from.
@@ -1404,9 +1409,7 @@ fun ConversationContent(
                                     // history.)
                                     onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
                                 } else {
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                                    }
+                                    coroutineScope.launch { listState.animateScrollToNewestItem() }
                                 }
                             },
                         )
@@ -2289,6 +2292,27 @@ private fun getDateSectionLabel(messageDate: LocalDate): String {
             }
             messageDate.format(format)
         }
+    }
+}
+
+/**
+ * A single `animateScrollToItem(totalItemsCount - 1)` goes stale mid-flight: a
+ * `nearTop` prepend lands while it animates, shifting every index by a page, and
+ * its scroll compensation cancels the animation — so it finishes on a mid-history
+ * row. Re-aim until the list really ends in view.
+ */
+private suspend fun LazyListState.animateScrollToNewestItem() {
+    repeat(SCROLL_TO_NEWEST_ATTEMPTS) {
+        val target = layoutInfo.totalItemsCount - 1
+        if (target < 0) return
+        try {
+            animateScrollToItem(target)
+        } catch (e: CancellationException) {
+            // Compose's MutationInterruptedException is internal; a still-active context
+            // means the prepend compensation took the scroll, not the caller going away.
+            if (!currentCoroutineContext().isActive) throw e
+        }
+        if (layoutInfo.visibleItemsInfo.lastOrNull()?.index == layoutInfo.totalItemsCount - 1) return
     }
 }
 
