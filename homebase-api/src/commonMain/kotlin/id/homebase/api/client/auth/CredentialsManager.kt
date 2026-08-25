@@ -1,7 +1,6 @@
 package id.homebase.api.client.auth
 
 import id.homebase.api.common.OdinId
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,20 +13,6 @@ class CredentialsManager {
     private val storedCredentials = mutableMapOf<String, ApiCredentials>()
 
     private var activeCredentials: ApiCredentials? = null
-
-    /**
-     * The CDN base URL every Odin host stamps on every response. Latched from the first one seen, so any
-     * call at all teaches it — the media reads that need it can be served from cache and never hit the
-     * network themselves. Session-scoped: a different identity may front a different edge.
-     */
-    @Volatile
-    var cdnBaseUrl: String? = null
-        private set
-
-    fun observeCdnBase(advertised: String?) {
-        if (cdnBaseUrl != null) return
-        cdnBaseUrl = advertised?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() }
-    }
 
     private val _credentialsFlow = MutableStateFlow<ApiCredentials?>(null)
     val credentialsFlow: StateFlow<ApiCredentials?> = _credentialsFlow.asStateFlow()
@@ -52,7 +37,6 @@ class CredentialsManager {
     }
 
     suspend fun removeAllCredentials() = mutex.withLock {
-        cdnBaseUrl = null
         _credentialsFlow.update { null }
         activeCredentials = null
         storedCredentials.clear()

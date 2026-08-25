@@ -247,9 +247,8 @@ class PeerFileByGlobalTransitProvider(
 
     private suspend fun cdnUrlFor(peer: OdinId, remotePath: String): String? =
         cdnStateLock.withLock {
-            val base = credentialsManager.cdnBaseUrl ?: return@withLock null
             if (peer.toString() in peerOnlyHosts) return@withLock null
-            "$base/?forward=${"https://$peer/api/v2$remotePath".encodeURLParameter()}"
+            "$CDN_BASE/?forward=${"https://$peer/api/v2$remotePath".encodeURLParameter()}"
         }
 
     private suspend fun markPeerOnly(peer: OdinId) {
@@ -270,5 +269,9 @@ class PeerFileByGlobalTransitProvider(
 
     companion object {
         private const val TAG = "PeerFileByGtid"
+
+        // Pinned, not read from each response's x-odin-cdn-payload: a host fronting a different edge
+        // (or none) 401s here and falls through to peer — same path a missing header took.
+        private const val CDN_BASE = "https://cdn.ravenhosting.cloud"
     }
 }
