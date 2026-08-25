@@ -133,6 +133,22 @@ val vaultLabeledDrive = LabeledDrive(
     label = "Vault",
 )
 
+// Email setup drive — holds the identity's OpenPGP secret keyrings, the pointer to the
+// current one, and the app-password credential files. Optional drive (not in
+// [mandatorySyncDrives]); requested through extend-permissions when the user sets email up.
+//
+// These GUIDs are NOT placeholders and must never change: the server names the same drive to
+// authorize every /api/v2/mail call, and the alias IS the drive's storage id. The mirror lives
+// in odin-core `src/services/Odin.Services/Drives/WellKnownAppDrives.cs` — change one, change
+// both. Read+Write on this drive is what makes this app the identity's email app.
+val emailLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("92bbcad8-3558-417b-9376-9976c086a674"),
+        type = Uuid.parse("37e3480a-4cd7-4a41-a421-ed49866bf07e"),
+    ),
+    label = "Email",
+)
+
 // Stickers drive — modeled exactly on [vaultLabeledDrive] (alias + distinct type
 // GUID). The user's saved "My Stickers" tray is one HomebaseFile per sticker on this
 // dedicated, synced drive, so the library follows the user across devices via the
@@ -234,6 +250,18 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         type = vaultLabeledDrive.drive.type.toString(),
         name = vaultLabeledDrive.label,
         description = "Drive to store your personal documents",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
+// Read AND Write: the server requires both. Every mail action writes key material to this
+// drive and reads it back, so a half grant is refused (403) rather than half-working.
+val emailTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = emailLabeledDrive.drive.alias.toString(),
+        type = emailLabeledDrive.drive.type.toString(),
+        name = emailLabeledDrive.label,
+        description = "Drive to store your email keys and mail app passwords",
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
     )
 )
@@ -363,6 +391,16 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
         drives = vaultTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl
+    )
+}
+
+fun getEmailPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = emailTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl
     )
