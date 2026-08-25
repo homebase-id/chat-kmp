@@ -1,8 +1,10 @@
-package id.homebase.core.ui.screens.contactbook.components
+package id.homebase.core.widget
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -31,6 +33,9 @@ import androidx.window.core.layout.WindowSizeClass
  * @param dismissible false pins the sheet open while the caller has work in flight. Gating
  *   [onDismiss] would not: `ModalBottomSheet` runs `hide()` *before* consulting `onDismissRequest`,
  *   so a refused dismissal leaves an invisible sheet mounted with no way to bring it back.
+ * @param contentWindowInsets compact branch only. Content that sizes itself off the sheet's own
+ *   height (`fillMaxHeight(fraction)`) must pass zero here — the default insets pad inside the
+ *   draggable surface, so height tracks position and the anchors oscillate on fling.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,6 +43,7 @@ fun AdaptiveSheet(
     onDismiss: () -> Unit,
     dismissible: Boolean = true,
     expandFully: Boolean = false,
+    contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
     content: @Composable () -> Unit,
 ) {
     val wide = currentWindowAdaptiveInfo().windowSizeClass
@@ -75,6 +81,7 @@ fun AdaptiveSheet(
             onDismissRequest = onDismiss,
             sheetState = sheetState,
             sheetGesturesEnabled = dismissible,
+            contentWindowInsets = contentWindowInsets,
             properties = ModalBottomSheetProperties(
                 shouldDismissOnBackPress = dismissible,
                 shouldDismissOnClickOutside = dismissible,

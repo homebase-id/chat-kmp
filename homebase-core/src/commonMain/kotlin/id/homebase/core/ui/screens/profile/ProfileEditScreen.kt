@@ -71,7 +71,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
-import id.homebase.core.ui.screens.contactbook.components.AdaptiveSheet
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.resources.MR

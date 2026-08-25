@@ -15,9 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.mutableStateOf
@@ -27,7 +25,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -47,6 +44,7 @@ import id.homebase.api.client.identity.initials
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
@@ -64,7 +62,6 @@ import id.homebase.resources.settings_open_owner_console
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectRequestBottomSheet(
     viewModel: ConnectRequestViewModel,
@@ -132,29 +129,39 @@ fun ConnectRequestBottomSheet(
     }
 
     if (state.showDialog) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ConnectRequestSheet(
+            state = state,
+            sheetSnackbarHostState = sheetSnackbarHostState,
+            onAction = viewModel::onAction,
+        )
+    }
+}
 
-        ModalBottomSheet(
-            onDismissRequest = {
-                if (!state.isSending) viewModel.onAction(ConnectRequestAction.CloseDialog)
-            },
-            sheetState = sheetState,
-        ) {
-            Box {
-                ComposeRequestSheetContent(
-                    recipient = state.recipient,
-                    message = state.message,
-                    resolution = state.resolution,
-                    isSending = state.isSending,
-                    onRecipientChange = { viewModel.onAction(ConnectRequestAction.RecipientChanged(it)) },
-                    onMessageChange = { viewModel.onAction(ConnectRequestAction.MessageChanged(it)) },
-                    onSend = { viewModel.onAction(ConnectRequestAction.SendClicked) },
-                )
-                SnackbarHost(
-                    hostState = sheetSnackbarHostState,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
-            }
+@Composable
+internal fun ConnectRequestSheet(
+    state: ConnectRequestState,
+    sheetSnackbarHostState: SnackbarHostState,
+    onAction: (ConnectRequestAction) -> Unit,
+) {
+    AdaptiveSheet(
+        onDismiss = { onAction(ConnectRequestAction.CloseDialog) },
+        dismissible = !state.isSending,
+        expandFully = true,
+    ) {
+        Box {
+            ComposeRequestSheetContent(
+                recipient = state.recipient,
+                message = state.message,
+                resolution = state.resolution,
+                isSending = state.isSending,
+                onRecipientChange = { onAction(ConnectRequestAction.RecipientChanged(it)) },
+                onMessageChange = { onAction(ConnectRequestAction.MessageChanged(it)) },
+                onSend = { onAction(ConnectRequestAction.SendClicked) },
+            )
+            SnackbarHost(
+                hostState = sheetSnackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }
