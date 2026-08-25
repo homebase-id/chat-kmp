@@ -96,6 +96,7 @@ import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.media.subsample.SubSamplingImageSource
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -897,13 +898,10 @@ fun GroupSettingsSheets(
         }
 
         is GroupSettingsUiSheet.HealProgress -> {
-            val sheetState = rememberModalBottomSheetState()
-            ModalBottomSheet(
-                // Block dismiss until the heal call returns so the user can see
-                // every line transition. After [finished] flips true, the Close
-                // button (rendered below) is the explicit dismiss path.
-                onDismissRequest = { if (sheet.finished) onSheetClosed() },
-                sheetState = sheetState,
+            // Pinned open until the heal call returns so the user sees every line transition.
+            AdaptiveSheet(
+                onDismiss = onSheetClosed,
+                dismissible = sheet.finished,
             ) {
                 HealProgressSheetContent(
                     items = sheet.items,
