@@ -371,7 +371,9 @@ fun MomentMediaItem(
             }
             var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
             var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
-            if (!isUploading) {
+            // VideoPreloadService only reads the local drive, so a followed author's video would
+            // 404 every tile. The full-screen player fetches it over peer on demand instead.
+            if (!isUploading && remoteOdinId == null) {
                 VideoPreloadEffect(
                     data = videoPlayerData,
                     onPreloading = { isPreloading = it },

@@ -35,6 +35,7 @@ class PeerFileByGlobalTransitProviderTest {
     private val peer = OdinId("author.example.com")
     private val driveId = Uuid.parse("11111111-1111-1111-1111-111111111111")
     private val key = "pst0mdi0"
+    private val cdn = "https://cdn.ravenhosting.cloud"
 
     private fun keyHeader() = KeyHeader(
         iv = ByteArray(16) { 3 },
@@ -65,9 +66,14 @@ class PeerFileByGlobalTransitProviderTest {
         var path: String? = null
         val bytes = byteArrayOf(1, 2, 3, 4)
         // payloadencrypted absent → decryptBytes returns the bytes untouched (the public-feed case).
+        // 401 the edge so the read falls through to peer — the route under test here.
         val engine = MockEngine { request ->
-            path = request.url.encodedPath
-            respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/jpeg"))
+            if (request.url.toString().startsWith("$cdn/")) {
+                respond(ByteArray(0), HttpStatusCode.Unauthorized)
+            } else {
+                path = request.url.encodedPath
+                respond(bytes, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/jpeg"))
+            }
         }
 
         val result = provider(engine)
@@ -85,8 +91,12 @@ class PeerFileByGlobalTransitProviderTest {
         val gtid = Uuid.random()
         var path: String? = null
         val engine = MockEngine { request ->
-            path = request.url.encodedPath
-            respond(byteArrayOf(9), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/webp"))
+            if (request.url.toString().startsWith("$cdn/")) {
+                respond(ByteArray(0), HttpStatusCode.Unauthorized)
+            } else {
+                path = request.url.encodedPath
+                respond(byteArrayOf(9), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/webp"))
+            }
         }
 
         provider(engine).getThumbOverPeerByGlobalTransitId(
@@ -182,34 +192,27 @@ class PeerFileByGlobalTransitProviderTest {
     }
 
     @Test
-    fun cdnIsUsed_onceTheHostHasAdvertisedItsBase() = runTest {
+    fun cdnIsUsedFromTheVeryFirstRead() = runTest {
         val urls = mutableListOf<String>()
         val engine = MockEngine { request ->
             urls += request.url.toString()
             respond(
                 byteArrayOf(9),
                 HttpStatusCode.OK,
-                headersOf(
-                    HttpHeaders.ContentType to listOf("image/jpeg"),
-                    "x-odin-cdn-payload" to listOf("https://cdn.test"),
-                ),
+                headersOf(HttpHeaders.ContentType, "image/jpeg"),
             )
         }
-        val p = provider(engine)
 
-        // First read has no base yet, so it goes over peer — and learns the base from the response.
-        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
-        // Second read routes through the edge, forwarding to the AUTHOR's host, not ours.
-        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
+        provider(engine)
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
 
-        assertEquals(2, urls.size)
-        assertTrue(urls[0].startsWith("https://me.example.com/"), "first read is peer: ${urls[0]}")
-        assertTrue(urls[1].startsWith("https://cdn.test/?forward="), "second read is CDN: ${urls[1]}")
+        assertEquals(1, urls.size)
+        assertTrue(urls[0].startsWith("$cdn/?forward="), "first read is CDN: ${urls[0]}")
         assertTrue(
-            urls[1].contains("https%3A%2F%2F$peer%2Fapi%2Fv2%2Fdrives"),
-            "CDN forwards to the author's host: ${urls[1]}",
+            urls[0].contains("https%3A%2F%2F$peer%2Fapi%2Fv2%2Fdrives"),
+            "CDN forwards to the author's host: ${urls[0]}",
         )
-        assertTrue(urls[1].contains("by-gtid"), "CDN uses the by-gtid route: ${urls[1]}")
+        assertTrue(urls[0].contains("by-gtid"), "CDN uses the by-gtid route: ${urls[0]}")
     }
 
     @Test
@@ -220,15 +223,12 @@ class PeerFileByGlobalTransitProviderTest {
             urls += url
             when {
                 // A host that does not share the worker's CDN token hard-401s.
-                url.startsWith("https://cdn.test/") ->
+                url.startsWith("$cdn/") ->
                     respond(ByteArray(0), HttpStatusCode.Unauthorized)
                 else -> respond(
                     byteArrayOf(9),
                     HttpStatusCode.OK,
-                    headersOf(
-                        HttpHeaders.ContentType to listOf("image/jpeg"),
-                        "x-odin-cdn-payload" to listOf("https://cdn.test"),
-                    ),
+                    headersOf(HttpHeaders.ContentType, "image/jpeg"),
                 )
             }
         }
@@ -242,7 +242,7 @@ class PeerFileByGlobalTransitProviderTest {
         assertTrue(viaFallback != null, "the peer fallback still returns the bytes")
         assertEquals(
             1,
-            urls.count { it.startsWith("https://cdn.test/") },
+            urls.count { it.startsWith("$cdn/") },
             "the host is probed once, then stays on peer: $urls",
         )
         assertEquals(

@@ -377,6 +377,11 @@ class DriveFileProviderCached(
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse = readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO", fetch)
 
+    suspend fun readHlsChunkThrough(
+            cacheKey: String,
+            fetch: suspend () -> ByteApiResponse
+    ): ByteApiResponse = readThrough(hlsChunkDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch)
+
     suspend fun getThumbBytesDecrypted(
             driveId: Uuid,
             fileId: Uuid,

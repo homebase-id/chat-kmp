@@ -359,6 +359,9 @@ sealed interface FullScreenOverlay {
         val uploadMessageId: Uuid? = null,
         /** False for a public feed post: plaintext payload, no per-payload IV. */
         val isEncrypted: Boolean = true,
+        /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
+        val remoteOdinId: OdinId? = null,
+        val globalTransitId: Uuid? = null,
     ) : FullScreenOverlay
 
     @Immutable
