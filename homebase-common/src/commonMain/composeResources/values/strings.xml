@@ -1603,6 +1603,9 @@
     <string name="review_disconnect">Disconnect</string>
     <string name="review_block">Block</string>
     <string name="review_action">Review</string>
+    <string name="review_added_pending">Added — access turns on shortly.</string>
+    <string name="review_cta_title">You haven't reviewed this contact</string>
+    <string name="review_cta_body">Decide what they can see of your profile, or keep them chat-only.</string>
     <string name="review_failed">Couldn't complete the review. Please try again.</string>
     <string name="review_failed_not_connected">You are not connected to this identity.</string>
     <string name="review_failed_circle_not_allowed">One of these circles can only be granted from the owner console.</string>

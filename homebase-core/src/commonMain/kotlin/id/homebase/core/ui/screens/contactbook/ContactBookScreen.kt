@@ -60,8 +60,10 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.ui.screens.contactbook.components.CircleMembersSheet
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionSheet
+import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionUiEvent
 import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionViewModel
 import id.homebase.resources.MR
+import id.homebase.resources.review_added_pending
 import id.homebase.resources.contactbook_action_add
 import id.homebase.resources.contactbook_error_circle_action
 import id.homebase.resources.contactbook_error_delete
@@ -103,6 +105,7 @@ fun ContactBookScreen(
     val errAdditionsFailed = stringResource(MR.string.chat_contact_card_partial_additions)
     val errForbidden = stringResource(MR.string.contactbook_error_forbidden)
     val errCircleAction = stringResource(MR.string.contactbook_error_circle_action)
+    val msgReviewPending = stringResource(MR.string.review_added_pending)
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -331,6 +334,12 @@ fun ContactBookScreen(
                     // Every outcome closes the sheet; the contact's new state re-renders from
                     // the refreshed connection data the service already pushed.
                     viewModel.onAction(ContactBookUiAction.ReviewDismissed)
+                    // An app can't mint grants itself, so circles come back deposited and turn
+                    // on when the connection's key is next in scope — say so rather than showing
+                    // a contact whose new circles aren't live yet.
+                    if (it is ReviewConnectionUiEvent.Completed && it.notYetActiveCount > 0) {
+                        snackbarHostState.showSnackbar(msgReviewPending)
+                    }
                 }
             }
 

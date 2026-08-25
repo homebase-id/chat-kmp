@@ -39,6 +39,7 @@ import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.assignableCircles
+import id.homebase.core.ui.screens.contactbook.ContactStates
 import id.homebase.core.ui.screens.contactbook.isSystemCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
@@ -287,10 +288,16 @@ class ContactDetailViewModel(
                 // contact's membership. Same system-circle exclusion as the chips above; feeds the
                 // pending-request circle picker (#921 Part B).
                 val assignableCircles = circ.assignableCircles()
+                // Same derivation as the contact list, from the same source, so a contact can
+                // never read New here and Chat there.
+                val contactState = registration
+                    ?.takeIf { it.status == ConnectionStatus.Connected }
+                    ?.let { ContactStates(circ.circles).stateFor(it) }
                 _uiState.update {
                     it.copy(
                         entry = entry,
                         connectionStatus = status,
+                        contactState = contactState,
                         circles = circleItems,
                         assignableCircles = assignableCircles,
                         isLoading = false,
@@ -559,6 +566,8 @@ class ContactDetailViewModel(
             is ContactDetailAction.CircleMemberClicked -> _events.tryEmit(
                 ContactDetailEvent.OpenOtherContact(action.entry.uniqueId.toString(), action.entry.odinId)
             )
+            ContactDetailAction.ReviewClicked -> _uiState.update { it.copy(reviewOpen = true) }
+            ContactDetailAction.ReviewDismissed -> _uiState.update { it.copy(reviewOpen = false) }
         }
     }
 

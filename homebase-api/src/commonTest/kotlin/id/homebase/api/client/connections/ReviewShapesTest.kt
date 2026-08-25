@@ -131,6 +131,38 @@ class ReviewShapesTest {
         assertTrue(parsed.pendingCircleEnrollments.isEmpty())
     }
 
+    @Test
+    fun parsesReviewResult() {
+        val json = """
+            {
+              "granted": ["8f1e0000-0000-4000-8000-000000000002"],
+              "deposited": ["c17a1000-0000-4000-8000-000000000001"],
+              "pending": [],
+              "reviewedAt": 1723209999000
+            }
+        """.trimIndent()
+
+        val parsed = OdinSystemSerializer.deserialize<ReviewConnectionResult>(json)
+
+        assertEquals(1, parsed.granted.size)
+        assertEquals(1, parsed.deposited.size)
+        assertTrue(parsed.pending.isEmpty())
+        assertEquals(1723209999000L, parsed.reviewedAt)
+        // Deposited is not usable yet, so it groups with pending.
+        assertEquals(1, parsed.notYetActive.size)
+    }
+
+    /** An app context mints nothing itself — every circle it enrols comes back deposited. */
+    @Test
+    fun allDepositedMeansNothingIsLiveYet() {
+        val json = """{"granted":[],"deposited":["8f1e0000-0000-4000-8000-000000000002"],"pending":[]}"""
+        val parsed = OdinSystemSerializer.deserialize<ReviewConnectionResult>(json)
+
+        assertTrue(parsed.granted.isEmpty())
+        assertEquals(1, parsed.notYetActive.size)
+        assertEquals(null, parsed.reviewedAt)
+    }
+
     /** A pre-V2 server sends only `vetted`; the state ladder must still read it as reviewed. */
     @Test
     fun legacyVettedStillReadsAsReviewed() {

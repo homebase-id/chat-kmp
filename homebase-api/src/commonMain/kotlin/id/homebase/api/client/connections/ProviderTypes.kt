@@ -46,6 +46,24 @@ data class ReviewConnectionRequest(
     val circleIds: List<Uuid> = emptyList(),
 )
 
+/**
+ * Outcome of `POST /connections/review`.
+ *
+ * [deposited] is the normal result from an app context, not an edge case: an app holds no master
+ * key, so even a circle it owns is sealed to the connection's write-only key and converts later.
+ * Group it with [pending] wherever the UI has only "live" and "not yet" — neither is usable now.
+ */
+@Serializable
+data class ReviewConnectionResult(
+    val granted: List<@Serializable(with = GuidIdUuidSerializer::class) Uuid> = emptyList(),
+    val deposited: List<@Serializable(with = GuidIdUuidSerializer::class) Uuid> = emptyList(),
+    val pending: List<@Serializable(with = GuidIdUuidSerializer::class) Uuid> = emptyList(),
+    val reviewedAt: Long? = null,
+) {
+    /** Enrolled but not yet usable by the contact. */
+    val notYetActive: List<Uuid> get() = deposited + pending
+}
+
 @Serializable
 data class RevokeCircleMembershipRequest(
     val odinId: OdinId,

@@ -63,8 +63,12 @@ class ContactStates(circles: List<CircleWithMembers>) {
     fun infoFor(reg: RedactedIdentityConnectionRegistration): ContactStateInfo {
         val domain = reg.odinId.domainName.lowercase()
         val held = ownerPersonalByDomain[domain].orEmpty()
-        val pending = reg.pendingCircleEnrollments
+        // Two distinct "not yet in effect" buckets, indistinguishable to the user: circles this
+        // app deposited but couldn't mint (no master key — the common case), and circles queued
+        // for another app to enrol.
+        val pending = (reg.pendingCircleEnrollments + reg.accessGrant?.pendingCircleIds.orEmpty())
             .mapNotNull { circlesById[normalizeCircleId(it.toString())] }
+            .distinctBy { it.id }
 
         // Membership in a circle the owner deliberately granted is itself evidence of review —
         // it survives a server that never stamped, and it is why removing someone's last circle

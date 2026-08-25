@@ -5,6 +5,7 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
+import id.homebase.api.client.connections.ReviewConnectionResult
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -332,9 +333,10 @@ class ConnectionService(
      * and warns about nothing. Build it with
      * `id.homebase.core.ui.screens.contactbook.reviewEnrollment`.
      */
-    suspend fun review(odinId: OdinId, circleIds: List<Uuid>) {
-        provider.review(odinId, circleIds)
+    suspend fun review(odinId: OdinId, circleIds: List<Uuid>): ReviewConnectionResult {
+        val result = provider.review(odinId, circleIds)
         refresh()
+        return result
     }
 
     /** Clears the review stamp. Rejected while the contact holds an owner-granted personal circle. */

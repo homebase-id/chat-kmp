@@ -60,8 +60,14 @@ sealed interface ReviewConnectionUiAction {
 }
 
 sealed interface ReviewConnectionUiEvent {
-    /** Review completed; [toCircles] is false for the chat-only outcome. */
-    data class Completed(val toCircles: Boolean) : ReviewConnectionUiEvent
+    /**
+     * Review completed. [toCircles] is false for the chat-only outcome; [notYetActiveCount] is
+     * how many circles were enrolled but aren't usable yet (deposited or queued for another app).
+     */
+    data class Completed(
+        val toCircles: Boolean,
+        val notYetActiveCount: Int = 0,
+    ) : ReviewConnectionUiEvent
     data object Dismissed : ReviewConnectionUiEvent
     data object Disconnected : ReviewConnectionUiEvent
     data object Blocked : ReviewConnectionUiEvent

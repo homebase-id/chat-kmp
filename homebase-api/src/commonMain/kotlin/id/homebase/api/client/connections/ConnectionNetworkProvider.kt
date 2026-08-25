@@ -44,9 +44,8 @@ class ConnectionNetworkProvider(
      * circle of any checked app the contact isn't already in. The server expands neither, and a
      * missing `Connect` circle silently leaves an approved contact without chat write.
      */
-    suspend fun review(odinId: OdinId, circleIds: List<Uuid>) {
-        post("/connections/review", ReviewConnectionRequest(odinId, circleIds))
-    }
+    suspend fun review(odinId: OdinId, circleIds: List<Uuid>): ReviewConnectionResult =
+        postAndDeserialize("/connections/review", ReviewConnectionRequest(odinId, circleIds))
 
     /**
      * Clears `reviewedAt`. Throws [id.homebase.api.client.OdinException] with

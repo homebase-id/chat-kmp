@@ -187,12 +187,21 @@ class ReviewConnectionViewModel(
             )
 
             try {
-                connectionService.review(odinId, ids.map { Uuid.parse(it) })
+                val result = connectionService.review(odinId, ids.map { Uuid.parse(it) })
+                Logger.d(TAG) {
+                    "review $odinIdArg granted=${result.granted.size} " +
+                        "deposited=${result.deposited.size} pending=${result.pending.size}"
+                }
                 // Following is orthogonal to the review — it grants them nothing and is not a
                 // rung on the ladder, so it is its own call and its failure must not fail the
                 // review that already succeeded.
                 applyFollow(state.followFeed)
-                _events.tryEmit(ReviewConnectionUiEvent.Completed(state.addsToCircles))
+                _events.tryEmit(
+                    ReviewConnectionUiEvent.Completed(
+                        toCircles = state.addsToCircles,
+                        notYetActiveCount = result.notYetActive.size,
+                    )
+                )
             } catch (e: ClientException) {
                 Logger.w(e, TAG) { "review failed for $odinIdArg code=${e.errorCode}" }
                 _uiState.update { it.copy(submitting = false, error = e.errorCode.toReviewError()) }
