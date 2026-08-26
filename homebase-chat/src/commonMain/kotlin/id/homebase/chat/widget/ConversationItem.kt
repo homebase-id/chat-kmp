@@ -27,6 +27,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -48,6 +50,7 @@ import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
@@ -78,25 +81,28 @@ fun ConversationItem(
 ) {
     var showMenu by rememberSaveable { mutableStateOf(false) }
 
+    // Pointer rows follow Signal Desktop: one step down the type scale, title+preview as one block.
+    val compact = isDesktopOrWeb()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = if (compact) 8.dp else 16.dp)
             .clip(RoundedCornerShape(8.dp))
             .ifTrue(isSelected) {
-                Modifier
-                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f))
+                Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
             }
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { showMenu = true }
             )
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .semantics { selected = isSelected }
+            .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ConversationAvatar(
             avatarModel = enrichedData.conversation.avatarModel,
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(if (compact) 0.dp else 8.dp),
             options = AvatarOptions(onClick = { enrichedData.participants.firstOrNull()?.odinId?.let { onContactClick(it) } })
         )
 
@@ -114,7 +120,8 @@ fun ConversationItem(
                 else enrichedData.getDisplayName(youLabel = stringResource(MR.string.you))
                 Text(
                     text = title.withEmojiFont(),
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = if (compact) MaterialTheme.typography.bodyMedium
+                    else MaterialTheme.typography.bodyLarge,
                     fontWeight = if (enrichedData.conversation.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -142,7 +149,7 @@ fun ConversationItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(if (compact) 0.dp else 4.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -372,6 +379,9 @@ fun ConversationMessagePreview(
     prefix: String? = null,
     prefixColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
+    val compact = isDesktopOrWeb()
+    val previewStyle = if (compact) MaterialTheme.typography.bodySmall
+    else MaterialTheme.typography.bodyMedium
     val emojiFamily = emojiFontFamily()
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -381,7 +391,7 @@ fun ConversationMessagePreview(
         if (prefix != null) {
             Text(
                 text = prefix.withEmojiFont(emojiFamily),
-                style = MaterialTheme.typography.bodyMedium,
+                style = previewStyle,
                 color = prefixColor.copy(
                     alpha = if (isDeleted) 0.5f else 1f
                 ),
@@ -393,7 +403,8 @@ fun ConversationMessagePreview(
             Icon(
                 imageVector = iconRes,
                 contentDescription = null,
-                modifier = Modifier.size(16.dp).alpha(if (isDeleted) 0.5f else 1f),
+                modifier = Modifier.size(if (compact) 14.dp else 16.dp)
+                    .alpha(if (isDeleted) 0.5f else 1f),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -411,7 +422,7 @@ fun ConversationMessagePreview(
 
             Text(
                 text = previewText,
-                style = MaterialTheme.typography.bodyMedium,
+                style = previewStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
                     alpha = if (isDeleted) 0.5f else 1f
                 ),
@@ -423,7 +434,7 @@ fun ConversationMessagePreview(
             // Fallback for empty message with no icon
             Text(
                 text = stringResource(MR.string.chat_no_messages),
-                style = MaterialTheme.typography.bodyMedium,
+                style = previewStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

@@ -112,4 +112,53 @@ class MailModelsSerializationTest {
         assertEquals("wcDMA0hp0m8AAAAB", challenge.encryptedNonceBase64)
         assertEquals("n4bQgYhMfWWaL+qgxVrQFaO/TxsrC4Is0V1sFbDwCgg=", challenge.nonceSha256Base64)
     }
+
+    /**
+     * The health shape. The dangerous default here is `needsAttention` silently reading false:
+     * the screen would then report healthy email for an identity whose domain has no MX, which
+     * is the exact failure this endpoint exists to surface.
+     */
+    @Test
+    fun healthParsesTheServerShape() {
+        val json = """
+            {
+              "tenantMailEnabled": true,
+              "activated": true,
+              "records": [
+                { "type": "MX", "name": "", "domain": "frodo.dotyou.cloud", "value": "10 mx1.dotyou.cloud", "description": "MX Record (inbound mail)", "status": "domainOrRecordNotFound" },
+                { "type": "TXT", "name": "s1._domainkey", "domain": "s1._domainkey.frodo.dotyou.cloud", "value": "v=DKIM1; k=ed25519; p=abc", "description": "DKIM", "status": "success" }
+              ],
+              "brokenRecords": [
+                { "type": "MX", "name": "", "domain": "frodo.dotyou.cloud", "value": "10 mx1.dotyou.cloud", "description": "MX Record (inbound mail)", "status": "domainOrRecordNotFound" }
+              ],
+              "errors": ["DKIM pair proof failed"],
+              "warnings": ["Could not reach the WKD endpoint"],
+              "needsAttention": true
+            }
+        """.trimIndent()
+
+        val health = OdinSystemSerializer.deserialize<MailAppHealth>(json)
+
+        assertTrue(health.tenantMailEnabled)
+        assertTrue(health.activated)
+        assertEquals(2, health.records.size)
+        assertEquals("domainOrRecordNotFound", health.records.first().status)
+        assertEquals(1, health.brokenRecords.size)
+        assertEquals("MX", health.brokenRecords.first().type)
+        assertEquals(listOf("DKIM pair proof failed"), health.errors)
+        assertEquals(listOf("Could not reach the WKD endpoint"), health.warnings)
+        assertTrue(health.needsAttention, "the server's verdict must survive the wire")
+    }
+
+    /** A host with no email must parse as "nothing to see", not as a warning. */
+    @Test
+    fun healthParsesTheEmailIsOffShape() {
+        val health = OdinSystemSerializer.deserialize<MailAppHealth>(
+            """{ "tenantMailEnabled": false, "activated": false }"""
+        )
+
+        assertTrue(!health.tenantMailEnabled)
+        assertTrue(!health.needsAttention)
+        assertTrue(health.records.isEmpty())
+    }
 }

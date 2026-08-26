@@ -4,12 +4,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.unit.dp
@@ -22,6 +27,7 @@ import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import com.kdroid.composetray.tray.api.Tray
 import com.kdroid.composetray.utils.SingleInstanceManager
+import com.kdroid.composetray.utils.isMenuBarInDarkMode
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
@@ -62,6 +68,7 @@ import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
+import id.homebase.resources.homebase_icon_mono
 import id.homebase.resources.homebase_icon_round
 import id.homebase.resources.theme
 import id.homebase.resources.update_available
@@ -267,7 +274,16 @@ fun main() {
         }
 
         Tray(
-            icon = icon,
+            // The menu bar follows the desktop picture, not the app theme, so this tints off
+            // the bar's own appearance rather than a MaterialTheme role.
+            iconContent = {
+                Icon(
+                    painter = painterResource(MR.drawable.homebase_icon_mono),
+                    contentDescription = appName,
+                    tint = if (isMenuBarInDarkMode()) Color.White else Color.Black,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
             tooltip = appName,
             primaryAction = {
                 isWindowVisible = !isWindowVisible
@@ -334,20 +350,34 @@ fun main() {
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
 
+            if (isMacOs) {
+                LaunchedEffect(Unit) {
+                    window.rootPane.putClientProperty("apple.awt.fullWindowContent", true)
+                    window.rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
+                    window.rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+                }
+            }
+
             // Provide Desktop-specific LifecycleOwner to the composition tree
             val desktopLifecycleOwner = rememberDesktopLifecycleOwner(isWindowVisible)
             CompositionLocalProvider(LocalLifecycleOwner provides desktopLifecycleOwner) {
-                App(onNavigatorReady = { navigateTo = it })
+                App(
+                    onNavigatorReady = { navigateTo = it },
+                    topInset = if (isMacOs) MAC_TITLE_BAR_HEIGHT else 0.dp,
+                )
             }
         }
     }
 }
 
-private val usesCommandKey =
+private val isMacOs =
     System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
 
+// Traffic lights float over the content once apple.awt.fullWindowContent is on.
+private val MAC_TITLE_BAR_HEIGHT = 28.dp
+
 private fun menuShortcut(key: Key) =
-    KeyShortcut(key, ctrl = !usesCommandKey, meta = usesCommandKey)
+    KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs)
 
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->

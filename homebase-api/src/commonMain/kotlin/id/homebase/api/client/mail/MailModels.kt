@@ -41,6 +41,36 @@ data class MailDnsRecord(
     val domain: String = "",
     val value: String = "",
     val description: String = "",
+    /**
+     * The server's lookup verdict: "success" when the record is published correctly, otherwise
+     * "unknown" / "domainOrRecordNotFound" / "incorrectValue" / ... Only meaningful on records
+     * that came from a health check; the DKIM set returned by activation leaves it empty.
+     */
+    val status: String = "",
+)
+
+/**
+ * Whether the identity's email actually WORKS, as opposed to how far setup got —
+ * `GET /api/v2/mail/health`, mirroring odin-core `MailAppHealthResult`.
+ *
+ * [MailAppStatus] answers only the second question, so an identity whose domain has no MX
+ * reports as fully configured while nothing can deliver mail to it.
+ *
+ * The server decides: [brokenRecords] is already filtered and [needsAttention] is already
+ * computed, so this app renders the verdict rather than re-deriving it. Re-deriving it here
+ * would let the app and the owner console disagree about the same identity.
+ */
+@Serializable
+data class MailAppHealth(
+    val tenantMailEnabled: Boolean = false,
+    /** False when email was never activated: nothing to report, rather than everything broken. */
+    val activated: Boolean = false,
+    val records: List<MailDnsRecord> = emptyList(),
+    val brokenRecords: List<MailDnsRecord> = emptyList(),
+    /** Checks a record comparison cannot make: DKIM pair proof, public-key drift. */
+    val errors: List<String> = emptyList(),
+    val warnings: List<String> = emptyList(),
+    val needsAttention: Boolean = false,
 )
 
 /**

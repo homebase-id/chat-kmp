@@ -942,7 +942,7 @@ fun ConversationContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                 ),
             )
         },

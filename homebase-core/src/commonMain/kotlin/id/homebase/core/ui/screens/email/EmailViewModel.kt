@@ -66,9 +66,26 @@ class EmailViewModel(
 
         // The owner approves the drive in a browser, so the grant lands while we are backgrounded.
         // Mount as soon as the permission check sees it rather than making the user tap again.
+        //
+        // Gated on the SERVER confirming the drive exists (driveProvisioned), not on the
+        // permission check alone. Mounting is purely local - it does not create anything - so
+        // mounting a drive the identity never created leaves DriveSync retrying `400
+        // InvalidDrive` once a second forever, and writes the drive into the cross-device
+        // registry, which makes it survive a restart and re-mount on every future login.
+        //
+        // The permission check cannot stand in for this: it reports "granted" when it could not
+        // reach the security context at all, so a failed lookup used to read as permission to
+        // mount. Seen on a fresh identity that had never been through the approval flow.
         viewModelScope.launch {
             emailPermissionViewModel.permissionsGranted.filter { it }.collect {
-                if (_uiState.value.driveActivated != true) {
+                // Re-read the status FIRST. The grant is what provisions the drive, so the
+                // cached status here is by definition from before it existed: deciding on it
+                // meant reading driveProvisioned=false, skipping activation, and leaving the
+                // screen stuck with no way to refresh. Observed on a real setup — the status
+                // fetched at login said drive=false, the grant landed 16s later, and nothing
+                // ever asked again.
+                runCatching { refreshStatusNow() }
+                if (_uiState.value.driveActivated != true && _uiState.value.serverStatus?.driveProvisioned == true) {
                     activateDrive()
                 }
             }
@@ -123,8 +140,13 @@ class EmailViewModel(
     fun onAction(action: EmailUiAction) {
         when (action) {
             EmailUiAction.SetupClicked -> {
-                // Already granted (a second device, or a re-entry) — go straight to mounting.
-                if (emailPermissionViewModel.permissionsGranted.value) {
+                // Straight to mounting only when the drive DEMONSTRABLY exists (a second device,
+                // or a re-entry). Granted-but-not-provisioned means the approval flow has not
+                // actually run for this identity, and mounting then just starts the InvalidDrive
+                // retry loop - so fall through to the permission flow, which is what creates it.
+                if (emailPermissionViewModel.permissionsGranted.value &&
+                    _uiState.value.serverStatus?.driveProvisioned == true
+                ) {
                     viewModelScope.launch { activateDrive() }
                 } else {
                     emailPermissionViewModel.recheckPermissions()
@@ -138,12 +160,38 @@ class EmailViewModel(
 
             EmailUiAction.RefreshStatusClicked -> refreshStatus()
 
+            EmailUiAction.CheckHealthClicked -> checkHealth()
+
             EmailUiAction.OpenMailClientClicked -> viewModelScope.launch {
                 val client = MailClientCatalog.byId(emailPreferences.selectedMailClientId.value)
                     ?: return@launch
                 // False means not installed — say so rather than appearing to do nothing.
                 if (!launchMailClient(client)) {
                     _events.tryEmit(EmailUiEvent.MailClientUnavailable(client.displayName))
+                }
+            }
+        }
+    }
+
+    /**
+     * Ask the server whether email actually works.
+     *
+     * Every check runs server-side, from the same services the owner console's Email tab uses,
+     * and the verdict (`needsAttention`, `brokenRecords`) arrives already decided. Nothing is
+     * recomputed here on purpose: two clients deriving "healthy" from raw records would
+     * eventually disagree about the same identity, and the one that disagreed quietly would be
+     * the one people trusted.
+     */
+    fun checkHealth() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCheckingHealth = true, healthError = null) }
+            try {
+                val health = mailProvider.getHealth()
+                _uiState.update { it.copy(health = health, isCheckingHealth = false) }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "email health check failed: ${e.message}" }
+                _uiState.update {
+                    it.copy(isCheckingHealth = false, healthError = EmailError.HealthUnavailable)
                 }
             }
         }
