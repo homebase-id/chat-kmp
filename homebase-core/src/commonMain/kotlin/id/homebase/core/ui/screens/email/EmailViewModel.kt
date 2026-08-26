@@ -78,6 +78,13 @@ class EmailViewModel(
         // mount. Seen on a fresh identity that had never been through the approval flow.
         viewModelScope.launch {
             emailPermissionViewModel.permissionsGranted.filter { it }.collect {
+                // Re-read the status FIRST. The grant is what provisions the drive, so the
+                // cached status here is by definition from before it existed: deciding on it
+                // meant reading driveProvisioned=false, skipping activation, and leaving the
+                // screen stuck with no way to refresh. Observed on a real setup — the status
+                // fetched at login said drive=false, the grant landed 16s later, and nothing
+                // ever asked again.
+                runCatching { refreshStatusNow() }
                 if (_uiState.value.driveActivated != true && _uiState.value.serverStatus?.driveProvisioned == true) {
                     activateDrive()
                 }
