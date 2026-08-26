@@ -117,14 +117,24 @@ class ExtendPermissionViewModel(
             }
             val activeDomain = active.domain.domainName
             val activeToken = active.clientAccessToken
+            // Rebind on a token change; do not give up. This used to return, which disabled the
+            // VM permanently: after a logout/login the app token is new, so every later check was
+            // skipped and the PREVIOUS identity's verdict stayed live. The app then reported
+            // "not set up" for an identity that was set up, and its buttons did nothing, because
+            // recheckPermissions() returned here before doing any work.
+            //
+            // The verdict is cleared first: until the new token has actually been checked, the
+            // honest answer is "not known", never the old identity's answer.
             val bound = boundToken
-            if (bound == null) {
-                boundToken = activeToken
-            } else if (bound != activeToken) {
-                Logger.d(tag = TAG) {
-                    "Stale VM (token mismatch, domain=$activeDomain) — skipping permission check"
+            if (bound != activeToken) {
+                if (bound != null) {
+                    Logger.i(tag = TAG) {
+                        "App token changed (domain=$activeDomain) — rebinding and re-checking permissions"
+                    }
+                    _permissionsGranted.value = false
+                    _permissionsChecked.value = false
                 }
-                return
+                boundToken = activeToken
             }
             val manager = PermissionExtensionManager.create(securityContextProvider, activeDomain)
             val result = manager.getMissingPermissions(config)
