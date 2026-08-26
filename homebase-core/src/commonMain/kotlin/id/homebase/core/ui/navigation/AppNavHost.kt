@@ -216,6 +216,7 @@ import id.homebase.resources.database_upgrade_snackbar
 import id.homebase.resources.pending_upgrade_message
 import id.homebase.resources.pending_upgrade_confirm
 import id.homebase.resources.upgrade_running_message
+import id.homebase.core.session.IdentitySessionScope
 
 // Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
 private const val SCROLL_TO_TOP_KEY = "scrollToTop"
@@ -235,7 +236,13 @@ fun AppNavHost(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
-    val isAuthenticated = authState is YouAuthState.Authenticated
+    // Gated on the identity scope being open as well as the auth state, because the two are
+    // observed independently: AuthConnectionCoordinator collects the same authState flow, so
+    // this composition can see Authenticated a frame before the scope exists. Identity-scoped
+    // ViewModels (koinViewModel() below) cannot resolve until it does, and every authenticated
+    // route in this graph is gated on this one flag.
+    val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
+    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope != null
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
