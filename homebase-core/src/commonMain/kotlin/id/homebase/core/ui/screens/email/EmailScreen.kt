@@ -103,6 +103,10 @@ fun EmailScreen(
                     onRefresh = { viewModel.onAction(EmailUiAction.RefreshStatusClicked) },
                     onOpenMailClient = { viewModel.onAction(EmailUiAction.OpenMailClientClicked) },
                     isRefreshing = uiState.isCheckingServer,
+                    health = uiState.health,
+                    isCheckingHealth = uiState.isCheckingHealth,
+                    healthUnavailable = uiState.healthError != null,
+                    onCheckHealth = { viewModel.onAction(EmailUiAction.CheckHealthClicked) },
                 )
 
                 else -> EmailSetupContent(

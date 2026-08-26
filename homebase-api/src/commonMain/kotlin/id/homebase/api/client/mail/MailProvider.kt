@@ -122,6 +122,31 @@ class MailProvider(
     }
 
     /** Mailbox state, or available = false when the mail server does not report it. */
+    /**
+     * Whether email actually works for this identity, as opposed to how far setup got.
+     *
+     * Runs the same DNS-record and key checks the owner console's Email tab runs — server-side,
+     * from the same services — so the two surfaces cannot disagree and nothing is duplicated
+     * here. On demand only: it does DNS lookups plus outbound HTTPS, which is why it is not part
+     * of [getStatus], which runs on every login and identity switch.
+     */
+    suspend fun getHealth(): MailAppHealth {
+        val creds = requireCreds()
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "$BASE/health"),
+            token = creds.accessToken,
+            secret = creds.secret,
+        )
+        throwForFailure(response)
+        val health = deserialize<MailAppHealth>(response.body)
+        Logger.d(tag = TAG) {
+            "health: enabled=${health.tenantMailEnabled} activated=${health.activated} " +
+                "broken=${health.brokenRecords.size}/${health.records.size} " +
+                "errors=${health.errors.size} needsAttention=${health.needsAttention}"
+        }
+        return health
+    }
+
     suspend fun getMailboxStatus(): MailboxStatusResult {
         val creds = requireCreds()
         val response = encryptedGet(

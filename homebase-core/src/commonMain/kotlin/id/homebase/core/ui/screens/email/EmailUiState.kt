@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.email
 
+import id.homebase.api.client.mail.MailAppHealth
 import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailboxStatusResult
 import id.homebase.core.email.MailClientDescriptor
@@ -28,6 +29,16 @@ data class EmailUiState(
     val mailboxStatus: MailboxStatusResult? = null,
     /** The mail app the user picked, if any — decides whether we can offer to open it. */
     val selectedMailClient: MailClientDescriptor? = null,
+    /**
+     * Whether email actually WORKS, as opposed to how far setup got. Null until the user asks:
+     * the check costs DNS lookups plus outbound HTTPS server-side, so it is not run on entry.
+     *
+     * [serverStatus] cannot answer this — an identity whose domain has no MX reports as fully
+     * configured there while nothing can deliver mail to it.
+     */
+    val health: MailAppHealth? = null,
+    val isCheckingHealth: Boolean = false,
+    val healthError: EmailError? = null,
 ) {
     /** The server answered, and answered no. Nothing to set up here. */
     val serverHasNoEmail: Boolean
@@ -50,6 +61,9 @@ sealed interface EmailUiAction {
 
     /** Opens the chosen mail app, if this platform knows how. */
     data object OpenMailClientClicked : EmailUiAction
+
+    /** "Check my email" — asks the server whether email actually works. */
+    data object CheckHealthClicked : EmailUiAction
 }
 
 sealed interface EmailUiEvent {
@@ -65,4 +79,10 @@ sealed interface EmailUiEvent {
 sealed interface EmailError {
     /** The status call failed. Distinct from "the server says it has no email". */
     data object StatusUnavailable : EmailError
+
+    /**
+     * The health check failed. Deliberately its own case: "we could not check" must never
+     * render as "your email is fine", which is what reusing a null health would do.
+     */
+    data object HealthUnavailable : EmailError
 }

@@ -160,12 +160,38 @@ class EmailViewModel(
 
             EmailUiAction.RefreshStatusClicked -> refreshStatus()
 
+            EmailUiAction.CheckHealthClicked -> checkHealth()
+
             EmailUiAction.OpenMailClientClicked -> viewModelScope.launch {
                 val client = MailClientCatalog.byId(emailPreferences.selectedMailClientId.value)
                     ?: return@launch
                 // False means not installed — say so rather than appearing to do nothing.
                 if (!launchMailClient(client)) {
                     _events.tryEmit(EmailUiEvent.MailClientUnavailable(client.displayName))
+                }
+            }
+        }
+    }
+
+    /**
+     * Ask the server whether email actually works.
+     *
+     * Every check runs server-side, from the same services the owner console's Email tab uses,
+     * and the verdict (`needsAttention`, `brokenRecords`) arrives already decided. Nothing is
+     * recomputed here on purpose: two clients deriving "healthy" from raw records would
+     * eventually disagree about the same identity, and the one that disagreed quietly would be
+     * the one people trusted.
+     */
+    fun checkHealth() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCheckingHealth = true, healthError = null) }
+            try {
+                val health = mailProvider.getHealth()
+                _uiState.update { it.copy(health = health, isCheckingHealth = false) }
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "email health check failed: ${e.message}" }
+                _uiState.update {
+                    it.copy(isCheckingHealth = false, healthError = EmailError.HealthUnavailable)
                 }
             }
         }

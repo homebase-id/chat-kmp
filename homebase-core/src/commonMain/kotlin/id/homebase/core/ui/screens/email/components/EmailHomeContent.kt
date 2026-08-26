@@ -34,6 +34,13 @@ import id.homebase.api.client.mail.MailboxStatusResult
 import id.homebase.core.email.MailClientDescriptor
 import id.homebase.core.email.canLaunchMailClient
 import id.homebase.resources.MR
+import id.homebase.resources.email_health_attention
+import id.homebase.resources.email_health_check
+import id.homebase.resources.email_health_checking
+import id.homebase.resources.email_health_fix_hint
+import id.homebase.resources.email_health_missing_record
+import id.homebase.resources.email_health_ok
+import id.homebase.resources.email_health_unavailable
 import id.homebase.resources.email_home_address_label
 import id.homebase.resources.email_home_secrets
 import id.homebase.resources.email_client_none
@@ -46,6 +53,7 @@ import id.homebase.resources.email_mailbox_open_client
 import id.homebase.resources.email_mailbox_queued
 import id.homebase.resources.email_mailbox_unread
 import id.homebase.resources.email_no_server_retry
+import id.homebase.api.client.mail.MailAppHealth
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -64,6 +72,10 @@ fun EmailHomeContent(
     onRefresh: () -> Unit,
     onOpenMailClient: () -> Unit,
     isRefreshing: Boolean,
+    health: MailAppHealth?,
+    isCheckingHealth: Boolean,
+    healthUnavailable: Boolean,
+    onCheckHealth: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -182,6 +194,69 @@ fun EmailHomeContent(
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onRefresh, enabled = !isRefreshing) {
                     Text(stringResource(MR.string.email_no_server_retry))
+                }
+
+                // "Set up" and "works" are different questions. Everything above answers the
+                // first; an identity whose domain has no MX looks fully configured there while
+                // nothing can deliver mail to it. The verdict below is the server's — the same
+                // checks the owner console runs, decided there and rendered here.
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onCheckHealth, enabled = !isCheckingHealth) {
+                    Text(
+                        stringResource(
+                            if (isCheckingHealth) MR.string.email_health_checking
+                            else MR.string.email_health_check
+                        )
+                    )
+                }
+
+                when {
+                    // A failed check must never read as a clean bill of health.
+                    healthUnavailable -> Text(
+                        text = stringResource(MR.string.email_health_unavailable),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    health == null -> Unit
+
+                    health.needsAttention -> {
+                        Text(
+                            text = stringResource(MR.string.email_health_attention),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        health.brokenRecords.forEach { record ->
+                            Text(
+                                text = stringResource(
+                                    MR.string.email_health_missing_record,
+                                    record.description.ifBlank { record.type },
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        health.errors.forEach { message ->
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        // Publishing DNS is an owner action, so point there rather than
+                        // duplicating a write button in the app.
+                        Text(
+                            text = stringResource(MR.string.email_health_fix_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    else -> Text(
+                        text = stringResource(MR.string.email_health_ok),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
