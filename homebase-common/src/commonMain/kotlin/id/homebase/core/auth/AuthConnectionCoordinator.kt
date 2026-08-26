@@ -23,6 +23,7 @@ import id.homebase.core.config.LabeledDrive
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.session.IdentitySessionScope
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +53,10 @@ class AuthConnectionCoordinator(
     private val driveRegistry: DriveRegistry,
     private val securityContextProvider: SecurityContextProvider,
     private val peerWebSocketManager: PeerWebSocketManager,
+    // Lifetime of every per-identity object in the graph. Opened on the authenticated
+    // transition below, closed on logout — so signing out destroys that state rather than
+    // resetting it, and a stale identity cannot survive into the next session.
+    private val identitySession: IdentitySessionScope,
     private val onPostAuthenticated: () -> Unit = {},
     /**
      * Active location-tracking profile label for the #1109 background-transition line, or null when
@@ -220,6 +225,16 @@ class AuthConnectionCoordinator(
         logLifecycleSnapshot("onAuthStateChanged:${state::class.simpleName}")
         when (state) {
             is YouAuthState.Authenticated -> {
+                // FIRST, before anything resolves a per-identity service: open this
+                // identity's scope. runPostAuthenticatedOnce() below resolves out of it,
+                // so opening later would build those objects in the wrong (or no) scope.
+                // Re-opening for the same identity is a no-op, which matters because this
+                // branch runs twice on a headless bootstrap that later promotes to
+                // foreground. A different identity closes the previous scope here — the
+                // backstop for a logout we never saw (token expiry, a swapped account).
+                credentialsManager.getActiveDomain()?.let { domain ->
+                    identitySession.open(domain.domainName)
+                }
                 // Foreground-only UI preload — see kdoc on [headless]. Runs FIRST in
                 // foreground mode (matches pre-headless-mode ordering: preload starts
                 // local-DB warmups while drive mount + WS handshake happen in
@@ -353,6 +368,17 @@ class AuthConnectionCoordinator(
                 // stopped — so nothing can re-populate after the services reset.
                 Logger.i(tag = "AuthLifecycle") { "AuthCC: emitting SessionEnded (logout)" }
                 eventBus.tryEmit(BackendEvent.SessionEnded)
+                // Then destroy the identity's scope: every scoped instance is dropped and
+                // its onClose callback fired (coroutine scopes cancelled, collectors torn
+                // down). After this, resolving identity-scoped state throws rather than
+                // handing back a previous identity's object.
+                //
+                // Ordering note for the migration: tryEmit is not synchronous, so a
+                // SessionEnded listener that resolves a scoped service could lose the race
+                // with this close and throw. That race disappears as those listeners are
+                // deleted — a scoped service has no reason to listen for the event that
+                // destroys it — but until then, do not add new ones.
+                identitySession.close()
             }
             else -> {
                 disconnect()

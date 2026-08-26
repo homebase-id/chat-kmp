@@ -219,6 +219,7 @@ import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
+import id.homebase.core.session.IdentitySessionScope
 
 val VaultPermissionQualifier = named("vaultPermission")
 val EmailPermissionQualifier = named("emailPermission")
@@ -533,6 +534,10 @@ val appModule = module {
         )
     }
 
+    // Lifetime of the per-identity object graph. App-lifetime itself (it outlives any one
+    // session — it is what opens and closes them), but everything it hands out is not.
+    single { IdentitySessionScope(getKoin()) }
+
     single {
         AuthConnectionCoordinator(
             credentialsManager = get(),
@@ -545,6 +550,7 @@ val appModule = module {
             driveRegistry = get(),
             securityContextProvider = get(),
             peerWebSocketManager = get(),
+            identitySession = get(),
             // Start headless only where the OS can cold-wake us in the background
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
