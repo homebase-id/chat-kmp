@@ -1177,6 +1177,24 @@
     <string name="email_mailbox_queued">%1$d message(s) still trying to send</string>
     <string name="email_mailbox_open_client">Open %1$s</string>
     <!-- Email health: whether mail actually works, as opposed to whether setup finished. -->
+    <!-- Mail app setup: what to type into a client that has no autoconfig. -->
+    <!-- Private key export: mail apps import a file, not clipboard text. -->
+    <string name="email_secrets_save_private_key">Save key file</string>
+    <string name="email_secrets_save_private_key_title">Save your private key to a file?</string>
+    <string name="email_secrets_save_private_key_body">Mail apps import your key from a file. Anyone who gets this file can read your encrypted email and sign messages as you. Save it somewhere only you can reach, and delete it once your mail app has imported it.</string>
+    <string name="email_secrets_save_private_key_confirm">Save file</string>
+    <string name="email_secrets_key_saved">Private key saved to %1$s. Delete it once your mail app has imported it.</string>
+    <string name="email_secrets_key_save_failed">Could not save the key file.</string>
+    <string name="email_settings_title">Mail app settings</string>
+    <string name="email_settings_intro">Most mail apps find these automatically. Enter them by hand if yours does not.</string>
+    <string name="email_settings_incoming">Incoming (IMAP)</string>
+    <string name="email_settings_outgoing">Outgoing (SMTP)</string>
+    <string name="email_settings_server">Server</string>
+    <string name="email_settings_port">Port</string>
+    <string name="email_settings_security">Security</string>
+    <string name="email_settings_username">Username</string>
+    <string name="email_settings_password_hint">Password: use one of the app passwords below. The same one works for both.</string>
+    <string name="email_settings_cert_warning">Your server may ask you to accept a security exception the first time you connect.</string>
     <string name="email_health_check">Check my email</string>
     <string name="email_health_checking">Checking…</string>
     <string name="email_health_ok">Your email is working.</string>

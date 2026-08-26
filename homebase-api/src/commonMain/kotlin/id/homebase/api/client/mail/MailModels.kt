@@ -20,12 +20,37 @@ data class MailAppStatus(
     val primaryEmailAddress: String? = null,
     /** A public certificate is published — the server-side "email is on" signal. */
     val activated: Boolean = false,
+    /**
+     * What to type into a mail app. Null when the host publishes no mail hosts, so the screen
+     * shows nothing rather than a form pointing at an empty server name.
+     */
+    val clientSettings: MailClientSettings? = null,
     val publicKeyFingerprint: String? = null,
     val publishedAt: Long? = null,
     val dkimRecords: List<MailDnsRecord> = emptyList(),
     /** The drive file holding the current secret keyring, once one exists. */
     @Serializable(with = UuidSerializer::class)
     val currentKeyFileUniqueId: Uuid? = null,
+)
+
+/**
+ * Hostnames, ports and username for setting up a mail app by hand — the same values the
+ * server publishes as autoconfig XML, mirroring odin-core `MailClientSettings`.
+ *
+ * Ports are implicit TLS (993 / 465), NOT STARTTLS on 587: a client given the wrong pairing
+ * does not error, it hangs. The username is the FULL address, not the local part, and the
+ * outgoing password is the same app password as incoming.
+ */
+@Serializable
+data class MailClientSettings(
+    val incomingHost: String = "",
+    val incomingPort: Int = 0,
+    /** "SSL" — implicit TLS. */
+    val incomingSocketType: String = "",
+    val outgoingHost: String = "",
+    val outgoingPort: Int = 0,
+    val outgoingSocketType: String = "",
+    val username: String = "",
 )
 
 /**
