@@ -8,6 +8,7 @@ import id.homebase.core.ui.screens.email.EmailService
 import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
+import id.homebase.api.client.mail.MailClientSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,13 +42,28 @@ class EmailSecretsViewModel(
     private val _busy = MutableStateFlow<Set<String>>(emptySet())
     private val _error = MutableStateFlow<String?>(null)
 
+    /**
+     * Mail-app settings, from the server. Config-derived and free, so fetched once on entry
+     * rather than watched - unlike the credentials and keys above, nothing here changes while
+     * the screen is open.
+     */
+    private val _clientSettings = MutableStateFlow<MailClientSettings?>(null)
+
+    init {
+        viewModelScope.launch {
+            runCatching { mailProvider.getStatus().clientSettings }
+                .onSuccess { _clientSettings.value = it }
+                .onFailure { Logger.d(tag = TAG) { "mail client settings unavailable: ${it.message}" } }
+        }
+    }
+
     val uiState: StateFlow<EmailSecretsUiState> = combine(
         emailStream.credentials,
         emailStream.keys,
         emailStream.currentKeyFileId,
         _revealed,
-        combine(_busy, _error) { busy, error -> busy to error },
-    ) { credentials, keys, currentKey, revealed, (busy, error) ->
+        combine(_busy, _error, _clientSettings) { busy, error, settings -> Triple(busy, error, settings) },
+    ) { credentials, keys, currentKey, revealed, (busy, error, settings) ->
         EmailSecretsUiState(
             credentials = credentials,
             keys = keys,
@@ -55,6 +71,7 @@ class EmailSecretsViewModel(
             revealedIds = revealed,
             busyIds = busy,
             error = error,
+            clientSettings = settings,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EmailSecretsUiState())
 
@@ -131,6 +148,8 @@ data class EmailSecretsUiState(
     /** Which secrets the user has asked to see right now. */
     val revealedIds: Set<String> = emptySet(),
     val busyIds: Set<String> = emptySet(),
+    /** Null while loading, or when this host publishes no mail hosts. */
+    val clientSettings: MailClientSettings? = null,
     val error: String? = null,
 )
 

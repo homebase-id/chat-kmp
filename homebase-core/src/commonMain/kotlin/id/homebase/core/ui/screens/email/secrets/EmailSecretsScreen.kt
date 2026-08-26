@@ -48,6 +48,16 @@ import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
 import id.homebase.resources.MR
+import id.homebase.resources.email_settings_cert_warning
+import id.homebase.resources.email_settings_incoming
+import id.homebase.resources.email_settings_intro
+import id.homebase.resources.email_settings_outgoing
+import id.homebase.resources.email_settings_password_hint
+import id.homebase.resources.email_settings_port
+import id.homebase.resources.email_settings_security
+import id.homebase.resources.email_settings_server
+import id.homebase.resources.email_settings_title
+import id.homebase.resources.email_settings_username
 import id.homebase.resources.email_secrets_cancel
 import id.homebase.resources.email_secrets_copy_fingerprint
 import id.homebase.resources.email_secrets_copy_label
@@ -133,6 +143,52 @@ fun EmailSecretsUi(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            // Mail-app settings first: this is what someone opening this screen while staring
+            // at a half-configured mail client is actually looking for. The credentials below
+            // are only useful once the server details are right.
+            uiState.clientSettings?.let { settings ->
+                SectionHeader(stringResource(MR.string.email_settings_title))
+                Text(
+                    text = stringResource(MR.string.email_settings_intro),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                MailSettingsCard(
+                    title = stringResource(MR.string.email_settings_incoming),
+                    host = settings.incomingHost,
+                    port = settings.incomingPort,
+                    security = settings.incomingSocketType,
+                    username = settings.username,
+                    onCopy = copy,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                MailSettingsCard(
+                    title = stringResource(MR.string.email_settings_outgoing),
+                    host = settings.outgoingHost,
+                    port = settings.outgoingPort,
+                    security = settings.outgoingSocketType,
+                    username = settings.username,
+                    onCopy = copy,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(MR.string.email_settings_password_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Until the server has a trusted certificate, clients refuse to connect - and
+                // Thunderbird fails SILENTLY on the outgoing side, losing Sent copies. Saying
+                // so here costs a line and saves someone an evening.
+                Text(
+                    text = stringResource(MR.string.email_settings_cert_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             SectionHeader(stringResource(MR.string.email_secrets_passwords))
 
             Text(
@@ -446,6 +502,65 @@ private fun KeyCard(
                 ) {
                     Text(stringResource(MR.string.email_secrets_copy_private_key))
                 }
+            }
+        }
+    }
+}
+
+
+/**
+ * One server's settings, each value copyable. Copy matters more than it looks: these are typed
+ * into a different application, often on a different device, and a mistyped hostname or the
+ * wrong port produces a hang rather than an error message.
+ */
+@Composable
+private fun MailSettingsCard(
+    title: String,
+    host: String,
+    port: Int,
+    security: String,
+    username: String,
+    onCopy: (String) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(6.dp))
+            SettingRow(stringResource(MR.string.email_settings_server), host, onCopy)
+            SettingRow(stringResource(MR.string.email_settings_port), port.toString(), onCopy)
+            SettingRow(stringResource(MR.string.email_settings_security), security, null)
+            SettingRow(stringResource(MR.string.email_settings_username), username, onCopy)
+        }
+    }
+}
+
+/** A label/value pair. [onCopy] null for values nobody types, like "SSL". */
+@Composable
+private fun SettingRow(label: String, value: String, onCopy: ((String) -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(84.dp),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        if (onCopy != null) {
+            IconButton(onClick = { onCopy(value) }) {
+                Icon(
+                    imageVector = Icons.Outlined.ContentCopy,
+                    contentDescription = stringResource(MR.string.email_settings_server),
+                )
             }
         }
     }

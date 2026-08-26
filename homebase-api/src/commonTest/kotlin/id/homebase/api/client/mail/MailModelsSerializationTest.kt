@@ -161,4 +161,50 @@ class MailModelsSerializationTest {
         assertTrue(!health.needsAttention)
         assertTrue(health.records.isEmpty())
     }
+
+    /**
+     * Mail-app settings. The dangerous default is a field name that does not match the
+     * server's: it reads as "" or 0, and the screen then tells someone to connect to an empty
+     * hostname on port zero. Nothing errors — they simply cannot set up mail and have no idea
+     * why.
+     */
+    @Test
+    fun clientSettingsParseTheServerShape() {
+        val json = """
+            {
+              "tenantMailEnabled": true,
+              "activated": true,
+              "clientSettings": {
+                "incomingHost": "mx1.bleeding.ravenhosting.cloud",
+                "incomingPort": 993,
+                "incomingSocketType": "SSL",
+                "outgoingHost": "mx1.bleeding.ravenhosting.cloud",
+                "outgoingPort": 465,
+                "outgoingSocketType": "SSL",
+                "username": "mail@biggus.dickus.demo.rocks"
+              }
+            }
+        """.trimIndent()
+
+        val settings = OdinSystemSerializer.deserialize<MailAppStatus>(json).clientSettings
+        assertTrue(settings != null)
+
+        assertEquals("mx1.bleeding.ravenhosting.cloud", settings!!.incomingHost)
+        assertEquals(993, settings.incomingPort)
+        assertEquals(465, settings.outgoingPort)
+        // Implicit TLS, not STARTTLS — the wrong pairing hangs rather than erroring.
+        assertEquals("SSL", settings.incomingSocketType)
+        assertEquals("SSL", settings.outgoingSocketType)
+        // The FULL address, not the local part.
+        assertEquals("mail@biggus.dickus.demo.rocks", settings.username)
+    }
+
+    /** A host with no mail hosts sends no settings; the screen must render nothing. */
+    @Test
+    fun clientSettingsAreNullWhenTheServerSendsNone() {
+        val status = OdinSystemSerializer.deserialize<MailAppStatus>(
+            """{ "tenantMailEnabled": false }"""
+        )
+        assertNull(status.clientSettings)
+    }
 }
