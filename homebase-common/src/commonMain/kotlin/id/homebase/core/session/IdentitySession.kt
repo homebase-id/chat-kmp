@@ -4,6 +4,9 @@ import co.touchlab.kermit.Logger
 import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.koin.core.Koin
 import org.koin.core.qualifier.Qualifier
 import org.koin.core.qualifier.named
@@ -44,8 +47,17 @@ class IdentitySessionScope(private val koin: Koin) {
 
     private val lock = SynchronizedObject()
 
-    @Volatile
-    private var current: Scope? = null
+    private val _currentScope = MutableStateFlow<Scope?>(null)
+
+    /**
+     * The live scope, or null while logged out — observable so Compose can re-provide it to
+     * the composition when a session starts or ends. [IdentityScopeProvider] is the consumer.
+     */
+    val currentScope: StateFlow<Scope?> = _currentScope.asStateFlow()
+
+    private var current: Scope?
+        get() = _currentScope.value
+        set(value) { _currentScope.value = value }
 
     @Volatile
     private var currentIdentity: String? = null

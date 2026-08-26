@@ -27,6 +27,8 @@ import id.homebase.core.upgrade.PendingUpgradeManager
 import id.homebase.core.upgrade.PendingUpgradeState
 import id.homebase.core.upgrade.registerDataUpgradeCallbackHandler
 import id.homebase.core.upgrade.unregisterDataUpgradeCallbackHandler
+import id.homebase.core.session.IdentitySessionScope
+import id.homebase.core.session.get
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -46,7 +48,11 @@ class AppViewModel(
     private val updateAppManager: UpdateAppManager,
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
-    private val momentCreateFlowState: MomentCreateFlowState,
+    // Not the MomentCreateFlowState itself: that is identity-scoped and this ViewModel is
+    // app-lifetime (it exists before login), so holding a direct reference would pin one
+    // identity's draft for the life of the process. Resolved on demand instead — the share
+    // hand-off below only happens while logged in.
+    private val identitySession: IdentitySessionScope,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -238,7 +244,7 @@ class AppViewModel(
             sharedMediaAttachment(shareContentProcessor.resolveFilePath(name), mime)
         }
         Logger.i(tag = "AppViewModel") { "Moment share: seeding draft with ${attachments.size} attachments" }
-        momentCreateFlowState.setDraft(
+        identitySession.get<MomentCreateFlowState>().setDraft(
             MomentCreateFlowState.Draft(
                 attachments = attachments,
                 description = descriptor.text ?: "",

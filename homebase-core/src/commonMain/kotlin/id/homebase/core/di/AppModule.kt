@@ -220,6 +220,7 @@ import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
 import id.homebase.core.session.IdentitySessionScope
+import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
 val EmailPermissionQualifier = named("emailPermission")
@@ -279,7 +280,6 @@ val appModule = module {
     singleOf(::FeedPermissionService)
     singleOf(::ReportingUrlProvider)
 
-    single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
     single { EmailPreferences(get()) }
 
@@ -537,6 +537,24 @@ val appModule = module {
     // Lifetime of the per-identity object graph. App-lifetime itself (it outlives any one
     // session — it is what opens and closes them), but everything it hands out is not.
     single { IdentitySessionScope(getKoin()) }
+
+    // Per-identity object graph. Destroyed on logout (IdentitySessionScope.close), so nothing
+    // here can serve one identity's state to the next.
+    //
+    // ViewModels live here alongside the services they consume, not at root. A definition can
+    // only reach identity-scoped dependencies if the definition itself is in the scope — Koin
+    // rebinds the resolution context to root on linked-scope fallback, so a root-registered
+    // ViewModel injecting a scoped service fails at runtime. ScopeResolutionMechanicsTest pins
+    // that behaviour; IdentityScopeProvider is what makes koinViewModel() resolve from here.
+    scope(IdentitySessionQualifier) {
+        // The moment draft: the user's photos and description, held while they hop from the
+        // composer to the audience picker. Cleared on a successful post — but abandoning the
+        // flow and logging out used to leave it in memory for the next identity, whose composer
+        // reads it on construction. See MomentDraftSurvivesLogoutTest.
+        scoped { MomentCreateFlowState() }
+        viewModelOf(::MomentComposeViewModel)
+        viewModelOf(::MomentAudienceViewModel)
+    }
 
     single {
         AuthConnectionCoordinator(
@@ -1056,8 +1074,6 @@ val appModule = module {
             locationPreferences = get(),
         )
     }
-    viewModelOf(::MomentComposeViewModel)
-    viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
 

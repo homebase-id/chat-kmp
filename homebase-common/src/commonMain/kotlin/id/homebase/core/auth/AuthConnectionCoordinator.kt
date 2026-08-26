@@ -232,9 +232,10 @@ class AuthConnectionCoordinator(
                 // branch runs twice on a headless bootstrap that later promotes to
                 // foreground. A different identity closes the previous scope here — the
                 // backstop for a logout we never saw (token expiry, a swapped account).
-                credentialsManager.getActiveDomain()?.let { domain ->
-                    identitySession.open(domain.domainName)
-                }
+                // From the state's own identity rather than a credentials lookup: it is the
+                // identity this transition is about, it cannot be null, and it cannot race a
+                // credential write. A null here would have left the UI gated below forever.
+                identitySession.open(state.identity.domainName)
                 // Foreground-only UI preload — see kdoc on [headless]. Runs FIRST in
                 // foreground mode (matches pre-headless-mode ordering: preload starts
                 // local-DB warmups while drive mount + WS handshake happen in

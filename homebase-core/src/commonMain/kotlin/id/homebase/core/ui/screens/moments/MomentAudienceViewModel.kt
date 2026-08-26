@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import id.homebase.core.session.IdentityScoped
 
 private const val TAG = "MomentAudienceViewModel"
 
@@ -32,7 +33,7 @@ class MomentAudienceViewModel(
     private val postSender: MomentsPostSenderService,
     private val flowState: MomentCreateFlowState,
     private val contactRepository: ContactRepository,
-) : ViewModel() {
+) : ViewModel(), IdentityScoped {
 
     private val _uiState = MutableStateFlow(
         MomentAudienceUiState(draftReady = flowState.draft.value != null)
