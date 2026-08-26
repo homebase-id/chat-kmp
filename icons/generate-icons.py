@@ -14,10 +14,17 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, "homebase_appicon.svg")
-WINDOW_ICON = os.path.join(
+MARK = os.path.join(HERE, "homebase_icon.svg")
+DRAWABLES = os.path.join(
     HERE, os.pardir, "homebase-common", "src", "commonMain",
-    "composeResources", "drawable", "homebase_icon_round.png",
+    "composeResources", "drawable",
 )
+WINDOW_ICON = os.path.join(DRAWABLES, "homebase_icon_round.png")
+# The menu-bar glyph is tinted at runtime off the bar's appearance, so only its
+# alpha matters; the padding is baked in because Icon() scales it to fill.
+TRAY_ICON = os.path.join(DRAWABLES, "homebase_icon_mono.png")
+TRAY_CANVAS = 512
+TRAY_GLYPH_HEIGHT = 450
 
 
 def main():
@@ -47,6 +54,19 @@ def main():
     art.save(outputs[0])
     art.save(outputs[1], sizes=[(s, s) for s in (16, 32, 48, 64, 128, 256)])
     art.resize((512, 512), Image.LANCZOS).save(outputs[2])
+
+    glyph_png = os.path.join(tmp, "glyph.png")
+    subprocess.run(
+        ["rsvg-convert", "-h", str(TRAY_GLYPH_HEIGHT), "-o", glyph_png, MARK], check=True
+    )
+    glyph = Image.open(glyph_png).convert("RGBA")
+    tray = Image.new("RGBA", (TRAY_CANVAS, TRAY_CANVAS), (0, 0, 0, 0))
+    tray.paste(
+        glyph,
+        ((TRAY_CANVAS - glyph.width) // 2, (TRAY_CANVAS - glyph.height) // 2),
+    )
+    tray.save(TRAY_ICON)
+    outputs.append(TRAY_ICON)
 
     icns = os.path.join(HERE, "icon.icns")
     if sys.platform == "darwin":
