@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -40,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,6 +73,7 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.HorizontalResizeCursor
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
@@ -816,6 +821,11 @@ fun ConversationListUi(
         }
     }
     val splitterInteractionSource = remember { MutableInteractionSource() }
+    // The scaffold lets a drag run to the full layout and only bounds it on release, via anchors.
+    // Measuring both edges lets consumeDragDelta stop the pane at the limits mid-drag instead.
+    var scaffoldLeft by remember { mutableFloatStateOf(0f) }
+    var scaffoldWidth by remember { mutableFloatStateOf(0f) }
+    var splitterCenter by remember { mutableFloatStateOf(0f) }
 
     // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
     // the outer screen) because scaffoldNavigator + backNavigationBehavior are in
@@ -897,7 +907,10 @@ fun ConversationListUi(
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) {
         ListDetailPaneScaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                scaffoldLeft = it.positionInRoot().x
+                scaffoldWidth = it.size.width.toFloat()
+            },
             directive = scaffoldNavigator.scaffoldDirective,
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
@@ -994,6 +1007,15 @@ fun ConversationListUi(
             paneExpansionState = rememberPaneExpansionState(
                 keyProvider = scaffoldNavigator.scaffoldValue,
                 anchors = paneAnchors,
+                consumeDragDelta = { delta ->
+                    if (scaffoldWidth <= 0f) delta else {
+                        val offset = splitterCenter - scaffoldLeft
+                        (offset + delta).coerceIn(
+                            scaffoldWidth * LIST_PANE_MIN_PERCENT / 100f,
+                            scaffoldWidth * LIST_PANE_MAX_PERCENT / 100f,
+                        ) - offset
+                    }
+                },
             ),
             // M3's VerticalDragHandle animates itself off the hover interaction, which on Skiko
             // never goes quiet: it pinned the desktop render loop at ~164 fps and ~15% GPU while
@@ -1005,6 +1027,10 @@ fun ConversationListUi(
                         Modifier
                             .fillMaxHeight()
                             .width(SPLITTER_HIT_WIDTH)
+                            .onGloballyPositioned {
+                                splitterCenter = it.positionInRoot().x + it.size.width / 2f
+                            }
+                            .pointerHoverIcon(HorizontalResizeCursor)
                             .paneExpansionDraggable(
                                 state = state,
                                 minTouchTargetSize = SPLITTER_HIT_WIDTH,
