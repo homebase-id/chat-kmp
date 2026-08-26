@@ -57,6 +57,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -213,6 +214,9 @@ import id.homebase.resources.upgrade_running_message
 
 // Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
 private const val SCROLL_TO_TOP_KEY = "scrollToTop"
+
+// Material's 80dp rail is tuned for touch; this is its density -2 step for pointer input.
+private val NavigationRailWidth = 72.dp
 
 @Composable
 fun AppNavHost(
@@ -699,9 +703,11 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
-                if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
+                val railVisible = showNavigationRail && isAuthenticated && isOnTopLevelScreen
+                if (railVisible) {
                     NavigationRail(
-                        header = { Spacer(modifier = Modifier.height(12.dp + topInset)) },
+                        modifier = Modifier.width(NavigationRailWidth),
+                        header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
                         topLevelRoutes.forEach { topLevelRoute ->
@@ -751,7 +757,7 @@ fun AppNavHost(
                         Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     } else {
                         Modifier
-                    }.padding(top = topInset),
+                    }.padding(top = if (railVisible) 0.dp else topInset),
                 ) {
                     if (isOnTopLevelScreen) {
                         if (showUpdateBanner) {
