@@ -43,8 +43,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
@@ -58,7 +56,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.VerticalDivider
@@ -217,6 +222,9 @@ private const val SCROLL_TO_TOP_KEY = "scrollToTop"
 
 // Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
 private val NavigationRailWidth = 64.dp
+private val RailIndicatorSize = 48.dp
+private val RailIndicatorShape = RoundedCornerShape(14.dp)
+private val RailIconSize = 20.dp
 
 @Composable
 fun AppNavHost(
@@ -713,20 +721,10 @@ fun AppNavHost(
                         topLevelRoutes.forEach { topLevelRoute ->
                             val isSelected =
                                 currentDestination?.hasRoute(topLevelRoute.route::class) == true
-                            NavigationRailItem(
-                                colors = NavigationRailItemDefaults.colors(
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                    selectedIconColor =
-                                        MaterialTheme.colorScheme.onPrimaryContainer,
-                                ),
-                                icon = {
-                                    TopLevelNavIcon(
-                                        topLevelRoute = topLevelRoute,
-                                        showMomentsBadge = momentsUnseenCount > 0,
-                                    )
-                                },
-                                // label = { Text(stringResource(topLevelRoute.labelRes)) },
+                            RailItem(
+                                topLevelRoute = topLevelRoute,
                                 selected = isSelected,
+                                showMomentsBadge = momentsUnseenCount > 0,
                                 onClick = {
                                     when {
                                         isSelected -> navController.currentBackStackEntry
@@ -2056,15 +2054,42 @@ sealed class TopLevelRoute(
  * `%1$d` resource if a number is wanted later).
  */
 @Composable
+private fun RailItem(
+    topLevelRoute: TopLevelRoute,
+    selected: Boolean,
+    showMomentsBadge: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(RailIndicatorSize).clip(RailIndicatorShape).background(
+            if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+        ).selectable(selected = selected, role = Role.Tab, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        TopLevelNavIcon(
+            topLevelRoute = topLevelRoute,
+            showMomentsBadge = showMomentsBadge,
+            size = RailIconSize,
+            tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
     showEmailBadge: Boolean = false,
+    size: Dp = 24.dp,
+    tint: Color = LocalContentColor.current,
 ) {
     val icon: @Composable () -> Unit = {
         Icon(
             topLevelRoute.icon,
             contentDescription = stringResource(topLevelRoute.labelRes),
+            modifier = Modifier.size(size),
+            tint = tint,
         )
     }
     val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||
