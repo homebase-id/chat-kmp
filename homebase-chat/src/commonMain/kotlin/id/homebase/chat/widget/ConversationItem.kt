@@ -50,6 +50,7 @@ import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatTimestamp
 import id.homebase.core.util.ifTrue
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.stripComposerLineBreakArtifacts
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived
@@ -80,10 +81,13 @@ fun ConversationItem(
 ) {
     var showMenu by rememberSaveable { mutableStateOf(false) }
 
+    // Pointer rows tighten the inset and pair title+preview as one block; touch keeps 88dp targets.
+    val compact = isDesktopOrWeb()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = if (compact) 8.dp else 16.dp)
             .clip(RoundedCornerShape(8.dp))
             .ifTrue(isSelected) {
                 Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
@@ -93,12 +97,12 @@ fun ConversationItem(
                 onLongClick = { showMenu = true }
             )
             .semantics { selected = isSelected }
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ConversationAvatar(
             avatarModel = enrichedData.conversation.avatarModel,
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(if (compact) 0.dp else 8.dp),
             options = AvatarOptions(onClick = { enrichedData.participants.firstOrNull()?.odinId?.let { onContactClick(it) } })
         )
 
@@ -144,7 +148,7 @@ fun ConversationItem(
                 )
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(if (compact) 2.dp else 4.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
