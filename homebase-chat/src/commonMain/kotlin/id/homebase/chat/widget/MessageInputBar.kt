@@ -516,17 +516,20 @@ fun MessageTextFieldExpanded(
                     )
                 }
             }
-            IconButton(
-                onClick = { sendMessage() },
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                    contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                )
-            ) {
-                Icon(
-                    imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                    contentDescription = stringResource(MR.string.chat_send_message_button),
-                )
+            if (editExistingMode) {
+                IconButton(
+                    onClick = { sendMessage() },
+                    enabled = hasSendableContent(state, payloadRenderers),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = stringResource(MR.string.chat_send_message_button),
+                    )
+                }
             }
         }
     }
