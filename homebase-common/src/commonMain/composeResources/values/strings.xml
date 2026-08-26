@@ -1176,6 +1176,14 @@
     <string name="email_mailbox_junk">%1$d in junk</string>
     <string name="email_mailbox_queued">%1$d message(s) still trying to send</string>
     <string name="email_mailbox_open_client">Open %1$s</string>
+    <!-- Email health: whether mail actually works, as opposed to whether setup finished. -->
+    <string name="email_health_check">Check my email</string>
+    <string name="email_health_checking">Checking…</string>
+    <string name="email_health_ok">Your email is working.</string>
+    <string name="email_health_attention">Your email needs attention. Mail may not reach you, or may be treated as spam.</string>
+    <string name="email_health_missing_record">%1$s record missing or incorrect</string>
+    <string name="email_health_fix_hint">Open the owner console to fix this: Security → Email.</string>
+    <string name="email_health_unavailable">Could not check your email right now.</string>
     <string name="email_mailbox_open_failed">%1$s does not seem to be installed</string>
 
     <!-- Vault -->
