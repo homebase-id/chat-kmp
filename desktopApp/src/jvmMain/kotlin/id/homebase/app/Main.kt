@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -334,20 +335,34 @@ fun main() {
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
 
+            if (isMacOs) {
+                LaunchedEffect(Unit) {
+                    window.rootPane.putClientProperty("apple.awt.fullWindowContent", true)
+                    window.rootPane.putClientProperty("apple.awt.transparentTitleBar", true)
+                    window.rootPane.putClientProperty("apple.awt.windowTitleVisible", false)
+                }
+            }
+
             // Provide Desktop-specific LifecycleOwner to the composition tree
             val desktopLifecycleOwner = rememberDesktopLifecycleOwner(isWindowVisible)
             CompositionLocalProvider(LocalLifecycleOwner provides desktopLifecycleOwner) {
-                App(onNavigatorReady = { navigateTo = it })
+                App(
+                    onNavigatorReady = { navigateTo = it },
+                    topInset = if (isMacOs) MAC_TITLE_BAR_HEIGHT else 0.dp,
+                )
             }
         }
     }
 }
 
-private val usesCommandKey =
+private val isMacOs =
     System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
 
+// Traffic lights float over the content once apple.awt.fullWindowContent is on.
+private val MAC_TITLE_BAR_HEIGHT = 28.dp
+
 private fun menuShortcut(key: Key) =
-    KeyShortcut(key, ctrl = !usesCommandKey, meta = usesCommandKey)
+    KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs)
 
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->

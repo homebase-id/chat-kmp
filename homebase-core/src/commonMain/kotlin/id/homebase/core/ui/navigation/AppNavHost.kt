@@ -44,6 +44,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
@@ -59,10 +60,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -215,7 +218,8 @@ private const val SCROLL_TO_TOP_KEY = "scrollToTop"
 fun AppNavHost(
     viewModel: AppViewModel,
     navController: NavHostController,
-    youAuthFlowManager: YouAuthFlowManager
+    youAuthFlowManager: YouAuthFlowManager,
+    topInset: Dp = 0.dp,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
@@ -696,11 +700,19 @@ fun AppNavHost(
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
-                    NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
+                    NavigationRail(
+                        header = { Spacer(modifier = Modifier.height(12.dp + topInset)) },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
                         topLevelRoutes.forEach { topLevelRoute ->
                             val isSelected =
                                 currentDestination?.hasRoute(topLevelRoute.route::class) == true
                             NavigationRailItem(
+                                colors = NavigationRailItemDefaults.colors(
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedIconColor =
+                                        MaterialTheme.colorScheme.onPrimaryContainer,
+                                ),
                                 icon = {
                                     TopLevelNavIcon(
                                         topLevelRoute = topLevelRoute,
@@ -727,6 +739,7 @@ fun AppNavHost(
                                 })
                         }
                     }
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
                 val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
@@ -738,7 +751,7 @@ fun AppNavHost(
                         Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     } else {
                         Modifier
-                    },
+                    }.padding(top = topInset),
                 ) {
                     if (isOnTopLevelScreen) {
                         if (showUpdateBanner) {

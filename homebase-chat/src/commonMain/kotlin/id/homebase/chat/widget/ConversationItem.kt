@@ -27,6 +27,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -84,13 +86,13 @@ fun ConversationItem(
             .padding(horizontal = 16.dp)
             .clip(RoundedCornerShape(8.dp))
             .ifTrue(isSelected) {
-                Modifier
-                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f))
+                Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
             }
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { showMenu = true }
             )
+            .semantics { selected = isSelected }
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

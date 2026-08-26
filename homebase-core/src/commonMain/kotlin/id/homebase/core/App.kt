@@ -9,6 +9,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.settings.ThemeState
@@ -26,6 +28,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun App(
     onNavHostReady: suspend (NavController) -> Unit = {},
     onNavigatorReady: ((Route) -> Unit) -> Unit = {},
+    topInset: Dp = 0.dp,
 ) {
     remember { StartupLogger.checkpoint("App() first composition") }
     val navController = rememberNavController()
@@ -55,7 +58,8 @@ fun App(
             // onCreates in one process).
             viewModel = koinViewModel<AppViewModel>(),
             navController = navController,
-            youAuthFlowManager = youAuthFlowManager
+            youAuthFlowManager = youAuthFlowManager,
+            topInset = topInset,
         )
         LaunchedEffect(navController) {
             onNavigatorReady { route -> navController.navigate(route) { launchSingleTop = true } }
