@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.text.input.TextFieldState
@@ -73,7 +72,6 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.util.HorizontalResizeCursor
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
@@ -1030,7 +1028,6 @@ fun ConversationListUi(
                             .onGloballyPositioned {
                                 splitterCenter = it.positionInRoot().x + it.size.width / 2f
                             }
-                            .pointerHoverIcon(HorizontalResizeCursor)
                             .paneExpansionDraggable(
                                 state = state,
                                 minTouchTargetSize = SPLITTER_HIT_WIDTH,
