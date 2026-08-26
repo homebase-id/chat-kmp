@@ -11,6 +11,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.unit.dp
@@ -23,6 +27,7 @@ import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
 import com.kdroid.composetray.tray.api.Tray
 import com.kdroid.composetray.utils.SingleInstanceManager
+import com.kdroid.composetray.utils.isMenuBarInDarkMode
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
@@ -63,6 +68,7 @@ import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
+import id.homebase.resources.homebase_icon_mono
 import id.homebase.resources.homebase_icon_round
 import id.homebase.resources.theme
 import id.homebase.resources.update_available
@@ -268,7 +274,16 @@ fun main() {
         }
 
         Tray(
-            icon = icon,
+            // The menu bar follows the desktop picture, not the app theme, so this tints off
+            // the bar's own appearance rather than a MaterialTheme role.
+            iconContent = {
+                Icon(
+                    painter = painterResource(MR.drawable.homebase_icon_mono),
+                    contentDescription = appName,
+                    tint = if (isMenuBarInDarkMode()) Color.White else Color.Black,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
             tooltip = appName,
             primaryAction = {
                 isWindowVisible = !isWindowVisible
