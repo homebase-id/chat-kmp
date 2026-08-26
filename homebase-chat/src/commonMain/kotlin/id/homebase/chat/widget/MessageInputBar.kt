@@ -3,8 +3,6 @@ package id.homebase.chat.widget
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -13,13 +11,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -42,12 +35,12 @@ import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.AddLink
@@ -95,8 +88,6 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -168,6 +159,12 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt
 
+internal const val COMPOSER_EXPAND_TOGGLE_TAG = "composer_expand_toggle"
+
+// Link previews are auto-detected from typed URLs, so on their own they don't signal intent to send.
+private fun hasSendableContent(state: RichTextState, payloadRenderers: List<PayloadRenderer>) =
+    state.annotatedString.isNotBlank() || payloadRenderers.any { it !is LinkPreviewRenderer }
+
 private enum class StandaloneFabAction { Confirm, Send, Attach }
 
 private val URL_REGEX = Regex(
@@ -202,8 +199,6 @@ fun MessageInputBar(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
     var showExpanded by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
 
@@ -284,35 +279,12 @@ fun MessageInputBar(
         }
     }
 
+    val toggleExpanded = { showExpanded = !showExpanded }
+    val onToggleExpand = if (isDesktopOrWeb()) toggleExpanded else null
+
     Column(
-        modifier = modifier.hoverable(interactionSource),
+        modifier = modifier,
     ) {
-        if (isDesktopOrWeb()) {
-            AnimatedVisibility(
-                visible = isHovered,
-                enter = expandVertically(animationSpec = tween(150)),
-                exit = shrinkVertically(animationSpec = tween(150)),
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    Box(
-                        modifier = Modifier.size(32.dp).clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { showExpanded = !showExpanded })
-                            .pointerHoverIcon(PointerIcon.Hand), contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (showExpanded) Icons.Default.KeyboardArrowDown
-                            else Icons.Default.KeyboardArrowUp,
-                            contentDescription = if (showExpanded) stringResource(MR.string.collapse)
-                            else stringResource(MR.string.expand),
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
-                }
-            }
-        }
         if (showExpanded) {
             MessageTextFieldExpanded(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -330,6 +302,7 @@ fun MessageInputBar(
                     showExpanded = false
                     sendMessage()
                 },
+                onToggleExpand = onToggleExpand,
                 onCancelEdit = onCancelEdit
             )
         } else {
@@ -361,6 +334,7 @@ fun MessageInputBar(
                 onSendStateChanged = onSendStateChanged,
                 onRecordingStateChanged = onRecordingStateChanged,
                 onSendMessage = { sendMessage() },
+                onToggleExpand = onToggleExpand,
                 onCancelEdit = onCancelEdit
             )
         }
@@ -381,6 +355,7 @@ fun MessageTextFieldExpanded(
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit,
+    onToggleExpand: (() -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
@@ -393,11 +368,19 @@ fun MessageTextFieldExpanded(
     }
 
     Column(modifier = modifier) {
-        RichTextEditorButtons(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            state = state,
-            enabled = true,
-        )
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RichTextEditorButtons(
+                modifier = Modifier.weight(1f),
+                state = state,
+                enabled = true,
+            )
+            if (onToggleExpand != null) {
+                ComposerExpandToggle(expanded = true, onToggle = onToggleExpand)
+            }
+        }
         if (editExistingMode) {
             MessageEditMessageInfo(
                 showingEmojiSheet = false,
@@ -533,17 +516,20 @@ fun MessageTextFieldExpanded(
                     )
                 }
             }
-            IconButton(
-                onClick = { sendMessage() },
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
-                    contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
-                )
-            ) {
-                Icon(
-                    imageVector = if (editExistingMode) Icons.Filled.Check else Icons.AutoMirrored.Filled.Send,
-                    contentDescription = stringResource(MR.string.chat_send_message_button),
-                )
+            if (editExistingMode) {
+                IconButton(
+                    onClick = { sendMessage() },
+                    enabled = hasSendableContent(state, payloadRenderers),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
+                        contentColor = HomebaseTheme.extendedColors.bubbleSentOnSurface,
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = stringResource(MR.string.chat_send_message_button),
+                    )
+                }
             }
         }
     }
@@ -576,13 +562,11 @@ fun MessageTextFieldCompact(
     onSendStateChanged: ((isSendable: Boolean) -> Unit)? = null,
     onRecordingStateChanged: ((isRecording: Boolean) -> Unit)? = null,
     onSendMessage: () -> Unit,
+    onToggleExpand: (() -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
-    // Send button is shown when there's text OR a user-initiated attachment (not link previews,
-    // which are auto-detected from typed URLs and don't on their own indicate intent to send).
-    val showSendButton = state.annotatedString.isNotBlank() ||
-        payloadRenderers.any { it !is LinkPreviewRenderer }
+    val showSendButton = hasSendableContent(state, payloadRenderers)
     val showRecordingButton by remember(
         editExistingMode,
         showSendButton
@@ -668,11 +652,19 @@ fun MessageTextFieldCompact(
         ) {
             Column {
                 if (isDesktopOrWeb()) {
-                    RichTextEditorButtons(
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        state = state,
-                        enabled = isKeyboardFocused,
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RichTextEditorButtons(
+                            modifier = Modifier.weight(1f),
+                            state = state,
+                            enabled = isKeyboardFocused,
+                        )
+                        if (onToggleExpand != null) {
+                            ComposerExpandToggle(expanded = false, onToggle = onToggleExpand)
+                        }
+                    }
                 }
                 payloadRenderers.forEach { att ->
                     PayloadRendererRow(
@@ -1299,6 +1291,23 @@ fun MessageTextFieldForAttachment(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ComposerExpandToggle(expanded: Boolean, onToggle: () -> Unit) {
+    IconButton(
+        onClick = onToggle,
+        modifier = Modifier.testTag(COMPOSER_EXPAND_TOGGLE_TAG),
+        colors = IconButtonDefaults.iconButtonColors(
+            contentColor = MaterialTheme.colorScheme.onBackground,
+        ),
+    ) {
+        Icon(
+            imageVector = if (expanded) Icons.Default.CloseFullscreen else Icons.Default.OpenInFull,
+            contentDescription = if (expanded) stringResource(MR.string.collapse)
+            else stringResource(MR.string.expand),
+        )
     }
 }
 
