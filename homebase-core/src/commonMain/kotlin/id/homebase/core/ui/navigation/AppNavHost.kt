@@ -43,7 +43,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
@@ -56,13 +55,23 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -212,11 +221,18 @@ import id.homebase.core.session.IdentitySessionScope
 // Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
 private const val SCROLL_TO_TOP_KEY = "scrollToTop"
 
+// Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
+private val NavigationRailWidth = 64.dp
+private val RailIndicatorSize = 48.dp
+private val RailIndicatorShape = RoundedCornerShape(14.dp)
+private val RailIconSize = 20.dp
+
 @Composable
 fun AppNavHost(
     viewModel: AppViewModel,
     navController: NavHostController,
-    youAuthFlowManager: YouAuthFlowManager
+    youAuthFlowManager: YouAuthFlowManager,
+    topInset: Dp = 0.dp,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
@@ -702,20 +718,20 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
-                if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
-                    NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
+                val railVisible = showNavigationRail && isAuthenticated && isOnTopLevelScreen
+                if (railVisible) {
+                    NavigationRail(
+                        modifier = Modifier.width(NavigationRailWidth),
+                        header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
                         topLevelRoutes.forEach { topLevelRoute ->
                             val isSelected =
                                 currentDestination?.hasRoute(topLevelRoute.route::class) == true
-                            NavigationRailItem(
-                                icon = {
-                                    TopLevelNavIcon(
-                                        topLevelRoute = topLevelRoute,
-                                        showMomentsBadge = momentsUnseenCount > 0,
-                                    )
-                                },
-                                // label = { Text(stringResource(topLevelRoute.labelRes)) },
+                            RailItem(
+                                topLevelRoute = topLevelRoute,
                                 selected = isSelected,
+                                showMomentsBadge = momentsUnseenCount > 0,
                                 onClick = {
                                     when {
                                         isSelected -> navController.currentBackStackEntry
@@ -734,6 +750,7 @@ fun AppNavHost(
                                 })
                         }
                     }
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
                 val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
@@ -745,7 +762,7 @@ fun AppNavHost(
                         Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     } else {
                         Modifier
-                    },
+                    }.padding(top = if (railVisible) 0.dp else topInset),
                 ) {
                     if (isOnTopLevelScreen) {
                         if (showUpdateBanner) {
@@ -2044,15 +2061,42 @@ sealed class TopLevelRoute(
  * `%1$d` resource if a number is wanted later).
  */
 @Composable
+private fun RailItem(
+    topLevelRoute: TopLevelRoute,
+    selected: Boolean,
+    showMomentsBadge: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(RailIndicatorSize).clip(RailIndicatorShape).background(
+            if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+        ).selectable(selected = selected, role = Role.Tab, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        TopLevelNavIcon(
+            topLevelRoute = topLevelRoute,
+            showMomentsBadge = showMomentsBadge,
+            size = RailIconSize,
+            tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
     showEmailBadge: Boolean = false,
+    size: Dp = 24.dp,
+    tint: Color = LocalContentColor.current,
 ) {
     val icon: @Composable () -> Unit = {
         Icon(
             topLevelRoute.icon,
             contentDescription = stringResource(topLevelRoute.labelRes),
+            modifier = Modifier.size(size),
+            tint = tint,
         )
     }
     val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||

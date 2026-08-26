@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,15 +37,19 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -58,7 +63,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.auth.initials
@@ -101,6 +110,25 @@ fun ConversationListPane(
     onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     val twoPaneWindow = isExpandedLayout()
+    val paneContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
+    val paneEdgeColor = MaterialTheme.colorScheme.outlineVariant
+    val topBarState = rememberTopAppBarState()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState)
+    // Read inside the draw lambdas below, so a row sliding under the flat bar repaints the
+    // hairline without recomposing the bar.
+    val barOverlapped by remember { derivedStateOf { topBarState.overlappedFraction > 0f } }
+    val barUnderline = Modifier.drawWithContent {
+        drawContent()
+        if (!barOverlapped) return@drawWithContent
+        val stroke = 1.dp.toPx()
+        val y = size.height - stroke / 2f
+        drawLine(
+            color = paneEdgeColor,
+            start = Offset(0f, y),
+            end = Offset(size.width, y),
+            strokeWidth = stroke,
+        )
+    }
     val listState = rememberLazyListState()
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
@@ -122,9 +150,26 @@ fun ConversationListPane(
     BoxWithConstraints(modifier = Modifier.focusRequester(focusRequesterNone).focusable()) {
         val iconOnlyMode by derivedStateOf { maxWidth <= 96.dp }
         Scaffold(
+            modifier = Modifier
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .drawWithContent {
+                    drawContent()
+                    if (!twoPaneWindow) return@drawWithContent
+                    val stroke = 1.dp.toPx()
+                    val x = if (layoutDirection == LayoutDirection.Rtl) stroke / 2f
+                    else size.width - stroke / 2f
+                    drawLine(
+                        color = paneEdgeColor,
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = stroke,
+                    )
+                },
             topBar = {
                 if (uiState.showArchived) {
                     TopAppBar(
+                        modifier = barUnderline,
+                        scrollBehavior = scrollBehavior,
                         title = {
                             Text(stringResource(MR.string.chat_archived_chats))
                         },
@@ -136,6 +181,10 @@ fun ConversationListPane(
                                 )
                             }
                         },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = paneContainerColor,
+                            scrolledContainerColor = paneContainerColor,
+                        ),
                     )
                 } else if (!iconOnlyMode) {
                     TopAppBar(title = {
@@ -145,7 +194,6 @@ fun ConversationListPane(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Spacer(modifier = Modifier.width(20.dp))
                                 AnimatedVisibility(
                                     visible = !uiState.isSearchActive,
                                     enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
@@ -179,12 +227,13 @@ fun ConversationListPane(
                                             style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
+                                            modifier = Modifier.weight(1f, fill = false),
                                             autoSize = TextAutoSize.StepBased(
                                                 minFontSize = 14.sp,
                                                 maxFontSize = 22.sp,
                                             )
                                         )
-                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
                                     }
                                 }
                             }
@@ -217,6 +266,30 @@ fun ConversationListPane(
                             }
                         }
                     }, actions = {
+                        if (twoPaneWindow) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    onUiAction(
+                                        ConversationListUiAction.NewConversationClicked
+                                    )
+                                },
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                ),
+                            ) {
+                                Icon(
+                                    imageVector = FeatherEdit,
+                                    contentDescription = stringResource(
+                                        MR.string.chat_new_conversation
+                                    ),
+                                    // Feather artwork runs to the edge of its 24dp viewport;
+                                    // Material glyphs keep a keyline, so match their ink, not
+                                    // their nominal size.
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
                         if (!uiState.isSearchActive) {
                             // One pin, either direction (#1012): I'm sharing with anyone OR anyone
                             // is sharing with me. Tapping opens the live map.
@@ -273,7 +346,11 @@ fun ConversationListPane(
                                     })
                             }
                         }
-                    })
+                    }, modifier = barUnderline, scrollBehavior = scrollBehavior,
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = paneContainerColor,
+                            scrolledContainerColor = paneContainerColor,
+                        ))
                 } else {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -294,7 +371,7 @@ fun ConversationListPane(
                 }
             },
             floatingActionButton = {
-                if (!iconOnlyMode) {
+                if (!iconOnlyMode && !twoPaneWindow) {
                     FloatingActionButton(
                         onClick = {
                             onUiAction(ConversationListUiAction.NewConversationClicked)
@@ -306,8 +383,7 @@ fun ConversationListPane(
                     }
                 }
             },
-            containerColor = if (twoPaneWindow) MaterialTheme.colorScheme.surfaceContainerLow
-            else MaterialTheme.colorScheme.surface,
+            containerColor = paneContainerColor,
         ) { innerPadding ->
             Box {
                 LazyColumn(

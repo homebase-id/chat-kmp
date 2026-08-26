@@ -30,6 +30,7 @@ object LightColors {
     val OnErrorContainer = Color(0xFF410002)
 
     val Outline = Color(0xFF808389)
+    val OutlineVariant = Color(0xFFCFD4DE)
 
     // Surface Elevation Variants
     val Surface1 = Color(0xFFF2F5F9)
@@ -94,6 +95,7 @@ object DarkColors {
     val OnErrorContainer = Color(0xFFFFDAD6)
 
     val Outline = Color(0xFF5C5E65)
+    val OutlineVariant = Color(0xFF3E414A)
 
     // Surface Elevation Variants
     val Surface1 = Color(0xFF23242A)
