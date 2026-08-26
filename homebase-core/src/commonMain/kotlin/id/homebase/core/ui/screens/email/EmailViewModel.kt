@@ -66,9 +66,19 @@ class EmailViewModel(
 
         // The owner approves the drive in a browser, so the grant lands while we are backgrounded.
         // Mount as soon as the permission check sees it rather than making the user tap again.
+        //
+        // Gated on the SERVER confirming the drive exists (driveProvisioned), not on the
+        // permission check alone. Mounting is purely local - it does not create anything - so
+        // mounting a drive the identity never created leaves DriveSync retrying `400
+        // InvalidDrive` once a second forever, and writes the drive into the cross-device
+        // registry, which makes it survive a restart and re-mount on every future login.
+        //
+        // The permission check cannot stand in for this: it reports "granted" when it could not
+        // reach the security context at all, so a failed lookup used to read as permission to
+        // mount. Seen on a fresh identity that had never been through the approval flow.
         viewModelScope.launch {
             emailPermissionViewModel.permissionsGranted.filter { it }.collect {
-                if (_uiState.value.driveActivated != true) {
+                if (_uiState.value.driveActivated != true && _uiState.value.serverStatus?.driveProvisioned == true) {
                     activateDrive()
                 }
             }
@@ -123,8 +133,13 @@ class EmailViewModel(
     fun onAction(action: EmailUiAction) {
         when (action) {
             EmailUiAction.SetupClicked -> {
-                // Already granted (a second device, or a re-entry) — go straight to mounting.
-                if (emailPermissionViewModel.permissionsGranted.value) {
+                // Straight to mounting only when the drive DEMONSTRABLY exists (a second device,
+                // or a re-entry). Granted-but-not-provisioned means the approval flow has not
+                // actually run for this identity, and mounting then just starts the InvalidDrive
+                // retry loop - so fall through to the permission flow, which is what creates it.
+                if (emailPermissionViewModel.permissionsGranted.value &&
+                    _uiState.value.serverStatus?.driveProvisioned == true
+                ) {
                     viewModelScope.launch { activateDrive() }
                 } else {
                     emailPermissionViewModel.recheckPermissions()

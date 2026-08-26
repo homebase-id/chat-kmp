@@ -56,13 +56,11 @@ class EmailSetupViewModel(
         // (each alias has to be provisioned into the mail server and published in WKD).
         viewModelScope.launch {
             val domain = credentialsManager.getActiveCredentials()?.domain?.domainName ?: return@launch
-            _uiState.update { state ->
-                if (state.primaryEmailAddress.isEmpty()) {
-                    state.copy(primaryEmailAddress = "mail@$domain")
-                } else {
-                    state
-                }
-            }
+            // Unconditional: the address is a pure function of the signed-in identity, so any
+            // value already in state belongs to whoever was signed in before. An isEmpty() guard
+            // here meant a surviving ViewModel kept the previous identity's address and showed
+            // it to the new one - "always mail@<identity>" has to be enforced, not assumed.
+            _uiState.update { state -> state.copy(primaryEmailAddress = "mail@$domain") }
         }
     }
 
