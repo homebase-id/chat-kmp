@@ -9,6 +9,11 @@ import id.homebase.core.ui.screens.email.EmailStream
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
 import id.homebase.api.client.mail.MailClientSettings
+import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.io.files.Path
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +34,7 @@ class EmailSecretsViewModel(
     private val mailProvider: MailProvider,
     private val emailService: EmailService,
     private val emailStream: EmailStream,
+    private val fileOps: FileOperationsProvider,
 ) : ViewModel() {
 
     companion object {
@@ -41,6 +47,9 @@ class EmailSecretsViewModel(
     private val _revealed = MutableStateFlow<Set<String>>(emptySet())
     private val _busy = MutableStateFlow<Set<String>>(emptySet())
     private val _error = MutableStateFlow<String?>(null)
+
+    private val _events = MutableSharedFlow<EmailSecretsUiEvent>(extraBufferCapacity = 4)
+    val events: SharedFlow<EmailSecretsUiEvent> = _events.asSharedFlow()
 
     /**
      * Mail-app settings, from the server. Config-derived and free, so fetched once on entry
@@ -86,7 +95,50 @@ class EmailSecretsViewModel(
             is EmailSecretsUiAction.Revoke -> revoke(action.credential)
 
             EmailSecretsUiAction.ErrorDismissed -> _error.value = null
+
+            is EmailSecretsUiAction.SavePrivateKey -> savePrivateKey(action.key)
         }
+    }
+
+    /**
+     * Write the armored private key to a file and hand it to the platform's save flow.
+     *
+     * A file rather than the clipboard because that is what mail apps import - and on phones
+     * the clipboard is not an option at all.
+     *
+     * The temp is deleted as soon as the platform has taken it. It lives in the cache dir,
+     * which the CacheSweeper reaps anyway, but a private key sitting around waiting for a
+     * sweep is not a risk worth accepting for the sake of two lines.
+     */
+    private fun savePrivateKey(key: EmailKeyRef) {
+        viewModelScope.launch {
+            try {
+                val path = fileOps.writeBytesToTempFile(
+                    bytes = key.secretKeyArmored.encodeToByteArray(),
+                    prefix = "email-key",
+                    suffix = ".asc",
+                )
+                _events.tryEmit(
+                    EmailSecretsUiEvent.SaveKeyFile(
+                        path = path,
+                        suggestedName = "homebase-${key.userId ?: "key"}-private.asc",
+                    )
+                )
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "writing private key file failed: ${e.message}" }
+                _events.tryEmit(EmailSecretsUiEvent.KeySaveFailed)
+            }
+        }
+    }
+
+    /**
+     * Drop the temp once the platform has taken it - or failed to.
+     *
+     * It lives in the cache dir, which the CacheSweeper reaps anyway, but a private key sitting
+     * on disk waiting for a sweep is not a risk worth accepting to save two lines.
+     */
+    fun discardKeyFile(path: String) {
+        fileOps.deleteTempFile(path)
     }
 
     /**
@@ -160,4 +212,21 @@ sealed interface EmailSecretsUiAction {
     data class ToggleReveal(val id: String) : EmailSecretsUiAction
     data class Revoke(val credential: EmailCredential) : EmailSecretsUiAction
     data object ErrorDismissed : EmailSecretsUiAction
+
+    /** Write the private key to a file the user can import into a mail app. */
+    data class SavePrivateKey(val key: EmailKeyRef) : EmailSecretsUiAction
+}
+
+sealed interface EmailSecretsUiEvent {
+    /**
+     * The key is written and ready to hand to the platform's save flow.
+     *
+     * The ViewModel writes the file but does NOT save it: saving needs a FileSystemHandler,
+     * which is a Composable accessor (getUriHandler()) and not in DI - injecting it here
+     * compiles and then fails at runtime. So the file lifecycle stays here and the platform
+     * interaction stays in the UI, which is the right split regardless.
+     */
+    data class SaveKeyFile(val path: String, val suggestedName: String) : EmailSecretsUiEvent
+
+    data object KeySaveFailed : EmailSecretsUiEvent
 }

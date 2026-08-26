@@ -47,7 +47,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import id.homebase.core.util.getUriHandler
+import id.homebase.core.localization.TranslationUtil
+import kotlinx.io.files.Path
 import id.homebase.resources.MR
+import id.homebase.resources.email_secrets_key_save_failed
+import id.homebase.resources.email_secrets_key_saved
+import id.homebase.resources.email_secrets_save_private_key
+import id.homebase.resources.email_secrets_save_private_key_body
+import id.homebase.resources.email_secrets_save_private_key_confirm
+import id.homebase.resources.email_secrets_save_private_key_title
 import id.homebase.resources.email_settings_cert_warning
 import id.homebase.resources.email_settings_incoming
 import id.homebase.resources.email_settings_intro
@@ -94,7 +106,51 @@ fun EmailSecretsScreen(
     onBackClick: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    EmailSecretsUi(uiState = uiState, onAction = viewModel::onAction, onBackClick = onBackClick)
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // The platform save lives here, not in the ViewModel: FileSystemHandler comes from
+    // getUriHandler(), a Composable accessor that is not in DI. The ViewModel writes the file
+    // and hands us the path; we give it to the OS and tell the ViewModel to drop the temp.
+    val fileSystemHandler = getUriHandler()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is EmailSecretsUiEvent.SaveKeyFile -> fileSystemHandler.saveFile(
+                    file = Path(event.path),
+                    suggestedName = event.suggestedName,
+                    onSuccess = { location ->
+                        viewModel.discardKeyFile(event.path)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                TranslationUtil.getString(MR.string.email_secrets_key_saved, location)
+                            )
+                        }
+                    },
+                    onError = {
+                        viewModel.discardKeyFile(event.path)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                TranslationUtil.getString(MR.string.email_secrets_key_save_failed)
+                            )
+                        }
+                    },
+                )
+
+                EmailSecretsUiEvent.KeySaveFailed -> snackbarHostState.showSnackbar(
+                    TranslationUtil.getString(MR.string.email_secrets_key_save_failed)
+                )
+            }
+        }
+    }
+
+    EmailSecretsUi(
+        uiState = uiState,
+        onAction = viewModel::onAction,
+        onBackClick = onBackClick,
+        snackbarHostState = snackbarHostState,
+    )
 }
 
 /**
@@ -111,9 +167,11 @@ fun EmailSecretsUi(
     uiState: EmailSecretsUiState,
     onAction: (EmailSecretsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     var confirmRevoke by remember { mutableStateOf<EmailCredential?>(null) }
     var confirmPrivateKey by remember { mutableStateOf<EmailKeyRef?>(null) }
+    var confirmSaveKey by remember { mutableStateOf<EmailKeyRef?>(null) }
     var confirmNewKey by remember { mutableStateOf(false) }
 
     val clipboard = LocalClipboard.current
@@ -121,6 +179,7 @@ fun EmailSecretsUi(
     val copy: (String) -> Unit = { text -> scope.launch { clipboard.setClipEntry(clipEntryOf(text)) } }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.email_secrets_title)) },
@@ -220,6 +279,7 @@ fun EmailSecretsUi(
                     onCopyFingerprint = { copy(key.fingerprintHex) },
                     onCopyPublicKey = { copy(key.publicCertificateArmored) },
                     onCopyPrivateKey = { confirmPrivateKey = key },
+                    onSavePrivateKey = { confirmSaveKey = key },
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -316,6 +376,30 @@ fun EmailSecretsUi(
     }
 
     // Not destructive, but it puts the key that opens all your mail on the clipboard.
+    // Saving asks separately from copying. Both hand over the private key, but a FILE persists
+    // on the device until someone deletes it, so the warning names that rather than reusing the
+    // clipboard wording.
+    confirmSaveKey?.let { key ->
+        AlertDialog(
+            onDismissRequest = { confirmSaveKey = null },
+            title = { Text(stringResource(MR.string.email_secrets_save_private_key_title)) },
+            text = { Text(stringResource(MR.string.email_secrets_save_private_key_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onAction(EmailSecretsUiAction.SavePrivateKey(key))
+                    confirmSaveKey = null
+                }) {
+                    Text(stringResource(MR.string.email_secrets_save_private_key_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmSaveKey = null }) {
+                    Text(stringResource(MR.string.email_secrets_cancel))
+                }
+            },
+        )
+    }
+
     confirmPrivateKey?.let { key ->
         AlertDialog(
             onDismissRequest = { confirmPrivateKey = null },
@@ -449,6 +533,7 @@ private fun KeyCard(
     onCopyFingerprint: () -> Unit,
     onCopyPublicKey: () -> Unit,
     onCopyPrivateKey: () -> Unit,
+    onSavePrivateKey: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -501,6 +586,14 @@ private fun KeyCard(
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Text(stringResource(MR.string.email_secrets_copy_private_key))
+                }
+                // Mail apps import a key from a FILE - clipboard is not an option in most of
+                // them, and on phones it is not an option at all.
+                TextButton(
+                    onClick = onSavePrivateKey,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(stringResource(MR.string.email_secrets_save_private_key))
                 }
             }
         }
