@@ -799,6 +799,16 @@ class AuthConnectionCoordinator(
         // the debouncer — and unmount drives — against a session already being torn down (#1237).
         grantReconcileJob?.cancel()
         grantReconcileJob = null
+        // Forget which drives this identity could read. The field is a snapshot of ONE app
+        // token's grants, and it outlived the session it belonged to: on the next login
+        // retainGrantedDrives() applied the previous token's answer and silently dropped a drive
+        // that had been granted in between — the mount decision ran ~700ms before the fresh
+        // grants resolved, and nothing re-mounts afterwards.
+        //
+        // Null is the documented "grants unknown" state that makes retainGrantedDrives a no-op,
+        // which is exactly what a fresh connect wants: mount from the local registry and let
+        // scheduleGrantReconcile prune in the background.
+        grantedDriveIds = null
         refreshWsSubscription.cancel()
         driveRegistry.stop()
         // Close every per-owner peer websocket so a second login doesn't inherit the first user's
