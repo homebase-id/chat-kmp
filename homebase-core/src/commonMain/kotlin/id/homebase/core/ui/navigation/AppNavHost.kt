@@ -215,8 +215,8 @@ import id.homebase.resources.upgrade_running_message
 // Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
 private const val SCROLL_TO_TOP_KEY = "scrollToTop"
 
-// Material's 80dp rail is tuned for touch; this is its density -2 step for pointer input.
-private val NavigationRailWidth = 72.dp
+// Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
+private val NavigationRailWidth = 64.dp
 
 @Composable
 fun AppNavHost(
