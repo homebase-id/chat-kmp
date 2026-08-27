@@ -6,6 +6,7 @@ import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.GrantOn
 import id.homebase.api.client.connections.RedactedCircleDefinition
+import id.homebase.core.ui.screens.contactbook.countsAsOwnerCircle
 import id.homebase.core.ui.screens.contactbook.review.isGrantableByThisApp
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
@@ -275,6 +276,52 @@ class CircleGrantabilityTest {
     @Test
     fun thisAppsOwnCircleIsGrantable() {
         assertTrue(circleOwnedBy(thisApp).isGrantableByThisApp())
+    }
+
+    /**
+     * The four circles this app now owns must satisfy both predicates at once: grantable from
+     * the review picker, and counting toward the Circle state. They answer different questions
+     * and are easy to let drift apart.
+     */
+    @Test
+    fun anAppOwnedPersonalCircleIsBothGrantableAndStateCounting() {
+        val friends = RedactedCircleDefinition(
+            id = "3d594614f445f6b00014e9b77730b833",
+            name = "Friends",
+            appId = thisApp,
+            grantOn = GrantOn.None,
+            designation = CircleDesignation.Personal,
+        )
+        assertTrue(friends.isGrantableByThisApp())
+        assertTrue(friends.countsAsOwnerCircle())
+    }
+
+    /** An owner circle still counts toward the state, but can't be granted from here. */
+    @Test
+    fun anOwnerCircleCountsForStateButIsNotGrantable() {
+        val ownerCircle = RedactedCircleDefinition(
+            id = "8b5383a5927246f8a666f4f3fcb7392b",
+            name = "Emergency Location Access",
+            appId = null,
+            grantOn = GrantOn.None,
+            designation = CircleDesignation.Personal,
+        )
+        assertFalse(ownerCircle.isGrantableByThisApp())
+        assertTrue(ownerCircle.countsAsOwnerCircle())
+    }
+
+    /** grantOn is still "none" everywhere, so an app default must not become a picker option. */
+    @Test
+    fun thisAppsConnectCircleIsNotStateCounting() {
+        val chatOnlyCircle = RedactedCircleDefinition(
+            id = "c17a1000000040008000000000000001",
+            name = "Chat-only",
+            appId = thisApp,
+            grantOn = GrantOn.Connect,
+            designation = CircleDesignation.Personal,
+        )
+        assertTrue(chatOnlyCircle.isGrantableByThisApp())
+        assertFalse(chatOnlyCircle.countsAsOwnerCircle())
     }
 
     /** Matches the dashless AppConfig.APP_ID against the server's hyphenated form. */
