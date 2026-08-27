@@ -81,39 +81,41 @@ actual fun getUriHandler(): FileSystemHandler {
             onSuccess: (String) -> Unit,
             onError: (Throwable) -> Unit,
         ) {
-            try {
-                var chosenDir: String? = null
-                var chosenName: String? = null
-
-                val runDialog = Runnable {
+            // Must stay detached: callers reach us from a Compose effect dispatched on
+            // FlushCoroutineDispatcher (= the EDT), and a modal FileDialog's nested AWT loop
+            // re-enters Compose's per-frame flush from inside that dispatch, which is fatal.
+            javax.swing.SwingUtilities.invokeLater {
+                val dir: String
+                val name: String
+                try {
                     val parent = java.awt.Frame.getFrames().firstOrNull { it.isShowing }
                     val dialog = java.awt.FileDialog(parent, "Save File", java.awt.FileDialog.SAVE)
                     dialog.file = suggestedName
                     dialog.isVisible = true
-                    chosenDir = dialog.directory
-                    chosenName = dialog.file
+                    dir = dialog.directory ?: return@invokeLater
+                    name = dialog.file ?: return@invokeLater
+                } catch (e: Exception) {
+                    Logger.e(throwable = e, tag = TAG) { "Failed to show save dialog: ${e.message}" }
+                    onError(e)
+                    return@invokeLater
                 }
 
-                if (javax.swing.SwingUtilities.isEventDispatchThread()) {
-                    runDialog.run()
-                } else {
-                    javax.swing.SwingUtilities.invokeAndWait(runDialog)
-                }
-
-                val dir = chosenDir ?: return
-                val name = chosenName ?: return
-                val dest = java.io.File(dir, name)
-                java.io.File(file.toString()).copyTo(dest, overwrite = true)
-                onSuccess(dest.absolutePath)
-                if (Desktop.isDesktopSupported()) {
-                    val desktop = Desktop.getDesktop()
-                    if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
-                        desktop.browseFileDirectory(dest)
+                Thread({
+                    try {
+                        val dest = java.io.File(dir, name)
+                        java.io.File(file.toString()).copyTo(dest, overwrite = true)
+                        onSuccess(dest.absolutePath)
+                        if (Desktop.isDesktopSupported()) {
+                            val desktop = Desktop.getDesktop()
+                            if (desktop.isSupported(Desktop.Action.BROWSE_FILE_DIR)) {
+                                desktop.browseFileDirectory(dest)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Logger.e(throwable = e, tag = TAG) { "Failed to save file: ${e.message}" }
+                        onError(e)
                     }
-                }
-            } catch (e: Exception) {
-                Logger.e(throwable = e, tag = TAG) { "Failed to save file: ${e.message}" }
-                onError(e)
+                }, "homebase-save-file").apply { isDaemon = true }.start()
             }
         }
 
