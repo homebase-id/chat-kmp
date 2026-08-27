@@ -6,34 +6,32 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
-// Material ships no high_quality_off / hd_off. Enclosing box, gutter and slash are transcribed
-// from Filled.ClosedCaptionDisabled, whose box is the same 3-21 x 4-20 r2 rect as Filled.HighQuality.
-val HomebaseIcons.HighQualityOff: ImageVector
+// Material ships no hd_off. Filled.Hd clipped against Material's standard *Off slash: bar between
+// y=x and y=x+2.83, upper-right pieces cut back to y=x-2.83, lower-left pieces fused to the bar.
+val HomebaseIcons.HdOff: ImageVector
     get() {
-        if (_HighQualityOff != null) {
-            return _HighQualityOff!!
+        if (_HdOff != null) {
+            return _HdOff!!
         }
-        _HighQualityOff = ImageVector.Builder(
-            name = "HighQualityOff",
+        _HdOff = ImageVector.Builder(
+            name = "HdOff",
             defaultWidth = 24.dp,
             defaultHeight = 24.dp,
             viewportWidth = 24f,
             viewportHeight = 24f
         ).apply {
             path(fill = SolidColor(Color.Black)) {
-                moveTo(6.83f, 4f)
+                moveTo(5.83f, 3f)
                 horizontalLineTo(19f)
                 curveToRelative(1.1f, 0f, 2f, 0.9f, 2f, 2f)
-                verticalLineToRelative(12f)
-                curveToRelative(0f, 0.05f, -0.01f, 0.1f, -0.02f, 0.16f)
-                lineToRelative(-3.38f, -3.38f)
-                curveTo(17.84f, 14.59f, 18f, 14.32f, 18f, 14f)
+                verticalLineTo(18.17f)
+                lineTo(17.62f, 14.79f)
+                curveTo(17.85f, 14.6f, 18f, 14.32f, 18f, 14f)
                 verticalLineTo(10f)
                 curveTo(18f, 9.45f, 17.55f, 9f, 17f, 9f)
-                horizontalLineTo(14f)
-                curveTo(13.45f, 9f, 13f, 9.45f, 13f, 10f)
-                verticalLineToRelative(0.17f)
-                lineTo(6.83f, 4f)
+                horizontalLineTo(13f)
+                verticalLineTo(10.17f)
+                lineTo(5.83f, 3f)
                 close()
                 moveTo(16.33f, 13.5f)
                 horizontalLineTo(16.5f)
@@ -42,11 +40,10 @@ val HomebaseIcons.HighQualityOff: ImageVector
                 verticalLineToRelative(1.17f)
                 close()
                 moveTo(19.78f, 22.61f)
-                lineTo(17.17f, 20f)
+                lineTo(18.17f, 21f)
                 horizontalLineTo(5f)
                 curveToRelative(-1.11f, 0f, -2f, -0.9f, -2f, -2f)
-                verticalLineTo(6f)
-                curveToRelative(0f, -0.05f, 0.02f, -0.1f, 0.02f, -0.15f)
+                verticalLineTo(5.83f)
                 lineTo(1.39f, 4.22f)
                 lineToRelative(1.41f, -1.41f)
                 lineTo(21.18f, 21.19f)
@@ -68,8 +65,8 @@ val HomebaseIcons.HighQualityOff: ImageVector
             }
         }.build()
 
-        return _HighQualityOff!!
+        return _HdOff!!
     }
 
 @Suppress("ObjectPropertyName")
-private var _HighQualityOff: ImageVector? = null
+private var _HdOff: ImageVector? = null

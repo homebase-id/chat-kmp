@@ -29,7 +29,7 @@ import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
-import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
@@ -64,7 +64,7 @@ import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.pdf.generatePdfThumbnail
-import id.homebase.core.ui.assets.HighQualityOff
+import id.homebase.core.ui.assets.HdOff
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.util.resolveContentType
 import id.homebase.chat.widget.video.TrimDurationLabel
@@ -627,8 +627,8 @@ fun MediaAttachmentEditor(
                     label = { Text(stringResource(MR.string.chat_media_quality_hd)) },
                     leadingIcon = {
                         Icon(
-                            imageVector = if (isHigh) Icons.Default.HighQuality
-                            else HomebaseIcons.HighQualityOff,
+                            imageVector = if (isHigh) Icons.Default.Hd
+                            else HomebaseIcons.HdOff,
                             contentDescription = stringResource(
                                 if (isHigh) MR.string.cd_media_quality_high_on
                                 else MR.string.cd_media_quality_high_off
