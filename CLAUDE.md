@@ -57,7 +57,7 @@ with Koin DI.
 
 # iOS — open iosApp/ in Xcode and run
 
-# Web (currently disabled in settings.gradle.kts)
+# Web
 ./gradlew webApp:wasmJsBrowserDevelopmentRun --no-configuration-cache
 ```
 
@@ -133,11 +133,11 @@ enabled.
 
 ## Build Configuration
 
-- **Java 17** required (Temurin distribution in CI)
+- **Java 21** (Temurin) in CI; the Play-publish step still pins 17
 - **Gradle config cache** enabled
 - **Version catalog:** `gradle/libs.versions.toml` — all dependency versions managed here
-- **Android:** compileSdk 36, minSdk 27, targetSdk 36
-- **Kotlin:** 2.3.10, Compose Multiplatform 1.10.2
+- **Android:** compileSdk 36, minSdk 28, targetSdk 36
+- **Kotlin:** 2.3.21, Compose Multiplatform 1.10.3
 
 ## iOS Framework
 
@@ -149,20 +149,21 @@ homebase-common. Other modules export individual frameworks (`homebase-commonKit
 
 `adb` must be in PATH (ships with the Android SDK under `platform-tools/`).
 
-**Package names:** debug = `id.homebase.feed.dev`, release = `id.homebase.feed`.
-The examples below use the debug package; substitute for release as needed.
+**Package names:** three build types, three ids — `installDebug` gives
+`id.homebase.feed.debug`, the minified `dev` build type gives `id.homebase.feed.dev`, and
+release gives `id.homebase.feed`. The examples below use the debug package; substitute as needed.
 
 ### On-device log file (preferred — contains all app-level Kermit logs)
 
 ```bash
 # Read the log file directly
-adb shell run-as id.homebase.feed.dev cat files/logs/homebase.log
+adb shell run-as id.homebase.feed.debug cat files/logs/homebase.log
 
 # Copy to local machine
-adb shell run-as id.homebase.feed.dev cat files/logs/homebase.log > homebase.log
+adb shell run-as id.homebase.feed.debug cat files/logs/homebase.log > homebase.log
 
 # Tail recent entries (filter out stack trace lines)
-adb shell run-as id.homebase.feed.dev cat files/logs/homebase.log | grep -v "^\tat " | tail -50
+adb shell run-as id.homebase.feed.debug cat files/logs/homebase.log | grep -v "^\tat " | tail -50
 ```
 
 The `run-as` prefix is required because the app's data directory is not world-readable.
@@ -172,7 +173,7 @@ Note: `run-as` only works on debug builds (or devices with root).
 
 ```bash
 # Dump recent logs for the app
-adb logcat -d --pid=$(adb shell pidof id.homebase.feed.dev)
+adb logcat -d --pid=$(adb shell pidof id.homebase.feed.debug)
 
 # Clear buffer before a fresh capture
 adb logcat -c
@@ -240,10 +241,14 @@ Get-ChildItem -Path "$env:LOCALAPPDATA\Packages" -Filter homebase.log -Recurse -
 
 GitHub Actions workflows in `.github/workflows/`:
 
-- `build-check.yml` — assembleDebug + createDistributable on push/PR to main
-- `test.yml` — runs platform-specific tests (JVM, desktop, iOS simulator)
+- `build-check.yml` — assembleDebug + createDistributable + unit tests on push/PR to main
 - `lint.yml` — code linting
-- `build-android-release.yml`, `build-ios-release.yml`, `build-mobile-release.yml` — release builds
+- `silent-revert-check.yml` — flags a PR that silently reverts a recent main commit
+- `build-desktop-release-dev.yml`, `build-desktop-release-prod.yml` — desktop releases
+- `build-mobile-release-dev.yml`, `build-mobile-release-prod.yml` — mobile releases
+- `build-mobile-release-promote-android.yml`, `build-mobile-release-promote-ios.yml` — store promotion
+
+There is no `test.yml`; unit tests run inside `build-check.yml`.
 
 Do NOT use slash (/) in Git branch names
 
