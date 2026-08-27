@@ -88,6 +88,10 @@ sealed class Route {
     data object AppearanceSettings : Route()
 
     @Serializable
+    @SerialName("media-quality-settings")
+    data object MediaQualitySettings : Route()
+
+    @Serializable
     @SerialName("help")
     data object Help : Route()
 

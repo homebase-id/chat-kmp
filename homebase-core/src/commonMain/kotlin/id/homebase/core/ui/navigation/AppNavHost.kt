@@ -112,6 +112,7 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.assets.BootstrapChat
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
+import id.homebase.core.ui.screens.mediaquality.MediaQualitySettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
@@ -1438,6 +1439,9 @@ fun AppNavHost(
                                         onAppearance = {
                                             navController.navigate(Route.AppearanceSettings)
                                         },
+                                        onMediaQuality = {
+                                            navController.navigate(Route.MediaQualitySettings)
+                                        },
                                         onStorage = {
                                             navController.navigate(Route.StorageSettings)
                                         },
@@ -1764,6 +1768,14 @@ fun AppNavHost(
                         composable<Route.AppearanceSettings> {
                             if (isAuthenticated) {
                                 AppearanceSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.MediaQualitySettings> {
+                            if (isAuthenticated) {
+                                MediaQualitySettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
                             }

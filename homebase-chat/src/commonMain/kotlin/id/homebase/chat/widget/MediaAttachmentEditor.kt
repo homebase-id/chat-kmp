@@ -29,12 +29,15 @@ import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -50,6 +53,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -64,7 +68,10 @@ import id.homebase.core.util.resolveContentType
 import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
+import id.homebase.api.image.MediaQuality
 import id.homebase.resources.MR
+import id.homebase.resources.cd_toggle_media_quality
+import id.homebase.resources.chat_media_quality_hd
 import id.homebase.resources.cd_file_attachment
 import id.homebase.resources.cd_gallery_thumbnail
 import id.homebase.resources.cd_image_attachment
@@ -92,6 +99,7 @@ internal data class EditorToolset(
     val showCrop: Boolean,
     val showDraw: Boolean,
     val showSave: Boolean,
+    val showQuality: Boolean = false,
 )
 
 /** Pure decision for the per-attachment tool row. Crop/Draw apply only to
@@ -102,13 +110,18 @@ internal fun editorToolsetFor(
     canCrop: Boolean,   // onCropImage != null
     canDraw: Boolean,   // onDrawImage != null
     canSave: Boolean,   // onSaveFile  != null
+    canSetQuality: Boolean = false, // onToggleMediaQuality != null
 ): EditorToolset {
     val isEditableImage =
         current is AttachmentPendingFile.FileImage || current is AttachmentPendingFile.Gallery
+    // Quality only bites on media we re-encode. A document or a voice note ships untouched either
+    // way, so offering the toggle there would be a lie.
+    val isQualityRelevant = isEditableImage || current is AttachmentPendingFile.FileVideo
     return EditorToolset(
         showCrop = canCrop && isEditableImage,
         showDraw = canDraw && isEditableImage,
         showSave = canSave && current != null,
+        showQuality = canSetQuality && isQualityRelevant,
     )
 }
 
@@ -127,6 +140,12 @@ fun MediaAttachmentEditor(
     onAddImage: (() -> Unit)? = null,
     onCameraClick: (() -> Unit)? = null,
     onRemoveFile: ((attachmentId: Uuid) -> Unit)? = null,
+    /**
+     * Signal and Telegram both make this button the setting rather than a per-send override, so
+     * the toggle writes straight through to the global preference.
+     */
+    mediaQuality: MediaQuality = MediaQuality.STANDARD,
+    onToggleMediaQuality: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
     collapseSecondaryChrome: Boolean = false,
     centerImageInPage: Boolean = false,
@@ -555,6 +574,7 @@ fun MediaAttachmentEditor(
             canCrop = onCropImage != null,
             canDraw = onDrawImage != null,
             canSave = onSaveFile != null,
+            canSetQuality = onToggleMediaQuality != null,
         )
         AnimatedVisibility(visible = !collapseSecondaryChrome) {
         Row(
@@ -593,6 +613,22 @@ fun MediaAttachmentEditor(
                 ) {
                     Icon(Icons.Default.Download, contentDescription = stringResource(MR.string.save))
                 }
+            }
+            if (toolset.showQuality) {
+                Spacer(modifier = Modifier.weight(1f))
+                FilterChip(
+                    modifier = Modifier.testTag("mediaQualityChip"),
+                    selected = mediaQuality == MediaQuality.HIGH,
+                    onClick = { onToggleMediaQuality!!() },
+                    label = { Text(stringResource(MR.string.chat_media_quality_hd)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.HighQuality,
+                            contentDescription = stringResource(MR.string.cd_toggle_media_quality),
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    },
+                )
             }
         }
         } // end AnimatedVisibility (tool row)

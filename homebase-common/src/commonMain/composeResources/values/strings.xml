@@ -1412,6 +1412,15 @@
     <string name="cd_video_scrubber_frame">Video scrubber frame</string>
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
+    <!-- Media quality -->
+    <string name="settings_media_quality">Media quality</string>
+    <string name="settings_media_quality_header">Quality for photos and videos you send</string>
+    <string name="settings_media_quality_standard">Standard</string>
+    <string name="settings_media_quality_high">High</string>
+    <string name="settings_media_quality_footer">Standard sends photos up to 1600 pixels and video at 720p, so they upload faster and use far less data. High sends your photos exactly as they are and video at 1080p. Either way, what you save to your device is the version that was sent.</string>
+    <string name="chat_media_quality_hd">HD</string>
+    <string name="cd_toggle_media_quality">Toggle high quality for photos and videos</string>
+
     <!-- Settings hub -->
     <string name="settings_section_preferences">Preferences</string>
     <string name="settings_section_apps">Apps</string>

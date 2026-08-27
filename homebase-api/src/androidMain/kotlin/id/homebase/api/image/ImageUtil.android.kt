@@ -148,14 +148,24 @@ actual object ImageUtils {
         return corrected
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
+    // WEBP_LOSSY landed in API 30 but minSdk is 28, and @RequiresApi emits no runtime guard —
+    // reading the field on 28/29 throws NoSuchFieldError, which took out every thumbnail encode
+    // on Android 9/10. The deprecated WEBP constant is lossy below quality 100.
+    @Suppress("DEPRECATION")
+    private fun webpCompressFormat(): Bitmap.CompressFormat =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            Bitmap.CompressFormat.WEBP
+        }
+
     private fun encodeBitmap(bitmap: Bitmap, format: ImageFormat, quality: Int): ByteArray {
         val compressFormat = when (format) {
             ImageFormat.JPEG -> Bitmap.CompressFormat.JPEG
             ImageFormat.PNG -> Bitmap.CompressFormat.PNG
-            ImageFormat.WEBP -> Bitmap.CompressFormat.WEBP_LOSSY
+            ImageFormat.WEBP -> webpCompressFormat()
             ImageFormat.BMP -> Bitmap.CompressFormat.PNG // BMP not supported, fallback to PNG
-            ImageFormat.GIF -> Bitmap.CompressFormat.WEBP_LOSSY // GIF not supported, fallback to WEBP
+            ImageFormat.GIF -> webpCompressFormat() // GIF not supported, fallback to WEBP
         }
 
         val stream = ByteArrayOutputStream()

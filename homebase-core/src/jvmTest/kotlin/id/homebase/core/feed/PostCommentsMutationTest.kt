@@ -89,6 +89,7 @@ class PostCommentsMutationTest {
         fileOps = env.fileOps,
         driveQueryProvider = env.driveQueryProvider,
         scope = scope,
+        userPreferences = env.userPreferences,
     )
 
     private fun keyHeader(fill: Byte = 1) =
