@@ -879,6 +879,7 @@ internal class MessageActionsHandler(
                     val bundle = MessageAttachmentBuilder.build(
                         attachments = attachments,
                         fileOperationsProvider = fileOperationsProvider,
+                        mediaQuality = userPreferences.mediaQuality,
                         payloadKeyFactory = { index, _ ->
                             "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                         })
@@ -1029,6 +1030,7 @@ internal class MessageActionsHandler(
                 val bundle = MessageAttachmentBuilder.build(
                     attachments = attachments,
                     fileOperationsProvider = fileOperationsProvider,
+                    mediaQuality = userPreferences.mediaQuality,
                     payloadKeyFactory = { index, _ ->
                         "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                     }

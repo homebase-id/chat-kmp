@@ -1,6 +1,7 @@
 package id.homebase.core.settings
 
 import com.russhwolf.settings.Settings
+import id.homebase.api.image.MediaQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.uuid.Uuid
@@ -11,6 +12,7 @@ class UserPreferences(private val settings: Settings) {
             theme = theme,
             hapticsEnabled = hapticsEnabled,
             showDeveloperMenu = showDeveloperMenu,
+            mediaQuality = mediaQuality,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -55,6 +57,17 @@ class UserPreferences(private val settings: Settings) {
         set(value) {
             settings.putBoolean("haptics_enabled", value)
             _preferenceState.value = _preferenceState.value.copy(hapticsEnabled = value)
+        }
+
+    /**
+     * Compression tier for outgoing photos and videos. The key is new, so existing installs read
+     * the default too — Standard for everyone, no migration.
+     */
+    var mediaQuality: MediaQuality
+        get() = MediaQuality.fromCode(settings.getStringOrNull("media_quality"))
+        set(value) {
+            settings.putString("media_quality", value.code)
+            _preferenceState.value = _preferenceState.value.copy(mediaQuality = value)
         }
 
     var preferredUserReactions: List<String>
@@ -123,6 +136,7 @@ data class PreferenceState(
     val theme: ThemeState,
     val hapticsEnabled: Boolean,
     val showDeveloperMenu: Boolean = false,
+    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
 )
 
 enum class ThemeState {

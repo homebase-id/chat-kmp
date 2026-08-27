@@ -665,6 +665,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
         val payloadBundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOperationsProvider,
+            mediaQuality = userPreferences.mediaQuality,
         ) { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" }
 
         chatMessageSenderService.sendNewMessage(
@@ -962,6 +963,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     MessageAttachmentBuilder.build(
                         attachments = attachments,
                         fileOperationsProvider = fileOperationsProvider,
+                        mediaQuality = userPreferences.mediaQuality,
                     ) { index, _ -> "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index" }
                 }
 
