@@ -74,25 +74,12 @@ jobs:
           echo "Updated version.properties:"
           cat gradle/version.properties         
 
-      - name: Build binaries
-        working-directory: ./desktopApp
-        run: ./gradlew clean createReleaseDistributable
-        env:
-          JDK_21: ${{ env.JAVA_HOME }}
-
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CODESIGN_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_CODESIGN_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_CODESIGN_SUBSCRIPTION_ID }}
-
-      - name: Fetch Azure code-signing access token
-        shell: bash
-        run: |
-          TOKEN=$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv)
-          echo "::add-mask::$TOKEN"
-          echo "AZURE_ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
       - name: Stage Apple signing material
         shell: bash
@@ -109,6 +96,20 @@ jobs:
           chmod 600 "$RUNNER_TEMP/apple"/*
           echo "APPLE_P12_PATH=$RUNNER_TEMP/apple/developerid.p12" >> "$GITHUB_ENV"
           echo "APPLE_NOTARIZATION_KEY=$RUNNER_TEMP/apple/AuthKey_$APPSTORE_API_KEY_ID.p8" >> "$GITHUB_ENV"
+
+      - name: Build binaries
+        working-directory: ./desktopApp
+        run: ./gradlew clean createReleaseDistributable
+        env:
+          JDK_21: ${{ env.JAVA_HOME }}
+
+      # Deliberately after the build: the token is short-lived.
+      - name: Fetch Azure code-signing access token
+        shell: bash
+        run: |
+          TOKEN=$(az account get-access-token --resource https://codesigning.azure.net --query accessToken -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "AZURE_ACCESS_TOKEN=$TOKEN" >> "$GITHUB_ENV"
 
       - name: Run Conveyor
         working-directory: ./desktopApp
