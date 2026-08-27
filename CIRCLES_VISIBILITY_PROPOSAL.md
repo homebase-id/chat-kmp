@@ -38,7 +38,7 @@ special photo for one circle) without adding complexity for normal use.
   maps 1:1 onto New). Being connected alone never moves a contact; the only path
   out of New is completing the review.
 - You **review** them. A review is **triage, not endorsement** — it **records** that
-  you looked and what you decided. It has four honest outcomes: add them to
+  you looked and what you decided (this is where the server side stampsReviewed with timestamp). It has four honest outcomes: add them to
   circles, keep them chat-only, disconnect, or block.
 - The circles you might choose determine **what they can see** of your profile and what
   special access they may get.
