@@ -9,6 +9,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.websockets.OdinWebSocketClient
+import id.homebase.api.client.websockets.isWebSocketUpgradeUnauthorized
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.diagnostics.BgTrace
@@ -96,6 +97,21 @@ class AuthConnectionCoordinator(
         }
     )
     private var wsClient: OdinWebSocketClient? = null
+
+    // #1349 dead-token detection. The server rejects the notify-WS upgrade with 401 once this
+    // device's app registration is revoked, but the reconnect loop treats that like any other
+    // drop and retries every 5s forever, leaving authState == Authenticated with no way out.
+    // Count only CONSECUTIVE upgrade-401s: a successful connect or any other failure resets, so
+    // a one-off 401 (server hiccup, clock skew, token-refresh race) can never reach the
+    // threshold. Corroboration is DEAD_TOKEN_THRESHOLD separate server responses that each
+    // specifically said 401 to this token.
+    @Volatile
+    private var consecutiveUpgradeAuthFailures = 0
+
+    // logout() has no internal in-flight guard and wipes the DB, so two concurrent callers would
+    // each run a full wipe. 401s keep arriving during the ~seconds logout takes; this latches.
+    @Volatile
+    private var deadTokenLogoutStarted = false
 
     // #1109 background-transition tracking: the last foreground/background state we logged and when,
     // so setForeground() can emit the duration of the window that just ended. Seeded foreground=true
@@ -356,6 +372,11 @@ class AuthConnectionCoordinator(
             }
             is YouAuthState.Unauthenticated -> {
                 disconnect()
+                // Clear the drive snapshot that gates applyWsHold's authResolved check. Without
+                // this a foreground transition after logout rebuilds a WS with no credentials,
+                // whose connectOnce() returns false rather than throwing — so the reconnect loop
+                // backs off and retries "No active credentials" forever (#1349).
+                lastAuthenticatedDrives = null
                 // Reset the post-auth gate so the next login re-runs onPostAuthenticated().
                 postAuthGate.withLock { postAuthenticatedRan = false }
                 // The profile is loaded here on auth (loadProfile); clear it on the
@@ -548,6 +569,10 @@ class AuthConnectionCoordinator(
                         "AuthCC: onConnected fired for ${wsClient?.let { "WS[${it.instanceId}]" } ?: "null-wsClient"}"
                     }
                     _connectionState.update { it.copy(isConnected = true) }
+                    // Also clears the latch: a later session on this same process whose token
+                    // dies must be able to trigger the logout again.
+                    consecutiveUpgradeAuthFailures = 0
+                    deadTokenLogoutStarted = false
                     logLifecycleSnapshot("onConnected")
                     scope.launch {
                         try {
@@ -601,6 +626,11 @@ class AuthConnectionCoordinator(
                     outboxSync.setOnline(false)
                     _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                     logLifecycleSnapshot("onConnectError")
+                    consecutiveUpgradeAuthFailures =
+                        nextUpgradeAuthFailureCount(consecutiveUpgradeAuthFailures, e)
+                    if (consecutiveUpgradeAuthFailures >= DEAD_TOKEN_THRESHOLD) {
+                        startDeadTokenLogout()
+                    }
                 }
             ).also {
                 Logger.i(tag = "AuthLifecycle") { "AuthCC: WS[${it.instanceId}] created, start() invoked" }
@@ -932,10 +962,54 @@ class AuthConnectionCoordinator(
     }
 
 
+    /**
+     * #1349: the client token is dead — the registration was revoked server-side. Tear the session
+     * down through the normal logout path, so `authState` flips to Unauthenticated and AppNavHost
+     * routes to Login. `force = true` skips the server-side logout notify, which would only 401 too.
+     *
+     * Deliberately NOT a 403 path: a 403 means one drive's ACL was revoked and is already handled
+     * per-drive by DriveSync (unmount for the session). Only a 401 means the whole token is void.
+     */
+    private fun startDeadTokenLogout() {
+        if (deadTokenLogoutStarted) return
+        deadTokenLogoutStarted = true
+        Logger.w(tag = "AuthLifecycle") { "AuthCC: client token is dead — logging out" }
+        // Main, not this scope's default dispatcher. logout() flips authState, and
+        // AuthConnectionCoordinator then closes the Koin identity scope; AppNavHost's body
+        // resolves identity-scoped ViewModels unconditionally (outside its isAuthenticated
+        // gate), so a recomposition landing between the flip and the close resolves from a
+        // closed scope and dies on main. Every existing caller (SettingsViewModel, the dev
+        // menu) already logs out from viewModelScope — Main.immediate — which orders the flip
+        // and the teardown against composition. Match that or reproduce the crash (#1349).
+        scope.launch(Dispatchers.Main.immediate) {
+            try {
+                youAuthFlowManager.logout(force = true)
+            } catch (e: Exception) {
+                deadTokenLogoutStarted = false
+                Logger.e(throwable = e, tag = "AuthLifecycle") { "AuthCC: dead-token logout failed" }
+            }
+        }
+    }
+
     companion object {
         private const val REFRESH_DEBOUNCE_MS = 500L
     }
 }
+
+/**
+ * #1349: how many consecutive WS-upgrade 401s mean the client token is dead rather than a one-off
+ * server hiccup. Each one is a separate server response that specifically rejected this token.
+ */
+internal const val DEAD_TOKEN_THRESHOLD = 3
+
+/**
+ * The consecutive WS-upgrade-401 count after a connect attempt failed with [error]. Only an upgrade
+ * 401 advances the count; every other failure resets it, and a successful connect resets it at the
+ * call site — so a single transient 401 can never reach [DEAD_TOKEN_THRESHOLD]. Pure so the
+ * spurious-logout guard is unit-tested directly.
+ */
+internal fun nextUpgradeAuthFailureCount(previous: Int, error: Throwable): Int =
+    if (error.isWebSocketUpgradeUnauthorized()) previous + 1 else 0
 
 // Match compareStringUuId's normalization so drive ids compare regardless of hyphen/case format.
 internal fun normalizeDriveId(driveId: String): String = driveId.lowercase().replace("-", "")
