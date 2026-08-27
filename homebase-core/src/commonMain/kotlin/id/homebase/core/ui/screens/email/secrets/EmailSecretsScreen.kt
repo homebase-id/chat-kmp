@@ -3,6 +3,8 @@ package id.homebase.core.ui.screens.email.secrets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -47,7 +49,29 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.ui.screens.email.model.EmailCredential
 import id.homebase.core.ui.screens.email.model.EmailKeyRef
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import id.homebase.core.util.getUriHandler
+import id.homebase.core.localization.TranslationUtil
+import kotlinx.io.files.Path
 import id.homebase.resources.MR
+import id.homebase.resources.email_secrets_key_save_failed
+import id.homebase.resources.email_secrets_key_saved
+import id.homebase.resources.email_secrets_save_private_key
+import id.homebase.resources.email_secrets_save_private_key_body
+import id.homebase.resources.email_secrets_save_private_key_confirm
+import id.homebase.resources.email_secrets_save_private_key_title
+import id.homebase.resources.email_settings_cert_warning
+import id.homebase.resources.email_settings_incoming
+import id.homebase.resources.email_settings_intro
+import id.homebase.resources.email_settings_outgoing
+import id.homebase.resources.email_settings_password_hint
+import id.homebase.resources.email_settings_port
+import id.homebase.resources.email_settings_security
+import id.homebase.resources.email_settings_server
+import id.homebase.resources.email_settings_title
+import id.homebase.resources.email_settings_username
 import id.homebase.resources.email_secrets_cancel
 import id.homebase.resources.email_secrets_copy_fingerprint
 import id.homebase.resources.email_secrets_copy_label
@@ -84,7 +108,51 @@ fun EmailSecretsScreen(
     onBackClick: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    EmailSecretsUi(uiState = uiState, onAction = viewModel::onAction, onBackClick = onBackClick)
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // The platform save lives here, not in the ViewModel: FileSystemHandler comes from
+    // getUriHandler(), a Composable accessor that is not in DI. The ViewModel writes the file
+    // and hands us the path; we give it to the OS and tell the ViewModel to drop the temp.
+    val fileSystemHandler = getUriHandler()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(viewModel) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is EmailSecretsUiEvent.SaveKeyFile -> fileSystemHandler.saveFile(
+                    file = Path(event.path),
+                    suggestedName = event.suggestedName,
+                    onSuccess = { location ->
+                        viewModel.discardKeyFile(event.path)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                TranslationUtil.getString(MR.string.email_secrets_key_saved, location)
+                            )
+                        }
+                    },
+                    onError = {
+                        viewModel.discardKeyFile(event.path)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                TranslationUtil.getString(MR.string.email_secrets_key_save_failed)
+                            )
+                        }
+                    },
+                )
+
+                EmailSecretsUiEvent.KeySaveFailed -> snackbarHostState.showSnackbar(
+                    TranslationUtil.getString(MR.string.email_secrets_key_save_failed)
+                )
+            }
+        }
+    }
+
+    EmailSecretsUi(
+        uiState = uiState,
+        onAction = viewModel::onAction,
+        onBackClick = onBackClick,
+        snackbarHostState = snackbarHostState,
+    )
 }
 
 /**
@@ -101,9 +169,11 @@ fun EmailSecretsUi(
     uiState: EmailSecretsUiState,
     onAction: (EmailSecretsUiAction) -> Unit,
     onBackClick: () -> Unit,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     var confirmRevoke by remember { mutableStateOf<EmailCredential?>(null) }
     var confirmPrivateKey by remember { mutableStateOf<EmailKeyRef?>(null) }
+    var confirmSaveKey by remember { mutableStateOf<EmailKeyRef?>(null) }
     var confirmNewKey by remember { mutableStateOf(false) }
 
     val clipboard = LocalClipboard.current
@@ -111,6 +181,7 @@ fun EmailSecretsUi(
     val copy: (String) -> Unit = { text -> scope.launch { clipboard.setClipEntry(clipEntryOf(text)) } }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(MR.string.email_secrets_title)) },
@@ -133,6 +204,52 @@ fun EmailSecretsUi(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
+            // Mail-app settings first: this is what someone opening this screen while staring
+            // at a half-configured mail client is actually looking for. The credentials below
+            // are only useful once the server details are right.
+            uiState.clientSettings?.let { settings ->
+                SectionHeader(stringResource(MR.string.email_settings_title))
+                Text(
+                    text = stringResource(MR.string.email_settings_intro),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                MailSettingsCard(
+                    title = stringResource(MR.string.email_settings_incoming),
+                    host = settings.incomingHost,
+                    port = settings.incomingPort,
+                    security = settings.incomingSocketType,
+                    username = settings.username,
+                    onCopy = copy,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                MailSettingsCard(
+                    title = stringResource(MR.string.email_settings_outgoing),
+                    host = settings.outgoingHost,
+                    port = settings.outgoingPort,
+                    security = settings.outgoingSocketType,
+                    username = settings.username,
+                    onCopy = copy,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(MR.string.email_settings_password_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Until the server has a trusted certificate, clients refuse to connect - and
+                // Thunderbird fails SILENTLY on the outgoing side, losing Sent copies. Saying
+                // so here costs a line and saves someone an evening.
+                Text(
+                    text = stringResource(MR.string.email_settings_cert_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             SectionHeader(stringResource(MR.string.email_secrets_passwords))
 
             Text(
@@ -164,6 +281,7 @@ fun EmailSecretsUi(
                     onCopyFingerprint = { copy(key.fingerprintHex) },
                     onCopyPublicKey = { copy(key.publicCertificateArmored) },
                     onCopyPrivateKey = { confirmPrivateKey = key },
+                    onSavePrivateKey = { confirmSaveKey = key },
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -260,6 +378,30 @@ fun EmailSecretsUi(
     }
 
     // Not destructive, but it puts the key that opens all your mail on the clipboard.
+    // Saving asks separately from copying. Both hand over the private key, but a FILE persists
+    // on the device until someone deletes it, so the warning names that rather than reusing the
+    // clipboard wording.
+    confirmSaveKey?.let { key ->
+        AlertDialog(
+            onDismissRequest = { confirmSaveKey = null },
+            title = { Text(stringResource(MR.string.email_secrets_save_private_key_title)) },
+            text = { Text(stringResource(MR.string.email_secrets_save_private_key_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onAction(EmailSecretsUiAction.SavePrivateKey(key))
+                    confirmSaveKey = null
+                }) {
+                    Text(stringResource(MR.string.email_secrets_save_private_key_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmSaveKey = null }) {
+                    Text(stringResource(MR.string.email_secrets_cancel))
+                }
+            },
+        )
+    }
+
     confirmPrivateKey?.let { key ->
         AlertDialog(
             onDismissRequest = { confirmPrivateKey = null },
@@ -386,6 +528,7 @@ private fun CredentialCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun KeyCard(
     key: EmailKeyRef,
@@ -393,6 +536,7 @@ private fun KeyCard(
     onCopyFingerprint: () -> Unit,
     onCopyPublicKey: () -> Unit,
     onCopyPrivateKey: () -> Unit,
+    onSavePrivateKey: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -419,14 +563,19 @@ private fun KeyCard(
             // lead-in so they fit side by side; the private key still routes through the
             // confirmation dialog, which is where that distinction belongs — not in the layout.
             Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            // FlowRow, not Row: on a narrow screen a fixed Row squeezes each button to its
+            // minimum width and the labels wrap one character per line, turning the card into a
+            // tall column of vertical text. Wrapping whole buttons onto the next line is the
+            // behaviour that degrades gracefully.
+            FlowRow(
+                verticalArrangement = Arrangement.Center,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = stringResource(MR.string.email_secrets_copy_label),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.CenterVertically),
                 )
                 TextButton(
                     onClick = onCopyFingerprint,
@@ -446,6 +595,76 @@ private fun KeyCard(
                 ) {
                     Text(stringResource(MR.string.email_secrets_copy_private_key))
                 }
+            }
+
+            // On its own line, and NOT under the "Copy:" lead-in: saving a file is a different
+            // action from copying to the clipboard, and grouping it there implied otherwise.
+            // Mail apps import a key from a FILE - clipboard is not an option in most of them,
+            // and on phones it is not an option at all.
+            TextButton(
+                onClick = onSavePrivateKey,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(stringResource(MR.string.email_secrets_save_private_key))
+            }
+        }
+    }
+}
+
+
+/**
+ * One server's settings, each value copyable. Copy matters more than it looks: these are typed
+ * into a different application, often on a different device, and a mistyped hostname or the
+ * wrong port produces a hang rather than an error message.
+ */
+@Composable
+private fun MailSettingsCard(
+    title: String,
+    host: String,
+    port: Int,
+    security: String,
+    username: String,
+    onCopy: (String) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(6.dp))
+            SettingRow(stringResource(MR.string.email_settings_server), host, onCopy)
+            SettingRow(stringResource(MR.string.email_settings_port), port.toString(), onCopy)
+            SettingRow(stringResource(MR.string.email_settings_security), security, null)
+            SettingRow(stringResource(MR.string.email_settings_username), username, onCopy)
+        }
+    }
+}
+
+/** A label/value pair. [onCopy] null for values nobody types, like "SSL". */
+@Composable
+private fun SettingRow(label: String, value: String, onCopy: ((String) -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(84.dp),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        if (onCopy != null) {
+            IconButton(onClick = { onCopy(value) }) {
+                Icon(
+                    imageVector = Icons.Outlined.ContentCopy,
+                    contentDescription = stringResource(MR.string.email_settings_server),
+                )
             }
         }
     }
