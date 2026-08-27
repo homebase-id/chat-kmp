@@ -3,6 +3,7 @@ package id.homebase.api.image
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -13,6 +14,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.lib.image.ImageFormatDetector
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import androidx.exifinterface.media.ExifInterface
 import id.homebase.api.image.draw.PathCommand
 import id.homebase.api.image.draw.StrokeCap
@@ -65,15 +67,19 @@ actual fun ByteArray.toImageBitmap(): ImageBitmap? {
 }
 
 /**
- * Android: Convert HEIC to JPEG using BitmapFactory (supports HEIC on API 28+).
+ * Android: Convert HEIC to JPEG (HEIF decode needs API 28+, which is minSdk).
+ *
+ * ImageDecoder — unlike BitmapFactory — applies the EXIF orientation / HEIF `irot` during the
+ * decode itself, so the rotation lands in the pixels in a single allocation. That matters because
+ * Bitmap.compress writes no EXIF: the pixels are the only place the JPEG can carry the rotation.
  */
 actual fun convertHeicToJpeg(heicBytes: ByteArray): ByteArray? {
     return try {
-        val options = BitmapFactory.Options().apply {
-            inPreferredConfig = Bitmap.Config.ARGB_8888
+        val source = ImageDecoder.createSource(ByteBuffer.wrap(heicBytes))
+        val bitmap = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+            // A HARDWARE bitmap has no readable pixels — compress and getPixel both fail on it.
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
-        val bitmap = BitmapFactory.decodeByteArray(heicBytes, 0, heicBytes.size, options)
-            ?: return null
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 95, stream)
         bitmap.recycle()
@@ -100,14 +106,9 @@ actual object ImageUtils {
         }
         val bitmap = BitmapFactory.decodeByteArray(inputBytes, 0, inputBytes.size, options)
             ?: throw IllegalArgumentException("Failed to decode image bytes")
-        // HEIC special-case: the orientation tag lives in the original HEIC,
-        // and our convertHeicToJpeg goes Bitmap → JPEG via Bitmap.compress
-        // which writes no EXIF — reading from inputBytes (the converted JPEG)
-        // would always return ORIENTATION_NORMAL and silently drop the iPhone
-        // camera's rotation. Read from the original HEIC bytes instead;
-        // androidx.exifinterface supports HEIC since 1.2.
-        val exifBytes = if (isHeic) bytes else inputBytes
-        return applyExifOrientation(bitmap, exifBytes)
+        // convertHeicToJpeg already baked the orientation into inputBytes; re-applying it from
+        // the original HEIC tag would rotate the same pixels a second time.
+        return if (isHeic) bitmap else applyExifOrientation(bitmap, inputBytes)
     }
 
     private fun applyExifOrientation(bitmap: Bitmap, imageBytes: ByteArray): Bitmap {
@@ -139,12 +140,13 @@ actual object ImageUtils {
                 matrix.postScale(-1f, 1f)
             }
             ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
+            else -> return bitmap
         }
 
         val corrected = Bitmap.createBitmap(
             bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
         )
-        if (corrected != bitmap) bitmap.recycle()
+        if (corrected !== bitmap) bitmap.recycle()
         return corrected
     }
 
