@@ -81,6 +81,7 @@ import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
+import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
@@ -403,7 +404,7 @@ fun SettingsUi(
                 SettingsRow(
                     modifier = Modifier.testTag("storageButton"),
                     icon = Icons.Outlined.Storage,
-                    title = stringResource(MR.string.settings_storage),
+                    title = stringResource(MR.string.settings_data_storage),
                     supportingText = uiState.storageUsedBytes
                         ?.let { stringResource(MR.string.settings_storage_used, formatBytes(it)) }
                         ?: stringResource(MR.string.settings_storage_desc),

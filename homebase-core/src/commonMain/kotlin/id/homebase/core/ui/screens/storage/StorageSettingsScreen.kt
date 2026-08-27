@@ -39,16 +39,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.common.util.formatBytes
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
+import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
+import id.homebase.resources.settings_media_quality_footer
+import id.homebase.resources.settings_media_quality
+import id.homebase.resources.settings_data_storage
 import id.homebase.resources.menu_back
 import id.homebase.resources.settings_storage
 import id.homebase.resources.storage_orphan_coil_body
@@ -129,7 +135,7 @@ fun StorageSettingsUi(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(MR.string.settings_storage)) },
+                title = { Text(stringResource(MR.string.settings_data_storage)) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
@@ -151,6 +157,27 @@ fun StorageSettingsUi(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            SettingsSectionHeader(
+                title = stringResource(MR.string.settings_media_quality),
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            Column {
+                MediaQuality.entries.forEach { quality ->
+                    SettingsOptionRow(
+                        modifier = Modifier.testTag(quality.code),
+                        label = stringResource(quality.label),
+                        selected = quality == uiState.mediaQuality,
+                        onClick = { onAction(StorageSettingsUiAction.SetMediaQuality(quality)) },
+                    )
+                }
+                Text(
+                    text = stringResource(MR.string.settings_media_quality_footer),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+                )
+            }
+
             SettingsSectionHeader(
                 title = stringResource(MR.string.storage_caches_header),
                 modifier = Modifier.padding(horizontal = 4.dp),
