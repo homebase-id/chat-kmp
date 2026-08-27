@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ImageMetadata
@@ -83,6 +84,7 @@ data class MessageListUiState(
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
+    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
     val searchQuery: String = "",

@@ -43,6 +43,7 @@ import id.homebase.core.config.feedLabeledDrive
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.UploadService
+import id.homebase.core.settings.UserPreferences
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -66,6 +67,7 @@ class PostCommentsService(
     private val fileOps: FileOperationsProvider,
     private val driveQueryProvider: DriveQueryProvider,
     private val scope: CoroutineScope,
+    private val userPreferences: UserPreferences,
 ) {
 
     companion object {
@@ -337,6 +339,7 @@ class PostCommentsService(
         val bundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,
+            mediaQuality = userPreferences.mediaQuality,
         ) { _, _ -> FeedProtocol.CommentMediaPayloadKey }
 
         val isLocalOnly = recipients.isEmpty()

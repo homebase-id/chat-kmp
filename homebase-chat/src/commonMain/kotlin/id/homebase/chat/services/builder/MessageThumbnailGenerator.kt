@@ -2,7 +2,9 @@ package id.homebase.chat.services.builder
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.createThumbnails
+import id.homebase.api.image.standardThumbSizes
 import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -11,14 +13,21 @@ object MessageThumbnailGenerator {
 
     private const val PDF_PREVIEW_RENDER_WIDTH = 1600
 
+    /**
+     * [mediaQuality] defaults to HIGH so the non-photo callers (audio waveform, PDF page) keep the
+     * full ladder; only user photos opt into the shorter STANDARD one.
+     */
     suspend fun generate(
         filePath: String,
         payloadKey: String,
         fileOperationsProvider: FileOperationsProvider,
+        mediaQuality: MediaQuality = MediaQuality.HIGH,
     ): ThumbnailResult {
         val bytes = fileOperationsProvider.readFileBytes(filePath)
 
-        val (_, tinyThumb, thumbnails) = createThumbnails(bytes, payloadKey)
+        val thumbSizes =
+            if (mediaQuality == MediaQuality.STANDARD) standardThumbSizes else null
+        val (_, tinyThumb, thumbnails) = createThumbnails(bytes, payloadKey, thumbSizes)
 
         return ThumbnailResult(
             preview = tinyThumb,

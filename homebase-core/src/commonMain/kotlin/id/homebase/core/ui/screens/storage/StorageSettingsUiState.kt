@@ -1,8 +1,14 @@
 package id.homebase.core.ui.screens.storage
 
+import id.homebase.api.image.MediaQuality
+import id.homebase.resources.MR
+import id.homebase.resources.settings_media_quality_high
+import id.homebase.resources.settings_media_quality_standard
+import org.jetbrains.compose.resources.StringResource
 import kotlin.uuid.Uuid
 
 data class StorageSettingsUiState(
+    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val caches: List<CacheRowState> = emptyList(),
     val coilMemoryCache: CacheRowState? = null,
     val drives: List<DriveRowState> = emptyList(),
@@ -42,7 +48,14 @@ data class DriveRowState(
 sealed interface StorageSettingsUiAction {
     data object Refresh : StorageSettingsUiAction
     data object ClearCachesClicked : StorageSettingsUiAction
+    data class SetMediaQuality(val quality: MediaQuality) : StorageSettingsUiAction
 }
+
+val MediaQuality.label: StringResource
+    get() = when (this) {
+        MediaQuality.STANDARD -> MR.string.settings_media_quality_standard
+        MediaQuality.HIGH -> MR.string.settings_media_quality_high
+    }
 
 sealed interface StorageSettingsUiEvent {
     data object CachesCleared : StorageSettingsUiEvent

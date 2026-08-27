@@ -83,6 +83,7 @@ class PostCommentsIncrementalTest {
             // Unconfined so the EventBus collector subscribes eagerly; a StandardTestDispatcher
             // would leave it unsubscribed until the next dispatch and drop the test's batch.
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+            userPreferences = env.userPreferences,
         )
 
     private fun post(

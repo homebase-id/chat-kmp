@@ -41,6 +41,7 @@ import id.homebase.core.notifications.MOMENT_COMMENT_TAG_SENTINEL
 import id.homebase.resources.MR
 import id.homebase.resources.moments_push_new_comment
 import id.homebase.resources.moments_push_new_post
+import id.homebase.core.settings.UserPreferences
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +64,7 @@ class MomentsPostSenderService(
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
+    private val userPreferences: UserPreferences,
 ) {
 
     /**
@@ -304,6 +306,7 @@ class MomentsPostSenderService(
             val bundle = MessageAttachmentBuilder.build(
                 attachments = attachments,
                 fileOperationsProvider = fileOps,
+                mediaQuality = userPreferences.mediaQuality,
             ) { index, _ -> keyForIndex(index) }
 
             val keyedMediaInfo: Map<String, MediaInfo>? = mediaInfoByAttachment
@@ -870,6 +873,7 @@ class MomentsPostSenderService(
         val bundle = MessageAttachmentBuilder.build(
             attachments = attachments,
             fileOperationsProvider = fileOps,
+            mediaQuality = userPreferences.mediaQuality,
         ) { index, _ -> "mmc_${index.toString().padStart(4, '0')}" }
 
         val keyHeader = KeyHeader.newRandom16()
