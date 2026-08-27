@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Brightness6
-import androidx.compose.material.icons.outlined.PhotoSizeSelectLarge
 import androidx.compose.material.icons.outlined.DynamicFeed
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
@@ -81,8 +80,8 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
-import id.homebase.core.ui.screens.mediaquality.label
 import id.homebase.resources.MR
+import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
@@ -92,7 +91,6 @@ import id.homebase.resources.menu_back
 import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
-import id.homebase.resources.settings_media_quality
 import id.homebase.resources.settings_appearance_theme
 import id.homebase.resources.settings_contactbook_desc
 import id.homebase.resources.settings_delete_account
@@ -338,15 +336,6 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onAppearance),
                 )
             }
-            item {
-                SettingsRow(
-                    modifier = Modifier.testTag("mediaQualityButton"),
-                    icon = Icons.Outlined.PhotoSizeSelectLarge,
-                    title = stringResource(MR.string.settings_media_quality),
-                    supportingText = stringResource(uiState.mediaQuality.label),
-                    action = SettingsRowAction.Navigate(actions.onMediaQuality),
-                )
-            }
 
             item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
             item {
@@ -415,7 +404,7 @@ fun SettingsUi(
                 SettingsRow(
                     modifier = Modifier.testTag("storageButton"),
                     icon = Icons.Outlined.Storage,
-                    title = stringResource(MR.string.settings_storage),
+                    title = stringResource(MR.string.settings_data_storage),
                     supportingText = uiState.storageUsedBytes
                         ?.let { stringResource(MR.string.settings_storage_used, formatBytes(it)) }
                         ?: stringResource(MR.string.settings_storage_desc),
@@ -603,7 +592,6 @@ fun SettingsUiPreview() {
                 onBack = {},
                 onNotifications = {},
                 onAppearance = {},
-                onMediaQuality = {},
                 onStorage = {},
                 onHelp = {},
                 onMomentsSettings = {},

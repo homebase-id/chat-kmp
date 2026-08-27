@@ -65,7 +65,7 @@ class SettingsViewModel(
     private fun observePreferences() {
         viewModelScope.launch {
             userPreferences.preferenceState.collect { prefs ->
-                _uiState.update { it.copy(theme = prefs.theme, mediaQuality = prefs.mediaQuality) }
+                _uiState.update { it.copy(theme = prefs.theme) }
             }
         }
     }

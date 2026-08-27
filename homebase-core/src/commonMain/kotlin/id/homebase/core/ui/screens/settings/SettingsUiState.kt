@@ -1,7 +1,6 @@
 package id.homebase.core.ui.screens.settings
 
 import id.homebase.api.client.auth.OwnerSession
-import id.homebase.api.image.MediaQuality
 import id.homebase.core.settings.ThemeState
 
 enum class NotificationVerificationStatus { CHECKING, OK, ERROR }
@@ -13,7 +12,6 @@ data class SettingsUiState(
     val notificationStatus: NotificationVerificationStatus = NotificationVerificationStatus.CHECKING,
     val useNativeFeed: Boolean = true,
     val theme: ThemeState = ThemeState.System,
-    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val appVersion: String = "",
     /** Null until the off-main measurement lands; the row shows a description meanwhile. */
     val storageUsedBytes: Long? = null,

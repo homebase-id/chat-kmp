@@ -29,7 +29,6 @@ class SettingsUiTest {
             onBack = { fired += "back" },
             onNotifications = { fired += "notifications" },
             onAppearance = { fired += "appearance" },
-            onMediaQuality = { fired += "mediaQuality" },
             onStorage = { fired += "storage" },
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },

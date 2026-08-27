@@ -8,7 +8,6 @@ data class SettingsActions(
     val onBack: () -> Unit,
     val onNotifications: () -> Unit,
     val onAppearance: () -> Unit,
-    val onMediaQuality: () -> Unit,
     val onStorage: () -> Unit,
     val onHelp: () -> Unit,
     val onMomentsSettings: () -> Unit,

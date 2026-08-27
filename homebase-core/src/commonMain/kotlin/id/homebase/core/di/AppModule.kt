@@ -163,7 +163,6 @@ import id.homebase.core.share.ShareConversationCacheWriter
 import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
-import id.homebase.core.ui.screens.mediaquality.MediaQualitySettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
@@ -1163,7 +1162,6 @@ val appModule = module {
     viewModelOf(::DeveloperMenuViewModel)
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
-    viewModelOf(::MediaQualitySettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)

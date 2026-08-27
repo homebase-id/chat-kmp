@@ -64,13 +64,16 @@ import id.homebase.api.video.IndexedFrame
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.pdf.generatePdfThumbnail
+import id.homebase.core.ui.assets.HighQualityOff
+import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.util.resolveContentType
 import id.homebase.chat.widget.video.TrimDurationLabel
 import id.homebase.chat.widget.video.TrimmableVideoPlayerSurface
 import id.homebase.chat.widget.video.VideoTrimScrubber
 import id.homebase.api.image.MediaQuality
 import id.homebase.resources.MR
-import id.homebase.resources.cd_toggle_media_quality
+import id.homebase.resources.cd_media_quality_high_off
+import id.homebase.resources.cd_media_quality_high_on
 import id.homebase.resources.chat_media_quality_hd
 import id.homebase.resources.cd_file_attachment
 import id.homebase.resources.cd_gallery_thumbnail
@@ -616,15 +619,20 @@ fun MediaAttachmentEditor(
             }
             if (toolset.showQuality) {
                 Spacer(modifier = Modifier.weight(1f))
+                val isHigh = mediaQuality == MediaQuality.HIGH
                 FilterChip(
                     modifier = Modifier.testTag("mediaQualityChip"),
-                    selected = mediaQuality == MediaQuality.HIGH,
+                    selected = isHigh,
                     onClick = { onToggleMediaQuality!!() },
                     label = { Text(stringResource(MR.string.chat_media_quality_hd)) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Default.HighQuality,
-                            contentDescription = stringResource(MR.string.cd_toggle_media_quality),
+                            imageVector = if (isHigh) Icons.Default.HighQuality
+                            else HomebaseIcons.HighQualityOff,
+                            contentDescription = stringResource(
+                                if (isHigh) MR.string.cd_media_quality_high_on
+                                else MR.string.cd_media_quality_high_off
+                            ),
                             modifier = Modifier.size(FilterChipDefaults.IconSize),
                         )
                     },
