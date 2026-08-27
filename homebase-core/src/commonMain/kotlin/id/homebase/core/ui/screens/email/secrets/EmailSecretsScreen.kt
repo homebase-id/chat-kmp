@@ -3,6 +3,8 @@ package id.homebase.core.ui.screens.email.secrets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -526,6 +528,7 @@ private fun CredentialCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun KeyCard(
     key: EmailKeyRef,
@@ -560,14 +563,19 @@ private fun KeyCard(
             // lead-in so they fit side by side; the private key still routes through the
             // confirmation dialog, which is where that distinction belongs — not in the layout.
             Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            // FlowRow, not Row: on a narrow screen a fixed Row squeezes each button to its
+            // minimum width and the labels wrap one character per line, turning the card into a
+            // tall column of vertical text. Wrapping whole buttons onto the next line is the
+            // behaviour that degrades gracefully.
+            FlowRow(
+                verticalArrangement = Arrangement.Center,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     text = stringResource(MR.string.email_secrets_copy_label),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.CenterVertically),
                 )
                 TextButton(
                     onClick = onCopyFingerprint,
@@ -587,14 +595,17 @@ private fun KeyCard(
                 ) {
                     Text(stringResource(MR.string.email_secrets_copy_private_key))
                 }
-                // Mail apps import a key from a FILE - clipboard is not an option in most of
-                // them, and on phones it is not an option at all.
-                TextButton(
-                    onClick = onSavePrivateKey,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(stringResource(MR.string.email_secrets_save_private_key))
-                }
+            }
+
+            // On its own line, and NOT under the "Copy:" lead-in: saving a file is a different
+            // action from copying to the clipboard, and grouping it there implied otherwise.
+            // Mail apps import a key from a FILE - clipboard is not an option in most of them,
+            // and on phones it is not an option at all.
+            TextButton(
+                onClick = onSavePrivateKey,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(stringResource(MR.string.email_secrets_save_private_key))
             }
         }
     }
