@@ -152,6 +152,7 @@ import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.boundedFirstVisibleItemIndex
 import id.homebase.core.util.dismissKeyboardOnTap
 import id.homebase.core.util.initials
@@ -172,6 +173,7 @@ import id.homebase.core.widget.StyledSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_auto_connect_connected
+import id.homebase.resources.chat_drop_files_none_usable
 import id.homebase.resources.chat_group_not_connected_disclaimer
 import id.homebase.resources.chat_group_rejoin_accept
 import id.homebase.resources.chat_group_rejoin_decline
@@ -219,9 +221,11 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.DateTimeUnit
@@ -234,12 +238,25 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /** Upper bound on waiting for an own send to appear in the list before the
  *  follow token is consumed unscrolled (the send failed or was gated out). */
 private const val OWN_SEND_FOLLOW_TIMEOUT_MS = 5_000L
+
+private const val SCROLL_TO_NEWEST_ATTEMPTS = 4
+
+// Mirrors the states in which the composer below is replaced by a banner — keep the two in sync,
+// or a dropped file lands in a conversation with nothing to send it from.
+private fun EnrichedConversationUiModel.acceptsAttachments(): Boolean =
+    conversation.conversationState != ConversationState.Left &&
+        conversation.conversationState != ConversationState.Removed &&
+        conversation.conversationState != ConversationState.RejoinPending &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.NotConnected &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.OutgoingRequestPending &&
+        oneOnOneConnectionStatus !is OneOnOneConnectionStatus.IncomingRequestPending
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -281,6 +298,9 @@ fun ConversationContent(
     var payloadRenderers by remember { mutableStateOf<List<PayloadRenderer>>(emptyList()) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var dropPreview by remember { mutableStateOf<FileDropPreview?>(null) }
+    val foldersOnlyDropMessage = stringResource(MR.string.chat_drop_files_none_usable)
 
     LaunchedEffect(uiState.isSearchActive) {
         if (uiState.isSearchActive) {
@@ -722,7 +742,22 @@ fun ConversationContent(
         LocalSavedContactIdentities provides uiState.savedContactIdentities,
     ) {
     Scaffold(
-        modifier = Modifier,
+        modifier = Modifier.fileDropTarget(
+            enabled = conversation.acceptsAttachments() && !uiState.isSearchActive,
+            onDragPreviewChanged = { dropPreview = it },
+            onFilesDropped = { files ->
+                if (files.isEmpty()) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar(foldersOnlyDropMessage) }
+                } else {
+                    onUiAction(
+                        ConversationListUiAction.AttachPlatformFile(
+                            conversationId = conversation.conversation.id,
+                            files = files,
+                        )
+                    )
+                }
+            },
+        ),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -754,15 +789,14 @@ fun ConversationContent(
                                 )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
-                                    Text(
-                                        text = if (conversation.conversation.isWithSelf) stringResource(
-                                            MR.string.chat_note_to_self
-                                        )
+                                    val conversationTitle =
+                                        if (conversation.conversation.isWithSelf)
+                                            stringResource(MR.string.chat_note_to_self)
                                         else conversation.getDisplayName(
-                                            youLabel = stringResource(
-                                                MR.string.you
-                                            )
-                                        ),
+                                            youLabel = stringResource(MR.string.you),
+                                        )
+                                    Text(
+                                        text = conversationTitle.withEmojiFont(),
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -908,7 +942,7 @@ fun ConversationContent(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
                 ),
             )
         },
@@ -1375,9 +1409,7 @@ fun ConversationContent(
                                     // history.)
                                     onUiAction(ConversationListUiAction.ScrollToLatest(conversation.conversation.id))
                                 } else {
-                                    coroutineScope.launch {
-                                        listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                                    }
+                                    coroutineScope.launch { listState.animateScrollToNewestItem() }
                                 }
                             },
                         )
@@ -1771,6 +1803,11 @@ fun ConversationContent(
                     })
                 }
             } // AttachmentOptionsDisplay wrapper Box
+
+            FileDropOverlay(
+                preview = dropPreview,
+                modifier = Modifier.matchParentSize(),
+            )
         } // Box (clipToBounds)
     }
 
@@ -2013,7 +2050,7 @@ private fun PinnedMessagesSheet(
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = previewText,
+                                text = previewText.withEmojiFont(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 2,
@@ -2255,6 +2292,27 @@ private fun getDateSectionLabel(messageDate: LocalDate): String {
             }
             messageDate.format(format)
         }
+    }
+}
+
+/**
+ * A single `animateScrollToItem(totalItemsCount - 1)` goes stale mid-flight: a
+ * `nearTop` prepend lands while it animates, shifting every index by a page, and
+ * its scroll compensation cancels the animation — so it finishes on a mid-history
+ * row. Re-aim until the list really ends in view.
+ */
+private suspend fun LazyListState.animateScrollToNewestItem() {
+    repeat(SCROLL_TO_NEWEST_ATTEMPTS) {
+        val target = layoutInfo.totalItemsCount - 1
+        if (target < 0) return
+        try {
+            animateScrollToItem(target)
+        } catch (e: CancellationException) {
+            // Compose's MutationInterruptedException is internal; a still-active context
+            // means the prepend compensation took the scroll, not the caller going away.
+            if (!currentCoroutineContext().isActive) throw e
+        }
+        if (layoutInfo.visibleItemsInfo.lastOrNull()?.index == layoutInfo.totalItemsCount - 1) return
     }
 }
 

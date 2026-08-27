@@ -21,6 +21,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
+import id.homebase.api.video.driveAccess
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -137,6 +139,7 @@ actual fun VideoPlayerSurface(
 ) {
     val driveFileProvider = koinInject<DriveFileProvider>()
     val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
+    val peerFileProvider = koinInject<PeerFileByGlobalTransitProvider>()
     val videoPreloader = koinInject<VideoPreloader>()
     val playerPool = koinInject<AVPlayerPool>()
     val scope = rememberCoroutineScope()
@@ -258,7 +261,13 @@ actual fun VideoPlayerSurface(
         onProgress(0f)
         withContext(Dispatchers.Main) {
             try {
-                when (val content = resolveVideoContent(VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent), driveFileProvider, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
+                val videoData = VideoPlayerData(
+                    data.fileId, data.driveId, data.payloadKey, data.keyHeader,
+                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId,
+                )
+                val videoAccess =
+                    videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
+                when (val content = resolveVideoContent(videoData, videoAccess, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
                         // preload, so StateFlow's initial value and every subsequent emit lands.
@@ -274,9 +283,9 @@ actual fun VideoPlayerSurface(
                         // If MediaItem's preload was cancelled when the chat list left composition,
                         // this is the only path that drives real progress — AVPlayer's resource loader
                         // delegate bypasses onDownloadProgress entirely.
-                        videoPreloader.preload(
-                            VideoPlayerData(data.fileId, data.driveId, data.payloadKey, data.keyHeader, data.payload.descriptorContent)
-                        )
+                        // The preloader reads our own drive, so for a followed identity it would fetch the
+                        // wrong file. Playback warms the chunk cache itself; only progress goes dark.
+                        if (data.remoteOdinId == null) videoPreloader.preload(videoData)
 
                         // Hand AVPlayer a real `http://127.0.0.1:<port>/...` URL backed by a
                         // tiny CIO server. The server rewrites the playlist so #EXT-X-KEY
@@ -285,8 +294,29 @@ actual fun VideoPlayerSurface(
                         // decrypts via stock HLS-AES-128 — no resource loader, no per-byterange
                         // crypto on our side. See LocalVideoServer.native.kt for the rationale.
                         val server = LocalVideoServer.shared()
+                        val peerOdinId = data.remoteOdinId
+                        val peerGtid = data.globalTransitId
                         val sessionId = server.register(
-                            driveFileProvider = driveFileProvider,
+                            readEncryptedChunk = { start, length ->
+                                if (peerOdinId != null && peerGtid != null) {
+                                    peerFileProvider.getPayloadChunkEncryptedOverPeerByGlobalTransitId(
+                                        peer = peerOdinId,
+                                        driveId = data.driveId,
+                                        globalTransitId = peerGtid,
+                                        payloadKey = data.payloadKey,
+                                        chunkStart = start,
+                                        chunkLength = length,
+                                    )
+                                } else {
+                                    driveFileProvider.getPayloadBytesEncryptedChunk(
+                                        driveId = data.driveId,
+                                        fileId = data.fileId,
+                                        key = data.payloadKey,
+                                        chunkStart = start,
+                                        chunkLength = length,
+                                    )
+                                }
+                            },
                             driveId = data.driveId,
                             fileId = data.fileId,
                             payloadKey = data.payloadKey,

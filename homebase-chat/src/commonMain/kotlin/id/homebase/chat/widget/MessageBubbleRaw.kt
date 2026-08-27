@@ -82,6 +82,7 @@ import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.withEmojiFont
 import id.homebase.core.util.formatMessageTimestamp
 import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
@@ -865,7 +866,7 @@ fun MessageBubbleRaw(
                                     // Render emoji-only messages prominently
                                     val size = if (message.content.length <= 6) 56.sp else 42.sp
                                     Text(
-                                        text = message.content,
+                                        text = message.content.withEmojiFont(),
                                         onTextLayout = { textLayoutResult = it },
                                         fontSize = size,
                                         style = MaterialTheme.typography.displaySmall,

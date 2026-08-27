@@ -114,7 +114,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import id.homebase.core.util.isDesktopOrWeb
-import id.homebase.core.util.isExpandedLayout
 import id.homebase.resources.MR
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -198,7 +197,6 @@ fun MomentsScreen(
     // Self-renders only when the VM transitions to ShowDialog. No-op otherwise.
     ExtendPermissionDialog(viewModel = extendPermissionViewModel)
 
-    val isWide = isExpandedLayout()
 
     // Reels has no menu entry on pointer targets, so a persisted/synced Reels
     // preference must be coerced or the user lands there with no way back out.
@@ -208,46 +206,25 @@ fun MomentsScreen(
         uiState.viewMode
     }
 
-    if (isWide) {
-        WideMomentsLayout(
-            moments = uiState.moments,
-            uploadProgress = uiState.uploadProgress,
-            pendingLocalPreviews = uiState.pendingLocalPreviews,
-            ownerSession = uiState.ownerSession,
-            connectionStatus = uiState.connectionStatus,
-            driveIsSyncing = uiState.driveIsSyncing,
-            hasDriveError = uiState.hasDriveError,
-            viewMode = effectiveViewMode,
-            onViewModeChange = viewModel::setViewMode,
-            albumZoom = uiState.albumZoom,
-            onAlbumZoomChange = viewModel::setAlbumZoom,
-            onCreateMoment = onCreateMoment,
-            onProfileClick = onProfileClick,
-            onAddReaction = viewModel::addReaction,
-            onDeleteFailedMoment = viewModel::deleteFailedMoment,
-            onDismissUpload = viewModel::dismissUpload,
-        )
-    } else {
-        CompactMomentsLayout(
-            moments = uiState.moments,
-            uploadProgress = uiState.uploadProgress,
-            pendingLocalPreviews = uiState.pendingLocalPreviews,
-            ownerSession = uiState.ownerSession,
-            connectionStatus = uiState.connectionStatus,
-            driveIsSyncing = uiState.driveIsSyncing,
-            hasDriveError = uiState.hasDriveError,
-            viewMode = effectiveViewMode,
-            onViewModeChange = viewModel::setViewMode,
-            albumZoom = uiState.albumZoom,
-            onAlbumZoomChange = viewModel::setAlbumZoom,
-            onCreateMoment = onCreateMoment,
-            onProfileClick = onProfileClick,
-            onOpenMoment = onOpenMoment,
-            onAddReaction = viewModel::addReaction,
-            onDeleteFailedMoment = viewModel::deleteFailedMoment,
-            onDismissUpload = viewModel::dismissUpload,
-        )
-    }
+    CompactMomentsLayout(
+        moments = uiState.moments,
+        uploadProgress = uiState.uploadProgress,
+        pendingLocalPreviews = uiState.pendingLocalPreviews,
+        ownerSession = uiState.ownerSession,
+        connectionStatus = uiState.connectionStatus,
+        driveIsSyncing = uiState.driveIsSyncing,
+        hasDriveError = uiState.hasDriveError,
+        viewMode = effectiveViewMode,
+        onViewModeChange = viewModel::setViewMode,
+        albumZoom = uiState.albumZoom,
+        onAlbumZoomChange = viewModel::setAlbumZoom,
+        onCreateMoment = onCreateMoment,
+        onProfileClick = onProfileClick,
+        onOpenMoment = onOpenMoment,
+        onAddReaction = viewModel::addReaction,
+        onDeleteFailedMoment = viewModel::deleteFailedMoment,
+        onDismissUpload = viewModel::dismissUpload,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -338,219 +315,6 @@ private fun CompactMomentsLayout(
     }
 }
 
-/**
- * Wide-screen Row: feed on the left in a fixed-width column, detail pane on
- * the right filling the rest. The left column gets its own Scaffold (top bar
- * + FAB); the detail pane brings its own Scaffold internally. A
- * VerticalDivider separates the two so the boundary reads cleanly against
- * busy media thumbnails.
- *
- * Selection state is screen-local — the route never changes on wide desktop,
- * so taps just flip `selectedMomentId` and the detail-pane VM (keyed on the
- * id) recomputes from the feed flow. We auto-select the newest moment on
- * first composition so the right pane is never empty when there are moments
- * to show.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WideMomentsLayout(
-    moments: List<MomentFeedItem>,
-    uploadProgress: ImmutableMap<Uuid, UploadStatus>,
-    pendingLocalPreviews: ImmutableMap<Uuid, Any>,
-    ownerSession: OwnerSession?,
-    connectionStatus: AppConnectionStatus,
-    driveIsSyncing: Boolean,
-    hasDriveError: Boolean,
-    viewMode: MomentsViewMode,
-    onViewModeChange: (MomentsViewMode) -> Unit,
-    albumZoom: MomentsAlbumZoom,
-    onAlbumZoomChange: (MomentsAlbumZoom) -> Unit,
-    onCreateMoment: () -> Unit,
-    onProfileClick: () -> Unit,
-    onAddReaction: (Uuid, String) -> Unit,
-    onDeleteFailedMoment: (Uuid) -> Unit,
-    onDismissUpload: (Uuid) -> Unit,
-) {
-    val openLabel = stringResource(MR.string.moments_post_open)
-
-    // Reels is an immersive single-column browse — the feed/detail split makes
-    // no sense for it, so render it full-area on wide screens too (keeping the
-    // top bar so the user can switch back to Timeline/Album). The pager itself
-    // Fit-scales media with black letterbox bars, so a very wide viewport just
-    // centres the media rather than stretching it.
-    if (viewMode == MomentsViewMode.Reels) {
-        Scaffold(
-            topBar = {
-                MomentsTopAppBar(
-                    ownerSession = ownerSession,
-                    connectionStatus = connectionStatus,
-                    driveIsSyncing = driveIsSyncing,
-                    hasDriveError = hasDriveError,
-                    viewMode = viewMode,
-                    onViewModeChange = onViewModeChange,
-                    onProfileClick = onProfileClick,
-                )
-            },
-            floatingActionButton = {
-                FloatingActionButton(
-                    onClick = onCreateMoment,
-                    // Lifted off the bottom edge a touch so it doesn't sit on
-                    // top of whatever's at the bottom of the content under it.
-                    modifier = Modifier.padding(bottom = 16.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(MR.string.moments_create_action),
-                    )
-                }
-            },
-        ) { innerPadding ->
-            val contentModifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-            if (moments.isEmpty()) {
-                EmptyMomentsState(modifier = contentModifier)
-            } else {
-                MomentsReelsView(moments = moments, modifier = contentModifier)
-            }
-        }
-        return
-    }
-
-    var selectedMomentId by remember { mutableStateOf<Uuid?>(null) }
-
-    // Auto-select the newest moment whenever (a) we don't have a selection yet
-    // and (b) moments are available. Also re-resolves if the current selection
-    // disappears (e.g. it was deleted — fall back to the newest survivor
-    // rather than showing an empty pane).
-    val newestId by remember(moments) {
-        derivedStateOf { moments.firstOrNull()?.id }
-    }
-    LaunchedEffect(newestId, moments) {
-        val current = selectedMomentId
-        if (current == null || moments.none { it.id == current }) {
-            selectedMomentId = newestId
-        }
-    }
-
-    // Scale the feed pane with window width — 380dp feels stingy on big
-    // external monitors (1920dp+) where it shrinks below 20% of the viewport.
-    // Cap at FeedPaneMaxWidth so list rows (small thumbnails + meta) don't
-    // grow past the point where extra width is just whitespace per row; the
-    // detail pane absorbs any remaining space via weight(1f).
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val feedPaneWidth = (maxWidth * FeedPaneWidthFraction)
-            .coerceIn(FeedPaneMinWidth, FeedPaneMaxWidth)
-    Row(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            modifier = Modifier
-                .width(feedPaneWidth)
-                .fillMaxHeight(),
-            topBar = {
-                MomentsTopAppBar(
-                    ownerSession = ownerSession,
-                    connectionStatus = connectionStatus,
-                    driveIsSyncing = driveIsSyncing,
-                    hasDriveError = hasDriveError,
-                    viewMode = viewMode,
-                    onViewModeChange = onViewModeChange,
-                    onProfileClick = onProfileClick,
-                )
-            },
-            floatingActionButton = {
-                FloatingActionButton(
-                    onClick = onCreateMoment,
-                    // Lifted off the bottom edge a touch so it doesn't sit on
-                    // top of whatever's at the bottom of the content under it.
-                    modifier = Modifier.padding(bottom = 16.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(MR.string.moments_create_action),
-                    )
-                }
-            },
-        ) { innerPadding ->
-            val contentModifier = Modifier
-                .fillMaxSize()
-                .consumeWindowInsets(innerPadding)
-                .padding(innerPadding)
-            if (moments.isEmpty()) {
-                EmptyMomentsState(modifier = contentModifier)
-            } else when (viewMode) {
-                MomentsViewMode.Timeline -> MomentsFeedList(
-                    moments = moments,
-                    uploadProgress = uploadProgress,
-                    pendingLocalPreviews = pendingLocalPreviews,
-                    selfOdinId = ownerSession?.odinId,
-                    onOpenMoment = { id, _ ->
-                        selectedMomentId = Uuid.parse(id)
-                    },
-                    onAddReaction = onAddReaction,
-                    openLabel = openLabel,
-                    selectedMomentId = selectedMomentId,
-                    onDeleteFailedMoment = onDeleteFailedMoment,
-                    onDismissUpload = onDismissUpload,
-                    modifier = contentModifier,
-                )
-                MomentsViewMode.Album -> MomentsAlbumGrid(
-                    moments = moments,
-                    zoom = albumZoom,
-                    onZoomChange = onAlbumZoomChange,
-                    onOpenMoment = { id, _ ->
-                        selectedMomentId = Uuid.parse(id)
-                    },
-                    pendingLocalPreviews = pendingLocalPreviews,
-                    modifier = contentModifier,
-                )
-                // Unreachable — Reels short-circuits to a full-area layout
-                // above before the split pane is built. Kept so the `when`
-                // stays exhaustive over MomentsViewMode.
-                MomentsViewMode.Reels -> MomentsReelsView(
-                    moments = moments,
-                    modifier = contentModifier,
-                )
-            }
-        }
-
-        VerticalDivider()
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-        ) {
-            val current = selectedMomentId
-            if (current != null) {
-                // Keying koinViewModel on the moment id gives us a fresh VM
-                // every time the user picks a different moment — the existing
-                // VM has momentId as an immutable val (it reads
-                // commentsService.commentsFor(momentId) once at construction),
-                // so swapping ids requires a new instance, not a re-bind.
-                val detailVm: MomentDetailViewModel = koinViewModel(
-                    key = "moment-detail-pane-$current",
-                ) { parametersOf(current, null) }
-                MomentDetailPane(
-                    viewModel = detailVm,
-                    onNavigateBack = null,
-                    // Desktop wide split: dock the comments as a persistent
-                    // right-hand rail next to the width-capped media instead of
-                    // a bottom sheet — uses the horizontal space the big detail
-                    // pane otherwise wastes on an oversized image.
-                    commentsDocked = true,
-                )
-            } else if (moments.isEmpty()) {
-                EmptyMomentsState(modifier = Modifier.fillMaxSize())
-            }
-        }
-    }
-    }
-}
-
-private const val FeedPaneWidthFraction = 0.28f
-private val FeedPaneMinWidth = 380.dp
-private val FeedPaneMaxWidth = 480.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

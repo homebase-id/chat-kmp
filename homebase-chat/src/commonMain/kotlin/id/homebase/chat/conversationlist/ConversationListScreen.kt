@@ -5,8 +5,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -38,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -67,6 +72,7 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -123,6 +129,10 @@ import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+
+private const val LIST_PANE_MIN_PERCENT = 25
+private const val LIST_PANE_MAX_PERCENT = 50
+private val SPLITTER_HIT_WIDTH = 8.dp
 
 @Composable
 fun ConversationListScreen(
@@ -800,6 +810,20 @@ fun ConversationListUi(
     )
     val scope = rememberCoroutineScope()
     val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
+    // Anchors are the only bound the scaffold offers: a drag can overshoot but settles to the
+    // nearest one, so the ladder's ends are what actually clamp the list pane. Kept remembered
+    // because rememberPaneExpansionState restarts its restore effect whenever the list changes.
+    val paneAnchors = remember {
+        (LIST_PANE_MIN_PERCENT..LIST_PANE_MAX_PERCENT).map {
+            PaneExpansionAnchor.Proportion(it / 100f)
+        }
+    }
+    val splitterInteractionSource = remember { MutableInteractionSource() }
+    // The scaffold lets a drag run to the full layout and only bounds it on release, via anchors.
+    // Measuring both edges lets consumeDragDelta stop the pane at the limits mid-drag instead.
+    var scaffoldLeft by remember { mutableFloatStateOf(0f) }
+    var scaffoldWidth by remember { mutableFloatStateOf(0f) }
+    var splitterCenter by remember { mutableFloatStateOf(0f) }
 
     // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
     // the outer screen) because scaffoldNavigator + backNavigationBehavior are in
@@ -881,7 +905,10 @@ fun ConversationListUi(
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) {
         ListDetailPaneScaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                scaffoldLeft = it.positionInRoot().x
+                scaffoldWidth = it.size.width.toFloat()
+            },
             directive = scaffoldNavigator.scaffoldDirective,
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
@@ -977,23 +1004,38 @@ fun ConversationListUi(
             },
             paneExpansionState = rememberPaneExpansionState(
                 keyProvider = scaffoldNavigator.scaffoldValue,
-                anchors = listOf(
-                    PaneExpansionAnchor.Offset.fromStart(96.dp),
-                    PaneExpansionAnchor.Offset.fromStart(280.dp),
-                    PaneExpansionAnchor.Offset.fromStart(320.dp),
-                    PaneExpansionAnchor.Offset.fromStart(360.dp),
-                    PaneExpansionAnchor.Offset.fromStart(400.dp),
-                    PaneExpansionAnchor.Offset.fromStart(440.dp),
-                    PaneExpansionAnchor.Offset.fromStart(480.dp),
-                ),
+                anchors = paneAnchors,
+                consumeDragDelta = { delta ->
+                    if (scaffoldWidth <= 0f) delta else {
+                        val offset = splitterCenter - scaffoldLeft
+                        (offset + delta).coerceIn(
+                            scaffoldWidth * LIST_PANE_MIN_PERCENT / 100f,
+                            scaffoldWidth * LIST_PANE_MAX_PERCENT / 100f,
+                        ) - offset
+                    }
+                },
             ),
-            // IMPORTANT: paneExpansionDragHandle with VerticalDragHandle is intentionally
-            // omitted here. On Compose Desktop (Skiko), the VerticalDragHandle's pointer/hover
-            // tracking causes the rendering loop to run at ~164 fps continuously — even when the
-            // app is completely idle — pinning the GPU at ~15%. This is a known limitation of
-            // Compose Multiplatform's pointer input handling on desktop. The drag handle can be
-            // re-enabled once the upstream issue is resolved.
-            // See: paneExpansionDragHandle = { state -> VerticalDragHandle(...) }
+            // M3's VerticalDragHandle animates itself off the hover interaction, which on Skiko
+            // never goes quiet: it pinned the desktop render loop at ~164 fps and ~15% GPU while
+            // idle. This handle is an invisible hit strip over the hairline ConversationListPane
+            // already draws, with nothing to animate.
+            paneExpansionDragHandle = if (!isDesktopOrWeb()) null else {
+                { state ->
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .width(SPLITTER_HIT_WIDTH)
+                            .onGloballyPositioned {
+                                splitterCenter = it.positionInRoot().x + it.size.width / 2f
+                            }
+                            .paneExpansionDraggable(
+                                state = state,
+                                minTouchTargetSize = SPLITTER_HIT_WIDTH,
+                                interactionSource = splitterInteractionSource,
+                            )
+                    )
+                }
+            },
             )
     }
 }

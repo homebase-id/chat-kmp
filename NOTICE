@@ -47,3 +47,22 @@ CropOverlay, CropPointerInput, etc.) is a clean Compose Multiplatform
 implementation written for this project; it consults the ported math
 primitives but is not a translation of Signal's Android-specific View
 or feature/media-send/edit/ImageEditor.kt code.
+
+
+Bundled fonts
+-------------
+
+The web (wasm) build ships font files, because the browser gives Skia no
+system font manager to fall back on. They are packaged only under
+homebase-common/src/wasmJsMain/composeResources/font/, so the Android and
+iOS bundles do not carry them.
+
+    DejaVu Sans (dejavu_sans.ttf, dejavu_sans_bold.ttf)
+        Fonts (c) Bitstream, with changes by the DejaVu project released
+        into the public domain; imported Arev glyphs (c) Tavmjong Bah.
+        Full terms: homebase-common/licenses/DejaVuFonts-LICENSE.txt
+        https://dejavu-fonts.github.io/
+
+    Noto Color Emoji (noto_color_emoji.ttf)
+        (c) The Noto Project Authors, SIL Open Font License 1.1.
+        https://github.com/googlefonts/noto-emoji

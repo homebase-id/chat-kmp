@@ -31,7 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.location.emergency.locateWindowOptionsHours
-import id.homebase.core.ui.screens.contactbook.components.AdaptiveSheet
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.live_location_age_minutes

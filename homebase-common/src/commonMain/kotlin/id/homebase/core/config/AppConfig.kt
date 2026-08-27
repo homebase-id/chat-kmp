@@ -113,6 +113,8 @@ val contactLabeledDrive =
     LabeledDrive(drive = SystemDriveConstants.contactDrive, label = "Contacts")
 val profileLabeledDrive = LabeledDrive(drive = SystemDriveConstants.profileDrive, label = "Profile")
 val feedLabeledDrive = LabeledDrive(drive = SystemDriveConstants.feedDrive, label = "Feed")
+val publicChannelLabeledDrive =
+    LabeledDrive(drive = SystemDriveConstants.publicPostChannelDrive, label = "Public Channel")
 val momentsLabeledDrive = LabeledDrive(
     drive = TargetDrive(
         alias = Uuid.parse("a85f8562-6c74-4947-896b-619812cafccc"),
@@ -129,6 +131,22 @@ val vaultLabeledDrive = LabeledDrive(
         type = Uuid.parse("70e92f0f94d05f5c7dcd36466094f3a5"),
     ),
     label = "Vault",
+)
+
+// Email setup drive — holds the identity's OpenPGP secret keyrings, the pointer to the
+// current one, and the app-password credential files. Optional drive (not in
+// [mandatorySyncDrives]); requested through extend-permissions when the user sets email up.
+//
+// These GUIDs are NOT placeholders and must never change: the server names the same drive to
+// authorize every /api/v2/mail call, and the alias IS the drive's storage id. The mirror lives
+// in odin-core `src/services/Odin.Services/Drives/WellKnownAppDrives.cs` — change one, change
+// both. Read+Write on this drive is what makes this app the identity's email app.
+val emailLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("92bbcad8-3558-417b-9376-9976c086a674"),
+        type = Uuid.parse("37e3480a-4cd7-4a41-a421-ed49866bf07e"),
+    ),
+    label = "Email",
 )
 
 // Stickers drive — modeled exactly on [vaultLabeledDrive] (alias + distinct type
@@ -236,6 +254,18 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
     )
 )
 
+// Read AND Write: the server requires both. Every mail action writes key material to this
+// drive and reads it back, so a half grant is refused (403) rather than half-working.
+val emailTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = emailLabeledDrive.drive.alias.toString(),
+        type = emailLabeledDrive.drive.type.toString(),
+        name = emailLabeledDrive.label,
+        description = "Drive to store your email keys and mail app passwords",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    )
+)
+
 // Mandatory drives — always mounted; required for the chat app to function.
 // Chat and Contacts power messaging.
 // See ADDING_ADDON_APPS.md §"Mandatory vs Optional Drives" for the full model.
@@ -244,8 +274,20 @@ val vaultTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
 // (fileType=77) are indexed locally and available offline (#1105). Display name / avatar
 // continue to come from the public `https://{odinId}/pub/profile` endpoint
 // (PublicProfileProviderCached) — that's a separate, cache-backed path.
+// The feed + public-channel drives are deliberately NOT here. Everything in this list is exempt from
+// AuthConnectionCoordinator's read-grant filter and from drivesToPrune, which is only sound for drives
+// [targetDriveAccessRequest] grants at login. The feed drives are granted by the separate
+// [feedTargetDriveAccessRequest] extend-permissions flow, so listing them here puts an ungranted drive on the
+// WebSocket subscription — the server then closes the socket and the whole session loses live chat. They
+// activate through
+// OptionalDriveActivation like Moments/Vault instead; once registered, the login pre-mount
+// loop mounts them on every device and the sync engine drains the transit inbox as before.
 val mandatorySyncDrives: List<LabeledDrive> =
-    listOf(chatLabeledDrive, contactLabeledDrive, profileLabeledDrive)
+    listOf(
+        chatLabeledDrive,
+        contactLabeledDrive,
+        profileLabeledDrive,
+    )
 
 // Feed-specific permission config
 val feedTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
@@ -349,6 +391,16 @@ fun getVaultPermissionExtensionConfig(): PermissionExtensionConfig {
         appId = AppConfig.APP_ID,
         appName = AppConfig.APP_NAME,
         drives = vaultTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl
+    )
+}
+
+fun getEmailPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = emailTargetDriveAccessRequest,
         permissions = emptyList(),
         returnUrl = ::returnUrl
     )

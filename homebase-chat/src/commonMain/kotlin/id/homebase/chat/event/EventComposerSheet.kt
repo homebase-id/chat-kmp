@@ -42,7 +42,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -144,10 +143,9 @@ fun EventComposerSheet(
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
-    GuardedComposerSheet(onDismiss = onDismiss) { sheetState, requestClose, reportUnsaved ->
+    GuardedComposerSheet(onDismiss = onDismiss) { requestClose, reportUnsaved ->
         EventComposerContent(
             conversationId = conversationId,
-            sheetState = sheetState,
             onDismiss = onDismiss,
             onSent = onSent,
             onRequestClose = requestClose,
@@ -160,7 +158,6 @@ fun EventComposerSheet(
 @Composable
 private fun EventComposerContent(
     conversationId: Uuid,
-    sheetState: SheetState,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
     onRequestClose: () -> Unit = onDismiss,
@@ -311,7 +308,6 @@ private fun EventComposerContent(
                         payloadBundle = bundle,
                     )
                 }
-                sheetState.hide()
                 onSent()
             }
         }

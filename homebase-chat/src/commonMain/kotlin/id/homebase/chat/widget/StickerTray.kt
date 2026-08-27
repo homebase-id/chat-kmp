@@ -54,6 +54,9 @@ fun StickerTray(
     onStickerLongPress: (SavedSticker) -> Unit,
     onImportClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // ponytail: the import tile is a library-management affordance; callers that only pick a
+    // sticker (e.g. the feed comment composer) pass false to hide it. Default keeps chat unchanged.
+    showImportTile: Boolean = true,
 ) {
     val importDescription = stringResource(MR.string.cd_import_sticker)
     val stickerDescription = stringResource(MR.string.cd_sticker_thumbnail)
@@ -66,24 +69,26 @@ fun StickerTray(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Leading Import tile.
-        item {
-            Box(
-                modifier = Modifier
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { onImportClick() })
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = HomebaseIcons.StickerAdd,
-                    contentDescription = importDescription,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.sizeIn(maxWidth = 32.dp, maxHeight = 32.dp),
-                )
+        // Leading Import tile (hidden for pick-only callers like the feed comment composer).
+        if (showImportTile) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .pointerInput(Unit) {
+                            detectTapGestures(onTap = { onImportClick() })
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = HomebaseIcons.StickerAdd,
+                        contentDescription = importDescription,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.sizeIn(maxWidth = 32.dp, maxHeight = 32.dp),
+                    )
+                }
             }
         }
 

@@ -96,9 +96,11 @@ import id.homebase.core.ui.assets.MessageSent
 import id.homebase.core.ui.assets.MessageSentAndDelivered
 import id.homebase.core.ui.assets.MessageSentAndRead
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.ui.theme.withEmojiFont
+
 import id.homebase.core.util.getOdinIdColor
 import id.homebase.core.util.initials
-import id.homebase.core.util.isDesktop
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
@@ -226,7 +228,7 @@ fun SentMessageBubble(
             // align with the colored bubble's center, not the bubble+pill.
             val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
             Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
-                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -239,7 +241,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop() && !message.isDeleted) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply.invoke() },
@@ -252,7 +254,7 @@ fun SentMessageBubble(
                         )
                     }
                 }
-                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -696,7 +698,7 @@ fun ReceivedMessageBubble(
             Row(
                 modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
-                if (onAddReaction != null && isDesktop() && !message.isDeleted) {
+                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Reaction },
@@ -709,7 +711,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onReply != null && isDesktop() && !message.isDeleted) {
+                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { onReply() },
@@ -722,7 +724,7 @@ fun ReceivedMessageBubble(
                         )
                     }
                 }
-                if (onMessageInfo != null && isDesktop() && !message.isDeleted) {
+                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
                     IconButton(
                         modifier = Modifier.alpha(if (isHovered) 1f else 0f),
                         onClick = { popupMode = MessagePopupMode.Menu },
@@ -1123,10 +1125,10 @@ fun InlineReplyPreview(
 
     // Mirror the link-preview / Signal QuoteView bounded-block pattern: the body
     // is already capped at 80 codepoints on the header (payload-free), so this is
-    // a pure presentational choice. Desktop has the horizontal room for a second
-    // line; on mobile we keep a single line to stay compact. The author name stays
-    // single-line on every platform.
-    val replyPreviewMaxLines = if (isDesktop()) 2 else 1
+    // a pure presentational choice. Desktop and web have the horizontal room for a
+    // second line; on mobile we keep a single line to stay compact. The author name
+    // stays single-line on every platform.
+    val replyPreviewMaxLines = if (isDesktopOrWeb()) 2 else 1
 
     Row(
         modifier = Modifier
@@ -1155,7 +1157,7 @@ fun InlineReplyPreview(
                     youLabel = stringResource(MR.string.you),
                 )
                 Text(
-                    text = authorDisplayName,
+                    text = authorDisplayName.withEmojiFont(),
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                     color = contentColor,
                     maxLines = 1,
@@ -1180,7 +1182,7 @@ fun InlineReplyPreview(
                             }
                         }
                         Text(
-                            text = displayMessage,
+                            text = displayMessage.withEmojiFont(),
                             style = MaterialTheme.typography.bodySmall,
                             color = contentColor.copy(alpha = 0.7f),
                             maxLines = replyPreviewMaxLines,

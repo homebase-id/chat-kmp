@@ -325,6 +325,11 @@ sealed interface FullScreenOverlay {
         val payloads: List<PayloadDescriptor>,
         val keyHeader: KeyHeader,
         val selectedPayloadKey: String,
+        /** False for a public feed post: plaintext payloads, no per-payload IV. */
+        val isEncrypted: Boolean = true,
+        /** Set with [globalTransitId] to read the payloads over peer; both null for local media. */
+        val remoteOdinId: OdinId? = null,
+        val globalTransitId: Uuid? = null,
     ) : FullScreenOverlay
 
     data class AttachmentData(
@@ -352,6 +357,11 @@ sealed interface FullScreenOverlay {
         val payload: PayloadDescriptor,
         val localFilePath: String? = null,
         val uploadMessageId: Uuid? = null,
+        /** False for a public feed post: plaintext payload, no per-payload IV. */
+        val isEncrypted: Boolean = true,
+        /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
+        val remoteOdinId: OdinId? = null,
+        val globalTransitId: Uuid? = null,
     ) : FullScreenOverlay
 
     @Immutable

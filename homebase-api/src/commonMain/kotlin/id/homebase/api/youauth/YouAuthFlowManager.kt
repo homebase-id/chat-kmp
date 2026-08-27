@@ -16,6 +16,7 @@ import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.publicKeyToJwkBase64Url
 import id.homebase.api.decodeUrl
+import id.homebase.api.device.deviceDisplayName
 import id.homebase.api.exception.AuthInProgressException
 import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
@@ -261,7 +262,7 @@ class YouAuthFlowManager(
                 AppAuthorizationParams.create(
                     appName = appName,
                     appId = appId,
-                    friendlyName = clientFriendlyName ?: "Homebase KMP App",
+                    friendlyName = clientFriendlyName ?: deviceDisplayName(),
                     drives = drives,
                     circleDrives = circleDrives,
                     circles = circles,
@@ -275,7 +276,7 @@ class YouAuthFlowManager(
                 YouAuthorizationParams(
                     clientId = appId,
                     clientType = ClientType.app,
-                    clientInfo = clientFriendlyName ?: "Homebase KMP App",
+                    clientInfo = clientFriendlyName ?: deviceDisplayName(),
                     publicKey = publicKeyToJwkBase64Url(keyPair.publicKey),
                     permissionRequest = permissionRequest.toJson(),
                     state = state,

@@ -49,3 +49,8 @@ gradle/local-repo/id/homebase/libs/ffmpeg-kit/1.0/ffmpeg-kit-1.0.aar.*.bak
 /.agents/
 /skills-lock.json
 .pr3-report.md
+
+# Argent local state: flow recordings, screen recordings
+/.argent/
+# Editor-local config (mcp.json etc.)
+/.vscode/

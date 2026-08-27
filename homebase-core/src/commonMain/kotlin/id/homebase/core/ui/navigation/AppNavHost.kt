@@ -1,5 +1,14 @@
 package id.homebase.core.ui.navigation
 
+import id.homebase.core.ui.screens.email.clients.EmailClientPickerScreen
+import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
+import id.homebase.resources.email_label
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.material.icons.outlined.MailOutline
+import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
+import id.homebase.core.ui.screens.email.EmailViewModel
+import id.homebase.core.ui.screens.email.EmailScreen
+import id.homebase.core.email.EmailPreferences
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -34,11 +43,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,13 +55,23 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -67,7 +84,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.window.core.layout.WindowSizeClass
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DatabaseUpgradeState
@@ -99,8 +115,11 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.defragmenter.DefragmenterScreen
 import id.homebase.core.ui.screens.help.HelpScreen
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuScreen
+import id.homebase.core.settings.UserPreferences
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestScreen
 import id.homebase.core.ui.screens.feed.FeedScreen
+import id.homebase.core.ui.screens.feed.FeedTimelineScreen
+import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
@@ -167,6 +186,7 @@ import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isExpandedLayout
 import kotlinx.io.files.Path
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
@@ -196,17 +216,33 @@ import id.homebase.resources.database_upgrade_snackbar
 import id.homebase.resources.pending_upgrade_message
 import id.homebase.resources.pending_upgrade_confirm
 import id.homebase.resources.upgrade_running_message
+import id.homebase.core.session.IdentitySessionScope
+
+// Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
+private const val SCROLL_TO_TOP_KEY = "scrollToTop"
+
+// Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
+private val NavigationRailWidth = 64.dp
+private val RailIndicatorSize = 48.dp
+private val RailIndicatorShape = RoundedCornerShape(14.dp)
+private val RailIconSize = 20.dp
 
 @Composable
 fun AppNavHost(
     viewModel: AppViewModel,
     navController: NavHostController,
-    youAuthFlowManager: YouAuthFlowManager
+    youAuthFlowManager: YouAuthFlowManager,
+    topInset: Dp = 0.dp,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
-    val isAuthenticated = authState is YouAuthState.Authenticated
-    val adaptiveInfo = currentWindowAdaptiveInfo()
+    // Gated on the identity scope being open as well as the auth state, because the two are
+    // observed independently: AuthConnectionCoordinator collects the same authState flow, so
+    // this composition can see Authenticated a frame before the scope exists. Identity-scoped
+    // ViewModels (koinViewModel() below) cannot resolve until it does, and every authenticated
+    // route in this graph is gated on this one flag.
+    val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
+    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope != null
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     val momentsPreferences = koinInject<MomentsPreferences>()
@@ -224,7 +260,25 @@ fun AppNavHost(
     val contactBookIconVisible by contactBookPreferences.iconVisible.collectAsStateWithLifecycle()
     val contactBookOnboardingComplete by contactBookPreferences.onboardingComplete.collectAsStateWithLifecycle()
     val contactBookViewModel: ContactBookViewModel = koinViewModel()
-    val topLevelRoutes = remember(momentsIconVisible, vaultIconVisible, locationIconVisible, contactBookIconVisible) {
+    val emailPreferences = koinInject<EmailPreferences>()
+    val emailIconVisible by emailPreferences.iconVisible.collectAsStateWithLifecycle()
+    val emailViewModel: EmailViewModel = koinViewModel()
+    val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
+    val emailUnreadCount = emailUiState.mailboxStatus
+        ?.takeIf { it.available }
+        ?.inboxUnread ?: 0
+    // Reactive so flipping the developer menu shows/hides the entry without an app restart.
+    val showDeveloperMenu by koinInject<UserPreferences>().preferenceState
+        .collectAsStateWithLifecycle()
+        .let { state -> remember { derivedStateOf { state.value.showDeveloperMenu } } }
+    val topLevelRoutes = remember(
+        momentsIconVisible,
+        vaultIconVisible,
+        locationIconVisible,
+        contactBookIconVisible,
+        emailIconVisible,
+        showDeveloperMenu,
+    ) {
         buildList {
             add(TopLevelRoute.Chat)
             add(TopLevelRoute.Feed)
@@ -232,7 +286,17 @@ fun AppNavHost(
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             if (locationIconVisible) add(TopLevelRoute.Location)
             if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
+            // Email setup rides the developer menu until the feature flag can be turned on
+            // anywhere — today every host answers "no email here".
+            if (showDeveloperMenu && emailIconVisible) add(TopLevelRoute.Email)
             add(TopLevelRoute.Home)
+        }
+    }
+    val openEmail: () -> Unit = {
+        navController.navigate(Route.Email) {
+            popUpTo(Route.ChatList) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
         }
     }
     val openContactBook: () -> Unit = {
@@ -279,6 +343,10 @@ fun AppNavHost(
     // Track if we're showing only the detail pane (list hidden) in a top level screen
     var showingOnlyDetailPane by remember { mutableStateOf(false) }
 
+    // The feed's media viewer is inline in the NavHost (a Dialog paints grey safe-area strips on iOS), so it
+    // renders *under* this Scaffold's bottom bar unless the screen reports it up.
+    var isFeedMediaOpen by remember { mutableStateOf(false) }
+
     // Check if current destination is a top-level route. Uses the static route-type
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
@@ -290,9 +358,7 @@ fun AppNavHost(
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
     val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
-    val showNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(
-        WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
-    )
+    val showNavigationRail = isExpandedLayout()
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
     // The full-screen image editor (newly-picked images) is a state-driven overlay, not a
@@ -300,7 +366,8 @@ fun AppNavHost(
     // gate the gallery uses.
     val isVaultEditorOpen = vaultUiState.pendingEditor != null
     val showBottomNavigationBar =
-        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen
+        isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen &&
+                !isFeedMediaOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -604,11 +671,14 @@ fun AppNavHost(
             if (showBottomNavigationBar) {
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
+                        val isSelected =
+                            currentDestination?.hasRoute(topLevelRoute.route::class) == true
                         NavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
                                     topLevelRoute = topLevelRoute,
                                     showMomentsBadge = momentsUnseenCount > 0,
+                                    showEmailBadge = emailUnreadCount > 0,
                                 )
                             },
                             label = {
@@ -619,13 +689,16 @@ fun AppNavHost(
                                     textAlign = TextAlign.Center,
                                 )
                             },
-                            selected = currentDestination?.hasRoute(
-                                topLevelRoute.route::class
-                            ) == true,
+                            selected = isSelected,
                             onClick = {
                                 when {
+                                    // Re-tapping the active tab scrolls to the top instead of re-navigating.
+                                    isSelected -> navController.currentBackStackEntry
+                                        ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
+
                                     topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                     topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
                                     topLevelRoute is TopLevelRoute.Location -> openLocation()
                                     topLevelRoute is TopLevelRoute.ContactBook -> openContactBook()
                                     else -> navController.navigate(topLevelRoute.route) {
@@ -645,22 +718,28 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
-                if (showNavigationRail && isAuthenticated && isOnTopLevelScreen) {
-                    NavigationRail(header = { Spacer(modifier = Modifier.height(12.dp)) }) {
+                val railVisible = showNavigationRail && isAuthenticated && isOnTopLevelScreen
+                if (railVisible) {
+                    NavigationRail(
+                        modifier = Modifier.width(NavigationRailWidth),
+                        header = { Spacer(modifier = Modifier.height(8.dp + topInset)) },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
                         topLevelRoutes.forEach { topLevelRoute ->
-                            NavigationRailItem(
-                                icon = {
-                                    TopLevelNavIcon(
-                                        topLevelRoute = topLevelRoute,
-                                        showMomentsBadge = momentsUnseenCount > 0,
-                                    )
-                                },
-                                // label = { Text(stringResource(topLevelRoute.labelRes)) },
-                                selected = currentDestination?.hasRoute(topLevelRoute.route::class) == true,
+                            val isSelected =
+                                currentDestination?.hasRoute(topLevelRoute.route::class) == true
+                            RailItem(
+                                topLevelRoute = topLevelRoute,
+                                selected = isSelected,
+                                showMomentsBadge = momentsUnseenCount > 0,
                                 onClick = {
                                     when {
+                                        isSelected -> navController.currentBackStackEntry
+                                            ?.savedStateHandle?.set(SCROLL_TO_TOP_KEY, true)
+
                                         topLevelRoute is TopLevelRoute.Moments -> openMoments()
                                         topLevelRoute is TopLevelRoute.Vault -> openVault()
+                                    topLevelRoute is TopLevelRoute.Email -> openEmail()
                                         topLevelRoute is TopLevelRoute.Location -> openLocation()
                                         else -> navController.navigate(topLevelRoute.route) {
                                             popUpTo(Route.ChatList) { saveState = true }
@@ -671,6 +750,7 @@ fun AppNavHost(
                                 })
                         }
                     }
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
 
                 val showUpdateBanner = isOnTopLevelScreen && uiState.updateAvailable
@@ -682,7 +762,7 @@ fun AppNavHost(
                         Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     } else {
                         Modifier
-                    },
+                    }.padding(top = if (railVisible) 0.dp else topInset),
                 ) {
                     if (isOnTopLevelScreen) {
                         if (showUpdateBanner) {
@@ -842,20 +922,55 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Feed> {
+                        composable<Route.Feed> { entry ->
                             if (isAuthenticated) {
-                                FeedScreen(
-                                    viewModel = koinViewModel(),
-                                    onNavigateToChat = {
-                                        navController.navigate(Route.ChatList) {
-                                            popUpTo(Route.ChatList) { saveState = true }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
+                                // Read on each Feed entry so the Settings toggle takes effect on return.
+                                val useNativeFeed = koinInject<UserPreferences>().useNativeFeed
+                                if (useNativeFeed) {
+                                    val scrollFeedToTop by entry.savedStateHandle
+                                        .getStateFlow(SCROLL_TO_TOP_KEY, false)
+                                        .collectAsStateWithLifecycle()
+                                    // ponytail: post composer disabled for now — the feed is read-only
+                                    // for posts. Restore the composer nav + Route.PostCompose below.
+                                    FeedTimelineScreen(
+                                        viewModel = koinViewModel(),
+                                        onNavigateToDetail = {
+                                            navController.navigate(Route.PostDetail(it.toString()))
+                                        },
+                                        onAuthorClick = {
+                                            navController.navigateToIdentity(it.domainName)
+                                        },
+                                        onFullScreenMediaChanged = { isFeedMediaOpen = it },
+                                        scrollToTop = scrollFeedToTop,
+                                        onScrollToTopHandled = {
+                                            entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
+                                        },
+                                    )
+                                } else {
+                                    // Legacy WebView feed — user opted out of the native feed.
+                                    FeedScreen(viewModel = koinViewModel())
+                                }
+                            }
+                        }
+
+                        composable<Route.PostDetail> { entry ->
+                            if (isAuthenticated) {
+                                val r = entry.toRoute<Route.PostDetail>()
+                                PostDetailScreen(
+                                    viewModel = koinViewModel(key = "post-detail-" + r.postId) {
+                                        parametersOf(Uuid.parse(r.postId))
+                                    },
+                                    onBack = { navController.popBackStack() },
+                                    onAuthorClick = {
+                                        navController.navigateToIdentity(it.domainName)
                                     },
                                 )
                             }
                         }
+
+                        // ponytail: Route.Following is unregistered — the v2 API has no followers
+                        // controller, so the screen could only show its 404 empty state. The screen,
+                        // VM and provider are kept; re-add this destination once the routes ship.
 
                         composable<Route.ContactBook> {
                             if (isAuthenticated) {
@@ -1314,6 +1429,7 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
+                                    showDeveloperMenu = showDeveloperMenu,
                                     actions = SettingsActions(
                                         onBack = { navController.popBackStack() },
                                         onNotifications = {
@@ -1333,6 +1449,9 @@ fun AppNavHost(
                                         },
                                         onVaultSettings = {
                                             navController.navigate(Route.VaultSettings)
+                                        },
+                                        onEmailSettings = {
+                                            navController.navigate(Route.EmailSettings)
                                         },
                                         onLocation = openLocation,
                                         onContactBookSettings = {
@@ -1650,8 +1769,11 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Vault> {
+                        composable<Route.Vault> { entry ->
                             if (isAuthenticated) {
+                                val scrollVaultToTop by entry.savedStateHandle
+                                    .getStateFlow(SCROLL_TO_TOP_KEY, false)
+                                    .collectAsStateWithLifecycle()
                                 when (isVaultActivated) {
                                     null -> {
                                         Box(
@@ -1686,9 +1808,53 @@ fun AppNavHost(
                                             onNavigateToDrawer = { requestId ->
                                                 navController.navigate(Route.Draw(requestId.toString()))
                                             },
+                                            scrollToTop = scrollVaultToTop,
+                                            onScrollToTopHandled = {
+                                                entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
+                                            },
                                         )
                                     }
                                 }
+                            }
+                        }
+
+                        composable<Route.Email> {
+                            if (isAuthenticated) {
+                                EmailScreen(
+                                    viewModel = emailViewModel,
+                                    setupViewModel = koinViewModel(),
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onNavigateToSecrets = { navController.navigate(Route.EmailSecrets) },
+                                    onNavigateToClientPicker = { navController.navigate(Route.EmailClientPicker) },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailClientPicker> {
+                            if (isAuthenticated) {
+                                EmailClientPickerScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailSecrets> {
+                            if (isAuthenticated) {
+                                EmailSecretsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                )
+                            }
+                        }
+
+                        composable<Route.EmailSettings> {
+                            if (isAuthenticated) {
+                                EmailSettingsScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() },
+                                    onOpenEmail = openEmail,
+                                )
                             }
                         }
 
@@ -1824,6 +1990,17 @@ fun AppNavHost(
 }
 
 
+// Contacts are keyed by md5(odinId). An author who isn't in the contact book still lands on a usable screen —
+// ContactDetailViewModel.syntheticEntry builds an entry from the route odinId.
+private fun NavHostController.navigateToIdentity(odinId: String) {
+    navigate(
+        Route.ContactBookDetail(
+            uniqueId = Md5.toGuidId(odinId.lowercase()).toString(),
+            odinId = odinId,
+        )
+    )
+}
+
 private fun NavHostController.selectConversationOnChatList(
     conversationId: Uuid, scrollToBottom: Boolean = false, messageId: Uuid? = null,
     fromShareIntent: Boolean = false,
@@ -1848,6 +2025,7 @@ private fun NavDestination?.isTopLevelRoute(): Boolean {
             this?.hasRoute(Route.Moments::class) == true ||
             this?.hasRoute(Route.Home::class) == true ||
             this?.hasRoute(Route.Vault::class) == true ||
+            this?.hasRoute(Route.Email::class) == true ||
             this?.hasRoute(Route.Location::class) == true ||
             this?.hasRoute(Route.ContactBook::class) == true
 }
@@ -1870,6 +2048,7 @@ sealed class TopLevelRoute(
     data object Moments : TopLevelRoute(Route.Moments, MR.string.nav_moments, Icons.Outlined.AutoAwesome)
     data object Home : TopLevelRoute(Route.Home, MR.string.nav_home, Icons.Default.Home)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Outlined.Lock)
+    data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Outlined.MailOutline)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Outlined.LocationOn)
     data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Outlined.People)
 }
@@ -1882,17 +2061,50 @@ sealed class TopLevelRoute(
  * `%1$d` resource if a number is wanted later).
  */
 @Composable
+private fun RailItem(
+    topLevelRoute: TopLevelRoute,
+    selected: Boolean,
+    showMomentsBadge: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(RailIndicatorSize).clip(RailIndicatorShape).background(
+            if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+        ).selectable(selected = selected, role = Role.Tab, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        TopLevelNavIcon(
+            topLevelRoute = topLevelRoute,
+            showMomentsBadge = showMomentsBadge,
+            size = RailIconSize,
+            tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
+    showEmailBadge: Boolean = false,
+    size: Dp = 24.dp,
+    tint: Color = LocalContentColor.current,
 ) {
     val icon: @Composable () -> Unit = {
         Icon(
             topLevelRoute.icon,
             contentDescription = stringResource(topLevelRoute.labelRes),
+            modifier = Modifier.size(size),
+            tint = tint,
         )
     }
-    if (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) {
+    val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||
+        // Count-less like Moments: the dot says "there is mail", and the number itself lives on
+        // the Email setup screen where there is room to say what it means.
+        (topLevelRoute is TopLevelRoute.Email && showEmailBadge)
+
+    if (badged) {
         BadgedBox(badge = { Badge() }) { icon() }
     } else {
         icon()

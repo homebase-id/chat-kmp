@@ -39,7 +39,12 @@ class SettingsViewModel(
         const val TAG = "Settings"
     }
 
-    private val _uiState = MutableStateFlow(SettingsUiState(appVersion = platformInfo.versionName))
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(
+            useNativeFeed = userPreferences.useNativeFeed,
+            appVersion = platformInfo.versionName,
+        ),
+    )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
@@ -131,6 +136,11 @@ class SettingsViewModel(
 
             SettingsUiAction.DeleteAccount -> {
                 _uiState.update { it.copy(uiDialog = SettingsUiDialog.DeleteAccount) }
+            }
+
+            is SettingsUiAction.SetUseNativeFeed -> {
+                userPreferences.useNativeFeed = action.enabled
+                _uiState.update { it.copy(useNativeFeed = action.enabled) }
             }
         }
     }

@@ -48,7 +48,9 @@ import kotlin.uuid.Uuid
 class LocalVideoServer private constructor() {
 
     private data class Session(
-        val driveFileProvider: DriveFileProvider,
+        // Takes (chunkStart, chunkLength) and returns ciphertext. A lambda rather than a provider so a
+        // followed identity's video can be read off the author's drive without this server knowing how.
+        val readEncryptedChunk: suspend (Long, Long) -> ByteArray?,
         val driveId: Uuid,
         val fileId: Uuid,
         val payloadKey: String,
@@ -65,7 +67,7 @@ class LocalVideoServer private constructor() {
     private val sessions = mutableMapOf<String, Session>()
 
     suspend fun register(
-        driveFileProvider: DriveFileProvider,
+        readEncryptedChunk: suspend (Long, Long) -> ByteArray?,
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
@@ -76,7 +78,7 @@ class LocalVideoServer private constructor() {
         val id = Uuid.random().toString()
         sessionsMutex.withLock {
             sessions[id] = Session(
-                driveFileProvider, driveId, fileId, payloadKey,
+                readEncryptedChunk, driveId, fileId, payloadKey,
                 keyHeader, originalPlaylist, totalFileSize,
             )
         }
@@ -138,13 +140,7 @@ class LocalVideoServer private constructor() {
         }
 
         val bytes = try {
-            s.driveFileProvider.getPayloadBytesEncryptedChunk(
-                driveId = s.driveId,
-                fileId = s.fileId,
-                key = s.payloadKey,
-                chunkStart = start,
-                chunkLength = length,
-            )
+            s.readEncryptedChunk(start, length)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "segment fetch failed: ${e.message}" }
             null

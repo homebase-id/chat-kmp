@@ -1150,6 +1150,7 @@
     <string name="feed_error_title">Kunne ikke indlæse feed</string>
     <string name="feed_error_retry">Prøv igen</string>
     <string name="feed_loading">Indlæser feed…</string>
+    <string name="feed_unavailable_web">Feedet er endnu ikke tilgængeligt i browseren. Åbn Homebase på din telefon eller computer for at se det.</string>
     <string name="pending_attachment_one">1 vedhæftning</string>
     <string name="pending_attachment_many">%1$d vedhæftninger</string>
     <string name="crop">Beskær</string>
