@@ -1,4 +1,6 @@
 package id.homebase.core.ui.screens.location
+import id.homebase.api.device.deviceDisplayName
+import id.homebase.api.device.devicePlatform
 import id.homebase.upload.UploadService
 import id.homebase.upload.UploadOutcome
 import id.homebase.upload.MediaUpdateSpec
@@ -24,8 +26,6 @@ import id.homebase.core.config.locationLabeledDrive
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.tracking.LocationDeviceId
-import id.homebase.core.location.tracking.deviceDisplayName
-import id.homebase.core.location.tracking.devicePlatform
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.ui.screens.location.model.HOUR_MS
 import id.homebase.core.ui.screens.location.model.LOCATION_POINTS_PAYLOAD_KEY

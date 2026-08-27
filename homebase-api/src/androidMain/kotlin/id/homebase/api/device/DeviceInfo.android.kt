@@ -1,4 +1,4 @@
-package id.homebase.core.location.tracking
+package id.homebase.api.device
 
 import android.os.Build
 

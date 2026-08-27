@@ -1,4 +1,4 @@
-package id.homebase.core.location.tracking
+package id.homebase.api.device
 
 actual fun deviceDisplayName(): String = "Web"
 
