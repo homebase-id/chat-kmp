@@ -1155,6 +1155,27 @@ fun ConversationContent(
                                         else -> item.hashCode().toString()
                                     }
                                 },
+                                // One contentType per row shape, so scrolling reuses a recycled
+                                // item's composition instead of discarding and rebuilding it.
+                                // A 45 s device profile of an image-heavy thread (iPhone 15,
+                                // release K/N) put 44.8% of main-thread CPU in recomposition and
+                                // 35.4% in measure/layout, versus 1.14% for the placeholder blur
+                                // that #1370 suspected — reuse is the lever, not the blur.
+                                contentType = { item ->
+                                    when (item) {
+                                        is MessageListContentModel.Message -> "message"
+                                        is PendingOutgoingMessage -> "pending"
+                                        is MessageListContentModel.Section -> "section"
+                                        is MessageListContentModel.System -> "system"
+                                        is MessageListContentModel.Header -> "header"
+                                        is MessageListContentModel.UnreadSeparator -> "unread-separator"
+                                        // Both spinner rows render the same composable.
+                                        is MessageListContentModel.LoadingOlder,
+                                        is MessageListContentModel.LoadingNewer -> "loading"
+                                        is MessageListContentModel.LoadServerHistory -> "load-server-history"
+                                        else -> null
+                                    }
+                                },
                             ) { item ->
                                 when (item) {
                                     is MessageListContentModel.Header -> {
