@@ -487,6 +487,17 @@ fun ConversationListPane(
                                         is ConversationListContentModel.Header ->
                                             listItem.resource.key
                                     }
+                                },
+                                // Conversation rows, message-search hits and headers are three
+                                // different shapes; without a contentType the list tries to reuse
+                                // one as another and rebuilds the composition instead. See the
+                                // matching note on the message list in ConversationContent.kt.
+                                contentType = { listItem ->
+                                    when (listItem) {
+                                        is ConversationListContentModel.Conversation -> "conversation"
+                                        is ConversationListContentModel.Message -> "message"
+                                        is ConversationListContentModel.Header -> "header"
+                                    }
                                 }
                             ) { listItem ->
                                 ConversationLisContentItem(
