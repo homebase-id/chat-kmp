@@ -174,3 +174,47 @@ jobs:
             console.log(`\nRelease complete: ${release.html_url}`);
           
           
+      # Each release is ~1.6 GB and nothing else prunes them. Safe to delete:
+      # deltas come from the local .conveyor/cache, not from published releases,
+      # and installed apps resolve updates through releases/latest/download.
+      - name: Prune old releases in bleeding repo
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.CONVEYOR_DESKTOP_DEV_GITHUB_TOKEN }}
+          script: |
+            const owner = 'homebase-id';
+            const repo = 'chat-desktop-release-bleeding';
+            const KEEP = 6;
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner, repo, per_page: 100
+            });
+
+            // Every release tags the same commit, so created_at is identical across
+            // all of them and the API's default ordering is not meaningful here.
+            releases.sort((a, b) =>
+              Date.parse(b.published_at) - Date.parse(a.published_at) || b.id - a.id);
+
+            const stale = releases.slice(KEEP);
+            if (stale.length === 0) {
+              console.log(`${releases.length} release(s), keeping ${KEEP} — nothing to prune`);
+              return;
+            }
+
+            let freed = 0;
+            for (const release of stale) {
+              freed += release.assets.reduce((sum, a) => sum + a.size, 0);
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: release.id });
+              // The create step makes a v-prefixed tag but publishes the release
+              // under the bare version, so both refs exist.
+              for (const tag of [release.tag_name, `v${release.tag_name}`]) {
+                try {
+                  await github.rest.git.deleteRef({ owner, repo, ref: `tags/${tag}` });
+                } catch (error) {
+                  console.log(`Could not delete tag ${tag}: ${error.message}`);
+                }
+              }
+              console.log(`Deleted release ${release.tag_name}`);
+            }
+
+            console.log(`Pruned ${stale.length} release(s), freed ${(freed / 1024 / 1024 / 1024).toFixed(2)} GB`);
