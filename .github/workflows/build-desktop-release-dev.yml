@@ -184,7 +184,7 @@ jobs:
           script: |
             const owner = 'homebase-id';
             const repo = 'chat-desktop-release-bleeding';
-            const KEEP = 6;
+            const KEEP = 3;
 
             const releases = await github.paginate(github.rest.repos.listReleases, {
               owner, repo, per_page: 100
