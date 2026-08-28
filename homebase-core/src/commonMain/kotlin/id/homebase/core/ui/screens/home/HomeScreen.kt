@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
@@ -60,6 +61,8 @@ import id.homebase.resources.moments_home_subtitle
 import id.homebase.resources.moments_label
 import id.homebase.resources.vault_home_subtitle
 import id.homebase.resources.vault_label
+import id.homebase.resources.webdrop_home_subtitle
+import id.homebase.resources.webdrop_label
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -67,6 +70,7 @@ import org.jetbrains.compose.resources.stringResource
 fun HomeScreen(
     viewModel: HomeViewModel,
     onNavigateToVault: () -> Unit,
+    onNavigateToWebDrop: () -> Unit,
     onNavigateToMoments: () -> Unit,
     onNavigateToLocation: () -> Unit,
     onNavigateToContacts: () -> Unit,
@@ -121,6 +125,7 @@ fun HomeScreen(
         snackbarHostState = snackbarHostState,
         onAction = viewModel::onAction,
         onNavigateToVault = onNavigateToVault,
+        onNavigateToWebDrop = onNavigateToWebDrop,
         onNavigateToMoments = onNavigateToMoments,
         onNavigateToLocation = onNavigateToLocation,
         onNavigateToContacts = onNavigateToContacts,
@@ -133,6 +138,7 @@ fun HomeUi(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onAction: (HomeUiAction) -> Unit,
     onNavigateToVault: () -> Unit = {},
+    onNavigateToWebDrop: () -> Unit = {},
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
@@ -165,6 +171,15 @@ fun HomeUi(
                 label = stringResource(MR.string.vault_label),
                 subtitle = stringResource(MR.string.vault_home_subtitle),
                 onClick = onNavigateToVault,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FeatureCard(
+                icon = Icons.Outlined.Redeem,
+                label = stringResource(MR.string.webdrop_label),
+                subtitle = stringResource(MR.string.webdrop_home_subtitle),
+                onClick = onNavigateToWebDrop,
             )
 
             Spacer(modifier = Modifier.height(12.dp))
