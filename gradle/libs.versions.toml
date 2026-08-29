@@ -27,6 +27,7 @@ mp4parser = "1.9.39"
 androidx-pdf-viewer = "1.0.0-alpha18"
 pdfbox = "3.0.5"
 vlcj = "4.8.2"
+jna = "5.18.1"
 jetbrains-compose-material3 = "1.9.0"
 jetbrains-compose-material3-adaptive = "1.2.0"
 kotlinxHtmlJvm = "0.12.0"
@@ -151,6 +152,8 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor" }
 vlcj = { module = "uk.co.caprica:vlcj", version.ref = "vlcj" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-client-encoding = { module = "io.ktor:ktor-client-encoding", version.ref = "ktor" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
