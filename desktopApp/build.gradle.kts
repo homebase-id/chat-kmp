@@ -91,7 +91,12 @@ kotlin {
             }
             implementation(libs.sqlite.jdbc.crypt)
             implementation(libs.composenativetray)
-            implementation(libs.vlcj)
+            implementation(libs.vlcj.get().toString()) {
+                exclude(group = "net.java.dev.jna", module = "jna-jpms")
+                exclude(group = "net.java.dev.jna", module = "jna-platform-jpms")
+            }
+            implementation(libs.jna)
+            implementation(libs.jna.platform)
         }
 
         commonTest.dependencies {
