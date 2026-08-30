@@ -91,6 +91,7 @@
     <string name="show_more">Show more</string>
     <string name="chat_message_read_more">Read more</string>
     <string name="action_cannot_be_undone">This action can't be undone.</string>
+    <string name="action_undo">Undo</string>
     <string name="slide_to_cancel">&lt; Slide to cancel</string>
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
@@ -677,6 +678,8 @@
     <string name="chat_unarchive">Restore</string>
     <string name="chat_archived_chats">Archived conversations</string>
     <string name="chat_archived_chats_empty">Archived conversations will be shown here</string>
+    <string name="chat_conversation_archived_confirmation">Conversation archived</string>
+    <string name="chat_conversation_restored_confirmation">Conversation restored</string>
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
