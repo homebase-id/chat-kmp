@@ -18,6 +18,7 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.api.sync.database.DatabaseSizeProbe
+import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +40,7 @@ class StorageSettingsViewModel(
     private val databaseSizeProbe: DatabaseSizeProbe,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveRegistry: DriveRegistry,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
     private val fileSystem = systemFileSystem
@@ -48,12 +50,21 @@ class StorageSettingsViewModel(
 
     init {
         load()
+        // The composer's HD chip writes the same preference, so follow the mirrored flow.
+        viewModelScope.launch {
+            userPreferences.preferenceState.collect { prefs ->
+                _uiState.update { it.copy(mediaQuality = prefs.mediaQuality) }
+            }
+        }
     }
 
     fun onAction(action: StorageSettingsUiAction) {
         when (action) {
             StorageSettingsUiAction.Refresh -> load()
             StorageSettingsUiAction.ClearCachesClicked -> clearCaches()
+            is StorageSettingsUiAction.SetMediaQuality -> {
+                userPreferences.mediaQuality = action.quality
+            }
         }
     }
 

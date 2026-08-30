@@ -369,6 +369,13 @@ fun ConversationMessagesPane(
                             currentPage = currentGalleryPage,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },
+                            mediaQuality = uiState.mediaQuality,
+                            onToggleMediaQuality = {
+                                onUiAction(
+                                    id.homebase.chat.conversationlist.ConversationListUiAction
+                                        .ToggleMediaQuality
+                                )
+                            },
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },

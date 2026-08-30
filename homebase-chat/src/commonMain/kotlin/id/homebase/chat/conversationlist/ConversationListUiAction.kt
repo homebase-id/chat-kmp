@@ -317,6 +317,13 @@ sealed interface ConversationListUiAction {
         val trimEndMs: Long?,
     ) : ConversationListUiAction
 
+    /**
+     * User tapped HD in the attachment editor. Writes through to the global media-quality
+     * preference, the way Signal's and Telegram's equivalents do — it is the setting, surfaced
+     * a second time where it matters.
+     */
+    data object ToggleMediaQuality : ConversationListUiAction
+
     /** User toggled Send-as-sticker on an image attachment. */
     data class ToggleStickerAttachment(
         val conversationId: Uuid,

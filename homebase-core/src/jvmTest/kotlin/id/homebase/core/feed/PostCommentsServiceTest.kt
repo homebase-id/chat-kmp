@@ -74,6 +74,7 @@ class PostCommentsServiceTest {
         fileOps = env.fileOps,
         driveQueryProvider = env.driveQueryProvider,
         scope = env.scope,
+        userPreferences = env.userPreferences,
     )
 
     // A null senderOdinId keeps the over-peer comment load out of the picture.

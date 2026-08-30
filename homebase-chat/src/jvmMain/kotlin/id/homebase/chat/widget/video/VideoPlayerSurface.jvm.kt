@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -276,6 +277,14 @@ actual fun VideoPlayerSurface(
     }
 }
 
+// Discovery dlopens libvlccore; a broken or ABI-mismatched JNA raises UnsatisfiedLinkError,
+// an Error that would otherwise escape composition and kill the Compose render loop.
+private val vlcNativesAvailable: Boolean by lazy {
+    runCatching { NativeDiscovery().discover() }
+        .onFailure { Logger.e(tag = "VideoIO", throwable = it) { "libvlc discovery failed" } }
+        .getOrDefault(false)
+}
+
 @Composable
 internal fun VlcjPlayer(
     videoPath: String,
@@ -291,11 +300,17 @@ internal fun VlcjPlayer(
     onEnded: () -> Unit = {},
     replayToken: Int = 0,
 ) {
-    val vlcFound = remember { NativeDiscovery().discover() }
+    val vlcFound by produceState<Boolean?>(null) {
+        value = withContext(Dispatchers.IO) { vlcNativesAvailable }
+    }
 
-    if (!vlcFound) {
+    if (vlcFound != true) {
         Box(modifier, contentAlignment = Alignment.Center) {
-            Text(stringResource(MR.string.vlc_required))
+            if (vlcFound == null) {
+                CircularProgressIndicator()
+            } else {
+                Text(stringResource(MR.string.vlc_required))
+            }
         }
         return
     }
