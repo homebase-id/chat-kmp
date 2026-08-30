@@ -553,7 +553,7 @@ class OptimisticWriter(
     suspend fun rollbackWrite(driveId: Uuid, original: HomebaseFile) {
         val credentials = credentialsManager.requireActiveCredentials()
         try {
-            val batch = listOf(original)
+            val batch = listOf(restoredWithFreshTimestamp(credentials.getIdentityId(), driveId, original))
             fileProcessor.baseUpsertEntryZapZap(
                 identityId = credentials.getIdentityId(),
                 driveId = driveId,
@@ -570,6 +570,31 @@ class OptimisticWriter(
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Optimistic delete rollback failed for fileId=${original.fileId}" }
         }
+    }
+
+    // upsertDriveMainIndex only writes when excluded.modified > DriveMainIndex.modified,
+    // and `original` is by construction older than the optimistic write it undoes — so
+    // restoring it verbatim is silently dropped. Re-stamp the original content past
+    // whatever is stored instead of relaxing a guard that protects host-sourced writes.
+    private suspend fun restoredWithFreshTimestamp(
+        identityId: Uuid,
+        driveId: Uuid,
+        original: HomebaseFile,
+    ): HomebaseFile {
+        val uniqueId = original.fileMetadata.appData.uniqueId
+        val stored = uniqueId
+            ?.let { dbm.driveMainIndex.selectByIdentityAndDriveAndUnique(identityId, driveId, it) }
+            ?: dbm.driveMainIndex.selectByIdentityAndDriveAndFile(identityId, driveId, original.fileId)
+
+        val originalUpdated = original.fileMetadata.updated.milliseconds
+        val storedModified = stored?.modified ?: originalUpdated
+        if (storedModified < originalUpdated) return original
+
+        return original.copy(
+            fileMetadata = original.fileMetadata.copy(
+                updated = UnixTimeUtc(storedModified + 1)
+            )
+        )
     }
 
     /** Optimistically updates the reactionPreview AND localAppData.localReactions
