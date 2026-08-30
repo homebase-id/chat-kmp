@@ -13,7 +13,16 @@ sealed interface ConversationListUiEvent {
     data class NavigateToConversationSettings(val conversationId: String) : ConversationListUiEvent
     data class NavigateToMessageInfo(val message: MessageUiModel) : ConversationListUiEvent
     data class ShowErrorMessage(val res: StringResource, val detail: String? = null) : ConversationListUiEvent
-    data class ShowInfoMessage(val res: StringResource) : ConversationListUiEvent
+    /**
+     * Snackbar. [action] is dispatched back through `onAction` when the user taps
+     * [actionLabel] — a plain value rather than a lambda so the event stays
+     * comparable and testable off-device.
+     */
+    data class ShowInfoMessage(
+        val res: StringResource,
+        val actionLabel: StringResource? = null,
+        val action: ConversationListUiAction? = null,
+    ) : ConversationListUiEvent
     data class ShareText(val text: String) : ConversationListUiEvent
     data class ShareFile(val filePath: String) : ConversationListUiEvent
     data class OpenFile(val filePath: String) : ConversationListUiEvent

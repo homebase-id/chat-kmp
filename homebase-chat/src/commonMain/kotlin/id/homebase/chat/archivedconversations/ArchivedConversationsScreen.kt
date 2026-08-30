@@ -21,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -32,7 +33,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.chat.conversationlist.showTimedSnackbar
 import id.homebase.chat.widget.ConversationItem
+import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.resources.MR
 import id.homebase.resources.chat_archived_chats
@@ -54,32 +57,36 @@ fun ArchivedConversationsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(uiState.uiEvent) {
-        when (val event = uiState.uiEvent) {
-            null -> {}
-            is ArchivedConversationsUiEvent.Back -> {
-                viewModel.eventConsumed()
-                onNavigateBack()
-            }
+    LaunchedEffect(Unit) {
+        viewModel.uiEvents.collect { event ->
+            when (event) {
+                is ArchivedConversationsUiEvent.Back -> onNavigateBack()
 
-            is ArchivedConversationsUiEvent.Error -> {
-                viewModel.eventConsumed()
-                scope.launch { snackbarHostState.showSnackbar(message = event.errorMessage) }
-            }
+                is ArchivedConversationsUiEvent.Error -> {
+                    scope.launch { snackbarHostState.showSnackbar(message = event.errorMessage) }
+                }
 
-            is ArchivedConversationsUiEvent.NavigateToConversation -> {
-                viewModel.eventConsumed()
-                onShowConversation(event.conversationId)
-            }
+                is ArchivedConversationsUiEvent.ShowInfoMessage -> {
+                    val text = TranslationUtil.getString(event.res)
+                    val actionLabel = event.actionLabel?.let { TranslationUtil.getString(it) }
+                    // Launched on `scope`: showSnackbar suspends for the snackbar's whole
+                    // visible life, which would stall every event queued behind it.
+                    scope.launch {
+                        val result = snackbarHostState.showTimedSnackbar(text, actionLabel)
+                        if (result == SnackbarResult.ActionPerformed) {
+                            event.action?.let(viewModel::onUiAction)
+                        }
+                    }
+                }
 
-            is ArchivedConversationsUiEvent.NavigateToConversationSettings -> {
-                viewModel.eventConsumed()
-                onNavigateToConversationSettings(event.conversationId)
-            }
+                is ArchivedConversationsUiEvent.NavigateToConversation ->
+                    onShowConversation(event.conversationId)
 
-            is ArchivedConversationsUiEvent.NavigateToGroupSettings -> {
-                viewModel.eventConsumed()
-                onNavigateToGroupSettings(event.conversationId)
+                is ArchivedConversationsUiEvent.NavigateToConversationSettings ->
+                    onNavigateToConversationSettings(event.conversationId)
+
+                is ArchivedConversationsUiEvent.NavigateToGroupSettings ->
+                    onNavigateToGroupSettings(event.conversationId)
             }
         }
     }
@@ -143,20 +150,25 @@ fun ArchivedConversationsUi(
                             modifier = Modifier.fillMaxSize(),
                             state = listState,
                         ) {
-                            items(uiState.conversations) { conversation ->
-                                ConversationItem(
-                                    enrichedData = conversation,
-                                    onClick = {
-                                        onUiAction(ArchivedConversationsUiAction.ShowConversation(conversation.conversation.id))
-                                    },
-                                    onContactClick = {
-                                        onUiAction(ArchivedConversationsUiAction.ShowConversationSettings(conversation.conversation))
-                                    },
-                                    onArchiveClick = {
-                                        onUiAction(ArchivedConversationsUiAction.UnarchiveConversation(conversation.conversation.id))
-                                    },
-                                    isSelected = selectedConversationId == conversation.conversation.id,
-                                )
+                            items(
+                                uiState.conversations,
+                                key = { it.conversation.id },
+                            ) { conversation ->
+                                Box(modifier = Modifier.animateItem()) {
+                                    ConversationItem(
+                                        enrichedData = conversation,
+                                        onClick = {
+                                            onUiAction(ArchivedConversationsUiAction.ShowConversation(conversation.conversation.id))
+                                        },
+                                        onContactClick = {
+                                            onUiAction(ArchivedConversationsUiAction.ShowConversationSettings(conversation.conversation))
+                                        },
+                                        onArchiveClick = {
+                                            onUiAction(ArchivedConversationsUiAction.UnarchiveConversation(conversation.conversation.id))
+                                        },
+                                        isSelected = selectedConversationId == conversation.conversation.id,
+                                    )
+                                }
                             }
                         }
                         HomebaseVerticalScrollbar(

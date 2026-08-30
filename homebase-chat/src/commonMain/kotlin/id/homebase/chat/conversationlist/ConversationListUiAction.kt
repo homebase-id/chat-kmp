@@ -154,9 +154,16 @@ sealed interface ConversationListUiAction {
 
     data class DeleteConversation(val conversationId: Uuid) : ConversationListUiAction
     data class ConfirmDeleteConversation(val conversationId: Uuid) : ConversationListUiAction
-    data class ArchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+    /** [isUndo] marks the inverse of a just-confirmed archive, which must not offer an undo of its own. */
+    data class ArchiveConversation(
+        val conversationId: Uuid,
+        val isUndo: Boolean = false,
+    ) : ConversationListUiAction
 
-    data class UnarchiveConversation(val conversationId: Uuid) : ConversationListUiAction
+    data class UnarchiveConversation(
+        val conversationId: Uuid,
+        val isUndo: Boolean = false,
+    ) : ConversationListUiAction
 
 
     data class ClearConversation(val conversationId: Uuid) : ConversationListUiAction
