@@ -72,7 +72,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -90,7 +92,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -124,7 +128,9 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.core.widget.EmojiSelection
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
@@ -161,6 +167,12 @@ import org.koin.compose.koinInject
 import kotlin.math.roundToInt
 
 internal const val COMPOSER_EXPAND_TOGGLE_TAG = "composer_expand_toggle"
+internal const val ATTACHMENT_CAPTION_FIELD_TAG = "attachment_caption_field"
+internal const val ATTACHMENT_EMOJI_BUTTON_TAG = "attachment_emoji_button"
+internal const val ATTACHMENT_EMOJI_PICKER_TAG = "attachment_emoji_picker"
+
+private val EMOJI_PANEL_HEIGHT = 300.dp
+private const val EMOJI_PANEL_MAX_HEIGHT_FRACTION = 0.45f
 
 // Link previews are auto-detected from typed URLs, so on their own they don't signal intent to send.
 private fun hasSendableContent(state: RichTextState, payloadRenderers: List<PayloadRenderer>) =
@@ -1189,21 +1201,31 @@ private fun MessageEditMessageInfo(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
     state: RichTextState,
-    onSmileyClick: () -> Unit,
     onSendMessage: () -> Unit,
     // Mirror the chat composer: the rich-text formatting toolbar is desktop/web-only.
     // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
+    onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     var hasSent by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    fun setEmojiPicker(visible: Boolean) {
+        if (showEmojiPicker == visible) return
+        showEmojiPicker = visible
+        onEmojiPickerVisibilityChanged(visible)
+    }
+
+    @Suppress("DEPRECATION") BackHandler(showEmojiPicker) { setEmojiPicker(false) }
 
     EmojiShortcodeEffect(state)
 
@@ -1221,27 +1243,41 @@ fun MessageTextFieldForAttachment(
         ) {
             RichTextEditor(
                 state = state,
-                modifier = Modifier.weight(1f).onPreviewKeyEvent { keyEvent ->
-                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                        if (keyEvent.isShiftPressed) {
-                            state.addTextAfterSelection("\n")
-                            true
-                        } else if (!hasSent) {
-                            hasSent = true
-                            onSendMessage()
-                            true
+                modifier = Modifier.weight(1f).testTag(ATTACHMENT_CAPTION_FIELD_TAG)
+                    // Tapping into the caption closes the panel; the keyboard reclaims the space.
+                    .onFocusChanged { if (it.isFocused) setEmojiPicker(false) }
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                            if (keyEvent.isShiftPressed) {
+                                state.addTextAfterSelection("\n")
+                                true
+                            } else if (!hasSent) {
+                                hasSent = true
+                                onSendMessage()
+                                true
+                            } else {
+                                true
+                            }
                         } else {
-                            true
+                            false
                         }
-                    } else {
-                        false
-                    }
-                },
+                    },
                 placeholder = {
                     Text(stringResource(MR.string.chat_new_message_placeholder))
                 },
                 leadingIcon = {
-                    IconButton(onClick = onSmileyClick) {
+                    IconButton(
+                        onClick = {
+                            if (showEmojiPicker) {
+                                setEmojiPicker(false)
+                            } else {
+                                keyboardController?.hide()
+                                focusManager.clearFocus()
+                                setEmojiPicker(true)
+                            }
+                        },
+                        modifier = Modifier.testTag(ATTACHMENT_EMOJI_BUTTON_TAG),
+                    ) {
                         Icon(
                             imageVector = Icons.Default.EmojiEmotions,
                             contentDescription = stringResource(
@@ -1295,6 +1331,27 @@ fun MessageTextFieldForAttachment(
                     )
                 }
             }
+        }
+
+        // Emoji only, no sticker/GIF tabs: a caption is text, and a sticker isn't.
+        AnimatedVisibility(visible = showEmojiPicker) {
+            // MediaAttachmentEditor's media pager is the only weighted child of its
+            // Column, so it absorbs every dp this panel takes; a flat 300 dp measures
+            // it to 0 on a landscape phone and the attachment disappears. Cap against
+            // the viewport (the StickerMessage idiom) so the pager always keeps room.
+            val viewportHeightPx = LocalWindowInfo.current.containerSize.height
+            val panelHeight = with(LocalDensity.current) {
+                if (viewportHeightPx > 0)
+                    minOf(EMOJI_PANEL_HEIGHT, viewportHeightPx.toDp() * EMOJI_PANEL_MAX_HEIGHT_FRACTION)
+                else EMOJI_PANEL_HEIGHT
+            }
+            EmojiSelection(
+                modifier = Modifier.fillMaxWidth().height(panelHeight)
+                    .testTag(ATTACHMENT_EMOJI_PICKER_TAG),
+                messageInputMode = true,
+                onBackSpace = { state.programmaticBackspace() },
+                onEmojiSelected = { state.addTextAfterSelection(it) },
+            )
         }
     }
 }
