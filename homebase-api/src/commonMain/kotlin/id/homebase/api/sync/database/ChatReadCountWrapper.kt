@@ -13,8 +13,8 @@ data class ConversationWithLastMessage(
     val conversation: HomebaseFile,
     val message: HomebaseFile?,
     /**
-     * Authoritative `DriveMainIndex.userDate` (epoch ms) of the last message,
-     * straight from the SQL column. Null when there's no last message yet.
+     * Authoritative ordering key `MAX(DriveMainIndex.userDate, created)` (epoch ms)
+     * of the last message, straight from the SQL. Null when there's no last message yet.
      *
      * Carried separately from `message` because `ChatMessageStream.mapToMessageData`
      * clamps the in-memory `MessageUiModel.userDate` to `metadata.transitCreated`

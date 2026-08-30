@@ -372,7 +372,7 @@ class ConversationMapper(
 
         return if (lastMsg != null) {
             val domain = credentialsManager.requireActiveDomain()
-            applyLastMessage(withAdmins, lastMsg, domain, sqlUserDateMs = lastMsg.sqlUserDateMs())
+            applyLastMessage(withAdmins, lastMsg, domain, sqlUserDateMs = lastMsg.orderingDateMs())
         } else withAdmins
     }
 
