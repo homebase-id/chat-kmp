@@ -437,6 +437,7 @@ fun AppNavHost(
                 is VaultUiEvent.SaveFileReady,
                 is VaultUiEvent.NavigateToCropper,
                 is VaultUiEvent.NavigateToDrawer,
+                is VaultUiEvent.OpenWebDrop,
                 is VaultUiEvent.Error -> { /* handled by VaultScreen */ }
             }
         }
@@ -1825,6 +1826,7 @@ fun AppNavHost(
                                             onNavigateToNoteEditor = { sectionId, entryId ->
                                                 navController.navigate(Route.VaultNoteEditor(sectionId, entryId))
                                             },
+                                            onNavigateToWebDrop = openWebDrop,
                                             onNavigateToCropper = { requestId ->
                                                 navController.navigate(Route.Crop(requestId.toString()))
                                             },
