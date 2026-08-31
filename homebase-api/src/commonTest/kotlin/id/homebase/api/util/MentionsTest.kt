@@ -103,6 +103,16 @@ class MentionsTest {
         assertEquals(emptyList(), mentions("(@alice.example.test) said"))
     }
 
+    /**
+     * The range is what to DECORATE, and it is not the identity: a token that keeps going with
+     * alphanumerics carries on into the range. Anything asking "is the current user mentioned here?"
+     * (#1417, self-mention highlighting) must therefore match the identity, not slice the range.
+     */
+    @Test
+    fun rangeCanReachPastTheIdentity() {
+        assertEquals(listOf("@alice.example.test/inbox"), mentions("hi @alice.example.test/inbox"))
+    }
+
     @Test
     fun keepsASubdomainRun() {
         assertEquals(listOf("@a.b.c.example.test"), mentions("hi @a.b.c.example.test"))
