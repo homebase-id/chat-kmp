@@ -31,6 +31,7 @@ class WebDropViewModel(
     private val webDropStream: WebDropStream,
     private val webDropPermissionViewModel: ExtendPermissionViewModel,
     private val optionalDriveActivation: OptionalDriveActivation,
+    webDropShareFlowState: WebDropShareFlowState,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WebDropUiState())
@@ -44,6 +45,12 @@ class WebDropViewModel(
         get() = webDropPermissionViewModel
 
     init {
+        // Files shared in from the OS share sheet: the share flow seeded these before
+        // deep-linking here, so land straight in the composer with them picked.
+        webDropShareFlowState.consume()?.let { shared ->
+            _uiState.update { it.copy(composeOpen = true, pickedFiles = shared) }
+        }
+
         viewModelScope.launch {
             optionalDriveActivation.isActivatedFlow(webDropLabeledDrive).collect { activated ->
                 _uiState.update { it.copy(driveActivated = activated) }
