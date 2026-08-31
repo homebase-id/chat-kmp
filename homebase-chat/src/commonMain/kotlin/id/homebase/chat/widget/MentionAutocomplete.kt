@@ -12,8 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.ContactAvatar
 import id.homebase.core.widget.ComposerAutocomplete
 import id.homebase.core.widget.ComposerAutocompleteController
 
@@ -83,6 +86,9 @@ private fun matchRank(query: String, target: ContactUiModel): Int? {
     }
 }
 
+/** Hoisted so the per-keystroke re-render of the list does not reallocate it per row. */
+private val MentionAvatarOptions = AvatarOptions(size = 28.dp, fontSize = 12.sp)
+
 @Composable
 private fun MentionSuggestionRow(target: ContactUiModel, selected: Boolean) {
     val handle = target.odinId.domainName
@@ -95,6 +101,12 @@ private fun MentionSuggestionRow(target: ContactUiModel, selected: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        ContactAvatar(
+            odinId = target.odinId,
+            profileImageData = null,
+            initials = target.avatarInitials,
+            options = MentionAvatarOptions,
+        )
         Text(
             text = target.name,
             style = MaterialTheme.typography.bodyMedium,
@@ -113,6 +125,9 @@ private fun MentionSuggestionRow(target: ContactUiModel, selected: Boolean) {
                 },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                // Weighted, or a long handle is measured first at full width and clips the name
+                // that the user is actually reading down to "Wil…".
+                modifier = Modifier.weight(1f, fill = false),
             )
         }
     }
