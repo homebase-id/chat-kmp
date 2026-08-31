@@ -686,6 +686,8 @@
     <string name="chat_message_record_video">Optag video</string>
     <string name="share_picker_next">Næste</string>
     <string name="share_picker_send">Send</string>
+    <string name="share_picker_new_webdrop">Nyt WebDrop</string>
+    <string name="share_picker_new_webdrop_subtitle">Del som et selvdestruerende link</string>
     <string name="share_picker_new_moment">Nyt øjeblik</string>
     <string name="share_picker_new_moment_subtitle">Del til dine Moments</string>
     <string name="chat_message_emoji_options">Emoji menu</string>

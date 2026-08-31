@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -73,6 +74,8 @@ import id.homebase.resources.recents
 import id.homebase.resources.sending_to_conversations
 import id.homebase.resources.share_picker_new_moment
 import id.homebase.resources.share_picker_new_moment_subtitle
+import id.homebase.resources.share_picker_new_webdrop
+import id.homebase.resources.share_picker_new_webdrop_subtitle
 import id.homebase.resources.share_picker_next
 import id.homebase.resources.share_picker_send
 import id.homebase.resources.share_to
@@ -94,6 +97,7 @@ fun SharePickerScreen(
     hasFiles: Boolean,
     isSending: Boolean,
     showNewMomentOption: Boolean,
+    showNewWebDropOption: Boolean,
     onTargetSelected: (ShareTarget) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -240,10 +244,16 @@ fun SharePickerScreen(
 
             HorizontalDivider()
 
-            // A "New Moment" destination sits above the conversation list (only
-            // when files are present and Moments is activated). It's an action,
-            // not a selectable checkbox row, so it dispatches immediately rather
-            // than joining the multi-select set.
+            // "New WebDrop" and "New Moment" destinations sit above the
+            // conversation list (each only when files are present and its
+            // feature is activated). They are actions, not selectable checkbox
+            // rows, so they dispatch immediately rather than joining the
+            // multi-select set. WebDrop first: it is the newer, outward-facing
+            // share (files leave the identity as a link).
+            if (showNewWebDropOption && !isSending && conversationsData.dataReady) {
+                NewWebDropRow(onClick = { onTargetSelected(ShareTarget.NewWebDrop) })
+                HorizontalDivider()
+            }
             if (showNewMomentOption && !isSending && conversationsData.dataReady) {
                 NewMomentRow(onClick = { onTargetSelected(ShareTarget.NewMoment) })
                 HorizontalDivider()
@@ -389,6 +399,46 @@ private fun ShareSendBar(
             FilledTonalButton(onClick = onSend) {
                 Text(buttonText)
             }
+        }
+    }
+}
+
+@Composable
+private fun NewWebDropRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 28.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Redeem,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(24.dp),
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(MR.string.share_picker_new_webdrop),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = stringResource(MR.string.share_picker_new_webdrop_subtitle),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
