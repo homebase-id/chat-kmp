@@ -22,6 +22,7 @@ import id.homebase.core.config.AppConfig
 import id.homebase.core.util.buildBlockUrl
 import id.homebase.core.util.buildConnectToIdentityUrl
 import id.homebase.resources.MR
+import id.homebase.resources.action_undo
 import id.homebase.resources.auto_connect_blocked
 import id.homebase.resources.auto_connect_duplicate_introductory_request
 import id.homebase.resources.auto_connect_failed_generic
@@ -33,7 +34,9 @@ import id.homebase.resources.auto_connect_recipient_not_configured
 import id.homebase.resources.auto_connect_recipient_rejected
 import id.homebase.resources.auto_connect_recipient_requires_upgrade
 import id.homebase.resources.auto_connect_recipient_unreachable
+import id.homebase.resources.chat_conversation_archived_confirmation
 import id.homebase.resources.chat_conversation_deleted_confirmation
+import id.homebase.resources.chat_conversation_restored_confirmation
 import id.homebase.resources.chat_conversation_deleting_in_progress
 import id.homebase.resources.chat_conversation_leaving_and_deleting_in_progress
 import id.homebase.resources.chat_error_accept_rejoin
@@ -99,28 +102,18 @@ internal class ConversationLifecycleHandler(
     fun handleShowContactInfo(action: ConversationListUiAction.ShowContactInfo) {
         if (action.odinId == uiState.value.ownerSession?.odinId?.domainName) {
             // Show self-conversation settings as owner profile
-            uiState.update {
-                it.copy(
-                    uiEvent = NavigateToConversationSettings(
-                        ChatProtocol.ConversationWithYourselfId.toString()
-                    )
+            sendEvent(
+                NavigateToConversationSettings(
+                    ChatProtocol.ConversationWithYourselfId.toString()
                 )
-            }
+            )
         } else {
-            uiState.update {
-                it.copy(
-                    uiEvent = NavigateToContactInfo(action.odinId)
-                )
-            }
+            sendEvent(NavigateToContactInfo(action.odinId))
         }
     }
 
     fun handleShowMessageInfo(action: ConversationListUiAction.ShowMessageInfo) {
-        uiState.update {
-            it.copy(
-                uiEvent = NavigateToMessageInfo((action.message))
-            )
-        }
+        sendEvent(NavigateToMessageInfo(action.message))
     }
 
     fun handleDismissSheet() {
@@ -142,7 +135,7 @@ internal class ConversationLifecycleHandler(
     fun handleConnectToIdentity(action: ConversationListUiAction.ConnectToIdentity) {
         uiState.value.ownerSession?.odinId?.let { currentUser ->
             val url = currentUser.buildConnectToIdentityUrl(action.odinId)
-            uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
+            sendEvent(ConversationListUiEvent.OpenUrl(url))
         }
     }
 
@@ -154,18 +147,12 @@ internal class ConversationLifecycleHandler(
         uiState.value.ownerSession?.odinId?.let { currentUser ->
             val url =
                 "https://${currentUser.domainName}/owner/connections/${action.odinId.domainName}"
-            uiState.update { it.copy(uiEvent = ConversationListUiEvent.OpenUrl(url)) }
+            sendEvent(ConversationListUiEvent.OpenUrl(url))
         }
     }
 
     fun handleOpenSendConnectionRequestDialog(action: ConversationListUiAction.OpenSendConnectionRequestDialog) {
-        uiState.update {
-            it.copy(
-                uiEvent = ConversationListUiEvent.OpenSendConnectionRequestDialog(
-                    action.odinId
-                )
-            )
-        }
+        sendEvent(ConversationListUiEvent.OpenSendConnectionRequestDialog(action.odinId))
     }
 
     /* Conversation options */
@@ -180,23 +167,11 @@ internal class ConversationLifecycleHandler(
         val ownerOdinId = uiState.value.ownerSession?.odinId
         val peerOdinId = conversation.participants.firstOrNull { it != ownerOdinId }?.domainName
         if (conversation.isGroupConversation) {
-            uiState.update {
-                it.copy(
-                    uiEvent = NavigateToGroupSettings(
-                        (action.conversation.id.toString())
-                    )
-                )
-            }
+            sendEvent(NavigateToGroupSettings(action.conversation.id.toString()))
         } else if (!conversation.isWithSelf && peerOdinId != null) {
-            uiState.update { it.copy(uiEvent = NavigateToContactInfo(peerOdinId)) }
+            sendEvent(NavigateToContactInfo(peerOdinId))
         } else {
-            uiState.update {
-                it.copy(
-                    uiEvent = NavigateToConversationSettings(
-                        (action.conversation.id.toString())
-                    )
-                )
-            }
+            sendEvent(NavigateToConversationSettings(action.conversation.id.toString()))
         }
     }
 
@@ -268,6 +243,16 @@ internal class ConversationLifecycleHandler(
         scope.launch {
             try {
                 conversationService.archiveConversation(action.conversationId)
+                if (!action.isUndo) sendEvent(
+                    ShowInfoMessage(
+                        res = MR.string.chat_conversation_archived_confirmation,
+                        actionLabel = MR.string.action_undo,
+                        action = ConversationListUiAction.UnarchiveConversation(
+                            conversationId = action.conversationId,
+                            isUndo = true,
+                        ),
+                    )
+                )
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "Failed to archive conversation: ${e.message}"
@@ -281,6 +266,16 @@ internal class ConversationLifecycleHandler(
         scope.launch {
             try {
                 conversationService.unarchiveConversation(action.conversationId)
+                if (!action.isUndo) sendEvent(
+                    ShowInfoMessage(
+                        res = MR.string.chat_conversation_restored_confirmation,
+                        actionLabel = MR.string.action_undo,
+                        action = ConversationListUiAction.ArchiveConversation(
+                            conversationId = action.conversationId,
+                            isUndo = true,
+                        ),
+                    )
+                )
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
                     "Failed to unarchive conversation: ${e.message}"

@@ -91,6 +91,7 @@
     <string name="show_more">Show more</string>
     <string name="chat_message_read_more">Read more</string>
     <string name="action_cannot_be_undone">This action can't be undone.</string>
+    <string name="action_undo">Undo</string>
     <string name="slide_to_cancel">&lt; Slide to cancel</string>
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
@@ -677,6 +678,8 @@
     <string name="chat_unarchive">Restore</string>
     <string name="chat_archived_chats">Archived conversations</string>
     <string name="chat_archived_chats_empty">Archived conversations will be shown here</string>
+    <string name="chat_conversation_archived_confirmation">Conversation archived</string>
+    <string name="chat_conversation_restored_confirmation">Conversation restored</string>
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
@@ -2098,4 +2101,49 @@
     <string name="desktop_menu_quit">Quit</string>
     <string name="desktop_tray_show_window">Show Window</string>
     <string name="desktop_tray_version">Version %1$s</string>
+
+    <!-- WebDrop -->
+    <string name="webdrop_home_subtitle">Share encrypted files online as self-destructing links</string>
+    <string name="webdrop_label">WebDrop</string>
+    <string name="webdrop_onboarding_title">Share files with anyone, safely</string>
+    <string name="webdrop_onboarding_body_1">Send a private file to someone who is not on Homebase - a passport to a hotel, a document to an office - as a simple link that opens in any browser.</string>
+    <string name="webdrop_onboarding_body_2">Files are encrypted on your device, and every link self-destructs: after it is opened, or after a time you choose. Your server never sees the key.</string>
+    <string name="webdrop_onboarding_setup">Set it up</string>
+    <string name="webdrop_onboarding_dismiss">Not now</string>
+    <string name="webdrop_empty_title">No drops yet</string>
+    <string name="webdrop_empty_body">Create a drop to share files as a self-destructing link.</string>
+    <string name="webdrop_new_drop">New drop</string>
+    <string name="webdrop_compose_title">New drop</string>
+    <string name="webdrop_add_files">Add files</string>
+    <string name="webdrop_create">Create link</string>
+    <string name="webdrop_link_ready">Your self-destructing link is ready</string>
+    <string name="webdrop_share">Share</string>
+    <string name="webdrop_copy">Copy link</string>
+    <string name="webdrop_ttl_burn">Burns after opening</string>
+    <string name="webdrop_ttl_one_day">1 day</string>
+    <string name="webdrop_ttl_seven_days">7 days</string>
+    <string name="webdrop_ttl_thirty_days">30 days</string>
+    <string name="webdrop_files_count">%1$d files</string>
+    <string name="webdrop_status_waiting">Waiting to be opened</string>
+    <string name="webdrop_status_opened">Opened - self-destructs in %1$s</string>
+    <string name="webdrop_status_expires">Self-destructs in %1$s</string>
+    <string name="webdrop_status_removed">Gone</string>
+    <string name="webdrop_revoke">Revoke link</string>
+    <string name="webdrop_row_clear">Clear from list</string>
+    <string name="webdrop_for_someone">For someone specific?</string>
+    <string name="webdrop_recipient_name">Recipient's name</string>
+    <string name="webdrop_for_label">For %1$s</string>
+    <string name="webdrop_condition_recipient_only">This is for the named recipient only</string>
+    <string name="webdrop_condition_no_retention">They must destroy it after use and keep no copy</string>
+    <string name="webdrop_condition_personal_data">It contains personal data they must handle accordingly</string>
+    <string name="webdrop_theme_mission">Mission</string>
+    <string name="webdrop_theme_clean">Clean</string>
+    <string name="webdrop_theme_choplifter">Choplifter</string>
+    <string name="webdrop_terms_header">Terms for the recipient</string>
+    <string name="webdrop_revoke_confirm_title">Revoke %1$s?</string>
+    <string name="webdrop_revoke_confirm_message">The link stops working immediately. Anyone holding it will no longer be able to open the drop.</string>
+    <string name="webdrop_revoke_cancel">Cancel</string>
+    <string name="webdrop_files_and_age">%1$s &#183; %2$s</string>
+    <string name="webdrop_error_create">Couldn't create the drop link</string>
+    <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
 </resources>

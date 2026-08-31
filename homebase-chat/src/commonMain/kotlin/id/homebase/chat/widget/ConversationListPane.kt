@@ -500,18 +500,22 @@ fun ConversationListPane(
                                     }
                                 }
                             ) { listItem ->
-                                ConversationLisContentItem(
-                                    listItem = listItem,
-                                    selectedConversationId = selectedConversationId,
-                                    iconOnlyMode = iconOnlyMode,
-                                    // Live search text drives the highlight in
-                                    // message-search rows; empty when not searching.
-                                    searchQuery = if (uiState.isSearchActive)
-                                        searchTextState.text.toString()
-                                    else "",
-                                    onUiAction = onUiAction,
-                                    onConversationSelected = onConversationSelected,
-                                )
+                                Box(modifier = Modifier.animateItem()) {
+                                    ConversationLisContentItem(
+                                        listItem = listItem,
+                                        selectedConversationId = selectedConversationId,
+                                        iconOnlyMode = iconOnlyMode,
+                                        // Search results are a tap target, not a swipe target.
+                                        allowSwipeActions = !uiState.isSearchActive,
+                                        // Live search text drives the highlight in
+                                        // message-search rows; empty when not searching.
+                                        searchQuery = if (uiState.isSearchActive)
+                                            searchTextState.text.toString()
+                                        else "",
+                                        onUiAction = onUiAction,
+                                        onConversationSelected = onConversationSelected,
+                                    )
+                                }
                             }
                         }
                     }
@@ -577,6 +581,7 @@ fun ConversationLisContentItem(
     searchQuery: String,
     onUiAction: (ConversationListUiAction) -> Unit,
     onConversationSelected: (conversationId: Uuid) -> Unit,
+    allowSwipeActions: Boolean = true,
 ) {
     when (listItem) {
         is ConversationListContentModel.Header -> {
@@ -642,6 +647,7 @@ fun ConversationLisContentItem(
                     },
 
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
+                    allowSwipeActions = allowSwipeActions,
                 )
             }
         }

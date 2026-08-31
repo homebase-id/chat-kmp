@@ -54,7 +54,13 @@ data class UploadFileMetadata(
     val accessControlList: AccessControlList? = null,
     val appData: UploadAppFileMetaData,
     val referencedFile: GlobalTransitIdFileIdentifier? = null,
-    val versionTag: Uuid? = null
+    val versionTag: Uuid? = null,
+    /**
+     * When the file expires, in milliseconds: null/0 never, > 0 an absolute UnixTimeUtc,
+     * < 0 a duration measured from the file's first payload read (the server resolves it to
+     * now() - ttl on that read). Travels to peer recipients, which is how retention works.
+     */
+    val ttl: Long? = null
 ) {
     /**
      * Encrypts the appData.content using the provided KeyHeader. If keyHeader is null or content is
