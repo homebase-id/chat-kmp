@@ -152,6 +152,16 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
+            // Share-into-"New WebDrop" deep link: homebase-fchat://web-drop-compose
+            // The share flow already seeded WebDropShareFlowState with the chosen
+            // files; this only steers the nav stack onto the WebDrop screen.
+            if (data.host == "web-drop-compose") {
+                Logger.i(tag = "MainActivity") { "Deep link: navigating to WebDrop compose" }
+                notificationService.navigateToWebDropCompose()
+                intent.data = null
+                return
+            }
+
             // Owner-console "Extend Permissions" return URL.
             // Path: homebase-fchat://permission-callback?status=[canceled|...]
             if (data.host == "permission-callback") {

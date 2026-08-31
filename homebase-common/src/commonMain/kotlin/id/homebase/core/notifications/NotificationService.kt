@@ -729,6 +729,11 @@ class NotificationService(
         _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
     }
 
+    /** Navigate to the WebDrop composer (used for the "New WebDrop" share deep link). */
+    fun navigateToWebDropCompose() {
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenWebDropCompose)
+    }
+
     /** Displays a rich notification using platform-specific APIs. */
     private fun showRichNotification(data: RichNotificationData) {
         try {
