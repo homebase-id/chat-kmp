@@ -7,9 +7,9 @@ import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 /**
- * Locks the cold-path half of auto-unarchive (#1145). The live WS path was
- * already covered; the bug was that DriveSync — FCM cold-wake, reconnect
- * catch-up — writes message rows silently, so nothing re-evaluated the archive.
+ * Locks the cold-path half of auto-unarchive. The live WS path was already
+ * covered; the bug was that DriveSync — FCM cold-wake, reconnect catch-up —
+ * writes message rows silently, so nothing re-evaluated the archive.
  */
 class AutoUnarchiveTest {
 

@@ -503,8 +503,7 @@ class ConversationStream(
 
             // region Auto-unarchive: Signal-style unarchive on incoming message
             if (matchingConversation?.conversationState == ConversationState.Archived) {
-                // Only unarchive for messages from others, not our own synced messages.
-                // A status message (rename, join, leave) is not re-engagement (#1145).
+                // A status message (rename, join, leave) is not re-engagement.
                 if (!m.isStatusMessage && !m.isAuthoredBy(credentialsManager.getActiveDomain())) {
                     Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
                     val unarchived = matchingConversation.copy(

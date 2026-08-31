@@ -4,9 +4,9 @@ import id.homebase.chat.data.ConversationState
 import kotlin.time.Instant
 
 /**
- * Cold half of auto-unarchive (#1145): decides from persisted state alone, so it
- * still fires after a restart or a silent DriveSync catch-up — neither of which
- * emits the `BatchReceived` the live half in
+ * Cold half of auto-unarchive: decides from persisted state alone, so it still
+ * fires after a restart or a silent DriveSync catch-up — neither of which emits
+ * the `BatchReceived` the live half in
  * `ConversationStream.processMessageBatchIncrementally` listens for.
  *
  * Callers must pass the last message from `selectAllConversationPlusLastMessage`,

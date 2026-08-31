@@ -344,7 +344,7 @@ class ConversationServiceLifecycleTest {
     //
     // All four route through updateConversationTags. We verify each writes an
     // outbox row via the tag-update path. Archive and unarchive write a second
-    // row for the `archivedAt` baseline in localAppData.content (#1145).
+    // row for the `archivedAt` baseline in localAppData.content.
 
     @Test
     fun archiveConversation_enqueuesTagUpdate() = runTest {

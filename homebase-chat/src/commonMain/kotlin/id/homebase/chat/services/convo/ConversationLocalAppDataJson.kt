@@ -17,9 +17,9 @@ data class ConversationLocalAppDataJson(
     val lastReadTime: UnixTimeUtc? = null,
     val lastExitedAt: UnixTimeUtc? = null,
     /**
-     * Baseline for auto-unarchive (#1145); null on threads archived before this
-     * field existed. `fileMetadata.updated` can't stand in — `updateLocalTags`
-     * stamps `updated + 1ms`, a version counter, not a wall clock.
+     * Baseline for auto-unarchive; null on threads archived before this field
+     * existed. `fileMetadata.updated` can't stand in — `updateLocalTags` stamps
+     * `updated + 1ms`, a version counter, not a wall clock.
      */
     val archivedAt: UnixTimeUtc? = null,
     /**
