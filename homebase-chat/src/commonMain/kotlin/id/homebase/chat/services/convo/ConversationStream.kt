@@ -169,6 +169,8 @@ class ConversationStream(
     /** Called when a message arrives for an archived conversation.
      *  Wired in AppModule to ConversationService.unarchiveConversation(). */
     var onUnarchiveConversation: (suspend (conversationId: Uuid) -> Unit)? = null
+
+    private val autoUnarchiveGate = AutoUnarchiveGate()
     // endregion
 
     // region Unread-count dirty bits
@@ -1154,20 +1156,21 @@ class ConversationStream(
         }
 
         val current = _conversations.value
-        val toUnarchive = ArrayList<Uuid>()
+        val toUnarchive = ArrayList<Pair<Uuid, Instant>>()
         val updated = current.items.map { ui ->
             val pair = msgByConversation[ui.id] ?: return@map ui
             val patched = mapper.applyLastMessage(ui, pair.first, domain, sqlUserDateMs = pair.second)
-            val shouldUnarchive = shouldAutoUnarchive(
-                state = patched.conversationState,
-                archivedAt = patched.archivedAt,
-                lastMessageUserDate = pair.second
-                    ?.let { Instant.fromEpochMilliseconds(it) }
-                    ?: patched.latestMessageTimestamp,
-                lastMessageIsFromActiveUser = patched.lastMessageIsFromActiveUser,
-            )
-            if (!shouldUnarchive) return@map patched
-            toUnarchive += ui.id
+            val archivedAt = patched.archivedAt
+            if (archivedAt == null || !shouldAutoUnarchive(
+                    state = patched.conversationState,
+                    archivedAt = archivedAt,
+                    lastMessageUserDate = pair.second
+                        ?.let { Instant.fromEpochMilliseconds(it) }
+                        ?: patched.latestMessageTimestamp,
+                    lastMessageIsFromActiveUser = patched.lastMessageIsFromActiveUser,
+                )
+            ) return@map patched
+            toUnarchive += ui.id to archivedAt
             patched.copy(conversationState = ConversationState.Active, archivedAt = null)
         }
 
@@ -1176,7 +1179,8 @@ class ConversationStream(
             enrichment = current.enrichment.copy(hasLastMessages = true),
         )
 
-        for (id in toUnarchive) {
+        for ((id, baseline) in toUnarchive) {
+            if (!autoUnarchiveGate.markFired(id, baseline)) continue
             Logger.i("ConversationStream: auto-unarchiving $id — message arrived after it was archived")
             try {
                 onUnarchiveConversation?.invoke(id)
