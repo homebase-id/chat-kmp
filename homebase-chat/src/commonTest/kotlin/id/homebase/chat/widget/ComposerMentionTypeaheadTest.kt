@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -116,6 +117,12 @@ class ComposerMentionTypeaheadTest {
     private fun androidx.compose.ui.test.ComposeUiTest.awaitText(text: String) =
         waitUntil(timeoutMillis = 10_000) {
             onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
+        }
+
+    /** Waits for the popup itself, for cases where the query text is also in the editor. */
+    private fun androidx.compose.ui.test.ComposeUiTest.awaitSuggestions() =
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodes(hasTestTag(ComposerAutocompleteTag)).fetchSemanticsNodes().isNotEmpty()
         }
 
     private fun androidx.compose.ui.test.ComposeUiTest.assertNoText(text: String) =
@@ -234,6 +241,32 @@ class ComposerMentionTypeaheadTest {
         waitForIdle()
 
         assertEquals(1, sends)
+    }
+
+    /**
+     * The handle is the wire form; a display name is not. So typing `@Sebastian` in full has to
+     * leave the list open and let Enter commit `@yagni.dk`, or the message goes out carrying a
+     * mention no client can resolve.
+     */
+    @Test
+    fun aFullyTypedDisplayNameStillCommitsTheHandle() = runComposeUiTest {
+        lateinit var state: RichTextState
+        var sends = 0
+        setContent(
+            harness(targets = listOf(member("yagni.dk", "Sebastian")), onSend = { sends++ }) {
+                state = it
+            }
+        )
+
+        onNodeWithTag("editor").requestFocus()
+        runOnIdle { state.addTextAfterSelection("hey @Sebastian") }
+        awaitSuggestions()
+
+        onNodeWithTag("editor").performKeyInput { pressKey(Key.Enter) }
+        waitForIdle()
+
+        assertEquals(0, sends, "Enter must commit the mention, not send @Sebastian")
+        assertEquals("hey @yagni.dk ", state.annotatedString.text)
     }
 
     @Test
