@@ -2127,6 +2127,15 @@
     <string name="webdrop_status_removed">Gone</string>
     <string name="webdrop_revoke">Revoke link</string>
     <string name="webdrop_row_clear">Clear from list</string>
+    <string name="webdrop_for_someone">For someone specific?</string>
+    <string name="webdrop_recipient_name">Recipient's name</string>
+    <string name="webdrop_for_label">For %1$s</string>
+    <string name="webdrop_condition_recipient_only">For the named recipient only</string>
+    <string name="webdrop_condition_no_retention">Destroy after use - keep no copy on file</string>
+    <string name="webdrop_condition_personal_data">Contains personal data - handle accordingly</string>
+    <string name="webdrop_theme_mission">Mission</string>
+    <string name="webdrop_theme_clean">Clean</string>
+    <string name="webdrop_theme_choplifter">Choplifter</string>
     <string name="webdrop_error_create">Couldn't create the drop link</string>
     <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
 </resources>

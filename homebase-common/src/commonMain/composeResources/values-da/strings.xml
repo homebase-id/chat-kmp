@@ -1709,6 +1709,15 @@
     <string name="webdrop_status_removed">Væk</string>
     <string name="webdrop_revoke">Tilbagekald link</string>
     <string name="webdrop_row_clear">Fjern fra listen</string>
+    <string name="webdrop_for_someone">Til en bestemt person?</string>
+    <string name="webdrop_recipient_name">Modtagerens navn</string>
+    <string name="webdrop_for_label">Til %1$s</string>
+    <string name="webdrop_condition_recipient_only">Kun til den navngivne modtager</string>
+    <string name="webdrop_condition_no_retention">Destruér efter brug - behold ingen kopi</string>
+    <string name="webdrop_condition_personal_data">Indeholder persondata - behandl derefter</string>
+    <string name="webdrop_theme_mission">Mission</string>
+    <string name="webdrop_theme_clean">Enkel</string>
+    <string name="webdrop_theme_choplifter">Choplifter</string>
     <string name="webdrop_error_create">Kunne ikke oprette drop-linket</string>
     <string name="webdrop_error_too_many">Et drop kan højst indeholde %1$d filer</string>
 </resources>

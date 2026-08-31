@@ -23,6 +23,8 @@ import id.homebase.core.config.webDropLabeledDrive
 import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.ui.screens.webdrop.model.WebDropTtlChoice
 import id.homebase.core.webdrop.WebDropDropContent
+import id.homebase.core.webdrop.WebDropIntro
+import id.homebase.core.webdrop.WebDropIntroContent
 import id.homebase.core.webdrop.WebDropManifestEntry
 import id.homebase.core.webdrop.WebDropProtocol
 import id.homebase.core.webdrop.WebDropReceiptContent
@@ -52,6 +54,8 @@ class WebDropService(
     suspend fun createDrop(
         files: List<PickedDropFile>,
         ttlChoice: WebDropTtlChoice,
+        intro: WebDropIntroContent? = null,
+        theme: String? = null,
     ): Result<CreatedDrop> = runCatching {
         require(files.isNotEmpty()) { "a drop needs at least one file" }
         require(files.size <= WebDropProtocol.MaxFilesPerDrop) {
@@ -112,8 +116,21 @@ class WebDropService(
             )
         }
 
+        val encryptedIntro = intro?.takeUnless { it.isEmpty() }?.let {
+            // Its own IV, never a payload's: reusing an IV under the same key breaks CBC.
+            val introIv = ByteArrayUtil.getRndByteArray(16)
+            WebDropIntro(
+                iv = Base64.encode(introIv),
+                data = Base64.encode(
+                    AesCbc.encrypt(OdinSystemSerializer.serialize(it).encodeToByteArray(), key, introIv)
+                ),
+            )
+        }
+
         val dropContent = WebDropDropContent(
             ivs = ivs.mapValues { (_, iv) -> Base64.encode(iv) },
+            theme = theme,
+            intro = encryptedIntro,
         )
 
         val dropMetadata = UploadFileMetadata(
@@ -147,6 +164,9 @@ class WebDropService(
             url = url,
             ttl = ttl,
             createdAt = nowMs,
+            recipientName = intro?.recipientName?.takeUnless { it.isBlank() },
+            conditions = intro?.conditions ?: emptyList(),
+            theme = theme,
         )
         val receiptKeyHeader = KeyHeader.newRandom16()
         val receiptMetadata = UploadFileMetadata(

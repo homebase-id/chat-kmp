@@ -17,6 +17,10 @@ data class WebDropUiState(
     val composeOpen: Boolean = false,
     val pickedFiles: List<PickedDropFile> = emptyList(),
     val ttlChoice: WebDropTtlChoice = WebDropTtlChoice.BurnAfterOpen,
+    val introExpanded: Boolean = false,
+    val recipientName: String = "",
+    val conditions: Set<String> = emptySet(),
+    val theme: String? = null,
     val isCreating: Boolean = false,
     /** Set when a drop was just created; the sheet flips to the share step. */
     val createdUrl: String? = null,
@@ -30,6 +34,10 @@ sealed interface WebDropUiAction {
     data class FilesPicked(val files: List<PickedDropFile>) : WebDropUiAction
     data class RemovePickedFile(val path: String) : WebDropUiAction
     data class TtlChosen(val choice: WebDropTtlChoice) : WebDropUiAction
+    data object ToggleIntroSection : WebDropUiAction
+    data class RecipientNameChanged(val name: String) : WebDropUiAction
+    data class ConditionToggled(val id: String) : WebDropUiAction
+    data class ThemeChosen(val theme: String?) : WebDropUiAction
     data object CreateClicked : WebDropUiAction
     data object ComposeDismissed : WebDropUiAction
     data class CopyLinkClicked(val url: String) : WebDropUiAction

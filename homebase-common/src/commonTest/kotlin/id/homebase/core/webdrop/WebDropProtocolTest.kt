@@ -68,6 +68,31 @@ class WebDropProtocolTest {
     }
 
     @Test
+    fun contentWithIntroAndThemeRoundTripsAndLegacyStillParses() {
+        val content = WebDropDropContent(
+            ivs = mapOf(WebDropProtocol.ManifestPayloadKey to "AAAAAAAAAAAAAAAAAAAAAA=="),
+            theme = WebDropProtocol.ThemeChoplifter,
+            intro = WebDropIntro(iv = "EBESExQVFhcYGRobHB0eHw==", data = "c2VjcmV0"),
+        )
+        val back = OdinSystemSerializer.deserialize<WebDropDropContent>(OdinSystemSerializer.serialize(content))
+        assertEquals(content, back)
+
+        // A drop written before intro/theme existed must keep parsing, and absent must mean absent.
+        val legacy = """{"v":1,"ivs":{"wdr_meta":"AAAAAAAAAAAAAAAAAAAAAA=="}}"""
+        val parsed = OdinSystemSerializer.deserialize<WebDropDropContent>(legacy)
+        assertEquals(null, parsed.theme)
+        assertEquals(null, parsed.intro)
+    }
+
+    @Test
+    fun introContentEmptinessGatesTheBlob() {
+        assertTrue(WebDropIntroContent().isEmpty())
+        assertTrue(WebDropIntroContent(recipientName = "  ").isEmpty())
+        assertTrue(!WebDropIntroContent(recipientName = "Thomas Kragh-Muller").isEmpty())
+        assertTrue(!WebDropIntroContent(conditions = listOf(WebDropProtocol.ConditionNoRetention)).isEmpty())
+    }
+
+    @Test
     fun receiptRoundTrips() {
         val receipt = WebDropReceiptContent(
             name = "passport.jpg",
@@ -77,6 +102,9 @@ class WebDropProtocolTest {
             url = "https://frodo.dotyou.cloud/apps/web-drop/d/x/y#z",
             ttl = -1_200_000,
             createdAt = 1_700_000_000_000,
+            recipientName = "Thomas Kragh-Muller",
+            conditions = listOf(WebDropProtocol.ConditionRecipientOnly, WebDropProtocol.ConditionNoRetention),
+            theme = WebDropProtocol.ThemeClean,
         )
         val back = OdinSystemSerializer.deserialize<WebDropReceiptContent>(OdinSystemSerializer.serialize(receipt))
         assertEquals(receipt, back)

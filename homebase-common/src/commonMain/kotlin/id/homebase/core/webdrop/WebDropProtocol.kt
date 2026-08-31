@@ -44,6 +44,16 @@ object WebDropProtocol {
 
     fun buildLink(identity: String, driveAlias: Uuid, dropId: Uuid, key: ByteArray): String =
         "https://$identity/apps/web-drop/d/$driveAlias/$dropId#${Base64UrlEncoder.encode(key)}"
+
+    // v1 condition ids the sender may attach; the viewer renders a canned consent line per id.
+    const val ConditionRecipientOnly = "recipient_only"
+    const val ConditionNoRetention = "no_retention"
+    const val ConditionPersonalData = "personal_data"
+
+    // v1 viewer theme ids. Sender's choice rides the wire; the viewer renders mission today.
+    const val ThemeMission = "mission"
+    const val ThemeClean = "clean"
+    const val ThemeChoplifter = "choplifter"
 }
 
 /** Cleartext appData.content of a drop file. Nothing here may leak content. */
@@ -52,7 +62,34 @@ data class WebDropDropContent(
     val v: Int = WebDropProtocol.ContentVersion,
     /** payload key → base64 IV, one per encrypted payload including the manifest. */
     val ivs: Map<String, String>,
+    /** Viewer theme id — cleartext on purpose: the page must paint before decryption. */
+    val theme: String? = null,
+    val intro: WebDropIntro? = null,
 )
+
+/**
+ * The encrypted intro, living in the header so a viewer can personalize its consent screen from a
+ * header read alone — which never starts the burn clock, so link-prefetching scanners cost
+ * nothing. Sender-typed content (a recipient's name is PII) is never cleartext; the blob is
+ * E_k(WebDropIntroContent json) under the link key with an IV of its own, never a payload's.
+ */
+@Serializable
+data class WebDropIntro(
+    /** base64, this blob's own random 16 bytes. */
+    val iv: String,
+    /** base64 ciphertext. */
+    val data: String,
+)
+
+/** What the intro decrypts to. */
+@Serializable
+data class WebDropIntroContent(
+    val recipientName: String? = null,
+    val conditions: List<String> = emptyList(),
+    val note: String? = null,
+) {
+    fun isEmpty(): Boolean = recipientName.isNullOrBlank() && conditions.isEmpty() && note.isNullOrBlank()
+}
 
 /** One entry of the encrypted wdr_meta manifest — the recipient's file list. */
 @Serializable
@@ -76,4 +113,7 @@ data class WebDropReceiptContent(
     val url: String,
     val ttl: Long,
     val createdAt: Long,
+    val recipientName: String? = null,
+    val conditions: List<String> = emptyList(),
+    val theme: String? = null,
 )

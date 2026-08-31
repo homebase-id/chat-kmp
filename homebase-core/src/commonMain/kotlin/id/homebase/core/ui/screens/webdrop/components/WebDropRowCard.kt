@@ -31,6 +31,7 @@ import id.homebase.core.ui.screens.webdrop.model.DropStatus
 import id.homebase.resources.MR
 import id.homebase.resources.webdrop_copy
 import id.homebase.resources.webdrop_files_count
+import id.homebase.resources.webdrop_for_label
 import id.homebase.resources.webdrop_revoke
 import id.homebase.resources.webdrop_row_clear
 import id.homebase.resources.webdrop_status_expires
@@ -94,6 +95,14 @@ fun WebDropRowCard(
                         MaterialTheme.colorScheme.onSurface
                     },
                 )
+                row.receipt.recipientName?.let { name ->
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(MR.string.webdrop_for_label, name),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = stringResource(MR.string.webdrop_files_count, row.receipt.files.size),

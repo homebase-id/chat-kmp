@@ -20,6 +20,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +45,14 @@ import id.homebase.resources.webdrop_copy
 import id.homebase.resources.webdrop_create
 import id.homebase.resources.webdrop_error_create
 import id.homebase.resources.webdrop_error_too_many
+import id.homebase.resources.webdrop_for_someone
+import id.homebase.resources.webdrop_recipient_name
+import id.homebase.resources.webdrop_condition_recipient_only
+import id.homebase.resources.webdrop_condition_no_retention
+import id.homebase.resources.webdrop_condition_personal_data
+import id.homebase.resources.webdrop_theme_mission
+import id.homebase.resources.webdrop_theme_clean
+import id.homebase.resources.webdrop_theme_choplifter
 import id.homebase.resources.webdrop_link_ready
 import id.homebase.resources.webdrop_share
 import id.homebase.resources.webdrop_ttl_burn
@@ -159,6 +170,32 @@ fun WebDropComposeSheet(
                 TtlChip(uiState, WebDropTtlChoice.ThirtyDays, MR.string.webdrop_ttl_thirty_days, onAction)
             }
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TextButton(onClick = { onAction(WebDropUiAction.ToggleIntroSection) }) {
+                Text(stringResource(MR.string.webdrop_for_someone))
+            }
+
+            if (uiState.introExpanded) {
+                OutlinedTextField(
+                    value = uiState.recipientName,
+                    onValueChange = { onAction(WebDropUiAction.RecipientNameChanged(it)) },
+                    label = { Text(stringResource(MR.string.webdrop_recipient_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                ConditionRow(uiState, WebDropProtocol.ConditionRecipientOnly, MR.string.webdrop_condition_recipient_only, onAction)
+                ConditionRow(uiState, WebDropProtocol.ConditionNoRetention, MR.string.webdrop_condition_no_retention, onAction)
+                ConditionRow(uiState, WebDropProtocol.ConditionPersonalData, MR.string.webdrop_condition_personal_data, onAction)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeChip(uiState, WebDropProtocol.ThemeMission, MR.string.webdrop_theme_mission, onAction)
+                    ThemeChip(uiState, WebDropProtocol.ThemeClean, MR.string.webdrop_theme_clean, onAction)
+                    ThemeChip(uiState, WebDropProtocol.ThemeChoplifter, MR.string.webdrop_theme_choplifter, onAction)
+                }
+            }
+
             uiState.error?.let { error ->
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -187,6 +224,42 @@ fun WebDropComposeSheet(
             }
         }
     }
+}
+
+@Composable
+private fun ConditionRow(
+    uiState: WebDropUiState,
+    id: String,
+    label: org.jetbrains.compose.resources.StringResource,
+    onAction: (WebDropUiAction) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = id in uiState.conditions,
+            onCheckedChange = { onAction(WebDropUiAction.ConditionToggled(id)) },
+        )
+        Text(
+            text = stringResource(label),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun ThemeChip(
+    uiState: WebDropUiState,
+    id: String,
+    label: org.jetbrains.compose.resources.StringResource,
+    onAction: (WebDropUiAction) -> Unit,
+) {
+    FilterChip(
+        selected = uiState.theme == id,
+        onClick = { onAction(WebDropUiAction.ThemeChosen(if (uiState.theme == id) null else id)) },
+        label = { Text(stringResource(label)) },
+    )
 }
 
 @Composable
