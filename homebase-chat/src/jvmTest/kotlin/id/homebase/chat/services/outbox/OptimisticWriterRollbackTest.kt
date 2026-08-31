@@ -11,11 +11,13 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.database.DriveMainIndex
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
@@ -29,19 +31,27 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 
 /**
- * Rollback of an optimistic write must actually restore the local row.
+ * Rollback of an optimistic write must actually restore the local row, at the
+ * original `modified` value.
  *
  * `writeDelete` stamps `updated + 1ms` so the mutated row wins the
  * `DriveMainIndex` monotonic guard (`WHERE excluded.modified >
- * DriveMainIndex.modified`). `rollbackWrite` then re-upserts the ORIGINAL file,
- * whose `updated` is 1ms older — the guard rejects it, `performBaseUpsert`
- * drops it silently, and the message stays deleted locally even though nothing
- * was ever queued for the server.
+ * DriveMainIndex.modified`). Re-upserting the ORIGINAL file through that guard
+ * loses (it is 1ms older) and is dropped silently; stamping the restore PAST
+ * the stored value wins but leaves the row claiming to be newer than the
+ * server's real `updated`, which then drops a host edit that was already in
+ * flight. The rollback is a compare-and-swap instead: restore the original
+ * `modified`, conditioned on the optimistic stamp still being the stored one.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class OptimisticWriterRollbackTest {
 
     @Test
@@ -116,12 +126,119 @@ class OptimisticWriterRollbackTest {
         }
     }
 
+    /**
+     * The re-stamp implementation left the row at `optimistic + 1ms`, permanently ahead
+     * of the server's real `updated` for that file.
+     */
+    @Test
+    fun rollbackAfterDelete_restoresTheOriginalModified() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage(updatedMs = 100_000L)
+
+            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
+                ?: error("writeDelete returned null — nothing to roll back")
+
+            assertEquals(
+                100_001L,
+                fx.readIndexRow(messageId).modified,
+                "sanity: the optimistic delete stamps updated + 1ms",
+            )
+
+            assertTrue(fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original))
+
+            assertEquals(
+                100_000L,
+                fx.readIndexRow(messageId).modified,
+                "rollback must restore the original modified, not stamp past the stored value",
+            )
+        }
+    }
+
+    /**
+     * A host write that lands between the optimistic write and the rollback owns the row.
+     * The CAS finds a `modified` that is no longer its own stamp and no-ops.
+     */
+    @Test
+    fun hostWriteBetweenOptimisticWriteAndRollback_isNotClobbered() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage(updatedMs = 100_000L)
+
+            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
+                ?: error("writeDelete returned null — nothing to roll back")
+
+            fx.seedMessage(
+                messageId = messageId,
+                fileId = original.fileId,
+                updatedMs = 200_000L,
+                content = "edited on another device",
+            )
+
+            advanceUntilIdle()
+            val eventsBefore = fx.received.size
+            assertFalse(
+                fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original),
+                "rollback must report that it was superseded",
+            )
+
+            val afterRollback = fx.readRow(messageId)
+            assertEquals(
+                "edited on another device",
+                afterRollback.fileMetadata.appData.content,
+                "rollback clobbered a host write that landed after the optimistic one",
+            )
+            assertEquals(
+                200_000L,
+                fx.readIndexRow(messageId).modified,
+                "rollback must not touch the host row's modified",
+            )
+            advanceUntilIdle()
+            assertEquals(
+                eventsBefore,
+                fx.received.size,
+                "a rollback that changed no row must not emit BatchReceived",
+            )
+        }
+    }
+
+    /**
+     * The consequence of the re-stamp: it reserved `[original+1, original+2]` for itself,
+     * so a host edit already in flight when the rollback ran lost the guard and vanished.
+     */
+    @Test
+    fun hostWriteInTheWindowTheReStampReserved_isNoLongerDropped() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage(updatedMs = 100_000L)
+
+            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
+                ?: error("writeDelete returned null — nothing to roll back")
+            assertTrue(fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original))
+
+            // An edit made on another device shortly BEFORE the rollback, arriving after it.
+            fx.seedMessage(
+                messageId = messageId,
+                fileId = original.fileId,
+                updatedMs = 100_001L,
+                content = "edited on another device",
+            )
+
+            assertEquals(
+                "edited on another device",
+                fx.readRow(messageId).fileMetadata.appData.content,
+                "the rollback left the row stamped ahead, so the host edit was silently dropped",
+            )
+        }
+    }
+
     private class Fixture : AutoCloseable {
         val testIdentityId: Uuid = Uuid.parse("7b1be23b-48bb-4304-bc7b-db5910c09a92")
         val chatDriveId: Uuid = Uuid.parse("9ff813af-f2d6-1e2f-9b9d-b189e72d1a11")
         val testDomain: String = "owner.test"
 
         val failOutboxInserts = AtomicBoolean(false)
+        val received = mutableListOf<BackendEvent>()
 
         lateinit var dbm: DatabaseManager
         lateinit var eventBus: EventBus
@@ -135,6 +252,9 @@ class OptimisticWriterRollbackTest {
                 RefusingOutboxInsertDriver(driver, failOutboxInserts)
             })
             eventBus = EventBus()
+            scope.backgroundScope.launch(UnconfinedTestDispatcher(scope.testScheduler)) {
+                eventBus.events.collect { received += it }
+            }
             outboxSync = OutboxSync(
                 databaseManager = dbm,
                 uploader = ThrowingUploader,
@@ -160,6 +280,13 @@ class OptimisticWriterRollbackTest {
             )
         }
 
+        suspend fun readIndexRow(messageId: Uuid): DriveMainIndex =
+            dbm.driveMainIndex.selectByIdentityAndDriveAndUnique(
+                identityId = testIdentityId,
+                driveId = chatDriveId,
+                uniqueId = messageId,
+            ) ?: error("no DriveMainIndex row for $messageId")
+
         suspend fun readRow(messageId: Uuid): HomebaseFile =
             dbm.driveMainIndex.selectHomebaseFileByUnique(
                 identityId = testIdentityId,
@@ -167,11 +294,16 @@ class OptimisticWriterRollbackTest {
                 uniqueId = messageId,
             ) ?: error("no DriveMainIndex row for $messageId")
 
-        /** Seeds an active chat message through the real upsert path. */
+        /**
+         * Seeds — or, when [messageId]/[fileId] name an existing row, host-writes over —
+         * an active chat message through the real guarded upsert path.
+         */
         suspend fun seedMessage(
             messageId: Uuid = Uuid.random(),
             fileId: Uuid = Uuid.random(),
             userDateMs: Long = 100_000L,
+            updatedMs: Long = userDateMs,
+            content: String = "hello world",
         ): Uuid {
             val header = OdinSystemSerializer.deserialize<HomebaseFile>(
                 """{
@@ -187,7 +319,7 @@ class OptimisticWriterRollbackTest {
                   "fileMetadata": {
                     "globalTransitId": "${Uuid.random()}",
                     "created": $userDateMs,
-                    "updated": $userDateMs,
+                    "updated": $updatedMs,
                     "transitCreated": $userDateMs,
                     "transitUpdated": 0,
                     "isEncrypted": false,
@@ -200,7 +332,7 @@ class OptimisticWriterRollbackTest {
                       "dataType": 0,
                       "groupId": "${Uuid.random()}",
                       "userDate": $userDateMs,
-                      "content": "hello world",
+                      "content": "$content",
                       "previewThumbnail": null,
                       "archivalStatus": 0
                     },

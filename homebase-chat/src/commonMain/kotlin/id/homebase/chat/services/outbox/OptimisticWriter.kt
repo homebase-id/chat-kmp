@@ -365,7 +365,7 @@ class OptimisticWriter(
             credentials.getIdentityId(), driveId, uid
         ) ?: throw IllegalStateException("no file by uid")
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
 
         val existing = existingFile.fileMetadata.localAppData
         val existingTags = existing?.tags.orEmpty()
@@ -504,7 +504,7 @@ class OptimisticWriter(
             credentials.getIdentityId(), driveId, uniqueId
         ) ?: return null
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
 
         val deletedFile = existingFile.copy(
             fileState = FileState.Deleted,
@@ -549,53 +549,52 @@ class OptimisticWriter(
         return existingFile
     }
 
-    /** Restores a file that was optimistically deleted. Call when the outbox enqueue fails. */
-    suspend fun rollbackWrite(driveId: Uuid, original: HomebaseFile) {
+    /**
+     * Restores a file that was optimistically mutated. Call when the outbox enqueue fails.
+     * Returns false when a host write landed after the optimistic one — that newer row
+     * stands and nothing is rolled back.
+     */
+    suspend fun rollbackWrite(driveId: Uuid, original: HomebaseFile): Boolean {
         val credentials = credentialsManager.requireActiveCredentials()
+        val identityId = credentials.getIdentityId()
         try {
-            val batch = listOf(restoredWithFreshTimestamp(credentials.getIdentityId(), driveId, original))
-            fileProcessor.baseUpsertEntryZapZap(
-                identityId = credentials.getIdentityId(),
+            val record =
+                fileProcessor.convertFileHeaderToDriveMainIndexRecord(identityId, driveId, original)
+            val restored = dbm.driveMainIndex.rollbackOptimisticWrite(
+                identityId = identityId,
                 driveId = driveId,
-                fileHeaders = batch,
-                cursor = null
-            )
+                fileId = record.fileId,
+                fileState = record.fileState,
+                archivalStatus = record.archivalStatus,
+                jsonHeader = record.jsonHeader,
+                originalModified = record.modified,
+                optimisticModified = original.optimisticStamp().milliseconds,
+            ) > 0L
+
+            if (!restored) {
+                Logger.w(tag = TAG) {
+                    "Optimistic rollback superseded for fileId=${original.fileId} — a newer write landed first"
+                }
+                return false
+            }
 
             eventBus.emit(
                 BackendEvent.DataEvent.BatchReceived(
                     driveId = driveId,
-                    batchData = batch,
+                    batchData = listOf(original),
                 )
             )
+            return true
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Optimistic delete rollback failed for fileId=${original.fileId}" }
+            Logger.e(throwable = e, tag = TAG) { "Optimistic rollback failed for fileId=${original.fileId}" }
+            return false
         }
     }
 
-    // upsertDriveMainIndex only writes when excluded.modified > DriveMainIndex.modified,
-    // and `original` is by construction older than the optimistic write it undoes — so
-    // restoring it verbatim is silently dropped. Re-stamp the original content past
-    // whatever is stored instead of relaxing a guard that protects host-sourced writes.
-    private suspend fun restoredWithFreshTimestamp(
-        identityId: Uuid,
-        driveId: Uuid,
-        original: HomebaseFile,
-    ): HomebaseFile {
-        val uniqueId = original.fileMetadata.appData.uniqueId
-        val stored = uniqueId
-            ?.let { dbm.driveMainIndex.selectByIdentityAndDriveAndUnique(identityId, driveId, it) }
-            ?: dbm.driveMainIndex.selectByIdentityAndDriveAndFile(identityId, driveId, original.fileId)
-
-        val originalUpdated = original.fileMetadata.updated.milliseconds
-        val storedModified = stored?.modified ?: originalUpdated
-        if (storedModified < originalUpdated) return original
-
-        return original.copy(
-            fileMetadata = original.fileMetadata.copy(
-                updated = UnixTimeUtc(storedModified + 1)
-            )
-        )
-    }
+    // One definition, because rollbackWrite's compare-and-swap key must be exactly what
+    // the mutation wrote.
+    private fun HomebaseFile.optimisticStamp(): UnixTimeUtc =
+        fileMetadata.updated.addMilliseconds(1)
 
     /** Optimistically updates the reactionPreview AND localAppData.localReactions
      *  on a message and emits BatchReceived. Returns the original file for
@@ -611,7 +610,7 @@ class OptimisticWriter(
             credentials.getIdentityId(), driveId, uniqueId
         ) ?: return@withLock Pair(ToggleReactionResultType.None, null)
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
 
         // isAdding is per-user, not per-aggregate: in groups, another user
         // having reacted with the same emoji must not flip our toggle into a
@@ -809,7 +808,7 @@ class OptimisticWriter(
     ): UpdateLocalAppdataContentOutboxRequest? {
         val credentials = credentialsManager.requireActiveCredentials()
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
         val updatedFile = existingFile.copy(
             fileMetadata = existingFile.fileMetadata.copy(
                 localAppData = (existingFile.fileMetadata.localAppData ?: LocalAppMetadata()).copy(
@@ -882,7 +881,7 @@ class OptimisticWriter(
             credentials.getIdentityId(), driveId, uniqueId
         ) ?: return
 
-        val lastModified = existingFile.fileMetadata.updated.addMilliseconds(1)
+        val lastModified = existingFile.optimisticStamp()
 
         val updatedFile = existingFile.copy(
             fileMetadata = existingFile.fileMetadata.copy(
