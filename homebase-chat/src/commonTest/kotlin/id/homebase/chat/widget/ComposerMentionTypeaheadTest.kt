@@ -29,27 +29,73 @@ import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.width
+import coil3.ComponentRegistry
+import coil3.ImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
+import coil3.request.Disposable
+import coil3.request.ErrorResult
+import coil3.request.ImageRequest
+import coil3.request.ImageResult
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.util.initials
 import id.homebase.core.widget.ComposerAutocompleteTag
 import id.homebase.core.widget.EmojiAutocomplete
 import id.homebase.core.widget.rememberComposerAutocompleteController
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import org.koin.compose.KoinIsolatedContext
+import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private fun member(handle: String, name: String) =
-    ContactUiModel.fallbackFor(OdinId(handle)).copy(name = name)
+    ContactUiModel.fallbackFor(OdinId(handle)).copy(name = name, avatarInitials = name.initials())
 
 private val GroupMembers = listOf(
     member("alice.example.com", "Alice Anderson"),
     member("bob.example.com", "Bob Brown"),
 )
+
+/**
+ * The row's `ContactAvatar` resolves its Coil loader through Koin, so a bare `runComposeUiTest`
+ * dies with "KoinApplication has not been started". This one fails every request, which puts every
+ * row on the initials fallback: deterministic, and it dials nobody.
+ */
+private class OfflineImageLoader : ImageLoader {
+    override val defaults: ImageRequest.Defaults = ImageRequest.Defaults.DEFAULT
+    override val components: ComponentRegistry = ComponentRegistry()
+    override val memoryCache: MemoryCache? = null
+    override val diskCache: DiskCache? = null
+
+    override fun enqueue(request: ImageRequest): Disposable = object : Disposable {
+        override val job: Deferred<ImageResult> = CompletableDeferred(refuse(request))
+        override val isDisposed: Boolean = true
+        override fun dispose() = Unit
+    }
+
+    override suspend fun execute(request: ImageRequest): ImageResult = refuse(request)
+
+    override fun shutdown() = Unit
+
+    override fun newBuilder(): ImageLoader.Builder = throw UnsupportedOperationException()
+
+    private fun refuse(request: ImageRequest) =
+        ErrorResult(null, request, UnsupportedOperationException("offline test loader"))
+}
+
+private val TestKoin = koinApplication {
+    modules(module { single<ImageLoader> { OfflineImageLoader() } })
+}
 
 @OptIn(ExperimentalTestApi::class, ExperimentalRichTextApi::class)
 class ComposerMentionTypeaheadTest {
@@ -62,29 +108,31 @@ class ComposerMentionTypeaheadTest {
         onSend: () -> Unit = {},
         capture: (RichTextState) -> Unit,
     ): @Composable () -> Unit = {
-        MaterialTheme {
-            val state = rememberRichTextState()
-            val controller = rememberComposerAutocompleteController()
-            capture(state)
-            Box {
-                RichTextEditor(
-                    state = state,
-                    modifier = Modifier
-                        .onPreviewKeyEvent { event ->
-                            if (controller.handleKeyEvent(event)) {
-                                true
-                            } else if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
-                                onSend()
-                                true
-                            } else {
-                                false
+        KoinIsolatedContext(TestKoin) {
+            MaterialTheme {
+                val state = rememberRichTextState()
+                val controller = rememberComposerAutocompleteController()
+                capture(state)
+                Box {
+                    RichTextEditor(
+                        state = state,
+                        modifier = Modifier
+                            .onPreviewKeyEvent { event ->
+                                if (controller.handleKeyEvent(event)) {
+                                    true
+                                } else if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
+                                    onSend()
+                                    true
+                                } else {
+                                    false
+                                }
                             }
-                        }
-                        .testTag("editor"),
-                )
-                MentionAutocomplete(state = state, controller = controller, targets = targets)
-                if (withEmoji) {
-                    EmojiAutocomplete(state = state, controller = controller, enabled = true)
+                            .testTag("editor"),
+                    )
+                    MentionAutocomplete(state = state, controller = controller, targets = targets)
+                    if (withEmoji) {
+                        EmojiAutocomplete(state = state, controller = controller, enabled = true)
+                    }
                 }
             }
         }
@@ -96,19 +144,21 @@ class ComposerMentionTypeaheadTest {
         topSpacer: androidx.compose.ui.unit.Dp?,
         capture: (RichTextState) -> Unit,
     ): @Composable () -> Unit = {
-        MaterialTheme {
-            val state = rememberRichTextState()
-            val controller = rememberComposerAutocompleteController()
-            capture(state)
-            Column(Modifier.fillMaxSize()) {
-                if (topSpacer == null) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(topSpacer))
-                Box(Modifier.fillMaxWidth().testTag("anchor")) {
-                    RichTextEditor(state = state, modifier = Modifier.fillMaxWidth())
-                    MentionAutocomplete(
-                        state = state,
-                        controller = controller,
-                        targets = GroupMembers,
-                    )
+        KoinIsolatedContext(TestKoin) {
+            MaterialTheme {
+                val state = rememberRichTextState()
+                val controller = rememberComposerAutocompleteController()
+                capture(state)
+                Column(Modifier.fillMaxSize()) {
+                    if (topSpacer == null) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(topSpacer))
+                    Box(Modifier.fillMaxWidth().testTag("anchor")) {
+                        RichTextEditor(state = state, modifier = Modifier.fillMaxWidth())
+                        MentionAutocomplete(
+                            state = state,
+                            controller = controller,
+                            targets = GroupMembers,
+                        )
+                    }
                 }
             }
         }
@@ -137,6 +187,44 @@ class ComposerMentionTypeaheadTest {
         awaitText("Alice Anderson")
 
         onNodeWithText("Bob Brown", substring = true).assertExists()
+    }
+
+    /** No published photo is the common case for a connection, so the row has to stay legible on
+     *  the initials alone. The test loader refuses every request, which is that path. */
+    @Test
+    fun aRowWithNoPhotoFallsBackToTheContactsInitials() = runComposeUiTest {
+        lateinit var state: RichTextState
+        setContent(harness { state = it })
+
+        runOnIdle { state.addTextAfterSelection("@") }
+        awaitText("Alice Anderson")
+
+        onNodeWithText("AA").assertExists()
+        onNodeWithText("BB").assertExists()
+    }
+
+    /**
+     * The name is what the user reads; the handle is the confirmation. Unweighted, the handle is
+     * measured first at the popup's full width and leaves the name a stub — with the avatar in the
+     * row the name fell to "Wil…" beside a fully drawn 32-character handle.
+     */
+    @Test
+    fun aLongHandleDoesNotStarveTheName() = runComposeUiTest {
+        lateinit var state: RichTextState
+        val long = member("verylongidentityname.example.com", "Wilhelmina Featherstonehaugh-Smythe")
+        setContent(harness(targets = listOf(long)) { state = it })
+
+        runOnIdle { state.addTextAfterSelection("@") }
+        awaitSuggestions()
+
+        val name = onNodeWithText("Wilhelmina", substring = true, useUnmergedTree = true)
+            .getBoundsInRoot().width
+        val handle = onNodeWithText("verylongidentityname", substring = true, useUnmergedTree = true)
+            .getBoundsInRoot().width
+        assertTrue(
+            name >= handle * 0.7f,
+            "name got ${name}, handle got ${handle}",
+        )
     }
 
     @Test
