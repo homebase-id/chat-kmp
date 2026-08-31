@@ -1,6 +1,11 @@
 package id.homebase.chat.widget
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -12,6 +17,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -21,12 +27,14 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.unit.dp
 import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.widget.ComposerAutocompleteTag
 import id.homebase.core.widget.EmojiAutocomplete
 import id.homebase.core.widget.rememberComposerAutocompleteController
 import kotlin.test.Test
@@ -76,6 +84,30 @@ class ComposerMentionTypeaheadTest {
                 MentionAutocomplete(state = state, controller = controller, targets = targets)
                 if (withEmoji) {
                     EmojiAutocomplete(state = state, controller = controller, enabled = true)
+                }
+            }
+        }
+    }
+
+    /** [topSpacer] null pushes the composer to the bottom of the window; a small value starves it
+     *  of room above. */
+    private fun spacedHarness(
+        topSpacer: androidx.compose.ui.unit.Dp?,
+        capture: (RichTextState) -> Unit,
+    ): @Composable () -> Unit = {
+        MaterialTheme {
+            val state = rememberRichTextState()
+            val controller = rememberComposerAutocompleteController()
+            capture(state)
+            Column(Modifier.fillMaxSize()) {
+                if (topSpacer == null) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(topSpacer))
+                Box(Modifier.fillMaxWidth().testTag("anchor")) {
+                    RichTextEditor(state = state, modifier = Modifier.fillMaxWidth())
+                    MentionAutocomplete(
+                        state = state,
+                        controller = controller,
+                        targets = GroupMembers,
+                    )
                 }
             }
         }
@@ -242,6 +274,43 @@ class ComposerMentionTypeaheadTest {
 
         onNodeWithTag("editor").assertIsFocused()
         assertEquals("@alice.example.com ", state.annotatedString.text)
+    }
+
+    /**
+     * A composer pinned to the bottom is the geometry a soft keyboard produces, and the one the
+     * list has to survive on mobile: it must open into the space above the composer, not under it.
+     */
+    @Test
+    fun theListOpensAboveAComposerPinnedToTheBottom() = runComposeUiTest {
+        lateinit var state: RichTextState
+        setContent(spacedHarness(topSpacer = null) { state = it })
+
+        runOnIdle { state.addTextAfterSelection("@") }
+        awaitText("Alice Anderson")
+
+        val anchor = onNodeWithTag("anchor").getBoundsInRoot()
+        val list = onNodeWithTag(ComposerAutocompleteTag).getBoundsInRoot()
+        assertTrue(
+            list.bottom <= anchor.top,
+            "list must sit above the composer; list=$list anchor=$anchor",
+        )
+    }
+
+    /** With no room above, the list flips below the anchor rather than being clipped off-screen. */
+    @Test
+    fun theListFlipsBelowWhenThereIsNoRoomAbove() = runComposeUiTest {
+        lateinit var state: RichTextState
+        setContent(spacedHarness(topSpacer = 40.dp) { state = it })
+
+        runOnIdle { state.addTextAfterSelection("@") }
+        awaitText("Alice Anderson")
+
+        val anchor = onNodeWithTag("anchor").getBoundsInRoot()
+        val list = onNodeWithTag(ComposerAutocompleteTag).getBoundsInRoot()
+        assertTrue(
+            list.top >= anchor.bottom,
+            "list must fall back below the composer; list=$list anchor=$anchor",
+        )
     }
 
     /** Both triggers live on one RichTextState and share one key controller. */
