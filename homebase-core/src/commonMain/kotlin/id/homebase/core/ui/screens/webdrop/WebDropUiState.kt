@@ -55,4 +55,7 @@ sealed interface WebDropUiEvent {
 sealed interface WebDropError {
     data object CreateFailed : WebDropError
     data object TooManyFiles : WebDropError
+
+    /** A picked file could not be read back at create time; it has been removed from the pick list. */
+    data class SourceUnreadable(val fileName: String) : WebDropError
 }

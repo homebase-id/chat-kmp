@@ -2,7 +2,7 @@ package id.homebase.chat.services.builder
 
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.convertHeicToJpeg
-import id.homebase.chat.conversationlist.toUploadPath
+import id.homebase.core.files.toUploadPath
 import id.homebase.core.util.contentType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name

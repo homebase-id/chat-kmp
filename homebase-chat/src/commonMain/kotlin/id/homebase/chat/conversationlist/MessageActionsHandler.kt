@@ -79,6 +79,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import id.homebase.core.files.toUploadPath
 
 private const val TAG = "ConversationListViewModel"
 

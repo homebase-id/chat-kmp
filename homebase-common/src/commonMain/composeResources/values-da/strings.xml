@@ -1726,5 +1726,6 @@
     <string name="webdrop_revoke_cancel">Annullér</string>
     <string name="webdrop_files_and_age">%1$s &#183; %2$s</string>
     <string name="webdrop_error_create">Kunne ikke oprette drop-linket</string>
+    <string name="webdrop_error_source_unreadable">Kunne ikke læse %1$s — vælg den venligst igen</string>
     <string name="webdrop_error_too_many">Et drop kan højst indeholde %1$d filer</string>
 </resources>

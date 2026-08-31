@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
+import id.homebase.core.files.materializeForUpload
 
 /**
  * Handles attachment-editor and audio-recording action arms (attach / unattach
