@@ -1691,6 +1691,11 @@ fun ConversationContent(
                                 payloadRenderers = payloadRenderers,
                                 onPayloadRenderersChange = { payloadRenderers = it },
                                 onSendMessage = { text, attachments -> performSend(text, attachments) },
+                                mentionTargets = if (conversation.conversation.isGroupConversation) {
+                                    conversation.participants
+                                } else {
+                                    emptyList()
+                                },
                                 onEmojiClick = {
                                     showAttachmentSheet = false
                                     if (showEmojiSheet && !isKeyboardVisible) {
