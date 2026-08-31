@@ -46,6 +46,7 @@ import id.homebase.resources.webdrop_compose_title
 import id.homebase.resources.webdrop_copy
 import id.homebase.resources.webdrop_create
 import id.homebase.resources.webdrop_error_create
+import id.homebase.resources.webdrop_error_source_unreadable
 import id.homebase.resources.webdrop_error_too_many
 import id.homebase.resources.webdrop_for_someone
 import id.homebase.resources.webdrop_recipient_name
@@ -67,8 +68,15 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.runtime.rememberCoroutineScope
+import org.koin.compose.koinInject
+import kotlinx.coroutines.launch
+import id.homebase.core.files.materializeForUpload
+import id.homebase.api.file.FileOperationsProvider
+import co.touchlab.kermit.Logger
 
 private const val MAX_NAME_CHARS = 40
+private const val TAG = "WebDropComposeSheet"
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -76,23 +84,40 @@ fun WebDropComposeSheet(
     uiState: WebDropUiState,
     onAction: (WebDropUiAction) -> Unit,
 ) {
+    val fileOps = koinInject<FileOperationsProvider>()
+    val scope = rememberCoroutineScope()
     val filePicker = rememberFilePickerLauncher(
         type = FileKitType.File(),
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (!files.isNullOrEmpty()) {
-            onAction(
-                WebDropUiAction.FilesPicked(
-                    files.map { file ->
-                        PickedDropFile(
-                            path = file.pathCompat,
-                            name = file.name,
-                            contentType = file.contentType(),
-                            size = 0,
-                        )
-                    }
+            scope.launch {
+                onAction(
+                    WebDropUiAction.FilesPicked(
+                        files.map { file ->
+                            // Content type off the PICKED handle before the copy - the sandbox
+                            // copy's picker-name may lack an extension to derive it from (#1149).
+                            val contentType = file.contentType()
+                            // Snapshot into the sandbox at pick time: Android's content:// grant
+                            // and iOS's security scope are both transient, and createDrop reads
+                            // the path much later (#1420). On failure keep the raw handle - the
+                            // grant is freshest right now, and createDrop reports a typed,
+                            // per-file error if it still cannot read it.
+                            val snapshot = runCatching { file.materializeForUpload(fileOps) }
+                                .getOrElse { e ->
+                                    Logger.w(TAG, e) { "snapshot-on-pick failed for ${file.name}" }
+                                    file
+                                }
+                            PickedDropFile(
+                                path = snapshot.pathCompat,
+                                name = file.name,
+                                contentType = contentType,
+                                size = 0,
+                            )
+                        }
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -209,6 +234,8 @@ fun WebDropComposeSheet(
                         WebDropError.CreateFailed -> stringResource(MR.string.webdrop_error_create)
                         WebDropError.TooManyFiles ->
                             stringResource(MR.string.webdrop_error_too_many, WebDropProtocol.MaxFilesPerDrop)
+                        is WebDropError.SourceUnreadable ->
+                            stringResource(MR.string.webdrop_error_source_unreadable, error.fileName)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
