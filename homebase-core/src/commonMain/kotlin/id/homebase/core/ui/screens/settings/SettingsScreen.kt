@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
@@ -81,6 +82,8 @@ import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
+import id.homebase.resources.webdrop_home_subtitle
+import id.homebase.resources.webdrop_label
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
 import id.homebase.resources.cancel
@@ -382,6 +385,15 @@ fun SettingsUi(
             }
             item {
                 SettingsRow(
+                    modifier = Modifier.testTag("webDropButton"),
+                    icon = Icons.Outlined.Redeem,
+                    title = stringResource(MR.string.webdrop_label),
+                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
+                    action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
+                )
+            }
+            item {
+                SettingsRow(
                     modifier = Modifier.testTag("locationSettingsButton"),
                     icon = Icons.Outlined.LocationOn,
                     title = stringResource(MR.string.location_settings_section),
@@ -597,6 +609,7 @@ fun SettingsUiPreview() {
                 onMomentsSettings = {},
                 onVaultSettings = {},
                 onEmailSettings = {},
+                onOpenWebDrop = {},
                 onLocation = {},
                 onContactBookSettings = {},
                 onProfileEdit = {},

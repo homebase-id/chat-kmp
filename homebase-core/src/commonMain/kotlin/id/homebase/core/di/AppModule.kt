@@ -113,6 +113,9 @@ import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.webdrop.WebDropService
+import id.homebase.core.ui.screens.webdrop.WebDropStream
+import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -195,6 +198,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
@@ -223,6 +227,7 @@ import id.homebase.core.session.IdentitySessionScope
 import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
+val WebDropPermissionQualifier = named("webDropPermission")
 val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
@@ -678,6 +683,7 @@ val appModule = module {
             get<EmailPreferences>().reset()
             get<EmailStream>().apply { reset(); start() }
                 get<VaultStream>().apply { reset(); start() }
+                get<WebDropStream>().apply { reset(); start() }
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -835,6 +841,9 @@ val appModule = module {
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
+
+    singleOf(::WebDropStream)
+    single { WebDropService(get(), get(), get()) }
 
     // Sticker library (saved "My Stickers" tray) — mirrors the Vault singles. The
     // Stickers drive is optional/on-demand (mounted lazily by StickerService), so it
@@ -1138,6 +1147,15 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    viewModel(WebDropPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getWebDropPermissionExtensionConfig(),
+            autoCheck = false,
+        )
+    }
     viewModel(EmailPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1168,6 +1186,14 @@ val appModule = module {
     viewModelOf(::ConnectRequestViewModel)
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
+    viewModel {
+        WebDropViewModel(
+            webDropService = get(),
+            webDropStream = get(),
+            webDropPermissionViewModel = get(WebDropPermissionQualifier),
+            optionalDriveActivation = get(),
+        )
+    }
     viewModel {
         VaultViewModel(
             vaultPreferences = get(),

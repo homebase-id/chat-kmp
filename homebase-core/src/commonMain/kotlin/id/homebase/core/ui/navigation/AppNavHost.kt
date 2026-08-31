@@ -153,6 +153,10 @@ import id.homebase.core.ui.screens.vault.VaultScreen
 import id.homebase.core.ui.screens.vault.auth.VaultSessionTracker
 import id.homebase.core.ui.screens.vault.VaultUiEvent
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.webdrop.WebDropScreen
+import id.homebase.core.ui.screens.webdrop.WebDropUiEvent
+import id.homebase.core.ui.screens.webdrop.WebDropViewModel
+import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorScreen
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import id.homebase.core.ui.screens.vault.onboarding.VaultOnboardingScreen
@@ -468,6 +472,13 @@ fun AppNavHost(
             popUpTo(Route.ChatList) { saveState = true }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    // Deliberately not a top-level route: WebDrop has no bar icon, so the bottom bar hides here.
+    val openWebDrop: () -> Unit = {
+        navController.navigate(Route.WebDrop) {
+            launchSingleTop = true
         }
     }
 
@@ -914,6 +925,7 @@ fun AppNavHost(
                                 HomeScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateToVault = openVault,
+                                    onNavigateToWebDrop = openWebDrop,
                                     onNavigateToMoments = openMoments,
                                     onNavigateToLocation = openLocation,
                                     onNavigateToContacts = openContactBook,
@@ -1453,6 +1465,7 @@ fun AppNavHost(
                                         onEmailSettings = {
                                             navController.navigate(Route.EmailSettings)
                                         },
+                                        onOpenWebDrop = openWebDrop,
                                         onLocation = openLocation,
                                         onContactBookSettings = {
                                             navController.navigate(Route.ContactBookSettings)
@@ -1812,6 +1825,39 @@ fun AppNavHost(
                                             onScrollToTopHandled = {
                                                 entry.savedStateHandle[SCROLL_TO_TOP_KEY] = false
                                             },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        composable<Route.WebDrop> {
+                            if (isAuthenticated) {
+                                val webDropViewModel: WebDropViewModel = koinViewModel()
+                                val webDropUiState by webDropViewModel.uiState.collectAsStateWithLifecycle()
+                                when (webDropUiState.driveActivated) {
+                                    null -> {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            CircularProgressIndicator()
+                                        }
+                                    }
+                                    false -> {
+                                        WebDropOnboardingScreen(viewModel = webDropViewModel)
+                                        LaunchedEffect(Unit) {
+                                            webDropViewModel.events.collect { event ->
+                                                if (event is WebDropUiEvent.CloseOnboarding) {
+                                                    navController.popBackStack()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    true -> {
+                                        WebDropScreen(
+                                            viewModel = webDropViewModel,
+                                            onNavigateBack = { navController.popBackStack() },
                                         )
                                     }
                                 }
