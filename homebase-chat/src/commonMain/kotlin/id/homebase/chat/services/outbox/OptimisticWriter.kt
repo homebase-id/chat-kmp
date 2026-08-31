@@ -700,6 +700,15 @@ class OptimisticWriter(
             it.copy(lastExitedAt = UnixTimeUtc())
         }
 
+    suspend fun stampConversationArchivedAt(
+        driveId: Uuid,
+        conversationId: Uuid,
+        archivedAt: UnixTimeUtc?,
+    ): UpdateLocalAppdataContentOutboxRequest? =
+        stampConversationLocalAppData(driveId, conversationId, "stampConversationArchivedAt") {
+            it.copy(archivedAt = archivedAt)
+        }
+
     suspend fun stampConversationLastReadTime(
         driveId: Uuid,
         conversationId: Uuid,

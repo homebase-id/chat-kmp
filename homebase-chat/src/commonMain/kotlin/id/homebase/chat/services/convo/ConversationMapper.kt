@@ -236,6 +236,9 @@ class ConversationMapper(
                     isGroup = isGroup,
                     isLegacyGroup = isLegacyGroup,
                     exitedAt = exitedAt,
+                    archivedAt = if (conversationState == ConversationState.Archived) {
+                        localAppData?.archivedAt?.toInstant()
+                    } else null,
                     fileUpdated = metadata.updated.toInstant(),
                     fileCreated = metadata.created.toInstant(),
                 )
