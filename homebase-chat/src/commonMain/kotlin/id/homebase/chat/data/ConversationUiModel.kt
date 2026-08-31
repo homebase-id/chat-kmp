@@ -57,6 +57,8 @@ data class ConversationUiModel(
     val isGroup: Boolean = false,
     val isLegacyGroup: Boolean = false,
     val exitedAt: Instant? = null,
+    /** Null unless archived, and on threads archived before the stamp existed (#1145). */
+    val archivedAt: Instant? = null,
     /** Server-stamped last-modified time of the conversation file (fileMetadata.updated). */
     val fileUpdated: Instant = Instant.fromEpochMilliseconds(0),
     /**

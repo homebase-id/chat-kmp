@@ -343,7 +343,8 @@ class ConversationServiceLifecycleTest {
     // ---------- archive / unarchive / pin / unpin (tag flips) ----------
     //
     // All four route through updateConversationTags. We verify each writes an
-    // outbox row via the tag-update path.
+    // outbox row via the tag-update path. Archive and unarchive write a second
+    // row for the `archivedAt` baseline in localAppData.content (#1145).
 
     @Test
     fun archiveConversation_enqueuesTagUpdate() = runTest {
@@ -354,7 +355,7 @@ class ConversationServiceLifecycleTest {
 
             service.archiveConversation(convoId)
 
-            assertEquals(1L, fixture.outboxRowCount() - before)
+            assertEquals(2L, fixture.outboxRowCount() - before)
         }
     }
 
@@ -370,7 +371,7 @@ class ConversationServiceLifecycleTest {
 
             service.unarchiveConversation(convoId)
 
-            assertEquals(1L, fixture.outboxRowCount() - before)
+            assertEquals(2L, fixture.outboxRowCount() - before)
         }
     }
 

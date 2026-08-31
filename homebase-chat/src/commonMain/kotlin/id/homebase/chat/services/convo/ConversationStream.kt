@@ -503,10 +503,14 @@ class ConversationStream(
 
             // region Auto-unarchive: Signal-style unarchive on incoming message
             if (matchingConversation?.conversationState == ConversationState.Archived) {
-                // Only unarchive for messages from others, not our own synced messages
-                if (!m.isAuthoredBy(credentialsManager.getActiveDomain())) {
+                // Only unarchive for messages from others, not our own synced messages.
+                // A status message (rename, join, leave) is not re-engagement (#1145).
+                if (!m.isStatusMessage && !m.isAuthoredBy(credentialsManager.getActiveDomain())) {
                     Logger.i("ConversationStream: unarchiving conversation ${m.conversationId} due to incoming message from ${m.originalAuthor}")
-                    val unarchived = matchingConversation.copy(conversationState = ConversationState.Active)
+                    val unarchived = matchingConversation.copy(
+                        conversationState = ConversationState.Active,
+                        archivedAt = null,
+                    )
                     _conversations.value = _conversations.value.copy(
                         items = _conversations.value.items.map { if (it.id == unarchived.id) unarchived else it }
                     )
@@ -1151,15 +1155,39 @@ class ConversationStream(
         }
 
         val current = _conversations.value
+        val toUnarchive = ArrayList<Uuid>()
         val updated = current.items.map { ui ->
             val pair = msgByConversation[ui.id] ?: return@map ui
-            mapper.applyLastMessage(ui, pair.first, domain, sqlUserDateMs = pair.second)
+            val patched = mapper.applyLastMessage(ui, pair.first, domain, sqlUserDateMs = pair.second)
+            val shouldUnarchive = shouldAutoUnarchive(
+                state = patched.conversationState,
+                archivedAt = patched.archivedAt,
+                lastMessageUserDate = pair.second
+                    ?.let { Instant.fromEpochMilliseconds(it) }
+                    ?: patched.latestMessageTimestamp,
+                lastMessageIsFromActiveUser = patched.lastMessageIsFromActiveUser,
+            )
+            if (!shouldUnarchive) return@map patched
+            toUnarchive += ui.id
+            patched.copy(conversationState = ConversationState.Active, archivedAt = null)
         }
 
         _conversations.value = current.copy(
             items = updated,
             enrichment = current.enrichment.copy(hasLastMessages = true),
         )
+
+        for (id in toUnarchive) {
+            Logger.i("ConversationStream: auto-unarchiving $id — message arrived after it was archived")
+            try {
+                onUnarchiveConversation?.invoke(id)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Never let one bad conversation file abort the enrichment pass.
+                Logger.e(e) { "ConversationStream: failed to auto-unarchive $id: ${e.message}" }
+            }
+        }
 
         Logger.i(tag = "ConvListPerf") {
             "enrichWithLastMessages end-to-end=${Clock.System.now().toEpochMilliseconds() - startedAt}ms " +
