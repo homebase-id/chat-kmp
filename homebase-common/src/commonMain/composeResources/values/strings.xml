@@ -1427,6 +1427,7 @@
     <string name="chat_media_quality_hd">HD</string>
     <string name="cd_media_quality_high_on">High quality is on. Tap to send smaller photos and videos.</string>
     <string name="cd_media_quality_high_off">High quality is off. Tap to send photos and videos at full quality.</string>
+    <string name="cd_media_quality_hd_badge">Sent in high quality</string>
 
     <!-- Settings hub -->
     <string name="settings_section_preferences">Preferences</string>
