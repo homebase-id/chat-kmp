@@ -2130,12 +2130,17 @@
     <string name="webdrop_for_someone">For someone specific?</string>
     <string name="webdrop_recipient_name">Recipient's name</string>
     <string name="webdrop_for_label">For %1$s</string>
-    <string name="webdrop_condition_recipient_only">For the named recipient only</string>
-    <string name="webdrop_condition_no_retention">Destroy after use - keep no copy on file</string>
-    <string name="webdrop_condition_personal_data">Contains personal data - handle accordingly</string>
+    <string name="webdrop_condition_recipient_only">This is for the named recipient only</string>
+    <string name="webdrop_condition_no_retention">They must destroy it after use and keep no copy</string>
+    <string name="webdrop_condition_personal_data">It contains personal data they must handle accordingly</string>
     <string name="webdrop_theme_mission">Mission</string>
     <string name="webdrop_theme_clean">Clean</string>
     <string name="webdrop_theme_choplifter">Choplifter</string>
+    <string name="webdrop_terms_header">Terms for the recipient</string>
+    <string name="webdrop_revoke_confirm_title">Revoke %1$s?</string>
+    <string name="webdrop_revoke_confirm_message">The link stops working immediately. Anyone holding it will no longer be able to open the drop.</string>
+    <string name="webdrop_revoke_cancel">Cancel</string>
+    <string name="webdrop_files_and_age">%1$s &#183; %2$s</string>
     <string name="webdrop_error_create">Couldn't create the drop link</string>
     <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
 </resources>

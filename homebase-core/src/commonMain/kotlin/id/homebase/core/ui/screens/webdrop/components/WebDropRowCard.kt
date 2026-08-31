@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.LinkOff
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,17 +29,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.ui.screens.webdrop.model.DropRow
+import id.homebase.core.util.formatTimestamp
 import id.homebase.core.ui.screens.webdrop.model.DropStatus
 import id.homebase.resources.MR
 import id.homebase.resources.webdrop_copy
+import id.homebase.resources.webdrop_files_and_age
 import id.homebase.resources.webdrop_files_count
 import id.homebase.resources.webdrop_for_label
 import id.homebase.resources.webdrop_revoke
+import id.homebase.resources.webdrop_revoke_cancel
+import id.homebase.resources.webdrop_revoke_confirm_message
+import id.homebase.resources.webdrop_revoke_confirm_title
 import id.homebase.resources.webdrop_row_clear
 import id.homebase.resources.webdrop_status_expires
 import id.homebase.resources.webdrop_status_opened
 import id.homebase.resources.webdrop_status_removed
 import id.homebase.resources.webdrop_status_waiting
+import kotlin.time.Instant
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 
@@ -59,6 +67,33 @@ fun WebDropRowCard(
     onClear: () -> Unit,
 ) {
     val status = row.status
+    var confirmRevoke by remember { mutableStateOf(false) }
+
+    if (confirmRevoke) {
+        AlertDialog(
+            onDismissRequest = { confirmRevoke = false },
+            title = { Text(stringResource(MR.string.webdrop_revoke_confirm_title, row.receipt.name)) },
+            text = { Text(stringResource(MR.string.webdrop_revoke_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmRevoke = false
+                        onRevoke()
+                    },
+                ) {
+                    Text(
+                        text = stringResource(MR.string.webdrop_revoke),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRevoke = false }) {
+                    Text(stringResource(MR.string.webdrop_revoke_cancel))
+                }
+            },
+        )
+    }
     var nowMs by remember { mutableLongStateOf(UnixTimeUtc.now().milliseconds) }
     if (status is DropStatus.Opened || status is DropStatus.Expiring) {
         LaunchedEffect(row.dropId) {
@@ -105,7 +140,9 @@ fun WebDropRowCard(
                 }
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = stringResource(MR.string.webdrop_files_count, row.receipt.files.size),
+                    text = stringResource(MR.string.webdrop_files_and_age,
+                        stringResource(MR.string.webdrop_files_count, row.receipt.files.size),
+                        formatTimestamp(Instant.fromEpochMilliseconds(row.receipt.createdAt))),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -136,9 +173,9 @@ fun WebDropRowCard(
                         contentDescription = stringResource(MR.string.webdrop_copy),
                     )
                 }
-                IconButton(onClick = onRevoke) {
+                IconButton(onClick = { confirmRevoke = true }) {
                     Icon(
-                        imageVector = Icons.Outlined.LinkOff,
+                        imageVector = Icons.Outlined.Delete,
                         contentDescription = stringResource(MR.string.webdrop_revoke),
                         tint = MaterialTheme.colorScheme.error,
                     )

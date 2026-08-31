@@ -55,6 +55,7 @@ import id.homebase.resources.webdrop_theme_clean
 import id.homebase.resources.webdrop_theme_choplifter
 import id.homebase.resources.webdrop_link_ready
 import id.homebase.resources.webdrop_share
+import id.homebase.resources.webdrop_terms_header
 import id.homebase.resources.webdrop_ttl_burn
 import id.homebase.resources.webdrop_ttl_one_day
 import id.homebase.resources.webdrop_ttl_seven_days
@@ -184,7 +185,12 @@ fun WebDropComposeSheet(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = stringResource(MR.string.webdrop_terms_header),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
                 ConditionRow(uiState, WebDropProtocol.ConditionRecipientOnly, MR.string.webdrop_condition_recipient_only, onAction)
                 ConditionRow(uiState, WebDropProtocol.ConditionNoRetention, MR.string.webdrop_condition_no_retention, onAction)
                 ConditionRow(uiState, WebDropProtocol.ConditionPersonalData, MR.string.webdrop_condition_personal_data, onAction)
