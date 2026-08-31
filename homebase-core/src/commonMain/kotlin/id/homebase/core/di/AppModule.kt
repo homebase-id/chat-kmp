@@ -114,6 +114,7 @@ import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.VaultViewModel
 import id.homebase.core.ui.screens.webdrop.WebDropService
+import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
 import id.homebase.core.ui.screens.webdrop.WebDropStream
 import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
@@ -684,6 +685,7 @@ val appModule = module {
             get<EmailStream>().apply { reset(); start() }
                 get<VaultStream>().apply { reset(); start() }
                 get<WebDropStream>().apply { reset(); start() }
+                get<WebDropShareFlowState>().clear()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -844,6 +846,7 @@ val appModule = module {
 
     singleOf(::WebDropStream)
     single { WebDropService(get(), get(), get()) }
+    single { WebDropShareFlowState() }
 
     // Sticker library (saved "My Stickers" tray) — mirrors the Vault singles. The
     // Stickers drive is optional/on-demand (mounted lazily by StickerService), so it
@@ -1192,6 +1195,7 @@ val appModule = module {
             webDropStream = get(),
             webDropPermissionViewModel = get(WebDropPermissionQualifier),
             optionalDriveActivation = get(),
+            webDropShareFlowState = get(),
         )
     }
     viewModel {
