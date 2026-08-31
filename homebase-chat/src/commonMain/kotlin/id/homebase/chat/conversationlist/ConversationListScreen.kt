@@ -74,6 +74,7 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.horizontalResizeCursor
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
@@ -1004,6 +1005,7 @@ fun ConversationListUi(
                             .onGloballyPositioned {
                                 splitterCenter = it.positionInRoot().x + it.size.width / 2f
                             }
+                            .horizontalResizeCursor()
                             .paneExpansionDraggable(
                                 state = state,
                                 minTouchTargetSize = SPLITTER_HIT_WIDTH,
