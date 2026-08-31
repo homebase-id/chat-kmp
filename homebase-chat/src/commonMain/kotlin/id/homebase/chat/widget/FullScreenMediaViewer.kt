@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,7 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BrokenImage
-import androidx.compose.material.icons.filled.Hd
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -69,8 +66,8 @@ import id.homebase.core.media.subsample.SubSamplingImageSource
 import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
-import id.homebase.resources.cd_media_quality_hd_badge
 import id.homebase.resources.chat_image_unavailable
+import id.homebase.resources.chat_media_quality_hd
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.share
@@ -237,25 +234,15 @@ fun FullScreenMediaViewer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = formatTimestamp(data.userDate),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            val currentIsHighQuality = data.payloads
-                                .firstOrNull { it.key == currentPayloadKey }
-                                ?.isHighQualityImage() == true
-                            if (currentIsHighQuality) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Hd,
-                                    contentDescription = stringResource(
-                                        MR.string.cd_media_quality_hd_badge
-                                    ),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
+                        val currentIsHighQuality = data.payloads
+                            .firstOrNull { it.key == currentPayloadKey }
+                            ?.isHighQualityImage() == true
+                        val hdLabel = stringResource(MR.string.chat_media_quality_hd)
+                        val timestamp = formatTimestamp(data.userDate)
+                        Text(
+                            text = if (currentIsHighQuality) "$timestamp · $hdLabel" else timestamp,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
 
                 },
