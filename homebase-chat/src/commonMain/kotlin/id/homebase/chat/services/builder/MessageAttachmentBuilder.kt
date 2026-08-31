@@ -70,11 +70,20 @@ object MessageAttachmentBuilder {
                         // as a normal image (issue #854). When it IS a sticker we detect the
                         // real format so the download is named "StickerFile.<ext>"; ordinary
                         // photos keep the legacy "" so nothing changes for them.
+                        //
+                        // Quality is recorded only for a HIGH ordinary photo: STANDARD keeps
+                        // the legacy "" (absent reads as standard), and a sticker's bytes are
+                        // bounded at 512px regardless of the toggle, so "HD" would be a lie.
                         val descriptorContent =
                             if (attachment.forceSticker) {
                                 DescriptorContent.descriptorContentFromImage(
                                     isSticker = true,
                                     format = ImageFormatDetector.detectFormat(thumbs.sourceBytes),
+                                )
+                            } else if (mediaQuality == MediaQuality.HIGH) {
+                                DescriptorContent.descriptorContentFromImage(
+                                    isSticker = false,
+                                    quality = MediaQuality.HIGH,
                                 )
                             } else {
                                 ""
