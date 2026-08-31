@@ -119,6 +119,7 @@ import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.clipboard.readClipboardImage
+import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
@@ -201,6 +202,8 @@ fun MessageInputBar(
 ) {
     var showExpanded by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
+
+    EmojiShortcodeEffect(textFieldState)
 
     // URL-detector private state. Lives here (not in the parent) because it's an
     // implementation detail of how LinkPreviewRenderer gets produced from typed text:
@@ -1201,6 +1204,8 @@ fun MessageTextFieldForAttachment(
     var hasSent by remember { mutableStateOf(false) }
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    EmojiShortcodeEffect(state)
 
     Column(modifier = modifier) {
         if (showFormattingToolbar) {
