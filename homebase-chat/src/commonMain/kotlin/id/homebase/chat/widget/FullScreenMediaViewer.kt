@@ -68,6 +68,7 @@ import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
 import id.homebase.resources.chat_media_quality_hd
+import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.share
@@ -160,7 +161,7 @@ fun FullScreenMediaViewer(
                     }
                     ZoomableSubSamplingImage(
                         source = source,
-                        contentDescription = payload.descriptorContent,
+                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                         animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
@@ -188,7 +189,7 @@ fun FullScreenMediaViewer(
                     }
                     ZoomableSubSamplingImage(
                         source = source,
-                        contentDescription = payload.descriptorContent,
+                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                         animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
@@ -399,7 +400,7 @@ fun FullScreenMediaViewer(
                                     shape = RoundedCornerShape(8.dp)
                                 ),
                             contentScale = ContentScale.Crop,
-                            contentDescription = payload.descriptorContent,
+                            contentDescription = stringResource(MR.string.chat_message_image_attachment),
                             animatedVisibilityScope = animatedVisibilityScope,
                             sharedTransitionScope = null,
                         )
