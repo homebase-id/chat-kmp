@@ -2148,5 +2148,6 @@
     <string name="webdrop_revoke_cancel">Cancel</string>
     <string name="webdrop_files_and_age">%1$s &#183; %2$s</string>
     <string name="webdrop_error_create">Couldn't create the drop link</string>
+    <string name="webdrop_error_source_unreadable">Couldn't read %1$s — please pick it again</string>
     <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
 </resources>

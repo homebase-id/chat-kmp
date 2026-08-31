@@ -173,8 +173,20 @@ class WebDropViewModel(
                     webDropStream.loadAll()
                     _events.tryEmit(WebDropUiEvent.ShareLink(created.url))
                 }
-                .onFailure {
-                    _uiState.update { it.copy(isCreating = false, error = WebDropError.CreateFailed) }
+                .onFailure { e ->
+                    if (e is WebDropSourceReadException) {
+                        // Name the file and clear it from the pick list - the path is dead, so
+                        // "pick it again" is the only way forward (#1420).
+                        _uiState.update { state ->
+                            state.copy(
+                                isCreating = false,
+                                error = WebDropError.SourceUnreadable(e.fileName),
+                                pickedFiles = state.pickedFiles.filterNot { it.path == e.filePath },
+                            )
+                        }
+                    } else {
+                        _uiState.update { it.copy(isCreating = false, error = WebDropError.CreateFailed) }
+                    }
                 }
         }
     }

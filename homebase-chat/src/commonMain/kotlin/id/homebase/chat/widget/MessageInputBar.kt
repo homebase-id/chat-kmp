@@ -113,6 +113,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.conversationlist.shouldSendComposerMessage
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
@@ -211,6 +212,9 @@ fun MessageInputBar(
     payloadRenderers: List<PayloadRenderer>,
     onPayloadRenderersChange: (List<PayloadRenderer>) -> Unit,
     onSendMessage: (String, List<PayloadRenderer>) -> Unit,
+    /** Group members offered by the `@` typeahead. Empty in a 1:1, which leaves the trigger
+     *  unregistered so no mention affordance appears there. */
+    mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
@@ -308,6 +312,7 @@ fun MessageInputBar(
                     .padding(bottom = 16.dp),
                 focusRequester = focusRequester,
                 state = textFieldState,
+                mentionTargets = mentionTargets,
                 payloadRenderers = payloadRenderers,
                 onCancelAttachment = ::cancelRenderer,
                 editExistingMode = editExistingMode,
@@ -330,6 +335,7 @@ fun MessageInputBar(
                 ),
                 focusRequester = focusRequester,
                 state = textFieldState,
+                mentionTargets = mentionTargets,
                 editExistingMode = editExistingMode,
                 payloadRenderers = payloadRenderers,
                 recordingData = recordingData,
@@ -364,6 +370,7 @@ fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester,
     state: RichTextState,
+    mentionTargets: List<ContactUiModel>,
     editExistingMode: Boolean,
     payloadRenderers: List<PayloadRenderer>,
     onCancelAttachment: (id: String) -> Unit,
@@ -508,6 +515,12 @@ fun MessageTextFieldExpanded(
                 controller = autocomplete,
                 enabled = isFieldFocused && isDesktopOrWeb(),
             )
+            MentionAutocomplete(
+                state = state,
+                controller = autocomplete,
+                targets = mentionTargets,
+                enabled = isFieldFocused,
+            )
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(
@@ -570,6 +583,7 @@ fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester,
     state: RichTextState,
+    mentionTargets: List<ContactUiModel>,
     payloadRenderers: List<PayloadRenderer>,
     recordingData: RecordingData?,
     onCancelAttachment: (id: String) -> Unit,
@@ -906,6 +920,12 @@ fun MessageTextFieldCompact(
                                 state = state,
                                 controller = autocomplete,
                                 enabled = isKeyboardFocused && isDesktopOrWeb(),
+                            )
+                            MentionAutocomplete(
+                                state = state,
+                                controller = autocomplete,
+                                targets = mentionTargets,
+                                enabled = isKeyboardFocused,
                             )
                         }
                         if (showRecordingButton) {

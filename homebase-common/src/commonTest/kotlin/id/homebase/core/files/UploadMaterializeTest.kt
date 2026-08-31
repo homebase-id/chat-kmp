@@ -1,4 +1,4 @@
-package id.homebase.chat.conversationlist
+package id.homebase.core.files
 
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.request.forms.InputProvider
@@ -11,13 +11,13 @@ import kotlin.test.assertTrue
 /**
  * Guards the contract the web `PlatformFile.toUploadPath` actual relies on: a picked file's
  * bytes, once materialized, must be READABLE BACK through the same [FileOperationsProvider] the
- * send pipeline uses. The web Gallery/image send bug was exactly this contract being skipped —
+ * upload pipelines use. The web Gallery/image send bug was exactly this contract being skipped —
  * the raw browser PlatformFile was never copied into okio, so `readFileBytes` couldn't find it.
  *
  * (The web `readBytes()` interop itself can't run without a browser; this covers the shared
  * copy-and-readability logic, which is the part that was missing.)
  */
-class AttachmentUploadResolveTest {
+class UploadMaterializeTest {
 
     @Test
     fun materializedPathIsReadableBackWithSameProvider() = runTest {
@@ -52,9 +52,22 @@ class AttachmentUploadResolveTest {
         assertEquals(listOf<Byte>(1), fs.readFileBytes(a).toList())
         assertEquals(listOf<Byte>(2), fs.readFileBytes(b).toList())
     }
+
+    @Test
+    fun sandboxCopyNameAppendsExtensionWhenPickerNameHasNone() {
+        val name = sandboxCopyName("photopicker-1000022602", "image/jpeg")
+        assertTrue(name.endsWith(".jpg"), "expected a .jpg suffix, got: $name")
+        assertTrue(name.startsWith("chat_attach_"))
+    }
+
+    @Test
+    fun sandboxCopyNameKeepsAnExistingExtensionAndSurvivesAnUnmappedMime() {
+        assertTrue(sandboxCopyName("IMG_2026.jpeg", "image/jpeg").endsWith("_IMG_2026.jpeg"))
+        assertTrue(sandboxCopyName("raw-shot", "image/x-not-a-real-mime").endsWith("_raw-shot"))
+        assertTrue(sandboxCopyName("raw-shot", null).endsWith("_raw-shot"))
+    }
 }
 
-/** Minimal in-memory [FileOperationsProvider] — only the members the materialize path touches. */
 private class InMemoryFileOps : FileOperationsProvider {
     private val store = mutableMapOf<String, ByteArray>()
     private var counter = 0
