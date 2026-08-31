@@ -67,10 +67,27 @@ class MentionSuggestionsTest {
 
     /** A fully typed handle must leave Enter free to send, not re-commit what is already there. */
     @Test
-    fun anExactHandleOrNameIsDropped() {
+    fun anExactHandleIsDropped() {
         assertTrue(mentionSuggestions("alice.example.com", Group).isEmpty())
-        assertTrue(mentionSuggestions("Alice Anderson", Group).isEmpty())
         assertTrue(mentionSuggestions("ALICE.EXAMPLE.COM", Group).isEmpty())
+    }
+
+    /**
+     * `@Sebastian` is a display name, not the wire form. Dropping it on an exact match would leave
+     * Enter sending a mention no client can resolve, so a fully typed name stays committable.
+     */
+    @Test
+    fun anExactNameStaysCommittable() {
+        val sebastian = member("yagni.dk", "Sebastian")
+        assertEquals(handles(listOf(sebastian)), handles(mentionSuggestions("sebastian", listOf(sebastian))))
+        assertEquals(handles(listOf(sebastian)), handles(mentionSuggestions("Sebastian", listOf(sebastian))))
+    }
+
+    /** A contact with no saved name falls back to its handle, and that is still the wire form. */
+    @Test
+    fun anExactHandleIsDroppedEvenWhenItIsAlsoTheName() {
+        val nameless = ContactUiModel.fallbackFor(OdinId("yagni.dk"))
+        assertTrue(mentionSuggestions("yagni.dk", listOf(nameless)).isEmpty())
     }
 
     @Test

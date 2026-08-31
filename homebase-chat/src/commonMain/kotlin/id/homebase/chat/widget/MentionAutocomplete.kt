@@ -50,8 +50,9 @@ fun MentionAutocomplete(
     }
 }
 
-/** [query] is the text after `@`. An exact hit is dropped so a fully typed handle leaves Enter
- *  free to send the message instead of re-committing what is already there. */
+/** [query] is the text after `@`. A fully typed handle is dropped so Enter sends instead of
+ *  re-committing what is already there; a fully typed display name is not, because `@Sebastian`
+ *  is not the wire form and Enter there would send an unresolvable mention. */
 internal fun mentionSuggestions(
     query: String,
     targets: List<ContactUiModel>,
@@ -72,7 +73,7 @@ internal fun mentionSuggestions(
 private fun matchRank(query: String, target: ContactUiModel): Int? {
     val name = target.name
     val handle = target.odinId.domainName
-    if (query.equals(name, ignoreCase = true) || query.equals(handle, ignoreCase = true)) return null
+    if (query.equals(handle, ignoreCase = true)) return null
     return when {
         name.startsWith(query, ignoreCase = true) -> 0
         handle.startsWith(query, ignoreCase = true) -> 1
