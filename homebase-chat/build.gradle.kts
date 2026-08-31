@@ -123,7 +123,15 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.cio)
-            implementation(libs.vlcj)
+            implementation(libs.vlcj.get().toString()) {
+                // jna-jpms is a second copy of com.sun.jna that Gradle cannot dedupe
+                // against jna; two versions leave Conveyor's native-library extraction
+                // with one libjnidispatch that mismatches whichever copy loads first.
+                exclude(group = "net.java.dev.jna", module = "jna-jpms")
+                exclude(group = "net.java.dev.jna", module = "jna-platform-jpms")
+            }
+            implementation(libs.jna)
+            implementation(libs.jna.platform)
         }
         // Uncomment when enabling the wasmJs target (post-pre-flight),
         // paired with the `wasmJs { browser() }` block above.

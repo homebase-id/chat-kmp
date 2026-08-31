@@ -1,9 +1,11 @@
 package id.homebase.core.sync
 
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.NetworkException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
+import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
@@ -20,7 +22,10 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.core.config.LabeledDrive
 import id.homebase.core.config.feedLabeledDrive
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -285,6 +290,88 @@ class DriveRegistryTest {
         val registry = buildRegistry(db, recorder = recorder)
 
         assertFailsWith<ClientException> {
+            registry.addDriveBestEffort(feedLabeledDrive)
+        }
+        db.close()
+    }
+
+    // ---------- addDriveBestEffort: the 403 crash loop ----------
+    //
+    // With the app token's drive grants revoked server-side, `updateRegistry` finds no registry
+    // file (the by-uid header GET answers 404), tries to CREATE one on the Chat drive, and the
+    // server answers 403. Because `addDriveBestEffort` only contained *transport* failures, the
+    // 403 propagated out of `AuthConnectionCoordinator.mountDrive` — whose own contract says
+    // "Must not throw: callers activate add-ons from a viewModelScope with no handler" — and
+    // straight into the platform uncaught handler. Four process deaths in 72 seconds.
+
+    @Test
+    fun addDriveBestEffortSwallowsPermissionDenied() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder(
+            uploadThrowsOnCall = { forbiddenOnChatDrive() },
+        )
+        val registry = buildRegistry(db, recorder = recorder)
+
+        // Must return normally. Throwing here is the crash.
+        registry.addDriveBestEffort(feedLabeledDrive)
+
+        assertEquals(1, recorder.uploads.size, "the write was attempted, and denied")
+        db.close()
+    }
+
+    /**
+     * The production shape, modelled on `NoteToSelfBootstrapCrashTest`: an add-on activates from
+     * a `viewModelScope`-shaped scope (SupervisorJob, no CoroutineExceptionHandler) with no local
+     * try/catch. The handler here stands in for the uncaught path so the test can observe an
+     * escape without killing the test JVM; on the real scope there is none, so an escape lands on
+     * `Thread.setDefaultUncaughtExceptionHandler` and the process dies.
+     */
+    @Test
+    fun permissionDeniedDoesNotEscapeAViewModelScopedActivation() = runTest {
+        val db = createTestDatabaseManager()
+        val registry = buildRegistry(
+            db,
+            recorder = WriteRecorder(uploadThrowsOnCall = { forbiddenOnChatDrive() }),
+        )
+
+        var escaped: Throwable? = null
+        val viewModelLikeScope = CoroutineScope(
+            SupervisorJob() + Dispatchers.Unconfined + CoroutineExceptionHandler { _, e -> escaped = e },
+        )
+
+        // What AuthConnectionCoordinator.mountDrive does first, launched the way every add-on
+        // ViewModel launches it.
+        viewModelLikeScope.launch { registry.addDriveBestEffort(feedLabeledDrive) }.join()
+
+        assertNull(escaped, "a 403 on the registry write must not reach the uncaught path; was: $escaped")
+        db.close()
+    }
+
+    @Test
+    fun addDriveBestEffortPropagatesUnauthorized() = runTest {
+        // 401 is not a permission denial to shrug off — the auth layer has to act on a dead
+        // token. Guards the containment from widening past 403.
+        val db = createTestDatabaseManager()
+        val registry = buildRegistry(
+            db,
+            recorder = WriteRecorder(uploadThrowsOnCall = { UnauthorizedException() }),
+        )
+
+        assertFailsWith<UnauthorizedException> {
+            registry.addDriveBestEffort(feedLabeledDrive)
+        }
+        db.close()
+    }
+
+    @Test
+    fun addDriveBestEffortPropagatesProgrammingErrors() = runTest {
+        val db = createTestDatabaseManager()
+        val registry = buildRegistry(
+            db,
+            recorder = WriteRecorder(uploadThrowsOnCall = { IllegalStateException("bug") }),
+        )
+
+        assertFailsWith<IllegalStateException> {
             registry.addDriveBestEffort(feedLabeledDrive)
         }
         db.close()
@@ -821,6 +908,8 @@ class DriveRegistryTest {
         // Returning null (or omitting) → success (the request is captured).
         val uploadErrorOnCall: (() -> OdinClientErrorCode?)? = null,
         val updateErrorOnCall: (() -> OdinClientErrorCode?)? = null,
+        // For failures that are not ClientExceptions (a 403, say).
+        val uploadThrowsOnCall: (() -> Throwable?)? = null,
     ) {
         val uploads = mutableListOf<UploadFileRequest>()
         val updates = mutableListOf<UpdateFileByUniqueIdRequest>()
@@ -855,6 +944,7 @@ class DriveRegistryTest {
             uploadFile = { request ->
                 // Record the attempt regardless of outcome so retries are observable.
                 recorder.uploads += request
+                recorder.uploadThrowsOnCall?.invoke()?.let { throw it }
                 val err = recorder.uploadErrorOnCall?.invoke()
                 if (err != null) throw buildClientException(err)
             },
@@ -867,6 +957,13 @@ class DriveRegistryTest {
             scope = backgroundScope,
         )
     }
+
+    private fun forbiddenOnChatDrive(): ForbiddenException = ForbiddenException(
+        ProblemDetails(
+            status = 403,
+            title = "No access permitted to drive ${SystemDriveConstants.chatDrive.alias}",
+        ),
+    )
 
     private fun buildClientException(code: OdinClientErrorCode): ClientException =
         ClientException(

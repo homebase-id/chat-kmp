@@ -1,9 +1,11 @@
 package id.homebase.feed.crash
 
 import id.homebase.api.client.ClientException
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.NetworkException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
+import id.homebase.api.client.UnauthorizedException
 import java.io.IOException
 import javax.net.ssl.SSLHandshakeException
 import kotlin.test.assertFalse
@@ -68,5 +70,26 @@ class GlobalCrashHandlerContainmentTest {
     fun otherClientError_isNotContained_soItStillCrashes() {
         // A non-conflict 400 (a real bad-request bug) must still terminate + report.
         assertFalse(GlobalCrashHandler.isContainableNonFatal(clientException(OdinClientErrorCode.UnhandledScenario)))
+    }
+
+    @Test
+    fun permissionDenied_isContained() {
+        // The desktop crash loop: an add-on activation writes the drive registry on the Chat
+        // drive, the app token's grant has been revoked server-side, and the 403 leaves a bare
+        // viewModelScope.launch. A revoked grant must never kill the app.
+        val forbidden = ForbiddenException(
+            ProblemDetails(
+                status = 403,
+                title = "No access permitted to drive 9ff813af-f2d6-1e2f-9b9d-b189e72d1a11",
+            ),
+        )
+        assertTrue(GlobalCrashHandler.isContainableNonFatal(forbidden))
+        assertTrue(GlobalCrashHandler.isContainableNonFatal(RuntimeException("wrapped", forbidden)))
+    }
+
+    @Test
+    fun unauthorized_isNotContained_soItStillCrashes() {
+        // A 401 is an auth-state problem for the auth layer to act on, not one to run through.
+        assertFalse(GlobalCrashHandler.isContainableNonFatal(UnauthorizedException()))
     }
 }

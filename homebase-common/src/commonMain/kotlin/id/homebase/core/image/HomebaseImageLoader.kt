@@ -1,6 +1,7 @@
 package id.homebase.core.image
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.RetryConfig
@@ -71,13 +72,18 @@ class HomebaseImageLoader(
 
         // Default retry configuration for image loading.
         // retryOn unwraps the RuntimeException wrapper produced below so the real
-        // cause (e.g. NotFoundException) still short-circuits retries.
+        // cause (e.g. NotFoundException) still short-circuits retries. A 403 is a
+        // standing answer, not a blip: retrying it four times with backoff only
+        // multiplies the log noise.
         val DEFAULT_RETRY_CONFIG = RetryConfig(
             maxRetries = 3,
             initialDelayMs = 500L,
             maxDelayMs = 5000L,
             backoffMultiplier = 2.0,
-            retryOn = { e -> (e.cause ?: e) !is NotFoundException }
+            retryOn = { e ->
+                val cause = e.cause ?: e
+                cause !is NotFoundException && cause !is ForbiddenException
+            }
         )
     }
 

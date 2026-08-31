@@ -11,10 +11,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Icon
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
 import androidx.compose.ui.unit.dp
@@ -25,9 +21,7 @@ import androidx.compose.ui.window.rememberWindowState
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import chat_kmp.homebase_common.BuildConfig
 import co.touchlab.kermit.Logger
-import com.kdroid.composetray.tray.api.Tray
 import com.kdroid.composetray.utils.SingleInstanceManager
-import com.kdroid.composetray.utils.isMenuBarInDarkMode
 import com.mmk.kmpnotifier.notification.NotifierManager
 import id.homebase.api.browser.DesktopAppFocusManager
 import id.homebase.api.browser.LocalCallbackServer
@@ -43,6 +37,7 @@ import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.api.client.isRecoverablePermissionFailure
 import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.app.crash.CrashRecoveryDialog
@@ -68,7 +63,6 @@ import id.homebase.resources.desktop_menu_file
 import id.homebase.resources.desktop_menu_quit
 import id.homebase.resources.desktop_tray_show_window
 import id.homebase.resources.desktop_tray_version
-import id.homebase.resources.homebase_icon_mono
 import id.homebase.resources.homebase_icon_round
 import id.homebase.resources.theme
 import id.homebase.resources.update_available
@@ -273,17 +267,7 @@ fun main() {
             }
         }
 
-        Tray(
-            // The menu bar follows the desktop picture, not the app theme, so this tints off
-            // the bar's own appearance rather than a MaterialTheme role.
-            iconContent = {
-                Icon(
-                    painter = painterResource(MR.drawable.homebase_icon_mono),
-                    contentDescription = appName,
-                    tint = if (isMenuBarInDarkMode()) Color.White else Color.Black,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            },
+        HomebaseTray(
             tooltip = appName,
             primaryAction = {
                 isWindowVisible = !isWindowVisible
@@ -370,7 +354,7 @@ fun main() {
     }
 }
 
-private val isMacOs =
+internal val isMacOs =
     System.getProperty("os.name").orEmpty().startsWith("Mac", ignoreCase = true)
 
 // Traffic lights float over the content once apple.awt.fullWindowContent is on.
@@ -379,17 +363,32 @@ private val MAC_TITLE_BAR_HEIGHT = 28.dp
 private fun menuShortcut(key: Key) =
     KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs)
 
+/**
+ * A failure the desktop app records and keeps running for, instead of dying: a transient network
+ * blip (PR #737), a recoverable optimistic-concurrency conflict (400 VersionTagMismatch, #1008),
+ * or a permission denial (403 — the app token's grant was revoked or narrowed server-side).
+ *
+ * All three are server answers, not client defects, and all three routinely leak from a coroutine
+ * launched on a scope with no CoroutineExceptionHandler of its own (a bare `viewModelScope.launch`
+ * — how every add-on activates its drive). Anything else still terminates and reports. Pure so it
+ * is unit-testable; mirrors Android's `GlobalCrashHandler.isContainableNonFatal`.
+ */
+internal fun isContainableNonFatal(throwable: Throwable): Boolean =
+    throwable.isTransientNetworkFailure() ||
+        throwable.isRecoverableServerConflict() ||
+        throwable.isRecoverablePermissionFailure()
+
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-        // Preserve PR #737: don't crash on a transient network blip. Also contain a
-        // recoverable optimistic-concurrency conflict (400 VersionTagMismatch, #1008).
-        if (throwable.isTransientNetworkFailure() || throwable.isRecoverableServerConflict()) {
+        if (isContainableNonFatal(throwable)) {
             crashlyticsRecordException(throwable)
             Logger.w(tag = "CrashHandler") {
-                val kind = if (throwable.isRecoverableServerConflict()) {
-                    "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
-                } else {
-                    "Transient network failure"
+                val kind = when {
+                    throwable.isRecoverableServerConflict() ->
+                        "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
+                    throwable.isRecoverablePermissionFailure() ->
+                        "Permission denied by the server (403; the grant was revoked or narrowed)"
+                    else -> "Transient network failure"
                 }
                 "$kind leaked to '${thread.name}' (no local handler); " +
                     "app not crashing: ${throwable.message}\n" +
