@@ -1,6 +1,7 @@
 package id.homebase.core.webdrop
 
 import id.homebase.api.crypto.AesCbc
+import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
@@ -29,6 +30,15 @@ class WebDropCryptoVectorTest {
     private val plaintext = "WebDrop cross-implementation vector v1"
     private val cipherBase64 = "5wEI0MU52bMWHO0F/g8p3tSAu5WAYQniWJKBKP3eg0D6O7S8g098lvh4XuzQ+rSI"
 
+    // The intro half of the vector: same link key, ITS OWN fixed IV, and the exact JSON the
+    // intro blob carries - a recipient name plus conditions.
+    private val introIv = ByteArray(16) { (0x20 + it).toByte() }
+    private val introJson =
+        "{\"recipientName\":\"Thomas Kragh-Muller\",\"conditions\":[\"recipient_only\",\"no_retention\"]}"
+    private val introCipherBase64 =
+        "9CSG5VYOrEx7oa/qoHLAIlfFZfLZMLoN888bSsxhTrLCvAL1dEFZSI+noniZZZlr" +
+            "+8zpS/KG2/tJzFbXXByyxe7uLW0LZ75E4okYAOeXzrQD0tpyoxGr2W0QjBO79chv"
+
     @Test
     fun theWriterProducesExactlyTheSharedVector() = runTest {
         val cipher = AesCbc.encrypt(plaintext.encodeToByteArray(), key, iv)
@@ -39,6 +49,19 @@ class WebDropCryptoVectorTest {
     fun theSharedVectorDecryptsBack() = runTest {
         val plain = AesCbc.decrypt(Base64.decode(cipherBase64), key, iv)
         assertEquals(plaintext, plain.decodeToString())
+    }
+
+    @Test
+    fun theIntroBlobUnderItsOwnIvProducesExactlyTheSharedVector() = runTest {
+        val cipher = AesCbc.encrypt(introJson.encodeToByteArray(), key, introIv)
+        assertEquals(introCipherBase64, Base64.encode(cipher))
+
+        val back = AesCbc.decrypt(Base64.decode(introCipherBase64), key, introIv)
+        assertEquals(introJson, back.decodeToString())
+
+        val parsed = OdinSystemSerializer.deserialize<WebDropIntroContent>(back.decodeToString())
+        assertEquals("Thomas Kragh-Muller", parsed.recipientName)
+        assertEquals(listOf("recipient_only", "no_retention"), parsed.conditions)
     }
 
     @Test
