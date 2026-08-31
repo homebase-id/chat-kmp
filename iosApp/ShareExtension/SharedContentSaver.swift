@@ -1,5 +1,6 @@
 import Foundation
 import UniformTypeIdentifiers
+import os
 
 /// Saves shared content from the extension context into the App Group container
 /// for the main app to pick up and send.
@@ -133,6 +134,8 @@ struct SharedContentSaver {
                                 fileNames.append(name)
                                 mimeTypes.append(mimeTypeForExtension(ext))
                             } catch {
+                                os_log("Share extension: dropping image %{public}@, write failed: %{public}@",
+                                       name, error.localizedDescription)
                             }
                         }
                         group.leave()
@@ -220,11 +223,14 @@ struct SharedContentSaver {
                 targetConversationId: conversationId
             )
 
+            let descriptorURL = containerURL.appendingPathComponent(sharedContentFile)
             do {
                 let jsonData = try JSONEncoder().encode(descriptor)
-                try jsonData.write(to: containerURL.appendingPathComponent(sharedContentFile))
+                try jsonData.write(to: descriptorURL)
                 completion(true)
             } catch {
+                os_log("Share extension: descriptor write to %{public}@ failed (%d file(s) staged), reporting failure: %{public}@",
+                       descriptorURL.path, fileNames.count, error.localizedDescription)
                 completion(false)
             }
         }
