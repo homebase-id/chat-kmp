@@ -90,6 +90,20 @@ SET uniqueId        = excluded.uniqueId,
     jsonHeader      = excluded.jsonHeader
 WHERE excluded.modified > DriveMainIndex.modified; -- Only update if the row is newer. Host guarantees it.
 
+-- Undo one optimistic mutation. `modified = :optimisticModified` is the load-bearing
+-- clause: it only fires while the row is still the optimistic write being undone, so a
+-- host write that landed in between changes 0 rows and correctly stands. Restoring
+-- :originalModified keeps the row at the server's real value, so a later host write
+-- carrying that value is not dropped by the guard above.
+rollbackOptimisticWrite:
+UPDATE DriveMainIndex
+SET fileState      = :fileState,
+    archivalStatus = :archivalStatus,
+    jsonHeader     = :jsonHeader,
+    modified       = :originalModified
+WHERE identityId = :identityId AND driveId = :driveId AND fileId = :fileId
+  AND modified = :optimisticModified;
+
 -- Select by identity and drive and file (get single row)
 selectByIdentityAndDriveAndFile:
 SELECT * FROM DriveMainIndex

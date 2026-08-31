@@ -88,13 +88,22 @@ class PublicProfileProviderCached(
     private val profileDir = "$directory/homebase-public-profiles-v2"
     private val imageDir = "$directory/homebase-public-images-v2"
 
+    // fileSystem() is not optional decoration: coil's Builder defaults to okio
+    // FileSystem.SYSTEM, which on wasmJs is the throwing stub ("Javascript does
+    // not have access to the device's file system") - every cache read then
+    // errored on web and fell through to the network. The platform
+    // systemFileSystem (in-memory on web) is what the entry reads/writes below
+    // already use; the cache must live in the same one. Same shape as
+    // DriveFileProviderCached, which had it right.
     private val profileDiskCache: DiskCache = DiskCache.Builder()
         .directory(profileDir.toPath())
+        .fileSystem(fileSystem)
         .maxSizeBytes(10L * 1024L * 1024L)
         .build()
 
     private val imageDiskCache: DiskCache = DiskCache.Builder()
         .directory(imageDir.toPath())
+        .fileSystem(fileSystem)
         .maxSizeBytes(200L * 1024L * 1024L)
         .build()
 

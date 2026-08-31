@@ -608,6 +608,16 @@ fun AppNavHost(
                         navController.navigate(Route.MomentCompose)
                     }
                 }
+
+                is NotificationNavigationEvent.OpenWebDropCompose -> {
+                    Logger.i(tag = "AppNavHost") { "OpenWebDropCompose received" }
+                    // The share flow seeded WebDropShareFlowState before launching us;
+                    // WebDropViewModel consumes it on init and opens the compose sheet.
+                    // The share picker only offers "New WebDrop" when the drive is
+                    // activated, so no extra gate here - and if it ever fires without
+                    // activation, the WebDrop screen itself shows onboarding.
+                    openWebDrop()
+                }
             }
         }
     }
