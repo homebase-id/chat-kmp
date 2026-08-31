@@ -41,12 +41,14 @@ struct SharedContentSaver {
         let targetConversationId: String
     }
 
+    /// Tests pass `containerURL` to redirect the writes into a directory they can make unwritable.
     static func save(
         extensionContext: NSExtensionContext,
         conversationId: String,
+        containerURL: URL? = nil,
         completion: @escaping (Bool) -> Void
     ) {
-        guard let containerURL = FileManager.default
+        guard let containerURL = containerURL ?? FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupId)
         else {
             completion(false)
@@ -126,9 +128,12 @@ struct SharedContentSaver {
                             let ext = imageExtensionForData(imageData)
                             let name = "share_\(Int(Date().timeIntervalSince1970 * 1000)).\(ext)"
                             let destURL = filesDir.appendingPathComponent(name)
-                            try? imageData.write(to: destURL)
-                            fileNames.append(name)
-                            mimeTypes.append(mimeTypeForExtension(ext))
+                            do {
+                                try imageData.write(to: destURL)
+                                fileNames.append(name)
+                                mimeTypes.append(mimeTypeForExtension(ext))
+                            } catch {
+                            }
                         }
                         group.leave()
                     }
@@ -215,12 +220,11 @@ struct SharedContentSaver {
                 targetConversationId: conversationId
             )
 
-            // Write descriptor JSON
-            if let jsonData = try? JSONEncoder().encode(descriptor) {
-                let descriptorURL = containerURL.appendingPathComponent(sharedContentFile)
-                try? jsonData.write(to: descriptorURL)
+            do {
+                let jsonData = try JSONEncoder().encode(descriptor)
+                try jsonData.write(to: containerURL.appendingPathComponent(sharedContentFile))
                 completion(true)
-            } else {
+            } catch {
                 completion(false)
             }
         }
