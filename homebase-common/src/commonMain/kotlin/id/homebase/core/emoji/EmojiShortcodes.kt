@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.text.TextRange
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.core.util.replaceTextRangeSafely
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -26,7 +27,7 @@ data class ShortcodeReplacement(
     val emoji: String,
 )
 
-private fun Char.isShortcodeChar(): Boolean =
+internal fun Char.isShortcodeChar(): Boolean =
     this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9' ||
         this == '_' || this == '+' || this == '-'
 
@@ -61,7 +62,7 @@ fun RichTextState.replaceCompletedEmojiShortcode(shortcodes: Map<String, String>
     val cursor = selection
     if (!cursor.collapsed) return
     val match = replaceEmojiShortcode(annotatedString.text, cursor.start, shortcodes) ?: return
-    replaceTextRange(TextRange(match.start, cursor.start), match.emoji)
+    replaceTextRangeSafely(TextRange(match.start, cursor.start), match.emoji)
 }
 
 @Composable
