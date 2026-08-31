@@ -82,7 +82,7 @@ import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
-import id.homebase.resources.webdrop_empty_body
+import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
@@ -388,7 +388,7 @@ fun SettingsUi(
                     modifier = Modifier.testTag("webDropButton"),
                     icon = Icons.Outlined.Redeem,
                     title = stringResource(MR.string.webdrop_label),
-                    supportingText = stringResource(MR.string.webdrop_empty_body),
+                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
                     action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
                 )
             }

@@ -2,6 +2,8 @@ package id.homebase.core.ui.screens.webdrop.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,7 +70,7 @@ import org.jetbrains.compose.resources.stringResource
 
 private const val MAX_NAME_CHARS = 40
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun WebDropComposeSheet(
     uiState: WebDropUiState,
@@ -162,11 +164,9 @@ fun WebDropComposeSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TtlChip(uiState, WebDropTtlChoice.BurnAfterOpen, MR.string.webdrop_ttl_burn, onAction)
                 TtlChip(uiState, WebDropTtlChoice.OneDay, MR.string.webdrop_ttl_one_day, onAction)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TtlChip(uiState, WebDropTtlChoice.SevenDays, MR.string.webdrop_ttl_seven_days, onAction)
                 TtlChip(uiState, WebDropTtlChoice.ThirtyDays, MR.string.webdrop_ttl_thirty_days, onAction)
             }
@@ -195,7 +195,7 @@ fun WebDropComposeSheet(
                 ConditionRow(uiState, WebDropProtocol.ConditionNoRetention, MR.string.webdrop_condition_no_retention, onAction)
                 ConditionRow(uiState, WebDropProtocol.ConditionPersonalData, MR.string.webdrop_condition_personal_data, onAction)
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChip(uiState, WebDropProtocol.ThemeMission, MR.string.webdrop_theme_mission, onAction)
                     ThemeChip(uiState, WebDropProtocol.ThemeClean, MR.string.webdrop_theme_clean, onAction)
                     ThemeChip(uiState, WebDropProtocol.ThemeChoplifter, MR.string.webdrop_theme_choplifter, onAction)

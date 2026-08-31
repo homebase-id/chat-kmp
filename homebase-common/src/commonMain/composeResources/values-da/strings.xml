@@ -1682,7 +1682,7 @@
 
 
     <!-- WebDrop -->
-    <string name="webdrop_home_subtitle">Del filer som selvdestruerende links</string>
+    <string name="webdrop_home_subtitle">Del krypterede filer online som selvdestruerende links</string>
     <string name="webdrop_label">WebDrop</string>
     <string name="webdrop_onboarding_title">Del filer sikkert med alle</string>
     <string name="webdrop_onboarding_body_1">Send en privat fil til nogen, der ikke er på Homebase - et pas til et hotel, et dokument til et kontor - som et simpelt link, der åbner i enhver browser.</string>
