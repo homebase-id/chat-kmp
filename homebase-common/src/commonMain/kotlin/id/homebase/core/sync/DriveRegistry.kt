@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.isRecoverablePermissionFailure
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -287,17 +288,33 @@ class DriveRegistry(
         }
     }
 
-    // Transport failure only: the drive stays out of the cross-device list until a later
-    // activation re-registers it. Every other failure still propagates.
+    /**
+     * Register [drive] without letting the registry write decide whether the activation
+     * happens. Two failures are contained, both of which mean "the server would not take the
+     * write", never "the client is broken":
+     *
+     *  - a transport failure (offline, timeout, dropped socket), and
+     *  - a 403 on the Chat drive that holds the registry file — the app token's write grant was
+     *    revoked or narrowed in the owner console.
+     *
+     * In both cases the drive stays out of the cross-device list until a later activation
+     * re-registers it, and [AuthConnectionCoordinator.mountDrive] carries on to mount it
+     * locally — which is the caller's actual goal and works off a read grant this write does not
+     * gate. Rethrowing the 403 instead both aborted the local mount and, because every add-on
+     * activates from a `viewModelScope.launch` with no CoroutineExceptionHandler, killed the
+     * process. Every other failure still propagates.
+     */
     suspend fun addDriveBestEffort(drive: LabeledDrive) {
         try {
             addDrive(drive)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            if (!e.isTransientNetworkFailure()) throw e
+            val transport = e.isTransientNetworkFailure()
+            if (!transport && !e.isRecoverablePermissionFailure()) throw e
             Logger.w(tag = TAG, throwable = e) {
-                "addDrive(${drive.label}) hit a transport failure — not registered this session"
+                val reason = if (transport) "a transport failure" else "a 403 on the Chat drive"
+                "addDrive(${drive.label}) hit $reason — not registered this session"
             }
         }
     }
