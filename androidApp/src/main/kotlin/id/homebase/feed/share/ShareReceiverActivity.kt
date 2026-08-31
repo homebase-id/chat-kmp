@@ -326,6 +326,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     is ShareScreenState.Previewing -> {
                         val textFieldState = remember { RichTextState() }
                         var currentPage by remember { mutableStateOf(0) }
+                        var captionEmojiPickerOpen by remember { mutableStateOf(false) }
 
                         if (editorAttachments.isEmpty()) {
                             // User removed all files — go back to picker
@@ -376,11 +377,11 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                         )
                                     }
                                 },
+                                collapseSecondaryChrome = captionEmojiPickerOpen,
                                 bottomBar = {
                                     MessageTextFieldForAttachment(
                                         modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
                                         state = textFieldState,
-                                        onSmileyClick = {},
                                         onSendMessage = {
                                             sendEditedFiles(
                                                 conversationIds = state.selectedConversationIds,
@@ -388,6 +389,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                                 files = editorAttachments,
                                             )
                                         },
+                                        onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     )
                                 },
                             )

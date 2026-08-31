@@ -364,6 +364,7 @@ fun ConversationMessagesPane(
                     }
 
                     is FullScreenOverlay.AttachmentData -> {
+                        var captionEmojiPickerOpen by remember { mutableStateOf(false) }
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
@@ -428,14 +429,15 @@ fun ConversationMessagesPane(
                                     )
                                 }
                             },
+                            collapseSecondaryChrome = captionEmojiPickerOpen,
                             bottomBar = {
                                 MessageTextFieldForAttachment(
                                     modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
                                     state = textFieldState,
-                                    onSmileyClick = {},
                                     onSendMessage = {
                                         onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
                                     },
+                                    onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                 )
                             },
                         )
