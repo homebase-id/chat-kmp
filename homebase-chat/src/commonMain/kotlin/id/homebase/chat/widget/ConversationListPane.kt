@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.TextAutoSize
@@ -73,6 +74,7 @@ import androidx.compose.ui.unit.sp
 import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
+import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiState
 import id.homebase.chat.data.ConversationState
@@ -85,6 +87,7 @@ import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_archived_chats
+import id.homebase.resources.chat_archived_chats_empty
 import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_new_conversation
@@ -105,6 +108,7 @@ fun ConversationListPane(
     uiState: ConversationListUiState,
     selectedConversationId: Uuid? = null,
     searchTextState: TextFieldState,
+    archivedUiState: ArchivedConversationsUiState = ArchivedConversationsUiState(),
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
     onConversationSelected: (conversationId: Uuid) -> Unit,
@@ -371,7 +375,7 @@ fun ConversationListPane(
                 }
             },
             floatingActionButton = {
-                if (!iconOnlyMode && !twoPaneWindow) {
+                if (!iconOnlyMode && !twoPaneWindow && !uiState.showArchived) {
                     FloatingActionButton(
                         onClick = {
                             onUiAction(ConversationListUiAction.NewConversationClicked)
@@ -391,6 +395,16 @@ fun ConversationListPane(
                         .consumeWindowInsets(innerPadding),
                     state = listState,
                 ) {
+                    if (uiState.showArchived) {
+                        archivedConversationItems(
+                            archivedUiState = archivedUiState,
+                            selectedConversationId = selectedConversationId,
+                            iconOnlyMode = iconOnlyMode,
+                            onUiAction = onUiAction,
+                            onConversationSelected = onConversationSelected,
+                        )
+                        return@LazyColumn
+                    }
                     if (uiState.filterByUnread) {
                         item {
                             Row(
@@ -569,6 +583,56 @@ fun ConversationListPane(
                     state = listState
                 )
             }
+        }
+    }
+}
+
+private fun LazyListScope.archivedConversationItems(
+    archivedUiState: ArchivedConversationsUiState,
+    selectedConversationId: Uuid?,
+    iconOnlyMode: Boolean,
+    onUiAction: (ConversationListUiAction) -> Unit,
+    onConversationSelected: (conversationId: Uuid) -> Unit,
+) {
+    if (archivedUiState.isLoading) {
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        return
+    }
+    if (archivedUiState.conversations.isEmpty()) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = stringResource(MR.string.chat_archived_chats_empty),
+                    modifier = Modifier.padding(24.dp),
+                )
+            }
+        }
+        return
+    }
+    items(
+        archivedUiState.conversations,
+        key = { it.conversation.id },
+        contentType = { "conversation" },
+    ) { conversation ->
+        Box(modifier = Modifier.animateItem()) {
+            ConversationLisContentItem(
+                listItem = ConversationListContentModel.Conversation(conversation),
+                selectedConversationId = selectedConversationId,
+                iconOnlyMode = iconOnlyMode,
+                searchQuery = "",
+                onUiAction = onUiAction,
+                onConversationSelected = onConversationSelected,
+            )
         }
     }
 }

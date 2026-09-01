@@ -58,8 +58,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.chat.archivedconversations.ArchivedConversationsUi
-import id.homebase.chat.archivedconversations.ArchivedConversationsUiAction
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactcard.ContactCardDescriptor
@@ -882,61 +880,23 @@ fun ConversationListUi(
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
                 AnimatedPane(modifier = Modifier) {
-                    if (uiState.showArchived) {
-                        ArchivedConversationsUi(
-                            snackbarHostState = snackbarHostState,
-                            uiState = archivedConversationsUiState,
-                            selectedConversationId = uiState.selectedConversationId,
-                            onUiAction = { action ->
-                                when (action) {
-                                    is ArchivedConversationsUiAction.BackClicked -> {
-                                        onUiAction(ConversationListUiAction.ArchiveBackClicked)
-                                    }
-                                    is ArchivedConversationsUiAction.ShowConversation -> {
-                                        onUiAction(ConversationListUiAction.ConversationClicked(action.conversationId, null))
-                                        Logger.i(tag = "ConversationListUi") { "Navigating to detail for ${action.conversationId} from archived" }
-                                        scope.launch {
-                                            scaffoldNavigator.navigateTo(
-                                                ListDetailPaneScaffoldRole.Detail,
-                                                action.conversationId
-                                            )
-                                        }
-                                    }
-                                    is ArchivedConversationsUiAction.ShowConversationSettings -> {
-                                        onUiAction(ConversationListUiAction.ShowConversationSettings(action.conversation))
-                                    }
-                                    is ArchivedConversationsUiAction.UnarchiveConversation -> {
-                                        onUiAction(ConversationListUiAction.UnarchiveConversation(action.conversationId))
-                                    }
-                                    is ArchivedConversationsUiAction.ArchiveConversation -> {
-                                        onUiAction(
-                                            ConversationListUiAction.ArchiveConversation(
-                                                conversationId = action.conversationId,
-                                                isUndo = true,
-                                            )
-                                        )
-                                    }
-                                }
-                            },
-                        )
-                    } else {
-                        ConversationListPane(
-                            uiState = uiState,
-                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                            searchTextState = conversationSearchTextFieldState,
-                            onProfileClick = onNavigateToSettingsScreen,
-                            onUiAction = onUiAction,
-                            onConversationSelected = {
-                                Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
-                                scope.launch {
-                                    scaffoldNavigator.navigateTo(
-                                        ListDetailPaneScaffoldRole.Detail,
-                                        it
-                                    )
-                                }
+                    ConversationListPane(
+                        uiState = uiState,
+                        selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                        searchTextState = conversationSearchTextFieldState,
+                        archivedUiState = archivedConversationsUiState,
+                        onProfileClick = onNavigateToSettingsScreen,
+                        onUiAction = onUiAction,
+                        onConversationSelected = {
+                            Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
+                            scope.launch {
+                                scaffoldNavigator.navigateTo(
+                                    ListDetailPaneScaffoldRole.Detail,
+                                    it
+                                )
                             }
-                        )
-                    }
+                        }
+                    )
                 }
             },
             detailPane = {
