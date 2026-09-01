@@ -1213,6 +1213,7 @@ val appModule = module {
             driveSyncManager = get(),
             cropResultBus = get(),
             drawResultBus = get(),
+            webDropShareFlowState = get(),
         )
     }
     viewModelOf(::VaultSettingsViewModel)

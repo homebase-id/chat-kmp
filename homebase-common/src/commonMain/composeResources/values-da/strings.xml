@@ -1087,6 +1087,9 @@
     <string name="vault_gallery_delete_page_confirm">Slet denne side? Dette kan ikke fortrydes.</string>
     <string name="vault_gallery_delete_last_page_confirm">Dette er den sidste side. Sletter du den, fjernes hele posten.</string>
     <string name="vault_gallery_share_page">Del denne side</string>
+    <string name="vault_gallery_send_webdrop">Send som WebDrop</string>
+    <string name="vault_error_webdrop_prepare">Kunne ikke klargøre filerne til WebDrop</string>
+    <string name="vault_error_webdrop_too_many_files">Denne fil har for mange sider til ét WebDrop (maks. %1$d)</string>
     <string name="vault_gallery_save_page">Gem på enheden</string>
     <string name="vault_gallery_delete_file">Slet fil</string>
     <string name="vault_gallery_delete_all">Slet alle</string>
