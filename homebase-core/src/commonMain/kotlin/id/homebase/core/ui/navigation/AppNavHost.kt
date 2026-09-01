@@ -191,6 +191,14 @@ import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isExpandedLayout
+import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.chat.conversationlist.ConversationListUiAction
+import id.homebase.resources.chat_archived_chats
+import id.homebase.resources.settings
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.io.files.Path
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
@@ -224,6 +232,10 @@ import id.homebase.core.session.IdentitySessionScope
 
 // Set on the current destination when its already-selected bottom-nav / rail item is re-tapped.
 private const val SCROLL_TO_TOP_KEY = "scrollToTop"
+
+// Set on the ChatList entry by the rail's Archive action; the list pane owns the archived
+// view as state, so it cannot be reached by navigating to a route.
+private const val SHOW_ARCHIVED_KEY = "showArchived"
 
 // Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
 private val NavigationRailWidth = 64.dp
@@ -771,6 +783,30 @@ fun AppNavHost(
                                     }
                                 })
                         }
+
+                        if (isDesktopOrWeb()) {
+                            Spacer(modifier = Modifier.weight(1f))
+                            RailActionItem(
+                                icon = Icons.Default.Archive,
+                                contentDescription = stringResource(MR.string.chat_archived_chats),
+                                onClick = {
+                                    navController.navigate(Route.ChatList) {
+                                        popUpTo(Route.ChatList) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                    runCatching { navController.getBackStackEntry<Route.ChatList>() }
+                                        .getOrNull()
+                                        ?.savedStateHandle?.set(SHOW_ARCHIVED_KEY, true)
+                                },
+                            )
+                            RailActionItem(
+                                icon = Icons.Outlined.Settings,
+                                contentDescription = stringResource(MR.string.settings),
+                                onClick = { navController.navigate(Route.Settings) },
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                     }
                     VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
@@ -1134,6 +1170,17 @@ fun AppNavHost(
                                             backStackEntry.savedStateHandle["pendingFromShareIntent"] =
                                                 false
                                         }
+                                    }
+                                }
+                                val showArchivedRequested by backStackEntry.savedStateHandle
+                                    .getStateFlow(SHOW_ARCHIVED_KEY, false)
+                                    .collectAsStateWithLifecycle()
+                                LaunchedEffect(showArchivedRequested) {
+                                    if (showArchivedRequested) {
+                                        conversationListViewModel.onAction(
+                                            ConversationListUiAction.ShowArchivedMessagesClicked
+                                        )
+                                        backStackEntry.savedStateHandle[SHOW_ARCHIVED_KEY] = false
                                     }
                                 }
                                 var pendingContactCard by rememberSaveable(
@@ -2137,6 +2184,28 @@ private fun RailItem(
             size = RailIconSize,
             tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+// Role.Button, not the Role.Tab the five destination items use: neither target is a
+// destination the rail can be sitting on, so neither can ever read back as selected.
+@Composable
+private fun RailActionItem(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.size(RailIndicatorSize).clip(RailIndicatorShape)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(RailIconSize),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
