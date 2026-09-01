@@ -120,7 +120,7 @@ import id.homebase.resources.chat_leave_and_delete
 import id.homebase.resources.chat_leave_and_delete_conversation_text
 import id.homebase.resources.chat_leave_and_delete_conversation_title
 import id.homebase.resources.chat_select_a_conversation
-import id.homebase.resources.chat_select_a_conversation_subtitle
+import id.homebase.resources.chat_select_a_conversation_hint
 import id.homebase.resources.discard
 import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
@@ -933,7 +933,7 @@ fun ConversationListUi(
                             title = stringResource(
                                 MR.string.chat_select_a_conversation
                             ), subtitle = stringResource(
-                                MR.string.chat_select_a_conversation_subtitle
+                                MR.string.chat_select_a_conversation_hint
                             )
                         )
                     }
