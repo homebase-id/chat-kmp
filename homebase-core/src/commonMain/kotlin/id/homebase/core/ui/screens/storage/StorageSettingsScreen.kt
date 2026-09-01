@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,11 +50,11 @@ import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
 import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsSectionHeader
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.settings_media_quality_footer
 import id.homebase.resources.settings_media_quality
 import id.homebase.resources.settings_data_storage
-import id.homebase.resources.menu_back
 import id.homebase.resources.settings_storage
 import id.homebase.resources.storage_orphan_coil_body
 import id.homebase.resources.storage_orphan_coil_title
@@ -134,16 +133,9 @@ fun StorageSettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.settings_data_storage)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.settings_data_storage),
+                onBack = onBackClick,
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

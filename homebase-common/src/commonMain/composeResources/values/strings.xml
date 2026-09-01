@@ -1433,6 +1433,7 @@
     <string name="cd_media_quality_hd_badge">Sent in high quality</string>
 
     <!-- Settings hub -->
+    <string name="settings_category_general">General</string>
     <string name="settings_section_preferences">Preferences</string>
     <string name="settings_section_apps">Apps</string>
     <string name="settings_section_device">Device</string>

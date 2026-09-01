@@ -20,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Badge
@@ -74,6 +73,7 @@ import id.homebase.core.ui.screens.contactbook.ContactFieldValidation
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.ui.screens.contactbook.components.PhoneNumberField
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_detail_location
@@ -81,7 +81,6 @@ import id.homebase.resources.contactbook_detail_name
 import id.homebase.resources.contactbook_error_birthday
 import id.homebase.resources.contactbook_error_email
 import id.homebase.resources.contactbook_error_phone
-import id.homebase.resources.menu_back
 import id.homebase.resources.profile_edit_add_attribute
 import id.homebase.resources.profile_edit_add_attribute_title
 import id.homebase.resources.profile_edit_additional_name
@@ -186,16 +185,9 @@ fun ProfileEditScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.profile_edit_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { viewModel.onAction(ProfileEditAction.BackClicked) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.profile_edit_title),
+                onBack = { viewModel.onAction(ProfileEditAction.BackClicked) },
                 actions = {
                     if (!uiState.isLoading && !uiState.loadFailed) {
                         IconButton(onClick = { previewMode = !previewMode }) {

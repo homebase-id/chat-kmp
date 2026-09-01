@@ -77,9 +77,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.FloatingWindow
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraph
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -147,6 +149,8 @@ import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
 import id.homebase.core.ui.screens.profile.ProfileEditScreen
 import id.homebase.core.ui.screens.settings.SettingsActions
+import id.homebase.core.ui.screens.settings.SettingsPaneActions
+import id.homebase.core.ui.screens.settings.SettingsPaneHost
 import id.homebase.core.ui.screens.settings.SettingsScreen
 import androidx.compose.material3.CircularProgressIndicator
 import id.homebase.core.ui.screens.vault.VaultScreen
@@ -190,8 +194,8 @@ import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 import id.homebase.core.util.getUriHandler
-import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.resources.chat_archived_chats
 import id.homebase.resources.settings
@@ -261,6 +265,16 @@ fun AppNavHost(
     val isAuthenticated = authState is YouAuthState.Authenticated && identityScope != null
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
+    // bar must keep tracking that screen or they vanish (and reflow it) the moment a pane opens.
+    val chromeDestination = if (isDesktopOrWeb()) {
+        val backStack by navController.currentBackStack.collectAsStateWithLifecycle()
+        backStack.lastOrNull {
+            it.destination !is FloatingWindow && it.destination !is NavGraph
+        }?.destination
+    } else {
+        currentDestination
+    }
     val momentsPreferences = koinInject<MomentsPreferences>()
     val momentsIconVisible by momentsPreferences.iconVisible.collectAsStateWithLifecycle()
     val momentsFeedService = koinInject<MomentsFeedService>()
@@ -367,9 +381,9 @@ fun AppNavHost(
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
     val isTopLevelRoute =
-        currentDestination.isTopLevelRoute() ||
+        chromeDestination.isTopLevelRoute() ||
                 topLevelRoutes.any { topLevelRoute ->
-                    currentDestination?.hasRoute(topLevelRoute.route::class) == true
+                    chromeDestination?.hasRoute(topLevelRoute.route::class) == true
                 }
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
@@ -706,7 +720,7 @@ fun AppNavHost(
                 NavigationBar {
                     topLevelRoutes.forEach { topLevelRoute ->
                         val isSelected =
-                            currentDestination?.hasRoute(topLevelRoute.route::class) == true
+                            chromeDestination?.hasRoute(topLevelRoute.route::class) == true
                         NavigationBarItem(
                             icon = {
                                 TopLevelNavIcon(
@@ -761,7 +775,7 @@ fun AppNavHost(
                     ) {
                         topLevelRoutes.forEach { topLevelRoute ->
                             val isSelected =
-                                currentDestination?.hasRoute(topLevelRoute.route::class) == true
+                                chromeDestination?.hasRoute(topLevelRoute.route::class) == true
                             RailItem(
                                 topLevelRoute = topLevelRoute,
                                 selected = isSelected,
@@ -1495,7 +1509,39 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.Settings> {
+                        settingsDestination<Route.Settings>(
+                            onDismiss = { navController.popBackStack() },
+                            paneContent = {
+                                if (isAuthenticated) {
+                                    SettingsPaneHost(
+                                        showDeveloperMenu = showDeveloperMenu,
+                                        onDismiss = { navController.popBackStack() },
+                                        actions = SettingsPaneActions(
+                                            onOpenWebDrop = openWebDrop,
+                                            onLocation = openLocation,
+                                            onOpenMoments = openMoments,
+                                            onOpenVault = openVault,
+                                            onOpenEmail = openEmail,
+                                            onOpenContacts = openContactBook,
+                                            onNavigateToCropper = { requestId ->
+                                                navController.navigate(
+                                                    Route.Crop(
+                                                        requestId.toString(),
+                                                        lockedAspect = "square",
+                                                    )
+                                                )
+                                            },
+                                            onNavigateToDeveloperMenu = {
+                                                navController.navigate(Route.DeveloperMenu)
+                                            },
+                                            onNavigateToDefragmenter = {
+                                                navController.navigate(Route.Defragmenter)
+                                            },
+                                        ),
+                                    )
+                                }
+                            },
+                        ) {
                             if (isAuthenticated) {
                                 SettingsScreen(
                                     viewModel = koinViewModel(),

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Code
@@ -45,6 +44,7 @@ import id.homebase.core.util.getUriHandler
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.about_homebase
 import id.homebase.resources.dev_menu_title
@@ -60,7 +60,6 @@ import id.homebase.resources.help_support_center
 import id.homebase.resources.help_terms_privacy
 import id.homebase.resources.help_version
 import id.homebase.resources.logging
-import id.homebase.resources.menu_back
 import id.homebase.resources.settings_help
 import id.homebase.resources.update_available
 import id.homebase.resources.update_check_now
@@ -140,24 +139,11 @@ fun HelpUi(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(MR.string.settings_help),
-                        modifier = Modifier.testTag("helpTitle"),
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier.testTag("helpBackButton"),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                }
+            SettingsTopBar(
+                title = stringResource(MR.string.settings_help),
+                titleModifier = Modifier.testTag("helpTitle"),
+                navigationIconModifier = Modifier.testTag("helpBackButton"),
+                onBack = onBackClick,
             )
         }
     ) { innerPadding ->
