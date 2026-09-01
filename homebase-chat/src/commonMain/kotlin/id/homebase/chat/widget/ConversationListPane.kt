@@ -129,21 +129,6 @@ fun ConversationListPane(
     val paneEdgeColor = MaterialTheme.colorScheme.outlineVariant
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState)
-    // Read inside the draw lambdas below, so a row sliding under the flat bar repaints the
-    // hairline without recomposing the bar.
-    val barOverlapped by remember { derivedStateOf { topBarState.overlappedFraction > 0f } }
-    val barUnderline = Modifier.drawWithContent {
-        drawContent()
-        if (!barOverlapped) return@drawWithContent
-        val stroke = 1.dp.toPx()
-        val y = size.height - stroke / 2f
-        drawLine(
-            color = paneEdgeColor,
-            start = Offset(0f, y),
-            end = Offset(size.width, y),
-            strokeWidth = stroke,
-        )
-    }
     val listState = rememberLazyListState()
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
@@ -183,7 +168,6 @@ fun ConversationListPane(
             topBar = {
                 if (uiState.showArchived) {
                     TopAppBar(
-                        modifier = barUnderline,
                         scrollBehavior = scrollBehavior,
                         title = {
                             Text(stringResource(MR.string.chat_archived_chats))
@@ -202,7 +186,7 @@ fun ConversationListPane(
                         ),
                     )
                 } else if (!iconOnlyMode) {
-                    Column(modifier = barUnderline) {
+                    Column {
                         TopAppBar(title = {
                             Box(modifier = Modifier.fillMaxWidth()) {
                                 // Title row - keep it in place but fade out
