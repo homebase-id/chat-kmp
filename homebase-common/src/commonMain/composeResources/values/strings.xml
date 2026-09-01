@@ -1426,13 +1426,16 @@
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
     <string name="settings_media_quality_standard">Standard</string>
     <string name="settings_media_quality_high">High</string>
-    <string name="settings_media_quality_footer">Standard sends photos up to 1600 pixels and video at 720p, so they upload faster and use far less data. High sends your photos exactly as they are and video at 1080p. Either way, what you save to your device is the version that was sent.</string>
+    <string name="settings_media_quality_standard_description">Photos up to 1600 pixels and video at 720p. Uploads faster and uses far less data.</string>
+    <string name="settings_media_quality_high_description">Photos exactly as they are and video at 1080p.</string>
+    <string name="settings_media_quality_footer">Either way, what you save to your device is the version that was sent.</string>
     <string name="chat_media_quality_hd">HD</string>
     <string name="cd_media_quality_high_on">High quality is on. Tap to send smaller photos and videos.</string>
     <string name="cd_media_quality_high_off">High quality is off. Tap to send photos and videos at full quality.</string>
     <string name="cd_media_quality_hd_badge">Sent in high quality</string>
 
     <!-- Settings hub -->
+    <string name="settings_category_general">General</string>
     <string name="settings_section_preferences">Preferences</string>
     <string name="settings_section_apps">Apps</string>
     <string name="settings_section_device">Device</string>
