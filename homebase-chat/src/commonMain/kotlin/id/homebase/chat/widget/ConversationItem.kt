@@ -64,6 +64,7 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.OneOnOneConnectionStatus
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.ui.theme.emojiFontFamily
 import id.homebase.core.ui.theme.withEmojiFont
@@ -113,6 +114,7 @@ fun ConversationItem(
 
     // Pointer rows follow Signal Desktop: one step down the type scale, title+preview as one block.
     val compact = isDesktopOrWeb()
+    val row = Dimens.ConversationRow.metrics(compact)
 
     val isArchived = enrichedData.conversation.conversationState == ConversationState.Archived
     val archiveLabel = stringResource(
@@ -134,8 +136,8 @@ fun ConversationItem(
         enabled = allowSwipeActions && isMobile(),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = if (compact) 8.dp else 16.dp)
-            .clip(RoundedCornerShape(8.dp)),
+            .padding(horizontal = row.listGutter)
+            .clip(RoundedCornerShape(Dimens.ConversationRow.cornerRadius)),
         commitThreshold = SwipeDistance.Fraction(COMMIT_FRACTION_OF_ROW),
         maxOffset = SwipeDistance.Fraction(MAX_TRAVEL_FRACTION_OF_ROW),
         escapeVelocityDpPerSecond = FLICK_ESCAPE_VELOCITY_DP_PER_SECOND,
@@ -183,16 +185,19 @@ fun ConversationItem(
                         }
                     }
                 }
-                .padding(horizontal = if (compact) 10.dp else 12.dp, vertical = 12.dp),
+                .padding(
+                    horizontal = row.horizontalPadding,
+                    vertical = Dimens.ConversationRow.verticalPadding,
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             ConversationAvatar(
                 avatarModel = enrichedData.conversation.avatarModel,
-                modifier = Modifier.padding(if (compact) 0.dp else 8.dp),
+                modifier = Modifier.padding(row.avatarPadding),
                 options = AvatarOptions(onClick = { enrichedData.participants.firstOrNull()?.odinId?.let { onContactClick(it) } })
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(Dimens.ConversationRow.avatarGap))
 
             // Content
             Column(modifier = Modifier.weight(1f)) {
@@ -214,7 +219,7 @@ fun ConversationItem(
                         modifier = Modifier.weight(1f)
                     )
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(Dimens.Spacing.item))
 
                     if (enrichedData.conversation.isPinned) {
                         Icon(
@@ -223,7 +228,7 @@ fun ConversationItem(
                             modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(Dimens.Spacing.label))
                     }
 
                     Text(
@@ -235,7 +240,7 @@ fun ConversationItem(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(if (compact) 0.dp else 4.dp))
+                Spacer(modifier = Modifier.height(row.titlePreviewGap))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -324,7 +329,7 @@ fun ConversationItem(
                     )
 
                     if (enrichedData.conversation.unreadCount > 0) {
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(Dimens.Spacing.item))
 
                         Badge(
                             containerColor = HomebaseTheme.extendedColors.bubbleSentSurface,
@@ -338,7 +343,7 @@ fun ConversationItem(
                             )
                         }
                     } else if (draftPreview == null && enrichedData.conversation.lastMessageIsFromActiveUser && enrichedData.conversation.lastMessageDeliveryStatus != null) {
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(Dimens.Spacing.label))
                         DeliveryStatus(
                             isPendingSend = enrichedData.conversation.lastMessageIsPendingSend,
                             deliveryStatus = enrichedData.conversation.lastMessageDeliveryStatus,
@@ -346,7 +351,7 @@ fun ConversationItem(
                         )
                     }
                     if (enrichedData.conversation.conversationState == ConversationState.Archived) {
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(Dimens.Spacing.row))
                         Text(stringResource(MR.string.chat_archived),
                             modifier = Modifier
                                 .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(4.dp))
@@ -355,7 +360,7 @@ fun ConversationItem(
                         )
                     }
                     if (enrichedData.conversation.conversationState == ConversationState.RejoinPending) {
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(Dimens.Spacing.row))
                         Text(stringResource(MR.string.chat_group_rejoin_pending),
                             modifier = Modifier
                                 .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(4.dp))
@@ -364,7 +369,7 @@ fun ConversationItem(
                         )
                     }
                     if (enrichedData.conversation.isLegacyGroup) {
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(Dimens.Spacing.row))
                         Text(stringResource(MR.string.chat_group_legacy),
                             modifier = Modifier
                                 .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
@@ -374,7 +379,7 @@ fun ConversationItem(
                     }
                     when (enrichedData.oneOnOneConnectionStatus) {
                         is OneOnOneConnectionStatus.OutgoingRequestPending -> {
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(Dimens.Spacing.row))
                             Text(
                                 stringResource(MR.string.chat_connection_invited),
                                 modifier = Modifier
@@ -388,7 +393,7 @@ fun ConversationItem(
                             )
                         }
                         is OneOnOneConnectionStatus.IncomingRequestPending -> {
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(Dimens.Spacing.row))
                             Text(
                                 stringResource(MR.string.chat_connection_wants_to_connect),
                                 modifier = Modifier
@@ -402,7 +407,7 @@ fun ConversationItem(
                             )
                         }
                         is OneOnOneConnectionStatus.NotConnected -> {
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(Dimens.Spacing.row))
                             Text(
                                 stringResource(MR.string.chat_connection_not_connected),
                                 modifier = Modifier
@@ -495,8 +500,9 @@ fun ConversationAvatarItem(
     conversation: ConversationUiModel,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp)).background(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = Dimens.Spacing.gutter, vertical = Dimens.Spacing.label)
+            .clip(RoundedCornerShape(Dimens.ConversationRow.cornerRadius)).background(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer.copy(
                     alpha = 0.7f
                 )
@@ -506,7 +512,7 @@ fun ConversationAvatarItem(
         horizontalArrangement = Arrangement.Center,
     ) {
         ConversationAvatar(
-            avatarModel = conversation.avatarModel, modifier = Modifier.padding(8.dp)
+            avatarModel = conversation.avatarModel, modifier = Modifier.padding(Dimens.Spacing.item)
         )
     }
 }
@@ -526,7 +532,7 @@ fun ConversationMessagePreview(
     val emojiFamily = emojiFontFamily()
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(Dimens.Spacing.label),
         modifier = modifier
     ) {
         if (prefix != null) {
@@ -544,7 +550,7 @@ fun ConversationMessagePreview(
             Icon(
                 imageVector = iconRes,
                 contentDescription = null,
-                modifier = Modifier.size(if (compact) 14.dp else 16.dp)
+                modifier = Modifier.size(Dimens.ConversationRow.metrics(compact).previewIconSize)
                     .alpha(if (isDeleted) 0.5f else 1f),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
