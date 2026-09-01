@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.email_settings_section
@@ -77,7 +79,12 @@ internal fun SettingsSidebar(
                     selected = category == selected,
                     onClick = { onSelect(category) },
                     modifier = Modifier.padding(horizontal = Dimens.Spacing.item),
-                    colors = NavigationDrawerItemDefaults.colors(),
+                    shape = NavigationIndicatorShape,
+                    colors = NavigationDrawerItemDefaults.colors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
                 )
             }
         }

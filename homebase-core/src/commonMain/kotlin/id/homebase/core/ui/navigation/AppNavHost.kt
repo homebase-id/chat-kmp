@@ -59,7 +59,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -193,6 +192,7 @@ import id.homebase.resources.location_locate_fetch_failed
 import id.homebase.resources.vault_label
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
@@ -244,7 +244,6 @@ private const val SHOW_ARCHIVED_KEY = "showArchived"
 // Material's 80dp rail is tuned for touch; desktop chat clients sit at 64dp.
 private val NavigationRailWidth = 64.dp
 private val RailIndicatorSize = 48.dp
-private val RailIndicatorShape = RoundedCornerShape(14.dp)
 private val RailIconSize = 20.dp
 
 @Composable
@@ -2219,7 +2218,7 @@ private fun RailItem(
     onClick: () -> Unit,
 ) {
     Box(
-        modifier = Modifier.size(RailIndicatorSize).clip(RailIndicatorShape).background(
+        modifier = Modifier.size(RailIndicatorSize).clip(NavigationIndicatorShape).background(
             if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
         ).selectable(selected = selected, role = Role.Tab, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -2243,7 +2242,7 @@ private fun RailActionItem(
     onClick: () -> Unit,
 ) {
     Box(
-        modifier = Modifier.size(RailIndicatorSize).clip(RailIndicatorShape)
+        modifier = Modifier.size(RailIndicatorSize).clip(NavigationIndicatorShape)
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
