@@ -35,11 +35,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -100,6 +103,11 @@ class ConversationStream(
     val conversations: StateFlow<ConversationsData> = _conversations.asStateFlow()
     val shareableConversations: StateFlow<List<ShareableConversation>> =
         _shareableConversations.asStateFlow()
+
+    // Archived / left / removed threads are counted, matching the per-row unread badge.
+    val totalUnreadCount: Flow<Int> = conversations
+        .map { data -> data.items.sumOf { it.unreadCount } }
+        .distinctUntilChanged()
 
     // region Recovery: missing or deleted conversation file
     /** Hook for explicit (non-sync) conversation recovery.

@@ -35,6 +35,7 @@ import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.desktop.AppIconBadge
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
 import id.homebase.api.client.isRecoverablePermissionFailure
@@ -333,6 +334,8 @@ fun main() {
 
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
+
+            LaunchedEffect(window) { AppIconBadge.start(window) }
 
             if (isMacOs) {
                 LaunchedEffect(Unit) {
