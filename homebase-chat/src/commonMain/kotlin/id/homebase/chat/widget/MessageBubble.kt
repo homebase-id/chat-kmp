@@ -140,7 +140,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Conversation.itemAvatarSize)
+private val GroupMessageAvatarOptions = AvatarOptions(size = Dimens.Message.senderAvatarSize)
 
 /**
  * Displays a message bubble for messages sent to other users.
@@ -562,7 +562,7 @@ fun ReceivedMessageBubble(
                 modifier = Modifier
                     .align(Alignment.Bottom)
                     .padding(start = 4.dp, end = 8.dp)
-                    .size(Dimens.Conversation.itemAvatarSize),
+                    .size(Dimens.Message.senderAvatarSize),
             ) {
                 if (showAvatar && message.originalAuthor != null) {
                     val initials = remember(message.displayName) {
