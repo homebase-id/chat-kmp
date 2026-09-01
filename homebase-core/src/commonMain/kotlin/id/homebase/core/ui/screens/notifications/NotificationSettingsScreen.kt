@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -230,14 +231,16 @@ fun NotificationSettingsUi(
                 ),
             )
             if (uiState.showContentLevelPicker) {
-                NotificationContentLevel.entries.forEach { level ->
-                    SettingsOptionRow(
-                        label = stringResource(level.label),
-                        selected = level == uiState.notificationContentLevel,
-                        onClick = {
-                            onAction(NotificationSettingsUiAction.SetContentLevel(level))
-                        },
-                    )
+                Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+                    NotificationContentLevel.entries.forEach { level ->
+                        SettingsOptionRow(
+                            label = stringResource(level.label),
+                            selected = level == uiState.notificationContentLevel,
+                            onClick = {
+                                onAction(NotificationSettingsUiAction.SetContentLevel(level))
+                            },
+                        )
+                    }
                 }
             }
             Text(

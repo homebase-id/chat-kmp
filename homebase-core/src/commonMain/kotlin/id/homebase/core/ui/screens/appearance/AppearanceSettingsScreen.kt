@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brightness6
@@ -120,7 +121,7 @@ fun AppearanceSettingsUi(
                 ),
             )
             AnimatedVisibility(visible = languageExpanded) {
-                Column {
+                Column(modifier = Modifier.selectableGroup()) {
                     uiState.availableLanguages.forEach { language ->
                         SettingsOptionRow(
                             label = stringResource(getStringResourceForLanguage(language)),
@@ -145,7 +146,7 @@ fun AppearanceSettingsUi(
                 ),
             )
             AnimatedVisibility(visible = themeExpanded) {
-                Column {
+                Column(modifier = Modifier.selectableGroup()) {
                     ThemeState.entries.forEach { theme ->
                         SettingsOptionRow(
                             label = theme.getStringResourceForTheme(),

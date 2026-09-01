@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -154,13 +155,16 @@ fun StorageSettingsUi(
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
             Column {
-                MediaQuality.entries.forEach { quality ->
-                    SettingsOptionRow(
-                        modifier = Modifier.testTag(quality.code),
-                        label = stringResource(quality.label),
-                        selected = quality == uiState.mediaQuality,
-                        onClick = { onAction(StorageSettingsUiAction.SetMediaQuality(quality)) },
-                    )
+                Column(modifier = Modifier.selectableGroup()) {
+                    MediaQuality.entries.forEach { quality ->
+                        SettingsOptionRow(
+                            modifier = Modifier.testTag(quality.code),
+                            label = stringResource(quality.label),
+                            supportingText = stringResource(quality.description),
+                            selected = quality == uiState.mediaQuality,
+                            onClick = { onAction(StorageSettingsUiAction.SetMediaQuality(quality)) },
+                        )
+                    }
                 }
                 Text(
                     text = stringResource(MR.string.settings_media_quality_footer),
