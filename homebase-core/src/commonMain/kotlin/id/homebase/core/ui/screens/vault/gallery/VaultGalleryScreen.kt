@@ -81,6 +81,9 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import id.homebase.resources.vault_gallery_send_webdrop
+import id.homebase.core.ui.screens.vault.model.webDropGuardKey
+import androidx.compose.material.icons.outlined.Redeem
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +93,9 @@ fun VaultGalleryScreen(
     onDismiss: () -> Unit,
     onSharePage: (payloadKey: String) -> Unit,
     onSavePage: (payloadKey: String) -> Unit,
+    /** Entry-scoped: the WHOLE entry leaves as one self-destructing WebDrop link. */
+    onSendAsWebDrop: () -> Unit = {},
+    webDropEnabled: Boolean = false,
     onDeletePage: (payloadKey: String) -> Unit,
     onAppendPages: () -> Unit,
     onUpdateLabel: (String?) -> Unit,
@@ -314,9 +320,35 @@ fun VaultGalleryScreen(
                                     )
                                 }
                             }
+                            // Entry-scoped, unlike its page-scoped neighbours: the whole entry
+                            // (all pages) leaves as ONE drop - the point of a WebDrop bundle.
+                            if (webDropEnabled) {
+                                val isPreparingWebDrop = webDropGuardKey(file) in preparingShareKeys
+                                IconButton(
+                                    onClick = onSendAsWebDrop,
+                                    enabled = !isPreparingWebDrop,
+                                ) {
+                                    if (isPreparingWebDrop) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Redeem,
+                                            contentDescription = stringResource(MR.string.vault_gallery_send_webdrop),
+                                        )
+                                    }
+                                }
+                            }
                             VaultFileDropdownMenu(
                                 file = file,
                                 onShare = { currentDescriptor?.let { onSharePage(it.key) } },
+                                onSendAsWebDrop = if (webDropEnabled) {
+                                    { onSendAsWebDrop() }
+                                } else {
+                                    null
+                                },
                                 onDelete = { showDeleteEntryConfirm = true },
                                 onDeletePage = { currentDescriptor?.let { pageToDelete = it.key } },
                                 sections = sections,

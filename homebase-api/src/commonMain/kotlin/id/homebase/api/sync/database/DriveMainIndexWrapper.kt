@@ -232,6 +232,33 @@ class DriveMainIndexWrapper(
         }
     }
 
+    /**
+     * Undo one optimistic mutation, restoring [originalModified] rather than stamping
+     * past the stored value. Returns the number of rows changed: 0 means a host write
+     * landed after the optimistic one and correctly stands.
+     */
+    suspend fun rollbackOptimisticWrite(
+        identityId: Uuid,
+        driveId: Uuid,
+        fileId: Uuid,
+        fileState: Long,
+        archivalStatus: Long,
+        jsonHeader: String,
+        originalModified: Long,
+        optimisticModified: Long,
+    ): Long = databaseManager.withWriteValue {
+        delegate.rollbackOptimisticWrite(
+            fileState = fileState,
+            archivalStatus = archivalStatus,
+            jsonHeader = jsonHeader,
+            originalModified = originalModified,
+            identityId = identityId,
+            driveId = driveId,
+            fileId = fileId,
+            optimisticModified = optimisticModified,
+        ).value
+    }
+
     suspend fun upsertDriveMainIndex(
         identityId: Uuid,
         driveId: Uuid,

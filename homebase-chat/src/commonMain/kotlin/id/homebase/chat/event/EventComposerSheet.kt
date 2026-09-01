@@ -69,7 +69,7 @@ import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.composer.ComposerEditableField
 import id.homebase.chat.composer.ComposerRow
 import id.homebase.chat.composer.ComposerTitleField
-import id.homebase.chat.conversationlist.materializeForUpload
+import id.homebase.core.files.materializeForUpload
 import id.homebase.core.location.rememberCurrentGps
 import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.chat.services.ChatMessageSenderService

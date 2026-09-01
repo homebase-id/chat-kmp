@@ -28,3 +28,6 @@ fun Modifier.conditional(condition : Boolean, modifier : Modifier.() -> Modifier
         this
     }
 }
+
+/** East-west resize cursor for drag-to-resize splitters; no-op where there is no mouse. */
+expect fun Modifier.horizontalResizeCursor(): Modifier

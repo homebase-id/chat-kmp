@@ -35,8 +35,10 @@ import id.homebase.api.youauth.YouAuthState
 import id.homebase.app.lifecycle.rememberDesktopLifecycleOwner
 import id.homebase.core.App
 import id.homebase.core.auth.AuthConnectionCoordinator
+import id.homebase.core.desktop.AppIconBadge
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.api.client.isRecoverablePermissionFailure
 import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.app.crash.CrashRecoveryDialog
@@ -333,6 +335,8 @@ fun main() {
             DesktopAppFocusManager.registerWindowProvider { window }
             window.minimumSize = java.awt.Dimension(minWidth, minHeight)
 
+            LaunchedEffect(window) { AppIconBadge.start(window) }
+
             if (isMacOs) {
                 LaunchedEffect(Unit) {
                     window.rootPane.putClientProperty("apple.awt.fullWindowContent", true)
@@ -362,17 +366,32 @@ private val MAC_TITLE_BAR_HEIGHT = 28.dp
 private fun menuShortcut(key: Key) =
     KeyShortcut(key, ctrl = !isMacOs, meta = isMacOs)
 
+/**
+ * A failure the desktop app records and keeps running for, instead of dying: a transient network
+ * blip (PR #737), a recoverable optimistic-concurrency conflict (400 VersionTagMismatch, #1008),
+ * or a permission denial (403 — the app token's grant was revoked or narrowed server-side).
+ *
+ * All three are server answers, not client defects, and all three routinely leak from a coroutine
+ * launched on a scope with no CoroutineExceptionHandler of its own (a bare `viewModelScope.launch`
+ * — how every add-on activates its drive). Anything else still terminates and reports. Pure so it
+ * is unit-testable; mirrors Android's `GlobalCrashHandler.isContainableNonFatal`.
+ */
+internal fun isContainableNonFatal(throwable: Throwable): Boolean =
+    throwable.isTransientNetworkFailure() ||
+        throwable.isRecoverableServerConflict() ||
+        throwable.isRecoverablePermissionFailure()
+
 private fun setupCrashHandler() {
     Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-        // Preserve PR #737: don't crash on a transient network blip. Also contain a
-        // recoverable optimistic-concurrency conflict (400 VersionTagMismatch, #1008).
-        if (throwable.isTransientNetworkFailure() || throwable.isRecoverableServerConflict()) {
+        if (isContainableNonFatal(throwable)) {
             crashlyticsRecordException(throwable)
             Logger.w(tag = "CrashHandler") {
-                val kind = if (throwable.isRecoverableServerConflict()) {
-                    "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
-                } else {
-                    "Transient network failure"
+                val kind = when {
+                    throwable.isRecoverableServerConflict() ->
+                        "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
+                    throwable.isRecoverablePermissionFailure() ->
+                        "Permission denied by the server (403; the grant was revoked or narrowed)"
+                    else -> "Transient network failure"
                 }
                 "$kind leaked to '${thread.name}' (no local handler); " +
                     "app not crashing: ${throwable.message}\n" +

@@ -503,7 +503,6 @@
     <string name="chat_filter_by_unread_description">Filtreret på ulæste</string>
     <string name="chat_search_empty_description">Ingen ulæste samtaler</string>
     <string name="chat_select_a_conversation">Vælg en samtale</string>
-    <string name="chat_select_a_conversation_subtitle">Vælg en samtale fra listen for at se beskederne</string>
     <string name="chat_search_placeholder">Søg</string>
     <string name="chat_mark_all_as_read">Markér alle som læste</string>
     <string name="chat_pin">Fastgør</string>
@@ -686,6 +685,8 @@
     <string name="chat_message_record_video">Optag video</string>
     <string name="share_picker_next">Næste</string>
     <string name="share_picker_send">Send</string>
+    <string name="share_picker_new_webdrop">Nyt WebDrop</string>
+    <string name="share_picker_new_webdrop_subtitle">Del som et selvdestruerende link</string>
     <string name="share_picker_new_moment">Nyt øjeblik</string>
     <string name="share_picker_new_moment_subtitle">Del til dine Moments</string>
     <string name="chat_message_emoji_options">Emoji menu</string>
@@ -1085,6 +1086,9 @@
     <string name="vault_gallery_delete_page_confirm">Slet denne side? Dette kan ikke fortrydes.</string>
     <string name="vault_gallery_delete_last_page_confirm">Dette er den sidste side. Sletter du den, fjernes hele posten.</string>
     <string name="vault_gallery_share_page">Del denne side</string>
+    <string name="vault_gallery_send_webdrop">Send som WebDrop</string>
+    <string name="vault_error_webdrop_prepare">Kunne ikke klargøre filerne til WebDrop</string>
+    <string name="vault_error_webdrop_too_many_files">Denne fil har for mange sider til ét WebDrop (maks. %1$d)</string>
     <string name="vault_gallery_save_page">Gem på enheden</string>
     <string name="vault_gallery_delete_file">Slet fil</string>
     <string name="vault_gallery_delete_all">Slet alle</string>
@@ -1680,4 +1684,50 @@
     <string name="profile_avatar_edit_error_too_large">Fotoet er for stort — vælg venligst et mindre.</string>
     <string name="profile_avatar_edit_error_delete">Kunne ikke fjerne dit foto. Prøv igen.</string>
 
+
+    <!-- WebDrop -->
+    <string name="webdrop_home_subtitle">Del krypterede filer online som selvdestruerende links</string>
+    <string name="webdrop_label">WebDrop</string>
+    <string name="webdrop_onboarding_title">Del filer sikkert med alle</string>
+    <string name="webdrop_onboarding_body_1">Send en privat fil til nogen, der ikke er på Homebase - et pas til et hotel, et dokument til et kontor - som et simpelt link, der åbner i enhver browser.</string>
+    <string name="webdrop_onboarding_body_2">Filer krypteres på din enhed, og hvert link selvdestruerer: efter det er åbnet, eller efter en tid, du vælger. Din server ser aldrig nøglen.</string>
+    <string name="webdrop_onboarding_setup">Sæt det op</string>
+    <string name="webdrop_onboarding_dismiss">Ikke nu</string>
+    <string name="webdrop_empty_title">Ingen drops endnu</string>
+    <string name="webdrop_empty_body">Opret et drop for at dele filer som et selvdestruerende link.</string>
+    <string name="webdrop_new_drop">Nyt drop</string>
+    <string name="webdrop_compose_title">Nyt drop</string>
+    <string name="webdrop_add_files">Tilføj filer</string>
+    <string name="webdrop_create">Opret link</string>
+    <string name="webdrop_link_ready">Dit selvdestruerende link er klar</string>
+    <string name="webdrop_share">Del</string>
+    <string name="webdrop_copy">Kopiér link</string>
+    <string name="webdrop_ttl_burn">Brænder efter åbning</string>
+    <string name="webdrop_ttl_one_day">1 dag</string>
+    <string name="webdrop_ttl_seven_days">7 dage</string>
+    <string name="webdrop_ttl_thirty_days">30 dage</string>
+    <string name="webdrop_files_count">%1$d filer</string>
+    <string name="webdrop_status_waiting">Venter på at blive åbnet</string>
+    <string name="webdrop_status_opened">Åbnet - selvdestruerer om %1$s</string>
+    <string name="webdrop_status_expires">Selvdestruerer om %1$s</string>
+    <string name="webdrop_status_removed">Væk</string>
+    <string name="webdrop_revoke">Tilbagekald link</string>
+    <string name="webdrop_row_clear">Fjern fra listen</string>
+    <string name="webdrop_for_someone">Til en bestemt person?</string>
+    <string name="webdrop_recipient_name">Modtagerens navn</string>
+    <string name="webdrop_for_label">Til %1$s</string>
+    <string name="webdrop_condition_recipient_only">Dette er kun til den navngivne modtager</string>
+    <string name="webdrop_condition_no_retention">De skal destruere det efter brug og ikke beholde en kopi</string>
+    <string name="webdrop_condition_personal_data">Det indeholder persondata, som de skal behandle derefter</string>
+    <string name="webdrop_theme_mission">Mission</string>
+    <string name="webdrop_theme_clean">Enkel</string>
+    <string name="webdrop_theme_choplifter">Choplifter</string>
+    <string name="webdrop_terms_header">Betingelser for modtageren</string>
+    <string name="webdrop_revoke_confirm_title">Tilbagekald %1$s?</string>
+    <string name="webdrop_revoke_confirm_message">Linket holder op med at virke med det samme. Ingen med linket kan længere åbne droppet.</string>
+    <string name="webdrop_revoke_cancel">Annullér</string>
+    <string name="webdrop_files_and_age">%1$s &#183; %2$s</string>
+    <string name="webdrop_error_create">Kunne ikke oprette drop-linket</string>
+    <string name="webdrop_error_source_unreadable">Kunne ikke læse %1$s — vælg den venligst igen</string>
+    <string name="webdrop_error_too_many">Et drop kan højst indeholde %1$d filer</string>
 </resources>

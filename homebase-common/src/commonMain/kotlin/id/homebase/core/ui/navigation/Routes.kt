@@ -128,6 +128,10 @@ sealed class Route {
     data object Vault : Route()
 
     @Serializable
+    @SerialName("webdrop")
+    data object WebDrop : Route()
+
+    @Serializable
     @SerialName("vault-settings")
     data object VaultSettings : Route()
 

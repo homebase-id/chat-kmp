@@ -200,6 +200,9 @@ class ConversationListViewModel(
     private val _uiState = MutableStateFlow(ConversationListUiState())
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
+    private val events = ConversationListEvents()
+    val uiEvents: Flow<ConversationListUiEvent> = events.events
+
     private val _messagesUiState = MutableStateFlow(
         MessageListUiState(
             userDefaultReactions = userPreferences.preferredUserReactions
@@ -1098,10 +1101,6 @@ class ConversationListViewModel(
         }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
     }
 
-    fun eventConsumed() {
-        _uiState.update { it.copy(uiEvent = null) }
-    }
-
     fun dialogClosed() {
         _uiState.update { it.copy(uiDialog = null) }
     }
@@ -1269,9 +1268,7 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.NewConversationClicked -> {
-                _uiState.value = _uiState.value.copy(
-                    uiEvent = NavigateToNewConversation
-                )
+                sendEvent(NavigateToNewConversation)
             }
 
             is ConversationListUiAction.ClearSelection -> {
@@ -2205,7 +2202,7 @@ class ConversationListViewModel(
     }
 
     private fun sendEvent(event: ConversationListUiEvent) {
-        _uiState.update { it.copy(uiEvent = event) }
+        events.send(event)
     }
 
     /**

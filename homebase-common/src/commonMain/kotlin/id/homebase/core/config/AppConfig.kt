@@ -182,6 +182,19 @@ val locationLabeledDrive = LabeledDrive(
     label = "Location",
 )
 
+// WebDrop drive — holds anonymous, client-side-encrypted "drops" (self-destructing share
+// links for non-Homebase recipients) plus their owner-encrypted receipts. The only drive
+// requested with allowAnonymousRead: a drop must be fetchable by a stranger holding the
+// link; confidentiality lives entirely in the AES key carried in the URL fragment.
+// Contract: odin-core docs/web-drop-plan.md.
+val webDropLabeledDrive = LabeledDrive(
+    drive = TargetDrive(
+        alias = Uuid.parse("6d1711af-8b93-43ef-b798-b84d51f25828"),
+        type = Uuid.parse("edee430a-73d4-49ae-a9ae-2d3091957702"),
+    ),
+    label = "WebDrop",
+)
+
 // Default vault sections — stable UUIDs so re-running onboarding is idempotent
 val vaultDefaultSections = listOf(
     Uuid.parse("6da3968b-0edf-41f0-a136-0492034030e2") to "Passports",
@@ -431,6 +444,27 @@ val locationTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
         permissions = listOf(DrivePermission.Read, DrivePermission.Write),
     )
 )
+
+val webDropTargetDriveAccessRequest: List<TargetDriveAccessRequest> = listOf(
+    TargetDriveAccessRequest(
+        alias = webDropLabeledDrive.drive.alias.toString(),
+        type = webDropLabeledDrive.drive.type.toString(),
+        name = webDropLabeledDrive.label,
+        description = "Drive for files you share as self-destructing WebDrop links",
+        permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+        allowAnonymousRead = true,
+    )
+)
+
+fun getWebDropPermissionExtensionConfig(): PermissionExtensionConfig {
+    return PermissionExtensionConfig(
+        appId = AppConfig.APP_ID,
+        appName = AppConfig.APP_NAME,
+        drives = webDropTargetDriveAccessRequest,
+        permissions = emptyList(),
+        returnUrl = ::returnUrl,
+    )
+}
 
 fun getLocationPermissionExtensionConfig(): PermissionExtensionConfig {
     return PermissionExtensionConfig(

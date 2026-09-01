@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.TextAutoSize
@@ -65,6 +66,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
@@ -73,18 +79,22 @@ import androidx.compose.ui.unit.sp
 import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
+import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiState
 import id.homebase.chat.data.ConversationState
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.OwnerAvatar
 import id.homebase.core.ui.assets.FeatherEdit
+import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.HomebaseVerticalScrollbar
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.app_name
 import id.homebase.resources.chat_archived_chats
+import id.homebase.resources.chat_archived_chats_empty
 import id.homebase.resources.chat_filter_by_unread_clear_button
 import id.homebase.resources.chat_filter_by_unread_description
 import id.homebase.resources.chat_new_conversation
@@ -105,30 +115,20 @@ fun ConversationListPane(
     uiState: ConversationListUiState,
     selectedConversationId: Uuid? = null,
     searchTextState: TextFieldState,
+    searchFocusRequester: FocusRequester? = null,
+    archivedUiState: ArchivedConversationsUiState = ArchivedConversationsUiState(),
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
     onConversationSelected: (conversationId: Uuid) -> Unit,
 ) {
     val twoPaneWindow = isExpandedLayout()
+    val persistentSearch = isDesktopOrWeb() && !uiState.showArchived
+    val searchTyping by remember(searchTextState) { derivedStateOf { searchTextState.text.isNotEmpty() } }
+    val searchActive = uiState.isSearchActive || (persistentSearch && searchTyping)
     val paneContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
     val paneEdgeColor = MaterialTheme.colorScheme.outlineVariant
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState)
-    // Read inside the draw lambdas below, so a row sliding under the flat bar repaints the
-    // hairline without recomposing the bar.
-    val barOverlapped by remember { derivedStateOf { topBarState.overlappedFraction > 0f } }
-    val barUnderline = Modifier.drawWithContent {
-        drawContent()
-        if (!barOverlapped) return@drawWithContent
-        val stroke = 1.dp.toPx()
-        val y = size.height - stroke / 2f
-        drawLine(
-            color = paneEdgeColor,
-            start = Offset(0f, y),
-            end = Offset(size.width, y),
-            strokeWidth = stroke,
-        )
-    }
     val listState = rememberLazyListState()
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
@@ -168,7 +168,6 @@ fun ConversationListPane(
             topBar = {
                 if (uiState.showArchived) {
                     TopAppBar(
-                        modifier = barUnderline,
                         scrollBehavior = scrollBehavior,
                         title = {
                             Text(stringResource(MR.string.chat_archived_chats))
@@ -187,170 +186,204 @@ fun ConversationListPane(
                         ),
                     )
                 } else if (!iconOnlyMode) {
-                    TopAppBar(title = {
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            // Title row - keep it in place but fade out
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                AnimatedVisibility(
-                                    visible = !uiState.isSearchActive,
-                                    enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
-                                    exit = fadeOut(animationSpec = tween(150))
+                    Column {
+                        TopAppBar(title = {
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                // Title row - keep it in place but fade out
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically
+                                    AnimatedVisibility(
+                                        visible = !uiState.isSearchActive,
+                                        enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
+                                        exit = fadeOut(animationSpec = tween(150))
                                     ) {
-                                        uiState.ownerSession?.let { session ->
-                                            OwnerAvatar(
-                                                odinId = session.odinId,
-                                                profileImageData = null,
-                                                initials = session.initials(),
-                                                connectionStatus = uiState.connectionStatus,
-                                                driveIsSyncing = uiState.driveIsSyncing,
-                                                hasDriveError = uiState.hasDriveError,
-                                                options = AvatarOptions(
-                                                    size = 32.dp, fontSize = 12.sp, onClick = {
-                                                        onProfileClick()
-                                                    }),
-                                                animatedVisibilityScope = this@AnimatedVisibility,
-                                                sharedTransitionScope = null,
-                                                cacheBustKey = session.profileImageLastModified,
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            uiState.ownerSession?.let { session ->
+                                                OwnerAvatar(
+                                                    odinId = session.odinId,
+                                                    profileImageData = null,
+                                                    initials = session.initials(),
+                                                    connectionStatus = uiState.connectionStatus,
+                                                    driveIsSyncing = uiState.driveIsSyncing,
+                                                    hasDriveError = uiState.hasDriveError,
+                                                    options = AvatarOptions(
+                                                        size = 32.dp, fontSize = 12.sp, onClick = {
+                                                            onProfileClick()
+                                                        }),
+                                                    animatedVisibilityScope = this@AnimatedVisibility,
+                                                    sharedTransitionScope = null,
+                                                    cacheBustKey = session.profileImageLastModified,
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.width(16.dp))
+
+                                            Text(
+                                                text = stringResource(MR.string.app_name),
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                modifier = Modifier.weight(1f, fill = false),
+                                                autoSize = TextAutoSize.StepBased(
+                                                    minFontSize = 14.sp,
+                                                    maxFontSize = 22.sp,
+                                                )
                                             )
+                                            Spacer(modifier = Modifier.width(8.dp))
                                         }
-
-                                        Spacer(modifier = Modifier.width(16.dp))
-
-                                        Text(
-                                            text = stringResource(MR.string.app_name),
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            modifier = Modifier.weight(1f, fill = false),
-                                            autoSize = TextAutoSize.StepBased(
-                                                minFontSize = 14.sp,
-                                                maxFontSize = 22.sp,
-                                            )
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
                                     }
                                 }
-                            }
-                            // Search field - positioned absolutely on top
-                            AnimatedVisibility(
-                                modifier = Modifier.align(Alignment.CenterEnd).fillMaxWidth()
-                                    .padding(end = 16.dp),
-                                visible = uiState.isSearchActive,
-                                enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
-                                    animationSpec = tween(300), expandFrom = Alignment.End
-                                ),
-                                exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(
-                                    animationSpec = tween(250), shrinkTowards = Alignment.End
-                                )
-                            ) {
-                                MinimalSearchTextField(
-                                    textFieldState = searchTextState,
-                                    modifier = Modifier.fillMaxWidth()
-                                        .focusRequester(focusRequesterSearch),
-                                    placeHolderText = stringResource(
-                                        MR.string.chat_search_placeholder
+                                // Search field - positioned absolutely on top
+                                // Qualified: the wrapping Column's overload would otherwise win
+                                // here, and @LayoutScopeMarker then rejects the outer receiver.
+                                androidx.compose.animation.AnimatedVisibility(
+                                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxWidth()
+                                        .padding(end = 16.dp),
+                                    visible = uiState.isSearchActive,
+                                    enter = fadeIn(animationSpec = tween(200)) + expandHorizontally(
+                                        animationSpec = tween(300), expandFrom = Alignment.End
                                     ),
-                                    showBackButton = true,
-                                    onBackButtonClick = {
+                                    exit = fadeOut(animationSpec = tween(150)) + shrinkHorizontally(
+                                        animationSpec = tween(250), shrinkTowards = Alignment.End
+                                    )
+                                ) {
+                                    MinimalSearchTextField(
+                                        textFieldState = searchTextState,
+                                        modifier = Modifier.fillMaxWidth()
+                                            .focusRequester(focusRequesterSearch),
+                                        placeHolderText = stringResource(
+                                            MR.string.chat_search_placeholder
+                                        ),
+                                        showBackButton = true,
+                                        onBackButtonClick = {
+                                            onUiAction(
+                                                ConversationListUiAction.SearchBackClicked
+                                            )
+                                            searchTextState.clearText()
+                                        })
+                                }
+                            }
+                        }, actions = {
+                            if (twoPaneWindow) {
+                                FilledTonalIconButton(
+                                    onClick = {
                                         onUiAction(
-                                            ConversationListUiAction.SearchBackClicked
+                                            ConversationListUiAction.NewConversationClicked
                                         )
-                                        searchTextState.clearText()
-                                    })
-                            }
-                        }
-                    }, actions = {
-                        if (twoPaneWindow) {
-                            FilledTonalIconButton(
-                                onClick = {
-                                    onUiAction(
-                                        ConversationListUiAction.NewConversationClicked
-                                    )
-                                },
-                                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                ),
-                            ) {
-                                Icon(
-                                    imageVector = FeatherEdit,
-                                    contentDescription = stringResource(
-                                        MR.string.chat_new_conversation
+                                    },
+                                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                                     ),
-                                    // Feather artwork runs to the edge of its 24dp viewport;
-                                    // Material glyphs keep a keyline, so match their ink, not
-                                    // their nominal size.
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-                        if (!uiState.isSearchActive) {
-                            // One pin, either direction (#1012): I'm sharing with anyone OR anyone
-                            // is sharing with me. Tapping opens the live map.
-                            LiveShareIndicator(
-                                untilMs = uiState.liveSharePinAnyUntilMs,
-                                onClick = {
-                                    onUiAction(ConversationListUiAction.OpenLiveLocationMap)
-                                },
-                            )
-                            IconButton(
-                                onClick = {
-                                    onUiAction(
-                                        ConversationListUiAction.SearchClicked
-                                    )
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = stringResource(MR.string.search),
-                                )
-                            }
-                            Box {
-                                IconButton(onClick = { showMenu = true }) {
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Default.MoreVert,
+                                        imageVector = FeatherEdit,
                                         contentDescription = stringResource(
-                                            MR.string.chat_options
-                                        )
+                                            MR.string.chat_new_conversation
+                                        ),
+                                        // Feather artwork runs to the edge of its 24dp viewport;
+                                        // Material glyphs keep a keyline, so match their ink, not
+                                        // their nominal size.
+                                        modifier = Modifier.size(20.dp),
                                     )
                                 }
-                                ConversationListMenu(
-                                    showMenu = showMenu,
-                                    dismissMenu = { showMenu = false },
-                                    isFilteringUnread = uiState.filterByUnread,
-                                    onMarkAllAsRead = {
-                                        // TODO
-                                        showMenu = false
-                                    },
-                                    onFilterUnread = {
-                                        onUiAction(
-                                            ConversationListUiAction.FilterByUnreadClicked
-                                        )
-                                        showMenu = false
-                                    },
-                                    onClearFilterUnread = {
-                                        onUiAction(
-                                            ConversationListUiAction.ClearFilterByUnreadClicked
-                                        )
-                                        showMenu = false
-                                    },
-                                    onSettings = {
-                                        onProfileClick()
-                                        showMenu = false
-                                    })
                             }
+                            if (!uiState.isSearchActive) {
+                                // One pin, either direction (#1012): I'm sharing with anyone OR anyone
+                                // is sharing with me. Tapping opens the live map.
+                                LiveShareIndicator(
+                                    untilMs = uiState.liveSharePinAnyUntilMs,
+                                    onClick = {
+                                        onUiAction(ConversationListUiAction.OpenLiveLocationMap)
+                                    },
+                                )
+                                if (!persistentSearch) {
+                                    IconButton(
+                                        onClick = {
+                                            onUiAction(
+                                                ConversationListUiAction.SearchClicked
+                                            )
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Search,
+                                            contentDescription = stringResource(MR.string.search),
+                                        )
+                                    }
+                                }
+                                Box {
+                                    IconButton(onClick = { showMenu = true }) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = stringResource(
+                                                MR.string.chat_options
+                                            )
+                                        )
+                                    }
+                                    ConversationListMenu(
+                                        showMenu = showMenu,
+                                        dismissMenu = { showMenu = false },
+                                        isFilteringUnread = uiState.filterByUnread,
+                                        onMarkAllAsRead = {
+                                            // TODO
+                                            showMenu = false
+                                        },
+                                        onFilterUnread = {
+                                            onUiAction(
+                                                ConversationListUiAction.FilterByUnreadClicked
+                                            )
+                                            showMenu = false
+                                        },
+                                        onClearFilterUnread = {
+                                            onUiAction(
+                                                ConversationListUiAction.ClearFilterByUnreadClicked
+                                            )
+                                            showMenu = false
+                                        },
+                                        onSettings = {
+                                            onProfileClick()
+                                            showMenu = false
+                                        })
+                                }
+                            }
+                        }, scrollBehavior = scrollBehavior,
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = paneContainerColor,
+                                scrolledContainerColor = paneContainerColor,
+                            ))
+                        if (persistentSearch) {
+                            MinimalSearchTextField(
+                                textFieldState = searchTextState,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = Dimens.Spacing.gutter,
+                                        end = Dimens.Spacing.gutter,
+                                        bottom = Dimens.Spacing.item,
+                                    )
+                                    .then(
+                                        searchFocusRequester?.let { Modifier.focusRequester(it) }
+                                            ?: Modifier
+                                    )
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.type == KeyEventType.KeyDown &&
+                                            keyEvent.key == Key.Escape &&
+                                            searchTextState.text.isNotEmpty()
+                                        ) {
+                                            searchTextState.clearText()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    },
+                                placeHolderText = stringResource(MR.string.chat_search_placeholder),
+                            )
                         }
-                    }, modifier = barUnderline, scrollBehavior = scrollBehavior,
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = paneContainerColor,
-                            scrolledContainerColor = paneContainerColor,
-                        ))
+                    }
                 } else {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -371,7 +404,7 @@ fun ConversationListPane(
                 }
             },
             floatingActionButton = {
-                if (!iconOnlyMode && !twoPaneWindow) {
+                if (!iconOnlyMode && !twoPaneWindow && !uiState.showArchived) {
                     FloatingActionButton(
                         onClick = {
                             onUiAction(ConversationListUiAction.NewConversationClicked)
@@ -391,6 +424,16 @@ fun ConversationListPane(
                         .consumeWindowInsets(innerPadding),
                     state = listState,
                 ) {
+                    if (uiState.showArchived) {
+                        archivedConversationItems(
+                            archivedUiState = archivedUiState,
+                            selectedConversationId = selectedConversationId,
+                            iconOnlyMode = iconOnlyMode,
+                            onUiAction = onUiAction,
+                            onConversationSelected = onConversationSelected,
+                        )
+                        return@LazyColumn
+                    }
                     if (uiState.filterByUnread) {
                         item {
                             Row(
@@ -500,23 +543,27 @@ fun ConversationListPane(
                                     }
                                 }
                             ) { listItem ->
-                                ConversationLisContentItem(
-                                    listItem = listItem,
-                                    selectedConversationId = selectedConversationId,
-                                    iconOnlyMode = iconOnlyMode,
-                                    // Live search text drives the highlight in
-                                    // message-search rows; empty when not searching.
-                                    searchQuery = if (uiState.isSearchActive)
-                                        searchTextState.text.toString()
-                                    else "",
-                                    onUiAction = onUiAction,
-                                    onConversationSelected = onConversationSelected,
-                                )
+                                Box(modifier = Modifier.animateItem()) {
+                                    ConversationLisContentItem(
+                                        listItem = listItem,
+                                        selectedConversationId = selectedConversationId,
+                                        iconOnlyMode = iconOnlyMode,
+                                        // Search results are a tap target, not a swipe target.
+                                        allowSwipeActions = !searchActive,
+                                        // Live search text drives the highlight in
+                                        // message-search rows; empty when not searching.
+                                        searchQuery = if (searchActive)
+                                            searchTextState.text.toString()
+                                        else "",
+                                        onUiAction = onUiAction,
+                                        onConversationSelected = onConversationSelected,
+                                    )
+                                }
                             }
                         }
                     }
 
-                    if (uiState.archivedCount > 0 && !uiState.isSearchActive) {
+                    if (uiState.archivedCount > 0 && !searchActive) {
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
@@ -569,6 +616,56 @@ fun ConversationListPane(
     }
 }
 
+private fun LazyListScope.archivedConversationItems(
+    archivedUiState: ArchivedConversationsUiState,
+    selectedConversationId: Uuid?,
+    iconOnlyMode: Boolean,
+    onUiAction: (ConversationListUiAction) -> Unit,
+    onConversationSelected: (conversationId: Uuid) -> Unit,
+) {
+    if (archivedUiState.isLoading) {
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+        return
+    }
+    if (archivedUiState.conversations.isEmpty()) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = stringResource(MR.string.chat_archived_chats_empty),
+                    modifier = Modifier.padding(24.dp),
+                )
+            }
+        }
+        return
+    }
+    items(
+        archivedUiState.conversations,
+        key = { it.conversation.id },
+        contentType = { "conversation" },
+    ) { conversation ->
+        Box(modifier = Modifier.animateItem()) {
+            ConversationLisContentItem(
+                listItem = ConversationListContentModel.Conversation(conversation),
+                selectedConversationId = selectedConversationId,
+                iconOnlyMode = iconOnlyMode,
+                searchQuery = "",
+                onUiAction = onUiAction,
+                onConversationSelected = onConversationSelected,
+            )
+        }
+    }
+}
+
 @Composable
 fun ConversationLisContentItem(
     listItem: ConversationListContentModel,
@@ -577,6 +674,7 @@ fun ConversationLisContentItem(
     searchQuery: String,
     onUiAction: (ConversationListUiAction) -> Unit,
     onConversationSelected: (conversationId: Uuid) -> Unit,
+    allowSwipeActions: Boolean = true,
 ) {
     when (listItem) {
         is ConversationListContentModel.Header -> {
@@ -642,6 +740,7 @@ fun ConversationLisContentItem(
                     },
 
                     isSelected = listItem.conversation.conversation.id == selectedConversationId,
+                    allowSwipeActions = allowSwipeActions,
                 )
             }
         }

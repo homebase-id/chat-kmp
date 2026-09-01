@@ -81,6 +81,9 @@ import id.homebase.imageeditor.ui.DrawScreen
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.moments.services.MomentCreateFlowState
+import id.homebase.core.config.webDropLabeledDrive
+import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
+import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
 import id.homebase.core.settings.ThemeState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.contactbook.ContactOverrideStore
@@ -131,6 +134,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     private val authConnectionCoordinator: AuthConnectionCoordinator by inject()
     private val momentCreateFlowState: MomentCreateFlowState by inject()
     private val optionalDriveActivation: OptionalDriveActivation by inject()
+    private val webDropShareFlowState: WebDropShareFlowState by inject()
     private val cropResultBus: CropResultBus by inject()
     private val drawResultBus: DrawResultBus by inject()
 
@@ -268,6 +272,9 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             val momentsActivatedFlow = remember { optionalDriveActivation.isActivatedFlow(momentsLabeledDrive) }
             val momentsActivated by momentsActivatedFlow
                 .collectAsStateWithLifecycle(optionalDriveActivation.isActivated(momentsLabeledDrive))
+            val webDropActivatedFlow = remember { optionalDriveActivation.isActivatedFlow(webDropLabeledDrive) }
+            val webDropActivated by webDropActivatedFlow
+                .collectAsStateWithLifecycle(optionalDriveActivation.isActivated(webDropLabeledDrive))
             val isDarkTheme = if (prefState.theme == ThemeState.System) isSystemInDarkTheme()
             else prefState.theme == ThemeState.Dark
 
@@ -311,12 +318,17 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                             // share carries files and the feature is activated.
                             showNewMomentOption = sharedContent.hasFiles &&
                                 momentsActivated,
+                            // Same rule for WebDrop: a drop IS its files.
+                            showNewWebDropOption = sharedContent.hasFiles &&
+                                webDropActivated,
                             onTargetSelected = { target ->
                                 when (target) {
                                     is ShareTarget.Conversations ->
                                         onConversationsPicked(target.ids, sharedContent)
                                     ShareTarget.NewMoment ->
                                         startNewMoment(sharedContent)
+                                    ShareTarget.NewWebDrop ->
+                                        startNewWebDrop(sharedContent)
                                 }
                             },
                             onCancel = { finish() },
@@ -326,6 +338,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                     is ShareScreenState.Previewing -> {
                         val textFieldState = remember { RichTextState() }
                         var currentPage by remember { mutableStateOf(0) }
+                        var captionEmojiPickerOpen by remember { mutableStateOf(false) }
 
                         if (editorAttachments.isEmpty()) {
                             // User removed all files — go back to picker
@@ -376,11 +389,11 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                         )
                                     }
                                 },
+                                collapseSecondaryChrome = captionEmojiPickerOpen,
                                 bottomBar = {
                                     MessageTextFieldForAttachment(
                                         modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
                                         state = textFieldState,
-                                        onSmileyClick = {},
                                         onSendMessage = {
                                             sendEditedFiles(
                                                 conversationIds = state.selectedConversationIds,
@@ -388,6 +401,7 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                                 files = editorAttachments,
                                             )
                                         },
+                                        onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                     )
                                 },
                             )
@@ -561,6 +575,35 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
             startActivity(openMomentComposeIntent())
             finish()
         }
+    }
+
+    /**
+     * Terminal dispatch for the [ShareTarget.NewWebDrop] branch. The shared
+     * files are already materialized to real paths, which is exactly what
+     * [PickedDropFile] wants - seed [WebDropShareFlowState] (a process-wide
+     * Koin singleton the WebDrop view model consumes on init) and hand off to
+     * `Route.WebDrop`; the compose sheet opens there with the files picked, and
+     * TTL / recipient / terms / theme all live in that sheet.
+     */
+    private fun startNewWebDrop(content: SharedContent) {
+        if (!content.hasFiles) {
+            finish()
+            return
+        }
+        webDropShareFlowState.setDraft(
+            content.files.map { shared ->
+                PickedDropFile(
+                    path = shared.path,
+                    name = shared.displayName,
+                    contentType = shared.mimeType,
+                    size = java.io.File(shared.path).length(),
+                )
+            }
+        )
+        Logger.d(tag = COLD_TAG) { "startNewWebDrop: seeded draft with ${content.files.size} files" }
+        // The WebDrop composer owns the temp files now; don't reap share_temp.
+        startActivity(openWebDropComposeIntent())
+        finish()
     }
 
     private fun sendToMultipleConversations(conversationIds: Set<Uuid>, content: SharedContent) {
@@ -799,6 +842,19 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
     internal fun openMomentComposeIntent(): Intent =
         Intent(this, MainActivity::class.java).apply {
             data = "homebase-fchat://moment-compose".toUri()
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+
+    /**
+     * Re-opens [MainActivity] on the WebDrop screen. The draft has already been
+     * seeded into [WebDropShareFlowState]; MainActivity.handleIntent reads this
+     * `homebase-fchat://web-drop-compose` deep link and emits the
+     * OpenWebDropCompose navigation event that AppNavHost routes to
+     * `Route.WebDrop`.
+     */
+    internal fun openWebDropComposeIntent(): Intent =
+        Intent(this, MainActivity::class.java).apply {
+            data = "homebase-fchat://web-drop-compose".toUri()
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
 

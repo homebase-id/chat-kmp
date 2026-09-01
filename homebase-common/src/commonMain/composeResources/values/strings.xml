@@ -91,6 +91,7 @@
     <string name="show_more">Show more</string>
     <string name="chat_message_read_more">Read more</string>
     <string name="action_cannot_be_undone">This action can't be undone.</string>
+    <string name="action_undo">Undo</string>
     <string name="slide_to_cancel">&lt; Slide to cancel</string>
     <string name="someone">Someone</string>
     <string name="leave">Leave</string>
@@ -512,7 +513,8 @@
     <string name="chat_filter_by_unread_description">Filtered by unread</string>
     <string name="chat_search_empty_description">No unread conversations</string>
     <string name="chat_select_a_conversation">Select a conversation</string>
-    <string name="chat_select_a_conversation_subtitle">Choose a conversation from the list to view messages</string>
+    <string name="chat_select_a_conversation_hint">Open one from the list, or start something new.</string>
+    <string name="chat_select_a_conversation_privacy">End-to-end encrypted, on a server you own</string>
     <string name="chat_search_placeholder">Search</string>
     <string name="chat_mark_all_as_read">Mark all as read</string>
     <string name="chat_pin">Pin</string>
@@ -677,6 +679,8 @@
     <string name="chat_unarchive">Restore</string>
     <string name="chat_archived_chats">Archived conversations</string>
     <string name="chat_archived_chats_empty">Archived conversations will be shown here</string>
+    <string name="chat_conversation_archived_confirmation">Conversation archived</string>
+    <string name="chat_conversation_restored_confirmation">Conversation restored</string>
     <string name="chat_clear">Clear</string>
     <string name="chat_options">Conversation options</string>
     <string name="chat_no_messages">No messages yet</string>
@@ -719,6 +723,8 @@
     <string name="chat_message_record_video">Record video</string>
     <string name="share_picker_next">Next</string>
     <string name="share_picker_send">Send</string>
+    <string name="share_picker_new_webdrop">New WebDrop</string>
+    <string name="share_picker_new_webdrop_subtitle">Share as a self-destructing link</string>
     <string name="share_picker_new_moment">New Moment</string>
     <string name="share_picker_new_moment_subtitle">Share to your Moments</string>
     <string name="chat_message_emoji_options">Emoji options</string>
@@ -1304,6 +1310,9 @@
     <string name="vault_gallery_delete_page_confirm">Delete this page? This cannot be undone.</string>
     <string name="vault_gallery_delete_last_page_confirm">This is the last page. Deleting it will remove the entire entry.</string>
     <string name="vault_gallery_share_page">Share this page</string>
+    <string name="vault_gallery_send_webdrop">Send as WebDrop</string>
+    <string name="vault_error_webdrop_prepare">Couldn't prepare the files for WebDrop</string>
+    <string name="vault_error_webdrop_too_many_files">This entry has too many files for one WebDrop (max %1$d)</string>
     <string name="vault_gallery_save_page">Save to device</string>
     <string name="vault_gallery_delete_file">Delete file</string>
     <string name="vault_gallery_delete_all">Delete all</string>
@@ -1418,12 +1427,16 @@
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
     <string name="settings_media_quality_standard">Standard</string>
     <string name="settings_media_quality_high">High</string>
-    <string name="settings_media_quality_footer">Standard sends photos up to 1600 pixels and video at 720p, so they upload faster and use far less data. High sends your photos exactly as they are and video at 1080p. Either way, what you save to your device is the version that was sent.</string>
+    <string name="settings_media_quality_standard_description">Photos up to 1600 pixels and video at 720p. Uploads faster and uses far less data.</string>
+    <string name="settings_media_quality_high_description">Photos exactly as they are and video at 1080p.</string>
+    <string name="settings_media_quality_footer">Either way, what you save to your device is the version that was sent.</string>
     <string name="chat_media_quality_hd">HD</string>
     <string name="cd_media_quality_high_on">High quality is on. Tap to send smaller photos and videos.</string>
     <string name="cd_media_quality_high_off">High quality is off. Tap to send photos and videos at full quality.</string>
+    <string name="cd_media_quality_hd_badge">Sent in high quality</string>
 
     <!-- Settings hub -->
+    <string name="settings_category_general">General</string>
     <string name="settings_section_preferences">Preferences</string>
     <string name="settings_section_apps">Apps</string>
     <string name="settings_section_device">Device</string>
@@ -2098,4 +2111,50 @@
     <string name="desktop_menu_quit">Quit</string>
     <string name="desktop_tray_show_window">Show Window</string>
     <string name="desktop_tray_version">Version %1$s</string>
+
+    <!-- WebDrop -->
+    <string name="webdrop_home_subtitle">Share encrypted files online as self-destructing links</string>
+    <string name="webdrop_label">WebDrop</string>
+    <string name="webdrop_onboarding_title">Share files with anyone, safely</string>
+    <string name="webdrop_onboarding_body_1">Send a private file to someone who is not on Homebase - a passport to a hotel, a document to an office - as a simple link that opens in any browser.</string>
+    <string name="webdrop_onboarding_body_2">Files are encrypted on your device, and every link self-destructs: after it is opened, or after a time you choose. Your server never sees the key.</string>
+    <string name="webdrop_onboarding_setup">Set it up</string>
+    <string name="webdrop_onboarding_dismiss">Not now</string>
+    <string name="webdrop_empty_title">No drops yet</string>
+    <string name="webdrop_empty_body">Create a drop to share files as a self-destructing link.</string>
+    <string name="webdrop_new_drop">New drop</string>
+    <string name="webdrop_compose_title">New drop</string>
+    <string name="webdrop_add_files">Add files</string>
+    <string name="webdrop_create">Create link</string>
+    <string name="webdrop_link_ready">Your self-destructing link is ready</string>
+    <string name="webdrop_share">Share</string>
+    <string name="webdrop_copy">Copy link</string>
+    <string name="webdrop_ttl_burn">Burns after opening</string>
+    <string name="webdrop_ttl_one_day">1 day</string>
+    <string name="webdrop_ttl_seven_days">7 days</string>
+    <string name="webdrop_ttl_thirty_days">30 days</string>
+    <string name="webdrop_files_count">%1$d files</string>
+    <string name="webdrop_status_waiting">Waiting to be opened</string>
+    <string name="webdrop_status_opened">Opened - self-destructs in %1$s</string>
+    <string name="webdrop_status_expires">Self-destructs in %1$s</string>
+    <string name="webdrop_status_removed">Gone</string>
+    <string name="webdrop_revoke">Revoke link</string>
+    <string name="webdrop_row_clear">Clear from list</string>
+    <string name="webdrop_for_someone">For someone specific?</string>
+    <string name="webdrop_recipient_name">Recipient's name</string>
+    <string name="webdrop_for_label">For %1$s</string>
+    <string name="webdrop_condition_recipient_only">This is for the named recipient only</string>
+    <string name="webdrop_condition_no_retention">They must destroy it after use and keep no copy</string>
+    <string name="webdrop_condition_personal_data">It contains personal data they must handle accordingly</string>
+    <string name="webdrop_theme_mission">Mission</string>
+    <string name="webdrop_theme_clean">Clean</string>
+    <string name="webdrop_theme_choplifter">Choplifter</string>
+    <string name="webdrop_terms_header">Terms for the recipient</string>
+    <string name="webdrop_revoke_confirm_title">Revoke %1$s?</string>
+    <string name="webdrop_revoke_confirm_message">The link stops working immediately. Anyone holding it will no longer be able to open the drop.</string>
+    <string name="webdrop_revoke_cancel">Cancel</string>
+    <string name="webdrop_files_and_age">%1$s &#183; %2$s</string>
+    <string name="webdrop_error_create">Couldn't create the drop link</string>
+    <string name="webdrop_error_source_unreadable">Couldn't read %1$s — please pick it again</string>
+    <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
 </resources>

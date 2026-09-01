@@ -94,6 +94,8 @@ import id.homebase.resources.vault_error_download
 import id.homebase.resources.vault_error_download_page
 import id.homebase.resources.vault_error_edit_page
 import id.homebase.resources.vault_error_open_editor
+import id.homebase.resources.vault_error_webdrop_prepare
+import id.homebase.resources.vault_error_webdrop_too_many_files
 import id.homebase.resources.vault_error_outbox_upload
 import id.homebase.resources.vault_error_rename_file
 import id.homebase.resources.vault_error_rename_section
@@ -129,6 +131,7 @@ fun VaultScreen(
     onNavigateToNoteEditor: (sectionId: String, entryId: String?) -> Unit = { _, _ -> },
     onNavigateToCropper: (Uuid) -> Unit = {},
     onNavigateToDrawer: (Uuid) -> Unit = {},
+    onNavigateToWebDrop: () -> Unit = {},
     /** Set by the host when the already-selected Vault tab is re-tapped. */
     scrollToTop: Boolean = false,
     onScrollToTopHandled: () -> Unit = {},
@@ -197,6 +200,7 @@ fun VaultScreen(
                 is VaultUiEvent.Error -> {
                     pendingError = event.error
                 }
+                is VaultUiEvent.OpenWebDrop -> onNavigateToWebDrop()
                 is VaultUiEvent.OpenNoteEditor -> {
                     onNavigateToNoteEditor(
                         event.sectionId.toString(),
@@ -407,6 +411,10 @@ fun VaultScreen(
                             onDismiss = { viewModel.onAction(VaultUiAction.CloseOverlay) },
                             onSharePage = { key ->
                                 viewModel.onAction(VaultUiAction.SharePage(overlay.file, key))
+                            },
+                            webDropEnabled = uiState.webDropActivated,
+                            onSendAsWebDrop = {
+                                viewModel.onAction(VaultUiAction.SendAsWebDrop(overlay.file))
                             },
                             onSavePage = { key ->
                                 viewModel.onAction(VaultUiAction.SavePage(overlay.file, key))
@@ -714,4 +722,7 @@ private fun resolveVaultError(error: VaultError): String = when (error) {
     VaultError.OutboxUploadFailed -> stringResource(MR.string.vault_error_outbox_upload)
     VaultError.EditPageFailed -> stringResource(MR.string.vault_error_edit_page)
     VaultError.OpenEditorFailed -> stringResource(MR.string.vault_error_open_editor)
+    VaultError.WebDropPrepareFailed -> stringResource(MR.string.vault_error_webdrop_prepare)
+    is VaultError.WebDropTooManyFiles ->
+        stringResource(MR.string.vault_error_webdrop_too_many_files, error.max)
 }

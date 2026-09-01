@@ -72,7 +72,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -90,7 +92,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -109,6 +113,7 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.chat.conversationlist.RecordingData
 import id.homebase.chat.conversationlist.shouldSendComposerMessage
+import id.homebase.chat.data.ContactUiModel
 import id.homebase.chat.services.renderer.PayloadRenderer
 import id.homebase.chat.services.renderer.LinkPreviewRenderer
 import id.homebase.core.audio.rememberRecordAudioPermissionState
@@ -119,11 +124,16 @@ import id.homebase.core.clipboard.clipboardImageReceiverModifier
 import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.clipboard.readClipboardImage
+import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
+import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.core.widget.EmojiAutocomplete
+import id.homebase.core.widget.EmojiSelection
+import id.homebase.core.widget.rememberComposerAutocompleteController
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.chat_message_attachment_options
@@ -160,6 +170,12 @@ import org.koin.compose.koinInject
 import kotlin.math.roundToInt
 
 internal const val COMPOSER_EXPAND_TOGGLE_TAG = "composer_expand_toggle"
+internal const val ATTACHMENT_CAPTION_FIELD_TAG = "attachment_caption_field"
+internal const val ATTACHMENT_EMOJI_BUTTON_TAG = "attachment_emoji_button"
+internal const val ATTACHMENT_EMOJI_PICKER_TAG = "attachment_emoji_picker"
+
+private val EMOJI_PANEL_HEIGHT = 300.dp
+private const val EMOJI_PANEL_MAX_HEIGHT_FRACTION = 0.45f
 
 // Link previews are auto-detected from typed URLs, so on their own they don't signal intent to send.
 private fun hasSendableContent(state: RichTextState, payloadRenderers: List<PayloadRenderer>) =
@@ -196,11 +212,16 @@ fun MessageInputBar(
     payloadRenderers: List<PayloadRenderer>,
     onPayloadRenderersChange: (List<PayloadRenderer>) -> Unit,
     onSendMessage: (String, List<PayloadRenderer>) -> Unit,
+    /** Group members offered by the `@` typeahead. Empty in a 1:1, which leaves the trigger
+     *  unregistered so no mention affordance appears there. */
+    mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
     var showExpanded by remember { mutableStateOf(false) }
     val haptics = rememberHaptics()
+
+    EmojiShortcodeEffect(textFieldState)
 
     // URL-detector private state. Lives here (not in the parent) because it's an
     // implementation detail of how LinkPreviewRenderer gets produced from typed text:
@@ -291,6 +312,7 @@ fun MessageInputBar(
                     .padding(bottom = 16.dp),
                 focusRequester = focusRequester,
                 state = textFieldState,
+                mentionTargets = mentionTargets,
                 payloadRenderers = payloadRenderers,
                 onCancelAttachment = ::cancelRenderer,
                 editExistingMode = editExistingMode,
@@ -313,6 +335,7 @@ fun MessageInputBar(
                 ),
                 focusRequester = focusRequester,
                 state = textFieldState,
+                mentionTargets = mentionTargets,
                 editExistingMode = editExistingMode,
                 payloadRenderers = payloadRenderers,
                 recordingData = recordingData,
@@ -347,6 +370,7 @@ fun MessageTextFieldExpanded(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester,
     state: RichTextState,
+    mentionTargets: List<ContactUiModel>,
     editExistingMode: Boolean,
     payloadRenderers: List<PayloadRenderer>,
     onCancelAttachment: (id: String) -> Unit,
@@ -360,6 +384,7 @@ fun MessageTextFieldExpanded(
 ) {
     val pasteScope = rememberCoroutineScope()
     var isFieldFocused by remember { mutableStateOf(false) }
+    val autocomplete = rememberComposerAutocompleteController()
 
     // Web only: a pasted image arrives as a clipboard event on Compose's active clip target,
     // which only resolves to this field's backing input while the field holds focus.
@@ -401,85 +426,102 @@ fun MessageTextFieldExpanded(
             Modifier
         }
         val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
-        RichTextEditor(
-            state = state,
-            modifier = Modifier.fillMaxWidth()
-                .then(pasteModifier)
-                .then(
-                    if (onPasteImage != null)
-                        Modifier.pasteImageContextMenuItem(
-                            label = pasteImageLabel,
-                            enabled = true,
-                        ) {
-                            pasteScope.launch {
-                                readClipboardImage()?.let { onPasteImage.invoke(it) }
-                            }
-                        }
-                    else Modifier
-                )
-                .focusRequester(focusRequester)
-                .onFocusChanged { focusState ->
-                    isFieldFocused = focusState.isFocused
-                    if (focusState.isFocused) {
-                        onFocused()
-                    }
-                }
-                .onPreviewKeyEvent { keyEvent ->
-                    // Cmd/Ctrl+V image paste works on any platform with a hardware
-                    // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
-                    // stays desktop/web only; mobile uses the send button.
-                    if (keyEvent.type == KeyEventType.KeyDown &&
-                        (isDesktopOrWeb() ||
-                            (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
-                    ) {
-                        when {
-                            // Shift+Enter inserts a newline; every other Enter/NumPadEnter
-                            // (incl. Cmd/Ctrl+Enter) sends. Match NumPadEnter too — macOS can
-                            // report Return as NumPadEnter, so Key.Enter alone never fired (#1043).
-                            (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
-                                keyEvent.isShiftPressed -> {
-                                state.addTextAfterSelection("\n")
-                                true
-                            }
-
-                            keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
-                                sendMessage()
-                                true
-                            }
-
-                            keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
-                                val imageBytes = getImageFromClipboard()
-                                if (imageBytes != null) {
-                                    onPasteImage.invoke(imageBytes)
-                                    true
-                                } else {
-                                    false
+        Box(modifier = Modifier.fillMaxWidth()) {
+            RichTextEditor(
+                state = state,
+                modifier = Modifier.fillMaxWidth()
+                    .then(pasteModifier)
+                    .then(
+                        if (onPasteImage != null)
+                            Modifier.pasteImageContextMenuItem(
+                                label = pasteImageLabel,
+                                enabled = true,
+                            ) {
+                                pasteScope.launch {
+                                    readClipboardImage()?.let { onPasteImage.invoke(it) }
                                 }
                             }
-
-                            else -> false
+                        else Modifier
+                    )
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focusState ->
+                        isFieldFocused = focusState.isFocused
+                        if (focusState.isFocused) {
+                            onFocused()
                         }
-                    } else {
-                        false
                     }
-                },
-            placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-            shape = if (editExistingMode) RoundedCornerShape(
-                bottomStart = 12.dp,
-                bottomEnd = 12.dp
-            ) else RoundedCornerShape(12.dp),
-            minLines = 10,
-            maxLines = 10,
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
-            ),
-            colors = RichTextEditorDefaults.richTextEditorColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-            ),
-        )
+                    .onPreviewKeyEvent { keyEvent ->
+                        // The autocomplete list owns arrows/Enter/Tab/Esc while it is showing;
+                        // preview events run root-to-leaf, so Enter-to-send below beats it otherwise.
+                        if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
+
+                        // Cmd/Ctrl+V image paste works on any platform with a hardware
+                        // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
+                        // stays desktop/web only; mobile uses the send button.
+                        if (keyEvent.type == KeyEventType.KeyDown &&
+                            (isDesktopOrWeb() ||
+                                (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
+                        ) {
+                            when {
+                                // Shift+Enter inserts a newline; every other Enter/NumPadEnter
+                                // (incl. Cmd/Ctrl+Enter) sends. Match NumPadEnter too — macOS can
+                                // report Return as NumPadEnter, so Key.Enter alone never fired (#1043).
+                                (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                    keyEvent.isShiftPressed -> {
+                                    state.addTextAfterSelection("\n")
+                                    true
+                                }
+
+                                keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
+                                    sendMessage()
+                                    true
+                                }
+
+                                keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
+                                    val imageBytes = getImageFromClipboard()
+                                    if (imageBytes != null) {
+                                        onPasteImage.invoke(imageBytes)
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+
+                                else -> false
+                            }
+                        } else {
+                            false
+                        }
+                    },
+                placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                shape = if (editExistingMode) RoundedCornerShape(
+                    bottomStart = 12.dp,
+                    bottomEnd = 12.dp
+                ) else RoundedCornerShape(12.dp),
+                minLines = 10,
+                maxLines = 10,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
+                ),
+                colors = RichTextEditorDefaults.richTextEditorColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                ),
+            )
+            EmojiAutocomplete(
+                state = state,
+                controller = autocomplete,
+                enabled = isFieldFocused && isDesktopOrWeb(),
+            )
+            MentionAutocomplete(
+                state = state,
+                controller = autocomplete,
+                targets = mentionTargets,
+                enabled = isFieldFocused,
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -541,6 +583,7 @@ fun MessageTextFieldCompact(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester,
     state: RichTextState,
+    mentionTargets: List<ContactUiModel>,
     payloadRenderers: List<PayloadRenderer>,
     recordingData: RecordingData?,
     onCancelAttachment: (id: String) -> Unit,
@@ -566,6 +609,7 @@ fun MessageTextFieldCompact(
     onCancelEdit: () -> Unit,
 ) {
     val pasteScope = rememberCoroutineScope()
+    val autocomplete = rememberComposerAutocompleteController()
     val showSendButton = hasSendableContent(state, payloadRenderers)
     val showRecordingButton by remember(
         editExistingMode,
@@ -705,167 +749,185 @@ fun MessageTextFieldCompact(
                             Modifier
                         }
                         val pasteImageLabel = stringResource(MR.string.chat_message_paste_image)
-                        RichTextEditor(
-                            state = state,
-                            modifier = Modifier
-                                .weight(1f)
-                                .then(pasteModifier)
-                                .then(
-                                    if (onPasteImage != null)
-                                        Modifier.pasteImageContextMenuItem(
-                                            label = pasteImageLabel,
-                                            enabled = true,
-                                        ) {
-                                            pasteScope.launch {
-                                                readClipboardImage()?.let { onPasteImage.invoke(it) }
-                                            }
-                                        }
-                                    else Modifier
-                                )
-                                .focusRequester(focusRequester)
-                                .onFocusChanged { focusState ->
-                                    isKeyboardFocused = focusState.isFocused
-                                    if (focusState.isFocused) {
-                                        onFocused()
-                                    }
-                                }
-                                .onPreviewKeyEvent { keyEvent ->
-                                    // Cmd/Ctrl+V image paste works on any platform with a hardware
-                                    // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
-                                    // stays desktop/web only; mobile uses the send button.
-                                    if (keyEvent.type == KeyEventType.KeyDown &&
-                                        (isDesktopOrWeb() ||
-                                            (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
-                                    ) {
-                                        when {
-                                            // Shift+Enter inserts a newline; every other
-                                            // Enter/NumPadEnter (incl. Cmd/Ctrl+Enter) sends.
-                                            // Match NumPadEnter too — macOS can report Return as
-                                            // NumPadEnter, so Key.Enter alone never fired (#1043).
-                                            (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
-                                                keyEvent.isShiftPressed -> {
-                                                state.addTextAfterSelection("\n")
-                                                true
-                                            }
-
-                                            keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
-                                                onSendMessage()
-                                                true
-                                            }
-
-                                            keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
-                                                val imageBytes = getImageFromClipboard()
-                                                if (imageBytes != null) {
-                                                    onPasteImage.invoke(imageBytes)
-                                                    true
-                                                } else {
-                                                    false
+                        Box(modifier = Modifier.weight(1f)) {
+                            RichTextEditor(
+                                state = state,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(pasteModifier)
+                                    .then(
+                                        if (onPasteImage != null)
+                                            Modifier.pasteImageContextMenuItem(
+                                                label = pasteImageLabel,
+                                                enabled = true,
+                                            ) {
+                                                pasteScope.launch {
+                                                    readClipboardImage()?.let { onPasteImage.invoke(it) }
                                                 }
                                             }
-
-                                            else -> false
+                                        else Modifier
+                                    )
+                                    .focusRequester(focusRequester)
+                                    .onFocusChanged { focusState ->
+                                        isKeyboardFocused = focusState.isFocused
+                                        if (focusState.isFocused) {
+                                            onFocused()
                                         }
-                                    } else {
-                                        false
+                                    }
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        // The autocomplete list owns arrows/Enter/Tab/Esc while it is
+                                        // showing; preview events run root-to-leaf, so Enter-to-send
+                                        // below beats it otherwise.
+                                        if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
+
+                                        // Cmd/Ctrl+V image paste works on any platform with a hardware
+                                        // keyboard — desktop, web, AND iOS/iPad. Enter-to-send (below)
+                                        // stays desktop/web only; mobile uses the send button.
+                                        if (keyEvent.type == KeyEventType.KeyDown &&
+                                            (isDesktopOrWeb() ||
+                                                (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
+                                        ) {
+                                            when {
+                                                // Shift+Enter inserts a newline; every other
+                                                // Enter/NumPadEnter (incl. Cmd/Ctrl+Enter) sends.
+                                                // Match NumPadEnter too — macOS can report Return as
+                                                // NumPadEnter, so Key.Enter alone never fired (#1043).
+                                                (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                                    keyEvent.isShiftPressed -> {
+                                                    state.addTextAfterSelection("\n")
+                                                    true
+                                                }
+
+                                                keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
+                                                    onSendMessage()
+                                                    true
+                                                }
+
+                                                keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed) && onPasteImage != null -> {
+                                                    val imageBytes = getImageFromClipboard()
+                                                    if (imageBytes != null) {
+                                                        onPasteImage.invoke(imageBytes)
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                }
+
+                                                else -> false
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    },
+                                placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
+                                leadingIcon = if (editExistingMode) null else {
+                                    {
+                                        if (!showingEmojiSheet) {
+                                            IconButton(onClick = onEmojiClick) {
+                                                Icon(
+                                                    imageVector = Icons.Default.EmojiEmotions,
+                                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                                )
+                                            }
+                                        } else {
+                                            IconButton(onClick = onKeyboardClick) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Keyboard,
+                                                    contentDescription = stringResource(MR.string.chat_message_emoji_options)
+                                                )
+                                            }
+                                        }
                                     }
                                 },
-                            placeholder = { Text(stringResource(MR.string.chat_new_message_placeholder)) },
-                            leadingIcon = if (editExistingMode) null else {
-                                {
-                                    if (!showingEmojiSheet) {
-                                        IconButton(onClick = onEmojiClick) {
-                                            Icon(
-                                                imageVector = Icons.Default.EmojiEmotions,
-                                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                            )
-                                        }
-                                    } else {
-                                        IconButton(onClick = onKeyboardClick) {
-                                            Icon(
-                                                imageVector = Icons.Default.Keyboard,
-                                                contentDescription = stringResource(MR.string.chat_message_emoji_options)
-                                            )
-                                        }
-                                    }
-                                }
-                            },
-                            trailingIcon = if (editExistingMode) null else {
-                                {
-                                    if (state.annotatedString.isNotBlank()) {
-                                        IconButton(
-                                            onClick = onAddAttachmentClick,
-                                            modifier = Modifier.testTag("inline_attach_button"),
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Add,
-                                                contentDescription = stringResource(MR.string.chat_message_attachment_options)
-                                            )
-                                        }
-                                    } else if (isMobile()) {
-                                        var showCameraMenu by remember { mutableStateOf(false) }
-                                        Box {
+                                trailingIcon = if (editExistingMode) null else {
+                                    {
+                                        if (state.annotatedString.isNotBlank()) {
                                             IconButton(
-                                                onClick = { showCameraMenu = true },
-                                                modifier = Modifier.testTag("camera_button"),
+                                                onClick = onAddAttachmentClick,
+                                                modifier = Modifier.testTag("inline_attach_button"),
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Default.PhotoCamera,
-                                                    contentDescription = stringResource(MR.string.chat_message_camera)
+                                                    imageVector = Icons.Default.Add,
+                                                    contentDescription = stringResource(MR.string.chat_message_attachment_options)
                                                 )
                                             }
-                                            DropdownMenu(
-                                                expanded = showCameraMenu,
-                                                onDismissRequest = { showCameraMenu = false }
-                                            ) {
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(MR.string.chat_message_take_photo)) },
-                                                    onClick = {
-                                                        showCameraMenu = false
-                                                        onCameraClick()
-                                                    },
-                                                    leadingIcon = {
-                                                        Icon(Icons.Default.PhotoCamera, contentDescription = null)
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text(stringResource(MR.string.chat_message_record_video)) },
-                                                    onClick = {
-                                                        showCameraMenu = false
-                                                        onVideoRecordClick()
-                                                    },
-                                                    leadingIcon = {
-                                                        Icon(Icons.Default.Videocam, contentDescription = null)
-                                                    }
-                                                )
+                                        } else if (isMobile()) {
+                                            var showCameraMenu by remember { mutableStateOf(false) }
+                                            Box {
+                                                IconButton(
+                                                    onClick = { showCameraMenu = true },
+                                                    modifier = Modifier.testTag("camera_button"),
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PhotoCamera,
+                                                        contentDescription = stringResource(MR.string.chat_message_camera)
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = showCameraMenu,
+                                                    onDismissRequest = { showCameraMenu = false }
+                                                ) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(stringResource(MR.string.chat_message_take_photo)) },
+                                                        onClick = {
+                                                            showCameraMenu = false
+                                                            onCameraClick()
+                                                        },
+                                                        leadingIcon = {
+                                                            Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text(stringResource(MR.string.chat_message_record_video)) },
+                                                        onClick = {
+                                                            showCameraMenu = false
+                                                            onVideoRecordClick()
+                                                        },
+                                                        leadingIcon = {
+                                                            Icon(Icons.Default.Videocam, contentDescription = null)
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                }
-                            },
-                            shape = if (!showActionButtons)
-                                RoundedCornerShape(0.dp)
-                            else if (editExistingMode)
-                                RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
-                            else if (showRecordingButton)
-                                RoundedCornerShape(bottomStart = 12.dp, topStart = 12.dp)
-                            else
-                                RoundedCornerShape(12.dp),
-                            colors = RichTextEditorDefaults.richTextEditorColors(
-                                containerColor = if (!showActionButtons)
-                                    Color.Transparent
+                                },
+                                shape = if (!showActionButtons)
+                                    RoundedCornerShape(0.dp)
+                                else if (editExistingMode)
+                                    RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
+                                else if (showRecordingButton)
+                                    RoundedCornerShape(bottomStart = 12.dp, topStart = 12.dp)
                                 else
-                                    MaterialTheme.colorScheme.surfaceContainerHighest,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                disabledIndicatorColor = Color.Transparent,
-                            ),
-                            minLines = 1,
-                            maxLines = if (editExistingMode) 10 else 5,
-                            keyboardOptions = KeyboardOptions(
-                                capitalization = KeyboardCapitalization.Sentences,
-                                imeAction = ImeAction.Default
+                                    RoundedCornerShape(12.dp),
+                                colors = RichTextEditorDefaults.richTextEditorColors(
+                                    containerColor = if (!showActionButtons)
+                                        Color.Transparent
+                                    else
+                                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    disabledIndicatorColor = Color.Transparent,
+                                ),
+                                minLines = 1,
+                                maxLines = if (editExistingMode) 10 else 5,
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Sentences,
+                                    imeAction = ImeAction.Default
+                                )
                             )
-                        )
+                            EmojiAutocomplete(
+                                state = state,
+                                controller = autocomplete,
+                                enabled = isKeyboardFocused && isDesktopOrWeb(),
+                            )
+                            MentionAutocomplete(
+                                state = state,
+                                controller = autocomplete,
+                                targets = mentionTargets,
+                                enabled = isKeyboardFocused,
+                            )
+                        }
                         if (showRecordingButton) {
                             // Mic button: a single pointerInput handles the full gesture (press,
                             // hold to record, slide-left to cancel, release to stop). It is always
@@ -1186,21 +1248,34 @@ private fun MessageEditMessageInfo(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MessageTextFieldForAttachment(
     modifier: Modifier = Modifier,
     state: RichTextState,
-    onSmileyClick: () -> Unit,
     onSendMessage: () -> Unit,
     // Mirror the chat composer: the rich-text formatting toolbar is desktop/web-only.
     // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
+    onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     var hasSent by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    val autocomplete = rememberComposerAutocompleteController()
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    fun setEmojiPicker(visible: Boolean) {
+        if (showEmojiPicker == visible) return
+        showEmojiPicker = visible
+        onEmojiPickerVisibilityChanged(visible)
+    }
+
+    @Suppress("DEPRECATION") BackHandler(showEmojiPicker) { setEmojiPicker(false) }
+
+    EmojiShortcodeEffect(state)
 
     Column(modifier = modifier) {
         if (showFormattingToolbar) {
@@ -1214,50 +1289,75 @@ fun MessageTextFieldForAttachment(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RichTextEditor(
-                state = state,
-                modifier = Modifier.weight(1f).onPreviewKeyEvent { keyEvent ->
-                    if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
-                        if (keyEvent.isShiftPressed) {
-                            state.addTextAfterSelection("\n")
-                            true
-                        } else if (!hasSent) {
-                            hasSent = true
-                            onSendMessage()
-                            true
-                        } else {
-                            true
-                        }
-                    } else {
-                        false
-                    }
-                },
-                placeholder = {
-                    Text(stringResource(MR.string.chat_new_message_placeholder))
-                },
-                leadingIcon = {
-                    IconButton(onClick = onSmileyClick) {
-                        Icon(
-                            imageVector = Icons.Default.EmojiEmotions,
-                            contentDescription = stringResource(
-                                MR.string.chat_message_emoji_options
+            Box(modifier = Modifier.weight(1f)) {
+                RichTextEditor(
+                    state = state,
+                    modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
+                        // Tapping into the caption closes the panel; the keyboard reclaims the space.
+                        .onFocusChanged { if (it.isFocused) setEmojiPicker(false) }
+                        .onPreviewKeyEvent { keyEvent ->
+                            // The autocomplete list owns arrows/Enter/Tab/Esc while it is showing;
+                            // preview events run root-to-leaf, so Enter-to-send below beats it otherwise.
+                            if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
+
+                            if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                                if (keyEvent.isShiftPressed) {
+                                    state.addTextAfterSelection("\n")
+                                    true
+                                } else if (!hasSent) {
+                                    hasSent = true
+                                    onSendMessage()
+                                    true
+                                } else {
+                                    true
+                                }
+                            } else {
+                                false
+                            }
+                        },
+                    placeholder = {
+                        Text(stringResource(MR.string.chat_new_message_placeholder))
+                    },
+                    leadingIcon = {
+                        IconButton(
+                            onClick = {
+                                if (showEmojiPicker) {
+                                    setEmojiPicker(false)
+                                } else {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    setEmojiPicker(true)
+                                }
+                            },
+                            modifier = Modifier.testTag(ATTACHMENT_EMOJI_BUTTON_TAG),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EmojiEmotions,
+                                contentDescription = stringResource(
+                                    MR.string.chat_message_emoji_options
+                                )
                             )
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(12.dp),
-                colors = RichTextEditorDefaults.richTextEditorColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                ),
-                minLines = 1,
-                maxLines = 3,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = RichTextEditorDefaults.richTextEditorColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+                    minLines = 1,
+                    maxLines = 3,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default
+                    )
                 )
-            )
+                EmojiAutocomplete(
+                    state = state,
+                    controller = autocomplete,
+                    enabled = isDesktopOrWeb(),
+                )
+            }
             Spacer(modifier = Modifier.width(8.dp))
             if (!isKeyboardVisible) {
                 IconButton(
@@ -1290,6 +1390,27 @@ fun MessageTextFieldForAttachment(
                     )
                 }
             }
+        }
+
+        // Emoji only, no sticker/GIF tabs: a caption is text, and a sticker isn't.
+        AnimatedVisibility(visible = showEmojiPicker) {
+            // MediaAttachmentEditor's media pager is the only weighted child of its
+            // Column, so it absorbs every dp this panel takes; a flat 300 dp measures
+            // it to 0 on a landscape phone and the attachment disappears. Cap against
+            // the viewport (the StickerMessage idiom) so the pager always keeps room.
+            val viewportHeightPx = LocalWindowInfo.current.containerSize.height
+            val panelHeight = with(LocalDensity.current) {
+                if (viewportHeightPx > 0)
+                    minOf(EMOJI_PANEL_HEIGHT, viewportHeightPx.toDp() * EMOJI_PANEL_MAX_HEIGHT_FRACTION)
+                else EMOJI_PANEL_HEIGHT
+            }
+            EmojiSelection(
+                modifier = Modifier.fillMaxWidth().height(panelHeight)
+                    .testTag(ATTACHMENT_EMOJI_PICKER_TAG),
+                messageInputMode = true,
+                onBackSpace = { state.programmaticBackspace() },
+                onEmojiSelected = { state.addTextAfterSelection(it) },
+            )
         }
     }
 }

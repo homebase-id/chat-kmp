@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
@@ -47,9 +46,9 @@ import coil3.compose.AsyncImage
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileVisibility
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
-import id.homebase.resources.menu_back
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
 import id.homebase.resources.profile_avatar_edit_acl_connected
 import id.homebase.resources.profile_avatar_edit_anonymous_desc
@@ -99,16 +98,9 @@ fun ProfileAvatarEditScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.profile_avatar_edit_title)) },
-                navigationIcon = {
-                    IconButton(onClick = { viewModel.onAction(ProfileAvatarEditAction.BackClicked) }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.profile_avatar_edit_title),
+                onBack = { viewModel.onAction(ProfileAvatarEditAction.BackClicked) },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },

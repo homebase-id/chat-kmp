@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
@@ -32,6 +31,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
@@ -80,14 +80,16 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.webdrop_home_subtitle
+import id.homebase.resources.webdrop_label
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.location_settings_section
-import id.homebase.resources.menu_back
 import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
@@ -255,24 +257,11 @@ fun SettingsUi(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(MR.string.settings),
-                        modifier = Modifier.testTag("settingsTitle")
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = actions.onBack,
-                        modifier = Modifier.testTag("settingsBackButton"),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.settings),
+                titleModifier = Modifier.testTag("settingsTitle"),
+                navigationIconModifier = Modifier.testTag("settingsBackButton"),
+                onBack = actions.onBack,
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -379,6 +368,15 @@ fun SettingsUi(
                         action = SettingsRowAction.Navigate(actions.onEmailSettings),
                     )
                 }
+            }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("webDropButton"),
+                    icon = Icons.Outlined.Redeem,
+                    title = stringResource(MR.string.webdrop_label),
+                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
+                    action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
+                )
             }
             item {
                 SettingsRow(
@@ -597,6 +595,7 @@ fun SettingsUiPreview() {
                 onMomentsSettings = {},
                 onVaultSettings = {},
                 onEmailSettings = {},
+                onOpenWebDrop = {},
                 onLocation = {},
                 onContactBookSettings = {},
                 onProfileEdit = {},

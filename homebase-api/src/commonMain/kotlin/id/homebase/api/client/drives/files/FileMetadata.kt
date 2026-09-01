@@ -28,7 +28,9 @@ data class FileMetadata(
     val reactionPreview: ReactionSummary? = null,
     @Serializable(with = UuidSerializer::class) val versionTag: Uuid? = null,
     val payloads: List<PayloadDescriptor>? = null,
-    val dataSource: DataSource? = null
+    val dataSource: DataSource? = null,
+    /** See the upload-side ttl: 0/null never expires, > 0 absolute ms, < 0 pending-first-read. */
+    val ttl: Long? = null
 ) {
     fun getPayloadDescriptor(key: String): PayloadDescriptor? {
         return payloads?.firstOrNull { it.keyEquals(key) }
