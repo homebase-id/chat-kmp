@@ -66,6 +66,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
@@ -110,6 +115,7 @@ fun ConversationListPane(
     uiState: ConversationListUiState,
     selectedConversationId: Uuid? = null,
     searchTextState: TextFieldState,
+    searchFocusRequester: FocusRequester? = null,
     archivedUiState: ArchivedConversationsUiState = ArchivedConversationsUiState(),
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
@@ -374,7 +380,22 @@ fun ConversationListPane(
                                         start = Dimens.Spacing.gutter,
                                         end = Dimens.Spacing.gutter,
                                         bottom = Dimens.Spacing.item,
-                                    ),
+                                    )
+                                    .then(
+                                        searchFocusRequester?.let { Modifier.focusRequester(it) }
+                                            ?: Modifier
+                                    )
+                                    .onPreviewKeyEvent { keyEvent ->
+                                        if (keyEvent.type == KeyEventType.KeyDown &&
+                                            keyEvent.key == Key.Escape &&
+                                            searchTextState.text.isNotEmpty()
+                                        ) {
+                                            searchTextState.clearText()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    },
                                 placeHolderText = stringResource(MR.string.chat_search_placeholder),
                             )
                         }

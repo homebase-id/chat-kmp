@@ -52,6 +52,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -793,6 +801,7 @@ fun ConversationListUi(
     var scaffoldLeft by remember { mutableFloatStateOf(0f) }
     var scaffoldWidth by remember { mutableFloatStateOf(0f) }
     var splitterCenter by remember { mutableFloatStateOf(0f) }
+    val conversationSearchFocusRequester = remember { FocusRequester() }
 
     // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
     // the outer screen) because scaffoldNavigator + backNavigationBehavior are in
@@ -875,6 +884,18 @@ fun ConversationListUi(
             modifier = Modifier.fillMaxSize().onGloballyPositioned {
                 scaffoldLeft = it.positionInRoot().x
                 scaffoldWidth = it.size.width.toFloat()
+            }.onPreviewKeyEvent { keyEvent ->
+                if (isDesktopOrWeb() &&
+                    keyEvent.type == KeyEventType.KeyDown &&
+                    keyEvent.key == Key.F &&
+                    (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
+                ) {
+                    // The field is absent in the archived and icon-only list modes.
+                    runCatching { conversationSearchFocusRequester.requestFocus() }
+                    true
+                } else {
+                    false
+                }
             },
             directive = scaffoldNavigator.scaffoldDirective,
             scaffoldState = scaffoldNavigator.scaffoldState,
@@ -884,6 +905,7 @@ fun ConversationListUi(
                         uiState = uiState,
                         selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
                         searchTextState = conversationSearchTextFieldState,
+                        searchFocusRequester = conversationSearchFocusRequester,
                         archivedUiState = archivedConversationsUiState,
                         onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
