@@ -72,10 +72,6 @@ class EmailViewModel(
         // mounting a drive the identity never created leaves DriveSync retrying `400
         // InvalidDrive` once a second forever, and writes the drive into the cross-device
         // registry, which makes it survive a restart and re-mount on every future login.
-        //
-        // The permission check cannot stand in for this: it reports "granted" when it could not
-        // reach the security context at all, so a failed lookup used to read as permission to
-        // mount. Seen on a fresh identity that had never been through the approval flow.
         viewModelScope.launch {
             emailPermissionViewModel.permissionsGranted.filter { it }.collect {
                 // Re-read the status FIRST. The grant is what provisions the drive, so the
