@@ -11,7 +11,9 @@ import kotlin.uuid.ExperimentalUuidApi
 // The one place that reaches /pub/profile and /pub/image. A known contact's name resolves from
 // the synced Contacts drive; the public endpoints serve everything else.
 class ContactInfoGateway internal constructor(
-    private val contactRepository: ContactRepository,
+    // Resolved on demand: the Coil ImageLoader builds a PublicImageFetcher.Factory holding this
+    // gateway before DatabaseManager.initialize() runs, and ContactRepository needs the database.
+    private val contactRepository: () -> ContactRepository,
     private val publicProfiles: PublicProfileProviderCached,
 ) {
 
@@ -34,9 +36,10 @@ class ContactInfoGateway internal constructor(
     suspend fun clearCaches() = publicProfiles.clearCaches()
 
     private suspend fun localContact(odinId: OdinId): Contact? {
-        contactRepository.ensureLoaded()
+        val repository = contactRepository()
+        repository.ensureLoaded()
         val domain = odinId.domainName
-        return contactRepository.contacts.value.firstOrNull {
+        return repository.contacts.value.firstOrNull {
             it.content.odinId?.equals(domain, ignoreCase = true) == true
         }
     }

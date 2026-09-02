@@ -167,7 +167,7 @@ val apiModule = module {
     singleOf(::PublicProfileProviderCached)
     // The single supported entry point for a peer's name/avatar/profile; the provider above
     // is internal to this module so nothing else can reach /pub/profile or /pub/image.
-    singleOf(::ContactInfoGateway)
+    single { ContactInfoGateway(contactRepository = { get() }, publicProfiles = get()) }
 
     factoryOf(::SecurityContextProvider)
     factoryOf(::PushNotificationApi)
