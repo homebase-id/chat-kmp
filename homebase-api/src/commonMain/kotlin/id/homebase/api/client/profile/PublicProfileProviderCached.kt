@@ -60,7 +60,7 @@ import kotlin.time.Clock
  * needed. See also [id.homebase.api.client.drives.cache.DriveFileProviderCached]
  * which follows the same shape.
  */
-class PublicProfileProviderCached(
+internal class PublicProfileProviderCached(
     private val httpClient: HttpClient,
     fileOperationsProvider: FileOperationsProvider,
     private val scope: CoroutineScope

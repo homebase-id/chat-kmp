@@ -5,8 +5,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.http.UriBuilder
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -92,7 +92,7 @@ class YouAuthFlowManager(
     private val credentialsManager: CredentialsManager,
     private val httpClient: HttpClient,
     private val driveFileProviderCached: DriveFileProviderCached,
-    private val publicProfileProviderCached: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     // Platform-level cache teardown invoked during logout, alongside the per-cache
     // clearCaches() calls below. Injected from the module that owns platform
     // singletons (homebase-core) so this class doesn't have to depend on coil3 or
@@ -456,7 +456,7 @@ class YouAuthFlowManager(
 
         stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
         stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }
-        stepOrLog("publicProfileProvider.clearCaches") { publicProfileProviderCached.clearCaches() }
+        stepOrLog("contactInfo.clearCaches") { contactInfo.clearCaches() }
         // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
         // else the app-level module wants to flush).
         stepOrLog("clearPlatformCaches") { clearPlatformCaches() }
