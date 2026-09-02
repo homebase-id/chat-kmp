@@ -5,7 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.ReactionSummary
-import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.convo.contact.ContactService
@@ -57,7 +57,7 @@ class PostDetailViewModel(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
     private val stickerStream: StickerStream,
-    private val publicProfileProvider: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     private val reportingUrlProvider: ReportingUrlProvider,
     private val permissionService: FeedPermissionService,
 ) : ViewModel() {
@@ -137,7 +137,7 @@ class PostDetailViewModel(
             // You aren't in your own ContactService contacts, so without this your own posts show a raw domain.
             if (self != null) {
                 _selfName.value =
-                    runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
+                    runCatching { contactInfo.displayName(self) }.getOrNull()
             }
         }
     }
