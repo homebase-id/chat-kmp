@@ -219,7 +219,8 @@ fun MediaAttachmentEditor(
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
-                when (val attachment = attachments[page]) {
+                // The pager composes a stale page index for one frame after the list shrinks.
+                when (val attachment = attachments.getOrNull(page) ?: return@HorizontalPager) {
                     is AttachmentPendingFile.File -> {
                         val isPdf = remember(attachment.file) {
                             resolveContentType(fileName = attachment.file.name) == "application/pdf"
@@ -430,7 +431,7 @@ fun MediaAttachmentEditor(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 attachments.forEach { attachment ->
-                    val isSelected = attachments[pagerState.currentPage].attachmentId == attachment.attachmentId
+                    val isSelected = activeAttachment?.attachmentId == attachment.attachmentId
                     Box(
                         modifier = Modifier
                             .size(60.dp)
