@@ -11,7 +11,10 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.forms.InputProvider
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -40,15 +43,17 @@ class PublicProfileProviderCachedTest {
     private var requestCount = 0
     private var nextException: Exception? = null
     private var nextStatus = HttpStatusCode.OK
+    private var nextCacheControl: String? = null
     private val imageBytes = ByteArray(128) { it.toByte() }
 
     private val mockEngine = MockEngine { _ ->
         requestCount++
         nextException?.let { e -> throw e }
+        val headers = nextCacheControl?.let { headersOf(HttpHeaders.CacheControl, it) } ?: Headers.Empty
         if (nextStatus == HttpStatusCode.OK) {
-            respond(imageBytes, nextStatus)
+            respond(imageBytes, nextStatus, headers)
         } else {
-            respond("", nextStatus)
+            respond("", nextStatus, headers)
         }
     }
 
@@ -81,6 +86,7 @@ class PublicProfileProviderCachedTest {
         requestCount = 0
         nextException = null
         nextStatus = HttpStatusCode.OK
+        nextCacheControl = null
         logCollector.entries.clear()
         Logger.setLogWriters(listOf(logCollector))
     }
@@ -107,6 +113,21 @@ class PublicProfileProviderCachedTest {
         val second = provider.getPublicImage(odinId)
         assertNotNull(second)
         assertEquals(1, requestCount, "disk cache must prevent a second network call")
+    }
+
+    @Test
+    fun `a peer's no-store does not stop the client from caching`() = runTest {
+        nextCacheControl = "no-store"
+
+        val first = provider.getPublicImage(odinId)
+        assertNotNull(first)
+        assertEquals(imageBytes.size, first.size)
+        assertEquals(1, requestCount)
+
+        val second = provider.getPublicImage(odinId)
+        assertNotNull(second)
+        assertEquals(imageBytes.size, second.size)
+        assertEquals(1, requestCount, "no-store must not prevent the client-owned disk cache from serving the second call")
     }
 
     @Test
