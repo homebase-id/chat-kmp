@@ -71,8 +71,7 @@ struct ContentView: View {
                 IosGpuTextDiagnosticsKt.logPrevention(note: "appeared already .active — ComposeView built immediately")
             }
         }
-        .onChange(of: scenePhase) { oldPhase, newPhase in
-            IosGpuTextDiagnosticsKt.logLaunchTrace(note: "scenePhase \(oldPhase) → \(newPhase)")
+        .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .inactive:
                 if VaultPrivacyBridge.shared.shouldProtect {

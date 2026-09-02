@@ -17,9 +17,3 @@ internal actual fun captureMainThreadStackTrace(maxFrames: Int): String? {
         edt.value.take(maxFrames).forEach { appendLine("    at $it") }
     }
 }
-
-/**
- * A desktop JVM process is never suspended by the OS the way a mobile app is, so the
- * OS-suspended-vs-self-stalled split has nothing to distinguish here.
- */
-internal actual fun captureProcessTimes(): ProcessTimes? = null

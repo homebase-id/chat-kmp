@@ -1,8 +1,6 @@
 package id.homebase.core.diagnostics
 
 import android.os.Looper
-import android.os.Process
-import android.os.SystemClock
 
 /**
  * Android stack capture for [MainThreadWatchdog]: snapshots the main `Looper` thread.
@@ -18,9 +16,3 @@ internal actual fun captureMainThreadStackTrace(maxFrames: Int): String? {
         stack.take(maxFrames).forEach { appendLine("    at $it") }
     }
 }
-
-/** `elapsedRealtime` keeps counting through deep sleep and through an app-freezer suspension. */
-internal actual fun captureProcessTimes(): ProcessTimes? = ProcessTimes(
-    cpuMs = Process.getElapsedCpuTime(),
-    continuousMs = SystemClock.elapsedRealtime(),
-)

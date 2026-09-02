@@ -34,13 +34,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
           MainViewControllerKt.initializeApp()
       }
 
-      // After initializeApp() because that is what installs Kermit's file writer. Key names only:
-      // launchOptions values carry payload. appState raw: 0=active, 1=inactive, 2=background.
-      let launchKeys = (launchOptions ?? [:]).keys.map { $0.rawValue }.sorted().joined(separator: ",")
-      let prewarm = ProcessInfo.processInfo.environment["ActivePrewarm"] ?? "0"
-      IosGpuTextDiagnosticsKt.logLaunchTrace(
-          note: "didFinishLaunching keys=[\(launchKeys)] prewarm=\(prewarm) appState=\(application.applicationState.rawValue)")
-
       //By default showPushNotification value is true.
       //When set showPushNotification to false foreground push  notification will not be shown.
       //You can still get notification content using #onPushNotification listener method.C
