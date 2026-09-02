@@ -2,6 +2,7 @@ package id.homebase.core.auth
 
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.auth.AuthFailureReporter
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.TargetDrive
@@ -25,6 +26,7 @@ import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.session.IdentitySessionScope
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -107,6 +109,13 @@ class AuthConnectionCoordinator(
     // specifically said 401 to this token.
     @Volatile
     private var consecutiveUpgradeAuthFailures = 0
+
+    // The REST half of the same detection. A token can die while the WS is deliberately parked
+    // (backgrounded on a push-capable platform), and every REST call then 401s with nothing
+    // watching — the state the field logs show: hours of `Unauthorized` under authState ==
+    // Authenticated. Counted separately from the WS streak because the two have different reset
+    // rules; both feed the one threshold and the one logout.
+    private val restAuthFailures = RestUnauthorizedCounter { startDeadTokenLogout() }
 
     // logout() has no internal in-flight guard and wipes the DB, so two concurrent callers would
     // each run a full wipe. 401s keep arriving during the ~seconds logout takes; this latches.
@@ -212,6 +221,7 @@ class AuthConnectionCoordinator(
 
     init {
         Logger.i(tag = "AuthLifecycle") { "AuthCC: collector started" }
+        credentialsManager.setAuthFailureReporter(restAuthFailures)
         scope.launch {
             youAuthFlowManager.authState.collect {
                 onAuthStateChanged(it)
@@ -572,6 +582,7 @@ class AuthConnectionCoordinator(
                     // Also clears the latch: a later session on this same process whose token
                     // dies must be able to trigger the logout again.
                     consecutiveUpgradeAuthFailures = 0
+                    restAuthFailures.onRestAuthorized()
                     deadTokenLogoutStarted = false
                     logLifecycleSnapshot("onConnected")
                     scope.launch {
@@ -1010,6 +1021,26 @@ internal const val DEAD_TOKEN_THRESHOLD = 3
  */
 internal fun nextUpgradeAuthFailureCount(previous: Int, error: Throwable): Int =
     if (error.isWebSocketUpgradeUnauthorized()) previous + 1 else 0
+
+/**
+ * [DEAD_TOKEN_THRESHOLD] consecutive REST 401s from the identity host means the same thing an
+ * upgrade-401 streak does — the token is void — and calls [onDeadToken]. Any 2xx from that host
+ * resets the streak, so hours of intermittent 401s can never accumulate into a logout; only an
+ * unbroken run of them can. Atomic because responses land on several dispatcher threads at once.
+ */
+internal class RestUnauthorizedCounter(
+    private val onDeadToken: () -> Unit,
+) : AuthFailureReporter {
+    private val consecutive = atomic(0)
+
+    override fun onRestUnauthorized() {
+        if (consecutive.incrementAndGet() >= DEAD_TOKEN_THRESHOLD) onDeadToken()
+    }
+
+    override fun onRestAuthorized() {
+        consecutive.value = 0
+    }
+}
 
 // Match compareStringUuId's normalization so drive ids compare regardless of hyphen/case format.
 internal fun normalizeDriveId(driveId: String): String = driveId.lowercase().replace("-", "")
