@@ -14,7 +14,6 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpHeaders
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -128,6 +127,7 @@ class PublicProfileProviderCached(
         getCached(
             cacheKey = "profile:$odinId",
             disk = profileDiskCache,
+            ttlMillis = PROFILE_TTL_MILLIS,
             fetch = { httpClient.get("https://${odinId}/pub/profile") },
             transform = { response ->
                 serializer.deserialize<ProfileCard>(response.bodyAsText())
@@ -151,6 +151,7 @@ class PublicProfileProviderCached(
         getCached(
             cacheKey = "image:$odinId",
             disk = imageDiskCache,
+            ttlMillis = IMAGE_TTL_MILLIS,
             fetch = { httpClient.get(odinId.publicImageUrl()) },
             transform = { response ->
                 response.bodyAsBytes()
@@ -240,6 +241,7 @@ class PublicProfileProviderCached(
     private suspend fun <T> getCached(
         cacheKey: String,
         disk: DiskCache,
+        ttlMillis: Long,
         fetch: suspend () -> HttpResponse,
         transform: suspend (HttpResponse) -> T,
         readFromDisk: (Path) -> CachedEntry<T>,
@@ -278,22 +280,18 @@ class PublicProfileProviderCached(
             when (response.status.value) {
 
                 200 -> {
-                    val cacheControl = response.headers[HttpHeaders.CacheControl]
-                    val ttl = extractTtlMillis(cacheControl)
-                    val expiry = now() + ttl
+                    val expiry = now() + ttlMillis
 
                     val value = transform(response)
 
-                    if (shouldStore(cacheControl)) {
-                        val editor = disk.openEditor(cacheKey.toDiskKey())
-                        if (editor != null) {
-                            try {
-                                writeToDisk(editor.data, expiry, value)
-                                editor.commit()
-                            } catch (e: Exception) {
-                                try { editor.abort() } catch (_: Exception) {}
-                                Logger.w(tag = "PublicProfileIO", throwable = e) { "cache-write failed key=$cacheKey" }
-                            }
+                    val editor = disk.openEditor(cacheKey.toDiskKey())
+                    if (editor != null) {
+                        try {
+                            writeToDisk(editor.data, expiry, value)
+                            editor.commit()
+                        } catch (e: Exception) {
+                            try { editor.abort() } catch (_: Exception) {}
+                            Logger.w(tag = "PublicProfileIO", throwable = e) { "cache-write failed key=$cacheKey" }
                         }
                     }
 
@@ -337,24 +335,6 @@ class PublicProfileProviderCached(
     // HELPERS
     // =========================================================
 
-    private fun shouldStore(cacheControl: String?): Boolean {
-        if (cacheControl == null) return true
-        return !cacheControl.contains("no-store", true)
-    }
-
-    internal fun extractTtlMillis(cacheControl: String?): Long {
-        val oneWeekSeconds = 7 * 24 * 60 * 60L
-        val oneWeekMs = oneWeekSeconds * 1000
-        if (cacheControl == null) return oneWeekMs
-        val maxAge = Regex("max-age=(\\d+)")
-            .find(cacheControl)
-            ?.groupValues
-            ?.get(1)
-            ?.toLongOrNull()
-        val ttlMs = (maxAge ?: oneWeekSeconds) * 1000
-        return maxOf(ttlMs, oneWeekMs)
-    }
-
     private fun now(): Long =
         clock.now().toEpochMilliseconds()
 
@@ -367,5 +347,11 @@ class PublicProfileProviderCached(
     ) {
         fun isExpired(clock: Clock): Boolean =
             clock.now().toEpochMilliseconds() > expiry
+    }
+
+    private companion object {
+        // The client owns cache lifetime; a peer's Cache-Control never sets it.
+        const val PROFILE_TTL_MILLIS = 7L * 24 * 60 * 60 * 1000
+        const val IMAGE_TTL_MILLIS = 30L * 24 * 60 * 60 * 1000
     }
 }
