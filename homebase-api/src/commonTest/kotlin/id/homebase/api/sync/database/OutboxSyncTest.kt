@@ -6,6 +6,7 @@ import okio.fakefilesystem.FakeFileSystem
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.platform.BackgroundExecutionAssertion
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.coroutines.CompletableDeferred
@@ -1446,5 +1447,78 @@ class OutboxSyncTest {
             "checkout is ORDER BY priority ASC — priority 0 (location) must outrank 1 (chat/moments)",
         )
         sync.clearCheckout(timeoutMs = 5_000)
+    }
+
+    /**
+     * #1467: iOS suspends the process ~1s after backgrounding, freezing an in-flight upload
+     * POST mid-transfer. The drain must hold a background execution assertion for exactly as
+     * long as a worker is running — begun on the first worker, ended once the last one is
+     * done and before the backoff sleep.
+     */
+    @Test
+    fun drainHoldsABackgroundAssertionForTheDurationOfThePass() = runOutboxTest { db ->
+        val eventBus = EventBus()
+        val begun = atomic(0)
+        val ended = atomic(0)
+
+        val sync = OutboxSync(
+            databaseManager = db,
+            uploader = TestUploader(),
+            eventBus = eventBus,
+            scope = backgroundScope,
+            beginBackgroundAssertion = {
+                begun.incrementAndGet()
+                object : BackgroundExecutionAssertion {
+                    override fun end() { ended.incrementAndGet() }
+                }
+            },
+        )
+        sync.setOnline(true)
+
+        val completed = async {
+            eventBus.events.filterIsInstance<BackendEvent.OutboxEvent.Completed>().first()
+        }
+        testScheduler.runCurrent()
+
+        db.outbox.insert(
+            driveId = Uuid.random(),
+            uniqueId = Uuid.random(),
+            dependencyUniqueId = null,
+            priority = 0,
+            uploadType = 0,
+            json = byteArrayOf(),
+            filePaths = null,
+        )
+
+        assertTrue(sync.send())
+        advanceUntilIdle()
+        completed.await()
+
+        assertEquals(1, begun.value, "one assertion per drain pass, not one per row or per worker")
+        assertEquals(1, ended.value, "the assertion must be released once the pass is idle")
+    }
+
+    /** An offline drain never starts a worker, so it must not ask the OS for a window either. */
+    @Test
+    fun skippedOfflineDrainTakesNoBackgroundAssertion() = runOutboxTest { db ->
+        val begun = atomic(0)
+        val sync = OutboxSync(
+            databaseManager = db,
+            uploader = TestUploader(),
+            eventBus = EventBus(),
+            scope = backgroundScope,
+            beginBackgroundAssertion = {
+                begun.incrementAndGet()
+                object : BackgroundExecutionAssertion {
+                    override fun end() = Unit
+                }
+            },
+        )
+        sync.setOnline(false)
+
+        assertFalse(sync.send(), "send() must decline while offline")
+        advanceUntilIdle()
+
+        assertEquals(0, begun.value)
     }
 }
