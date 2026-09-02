@@ -297,10 +297,8 @@ class DriveRegistry(
      *  - a transport failure (offline, timeout, dropped socket),
      *  - a 403 on the Chat drive that holds the registry file — the app token's write grant was
      *    revoked or narrowed in the owner console, and
-     *  - a 401 — the whole token is void. `OdinApiProviderBase` already routed that response to
-     *    [AuthFailureReporter], which is the component that can actually end the session;
-     *    rethrowing here would only add a process death on the way there, and would count the
-     *    one server response a second time if it re-reported it.
+     *  - a 401 — the whole token is void, so this write was never going to land. Rethrowing
+     *    here would only add a process death; ending the session is not this layer's call.
      *
      * In all three the drive stays out of the cross-device list until a later activation
      * re-registers it, and [AuthConnectionCoordinator.mountDrive] carries on to mount it
@@ -321,7 +319,7 @@ class DriveRegistry(
             Logger.w(tag = TAG, throwable = e) {
                 val reason = when {
                     transport -> "a transport failure"
-                    unauthorized -> "a 401 — the auth layer has been told"
+                    unauthorized -> "a 401 — the token is void"
                     else -> "a 403 on the Chat drive"
                 }
                 "addDrive(${drive.label}) hit $reason — not registered this session"

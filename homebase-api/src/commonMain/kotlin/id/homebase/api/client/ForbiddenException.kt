@@ -15,10 +15,9 @@ class ForbiddenException(
  * Used by the platform uncaught-exception handlers exactly like [isTransientNetworkFailure] and
  * [isRecoverableServerConflict], for a 403 that leaks from a write on a scope with no
  * CoroutineExceptionHandler of its own (a bare `viewModelScope.launch`). Deliberately narrow:
- * 403 only. A 401 stays fatal *to the uncaught handler* — the auth layer already heard about that
- * response through [id.homebase.api.client.auth.AuthFailureReporter], so anything reaching the
- * uncaught handler with one is a path that should have caught it. Walks the cause chain
- * defensively (guards against a cyclic chain).
+ * 403 only. A 401 stays fatal — an invalid token is an auth-state problem the auth layer has to
+ * act on, not something to keep running through. Walks the cause chain defensively (guards
+ * against a cyclic chain).
  */
 fun Throwable.isRecoverablePermissionFailure(): Boolean {
     val seen = HashSet<Throwable>()

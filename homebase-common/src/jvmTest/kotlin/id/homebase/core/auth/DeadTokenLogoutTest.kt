@@ -77,59 +77,6 @@ class DeadTokenLogoutTest {
         assertEquals(2, count)
         assertEquals(0, nextUpgradeAuthFailureCount(count, IOException("Connection reset")))
     }
-
-    // ---------- REST half: the same threshold, fed by OdinApiProviderBase ----------
-
-    @Test
-    fun `consecutive REST 401s reach the threshold and trigger the logout`() {
-        var logouts = 0
-        val counter = RestUnauthorizedCounter { logouts++ }
-
-        repeat(DEAD_TOKEN_THRESHOLD - 1) { counter.onRestUnauthorized() }
-        assertEquals(0, logouts, "below the threshold nothing happens")
-
-        counter.onRestUnauthorized()
-        assertEquals(1, logouts)
-    }
-
-    // The acceptance criterion for the REST path: a session that 401s once an hour for a day must
-    // never log out, because the successful calls in between clear the streak.
-    @Test
-    fun `a 2xx between 401s prevents the streak from ever completing`() {
-        var logouts = 0
-        val counter = RestUnauthorizedCounter { logouts++ }
-
-        repeat(10) {
-            repeat(DEAD_TOKEN_THRESHOLD - 1) { counter.onRestUnauthorized() }
-            counter.onRestAuthorized()
-        }
-
-        assertEquals(0, logouts, "intermittent 401s must not accumulate into a logout")
-    }
-
-    @Test
-    fun `the streak restarts from zero after a 2xx`() {
-        var logouts = 0
-        val counter = RestUnauthorizedCounter { logouts++ }
-
-        repeat(DEAD_TOKEN_THRESHOLD - 1) { counter.onRestUnauthorized() }
-        counter.onRestAuthorized()
-        counter.onRestUnauthorized()
-
-        assertEquals(0, logouts, "one 401 after a reset is one, not DEAD_TOKEN_THRESHOLD")
-    }
-
-    // startDeadTokenLogout() latches internally, but the counter keeps counting while logout runs —
-    // it must not stop reporting, and it must not be the thing that dedupes.
-    @Test
-    fun `401s past the threshold keep firing so the latch downstream owns dedup`() {
-        var logouts = 0
-        val counter = RestUnauthorizedCounter { logouts++ }
-
-        repeat(DEAD_TOKEN_THRESHOLD + 2) { counter.onRestUnauthorized() }
-
-        assertEquals(3, logouts)
-    }
 }
 
 private class CyclicThrowable : RuntimeException("boom") {

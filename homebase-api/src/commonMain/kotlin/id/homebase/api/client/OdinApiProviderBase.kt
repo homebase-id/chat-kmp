@@ -109,25 +109,6 @@ abstract class OdinApiProviderBase(
             throw e
         }
 
-    /**
-     * Route the verdict on this device's app token to whoever registered as the
-     * [id.homebase.api.client.auth.AuthFailureReporter] — one call per response, so a consecutive
-     * count downstream corresponds to distinct server answers.
-     *
-     * Own identity host only. `PeerFileByGlobalTransitProvider`'s CDN fallback answers 401 for
-     * every drive whose AllowCdn is off (the default), and that request carries no token at all —
-     * counting those would log the user out on the first feed scroll.
-     */
-    private suspend fun reportAuthOutcome(response: HttpResponse) {
-        val status = response.status.value
-        if (status != 401 && status !in 200..299) return
-        val ownHost = credentialsManager.getActiveDomain()?.domainName ?: return
-        if (!response.call.request.url.host.equals(ownHost, ignoreCase = true)) return
-
-        if (status == 401) credentialsManager.reportRestUnauthorized()
-        else credentialsManager.reportRestAuthorized()
-    }
-
     protected suspend fun request(
         block: suspend () -> HttpResponse,
         secret: SecureByteArray?
@@ -139,7 +120,6 @@ abstract class OdinApiProviderBase(
             val r = block()
             r to r.body<String>()
         }
-        reportAuthOutcome(response)
 
         // Decrypt when the server flags it (X-SSE) OR the body is unmistakably the shared-secret
         // envelope. The header is the fast path used on native; but browsers strip non-safelisted
@@ -208,7 +188,6 @@ abstract class OdinApiProviderBase(
                 r to r.readRawBytes()
             }
         }
-        reportAuthOutcome(response)
 
         val contentType =
             response.headers["decryptedcontenttype"]

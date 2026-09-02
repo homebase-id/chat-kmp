@@ -7,30 +7,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.concurrent.Volatile
 
 class CredentialsManager {
     private val mutex = Mutex()
     private val storedCredentials = mutableMapOf<String, ApiCredentials>()
 
     private var activeCredentials: ApiCredentials? = null
-
-    // Deliberately outside [mutex]: the report fires from every HTTP response, and taking the
-    // credentials lock there would serialize the whole client on it.
-    @Volatile
-    private var authFailureReporter: AuthFailureReporter? = null
-
-    fun setAuthFailureReporter(reporter: AuthFailureReporter?) {
-        authFailureReporter = reporter
-    }
-
-    fun reportRestUnauthorized() {
-        authFailureReporter?.onRestUnauthorized()
-    }
-
-    fun reportRestAuthorized() {
-        authFailureReporter?.onRestAuthorized()
-    }
 
     private val _credentialsFlow = MutableStateFlow<ApiCredentials?>(null)
     val credentialsFlow: StateFlow<ApiCredentials?> = _credentialsFlow.asStateFlow()
