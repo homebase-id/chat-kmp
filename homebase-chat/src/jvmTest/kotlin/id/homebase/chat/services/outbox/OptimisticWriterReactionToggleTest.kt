@@ -216,10 +216,10 @@ class OptimisticWriterReactionToggleTest {
 
         val (resultType, original) = writer.writeReactionToggle(
             chatDriveId, messageId, reaction
-        )
+        ) { true }
 
         assertEquals(ToggleReactionResultType.Added, resultType)
-        assertNotNull(original, "original should be returned for rollback")
+        assertNotNull(original, "original should be returned once the enqueue succeeded")
 
         val updated = readBack(messageId)
         assertEquals(
@@ -244,7 +244,7 @@ class OptimisticWriterReactionToggleTest {
 
         val (resultType, _) = writer.writeReactionToggle(
             chatDriveId, messageId, reaction
-        )
+        ) { true }
 
         assertEquals(ToggleReactionResultType.Deleted, resultType)
         val updated = readBack(messageId)
@@ -277,7 +277,7 @@ class OptimisticWriterReactionToggleTest {
 
         val (resultType, _) = writer.writeReactionToggle(
             chatDriveId, messageId, reaction
-        )
+        ) { true }
 
         assertEquals(
             ToggleReactionResultType.Added, resultType,
@@ -306,10 +306,10 @@ class OptimisticWriterReactionToggleTest {
 
         val (firstType, _) = writer.writeReactionToggle(
             chatDriveId, messageId, reaction
-        )
+        ) { true }
         val (secondType, _) = writer.writeReactionToggle(
             chatDriveId, messageId, reaction
-        )
+        ) { true }
 
         assertEquals(ToggleReactionResultType.Added, firstType)
         assertEquals(ToggleReactionResultType.Deleted, secondType)
@@ -331,7 +331,7 @@ class OptimisticWriterReactionToggleTest {
 
         val (resultType, original) = writer.writeReactionToggle(
             chatDriveId, nonExistent, emojiJson("😀")
-        )
+        ) { true }
 
         assertEquals(ToggleReactionResultType.None, resultType)
         assertNull(original)
@@ -360,7 +360,7 @@ class OptimisticWriterReactionToggleTest {
 
         val (resultType, _) = writer.writeReactionToggle(
             chatDriveId, messageId, second
-        )
+        ) { true }
 
         assertEquals(ToggleReactionResultType.Added, resultType)
         val updated = readBack(messageId)
@@ -409,7 +409,7 @@ class OptimisticWriterReactionToggleTest {
 
         coroutineScope {
             for (e in emojis) {
-                launch { writer.writeReactionToggle(chatDriveId, messageId, e) }
+                launch { writer.writeReactionToggle(chatDriveId, messageId, e) { true } }
             }
         }
 

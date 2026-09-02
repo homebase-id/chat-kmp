@@ -59,8 +59,8 @@ class PostReactionService(
         )
 
     // A followed post has no uniqueId, so the optimistic write can never resolve its row. That miss must
-    // not block the send, which only needs (driveId, fileId). Throws on send failure so the caller can
-    // undo the optimistic UI flip it made before calling.
+    // not block the send, which only needs (driveId, fileId). Throws on a refused enqueue so the caller
+    // can undo the optimistic UI flip it made before calling; the local row is untouched by then.
     private suspend fun toggleInternal(
         driveId: Uuid,
         targetUniqueId: Uuid,
@@ -73,29 +73,29 @@ class PostReactionService(
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
 
-        val (resultType, original) = optimisticWriter.writeReactionToggle(
-            driveId, targetUniqueId, reactionJson,
-        )
-        if (original == null && hasUniqueId) return ToggleReactionResult(resultType = resultType)
-
         try {
             val recipients = resolveRecipients(authorOdinId)
-            val enqueued = outboxSync.tryEnqueue(
-                request = ToggleReactionOutboxRequest(
-                    driveId = driveId,
-                    fileId = original?.fileId ?: fileId,
-                    reaction = reactionJson,
-                    recipients = recipients,
-                ),
-            )
-            check(enqueued.enqueued) { "outbox enqueue -> $enqueued" }
+            val enqueue: suspend (Uuid) -> Boolean = { targetFileId ->
+                val enqueued = outboxSync.tryEnqueue(
+                    request = ToggleReactionOutboxRequest(
+                        driveId = driveId,
+                        fileId = targetFileId,
+                        reaction = reactionJson,
+                        recipients = recipients,
+                    ),
+                )
+                check(enqueued.enqueued) { "outbox enqueue -> $enqueued" }
+                true
+            }
+            val (resultType, original) = optimisticWriter.writeReactionToggle(
+                driveId, targetUniqueId, reactionJson,
+            ) { original -> enqueue(original.fileId) }
+            if (original == null && !hasUniqueId) enqueue(fileId)
+            return ToggleReactionResult(resultType = resultType)
         } catch (t: Throwable) {
             Logger.e(throwable = t, tag = TAG) { "toggleReaction failed to enqueue: ${t.message}" }
-            original?.let { runCatching { optimisticWriter.rollbackWrite(driveId, it) } }
             throw t
         }
-
-        return ToggleReactionResult(resultType = resultType)
     }
 
 

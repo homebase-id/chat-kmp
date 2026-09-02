@@ -266,7 +266,7 @@ class MessagePinTagTest {
                 dbm = fixture.dbm,
                 eventBus = fixture.eventBus,
                 outboxSync = fixture.outboxSync,
-            ).writeDelete(fixture.chatDriveId, newest)
+            ).writeDelete(fixture.chatDriveId, newest) { true }
 
             assertEquals(
                 listOf(middle, older),

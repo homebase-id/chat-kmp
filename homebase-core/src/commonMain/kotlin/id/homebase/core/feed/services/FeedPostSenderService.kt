@@ -21,24 +21,23 @@ class FeedPostSenderService(
     }
 
     suspend fun deletePost(channelId: Uuid, postUniqueId: Uuid) {
-        val original = optimisticWriter.writeDelete(channelId, postUniqueId)
-        if (original == null) {
-            Logger.w(tag = TAG) { "deletePost: post $postUniqueId not found locally" }
-            return
+        val original = optimisticWriter.writeDelete(channelId, postUniqueId) { original ->
+            // recipients null = local + own-host removal.
+            val postDelete = outboxSync.tryEnqueue(
+                request = DeleteLocalFilesByFileIdRequest(
+                    driveId = channelId,
+                    fileIds = listOf(original.fileId),
+                    recipients = null,
+                    hardDelete = false,
+                ),
+            )
+            if (!postDelete.enqueued) {
+                Logger.w(tag = TAG) { "deletePost: post delete enqueue -> $postDelete; post not deleted" }
+            }
+            postDelete.enqueued
         }
-
-        // recipients null = local + own-host removal.
-        val postDelete = outboxSync.tryEnqueue(
-            request = DeleteLocalFilesByFileIdRequest(
-                driveId = channelId,
-                fileIds = listOf(original.fileId),
-                recipients = null,
-                hardDelete = false,
-            ),
-        )
-        if (!postDelete.enqueued) {
-            Logger.w(tag = TAG) { "deletePost: post delete enqueue -> $postDelete; rolling back" }
-            optimisticWriter.rollbackWrite(channelId, original)
+        if (original == null) {
+            Logger.w(tag = TAG) { "deletePost: post $postUniqueId not found locally or not queued" }
             return
         }
 

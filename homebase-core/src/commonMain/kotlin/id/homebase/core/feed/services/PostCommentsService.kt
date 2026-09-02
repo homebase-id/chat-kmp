@@ -549,22 +549,23 @@ class PostCommentsService(
         val groupId = existing.fileMetadata.appData.groupId
         val recipients = groupId?.let { resolveCommentRecipients(drive, it) }.orEmpty()
 
-        val original = optimisticWriter.writeDelete(drive, commentUniqueId) ?: return
         try {
-            val enqueued = outboxSync.tryEnqueue(
-                request = id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest(
-                    driveId = drive,
-                    fileIds = listOf(original.fileId),
-                    recipients = recipients.ifEmpty { null },
-                    hardDelete = false,
-                ),
-            )
-            if (!enqueued.enqueued) {
-                optimisticWriter.rollbackWrite(drive, original)
+            optimisticWriter.writeDelete(drive, commentUniqueId) { original ->
+                val enqueued = outboxSync.tryEnqueue(
+                    request = id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest(
+                        driveId = drive,
+                        fileIds = listOf(original.fileId),
+                        recipients = recipients.ifEmpty { null },
+                        hardDelete = false,
+                    ),
+                )
+                if (!enqueued.enqueued) {
+                    Logger.w(tag = TAG) { "removeComment: outbox enqueue -> $enqueued; comment not removed" }
+                }
+                enqueued.enqueued
             }
         } catch (t: Throwable) {
             Logger.e(throwable = t, tag = TAG) { "removeComment failed to enqueue: ${t.message}" }
-            runCatching { optimisticWriter.rollbackWrite(drive, original) }
         }
     }
 
