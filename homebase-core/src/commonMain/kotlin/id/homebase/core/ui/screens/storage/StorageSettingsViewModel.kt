@@ -8,7 +8,7 @@ import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.file.CacheAudit
 import id.homebase.api.file.CacheSweeper
 import id.homebase.api.file.FileOperationsProvider
@@ -30,7 +30,7 @@ import okio.Path.Companion.toPath
 import kotlin.uuid.Uuid
 
 class StorageSettingsViewModel(
-    private val publicProfileProviderCached: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     private val driveFileProviderCached: DriveFileProviderCached,
     private val driveSyncManager: DriveSyncManager,
     private val credentialsManager: CredentialsManager,
@@ -76,7 +76,7 @@ class StorageSettingsViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
-            val profileStats = runCatching { publicProfileProviderCached.getCacheStats() }
+            val profileStats = runCatching { contactInfo.getCacheStats() }
                 .getOrElse {
                     Logger.w(tag = "StorageSettings", throwable = it) { "profile cache stats failed" }
                     emptyList()
@@ -207,7 +207,7 @@ class StorageSettingsViewModel(
         if (_uiState.value.isClearing) return
         viewModelScope.launch {
             _uiState.update { it.copy(isClearing = true) }
-            runCatching { publicProfileProviderCached.clearCaches() }
+            runCatching { contactInfo.clearCaches() }
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "profile clearCaches failed" } }
             runCatching { driveFileProviderCached.clearCaches() }
                 .onFailure { Logger.w(tag = "StorageSettings", throwable = it) { "drive clearCaches failed" } }

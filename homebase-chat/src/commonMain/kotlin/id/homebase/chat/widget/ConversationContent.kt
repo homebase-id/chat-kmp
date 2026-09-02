@@ -114,7 +114,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.compose.ui.unit.sp
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.data.MessageUiModel
 import kotlinx.collections.immutable.ImmutableList
@@ -2137,14 +2137,14 @@ private fun ConnectIdentityRow(
     rowState: AutoConnectRowState?,
     onAutoConnect: () -> Unit,
 ) {
-    val profileProvider = koinInject<PublicProfileProvider>()
+    val contactInfo = koinInject<ContactInfoGateway>()
     var resolvedName by remember(odinId) { mutableStateOf(odinId.domainName) }
 
     LaunchedEffect(odinId) {
-        try {
-            resolvedName = profileProvider.getPublicProfile(odinId).name
-        } catch (_: Exception) {
-        }
+        runCatching { contactInfo.displayName(odinId) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { resolvedName = it }
     }
 
     Row(
