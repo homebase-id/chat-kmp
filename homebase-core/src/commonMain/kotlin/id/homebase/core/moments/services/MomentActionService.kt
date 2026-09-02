@@ -3,19 +3,15 @@ package id.homebase.core.moments.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.widget.EmojiReaction
@@ -48,7 +44,6 @@ class MomentActionService(
     private val driveFileProvider: DriveFileProvider,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val optimisticWriter: OptimisticWriter,
-    private val outboxSync: OutboxSync,
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
 ) {
@@ -82,19 +77,10 @@ class MomentActionService(
         }
 
     /**
-     * Shared toggle implementation: optimistic write on the target file's
-     * `reactionPreview` first (so the UI updates instantly via the
-     * `BatchReceived` event the writer emits), then resolve the parent
-     * moment id and recipients from the local DB, enqueue a
-     * [ToggleReactionOutboxRequest], roll back the optimistic write on
-     * failure. Mirrors `ChatMessageActionService.toggleReaction` — both the
-     * old upfront `getFileHeaderByUid(target)` and the old `resolveAudience`
-     * variant that called `getFileHeaderByUid(moment)` were network round-
-     * trips that gated the optimistic UI update; the chat path moved them
-     * out of the hot path for the same reason.
-     *
-     * `parentMomentFor` extracts the parent moment id from the *original*
-     * (pre-toggle) file returned by the optimistic writer: for a moment
+     * Shared toggle implementation. Recipients resolve from the parent moment
+     * on the local DB — the old upfront `getFileHeaderByUid` calls were
+     * network round-trips gating the tap. `parentMomentFor` extracts the
+     * parent moment id from the *original* (pre-toggle) file: for a moment
      * that's the uniqueId itself, for a comment that's `appData.groupId`.
      */
     private suspend fun toggleReactionInternal(
@@ -108,34 +94,11 @@ class MomentActionService(
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
 
-        val (resultType, original) = optimisticWriter.writeReactionToggle(
-            drive,
-            targetUniqueId,
-            reactionJson,
-        )
-        if (original == null) return ToggleReactionResult(resultType = resultType)
-
-        try {
+        val (resultType, _) = optimisticWriter.toggleReaction(drive, targetUniqueId, reactionJson) { original ->
             val parentMomentId = parentMomentFor(original)
                 ?: throw IllegalStateException("missing parent moment for $targetUniqueId")
-            val recipients = resolveAudienceLocal(parentMomentId)
-            val enqueued = outboxSync.tryEnqueue(
-                request = ToggleReactionOutboxRequest(
-                    driveId = drive,
-                    fileId = original.fileId,
-                    reaction = reactionJson,
-                    recipients = recipients,
-                ),
-            )
-            if (!enqueued.enqueued) {
-                Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; rolling back optimistic write" }
-                optimisticWriter.rollbackWrite(drive, original)
-            }
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "toggleReaction failed to enqueue: ${t.message}" }
-            runCatching { optimisticWriter.rollbackWrite(drive, original) }
+            resolveAudienceLocal(parentMomentId)
         }
-
         return ToggleReactionResult(resultType = resultType)
     }
 
@@ -149,7 +112,7 @@ class MomentActionService(
      *  - Outbox enqueues a [DeleteLocalFilesByFileIdRequest]; recipients are
      *    the full moment audience minus self when [deleteForEveryone], or null
      *    for a local-only delete.
-     *  - Rollback on enqueue failure restores the original local row.
+     *  - A refused enqueue leaves the local row untouched.
      *
      * The caller is responsible for gating "for everyone" on whether the user
      * actually sent the moment — the service does not re-check that here
@@ -203,25 +166,7 @@ class MomentActionService(
             null
         }
 
-        val original = optimisticWriter.writeDelete(drive, commentId) ?: return
-
-        try {
-            val enqueued = outboxSync.tryEnqueue(
-                request = DeleteLocalFilesByFileIdRequest(
-                    driveId = drive,
-                    fileIds = listOf(original.fileId),
-                    recipients = recipients,
-                    hardDelete = false,
-                ),
-            )
-            if (!enqueued.enqueued) {
-                Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; rolling back optimistic write" }
-                optimisticWriter.rollbackWrite(drive, original)
-            }
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "deleteComment failed to enqueue: ${t.message}" }
-            runCatching { optimisticWriter.rollbackWrite(drive, original) }
-        }
+        optimisticWriter.deleteFile(drive, commentId, recipients)
     }
 
     suspend fun deleteMoment(momentId: Uuid, deleteForEveryone: Boolean) {
@@ -237,25 +182,7 @@ class MomentActionService(
             null
         }
 
-        val original = optimisticWriter.writeDelete(drive, momentId) ?: return
-
-        try {
-            val enqueued = outboxSync.tryEnqueue(
-                request = DeleteLocalFilesByFileIdRequest(
-                    driveId = drive,
-                    fileIds = listOf(original.fileId),
-                    recipients = recipients,
-                    hardDelete = false,
-                ),
-            )
-            if (!enqueued.enqueued) {
-                Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; rolling back optimistic write" }
-                optimisticWriter.rollbackWrite(drive, original)
-            }
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "deleteMoment failed to enqueue: ${t.message}" }
-            runCatching { optimisticWriter.rollbackWrite(drive, original) }
-        }
+        optimisticWriter.deleteFile(drive, momentId, recipients)
     }
 
     // -------------------- LIST --------------------

@@ -105,6 +105,24 @@ class MessageAttachmentBuilderTrimTest {
     }
 
     @Test
+    fun videoAttachmentInput_forwardsInputBlobUrlUntouched() = runTest {
+        // The builder is a pass-through; the blob:-only guard lives in VideoPayloadProcessor.
+        val input = AttachmentInput(
+            filePath = "/tmp/some_clip.mp4",
+            contentType = "video/mp4",
+            inputBlobUrl = "blob:https://app.example/0c1d2e3f",
+        )
+
+        val bundle = MessageAttachmentBuilder.buildSingle(
+            attachment = input,
+            fileOperationsProvider = fakeFs,
+            payloadKey = "chat_web0",
+        )
+
+        assertEquals("blob:https://app.example/0c1d2e3f", bundle.payloads.single().inputBlobUrl)
+    }
+
+    @Test
     fun fileAttachmentInput_doesNotInventTrim() = runTest {
         // Non-video, non-image, non-audio takes the same builder branch as video
         // (the `else ->` clause) but with content-type that signals "no trim".
