@@ -3,6 +3,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.util.isBlobUrl
 import kotlin.io.encoding.Base64
 import kotlin.js.Promise
 import kotlinx.coroutines.await
@@ -94,7 +95,7 @@ private class VideoUrlHandle private constructor(val url: String, private val ow
 
     companion object {
         fun resolve(videoPath: String): VideoUrlHandle? {
-            if (videoPath.startsWith("blob:")) return VideoUrlHandle(videoPath, owned = false)
+            if (videoPath.isBlobUrl()) return VideoUrlHandle(videoPath, owned = false)
             val bytes = readOkioBytes(videoPath) ?: return null
             val url = objectUrlFromBytesJs(Base64.encode(bytes), mimeFromPath(videoPath))
             return VideoUrlHandle(url, owned = true)
