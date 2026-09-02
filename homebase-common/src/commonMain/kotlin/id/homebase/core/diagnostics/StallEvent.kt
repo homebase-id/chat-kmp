@@ -12,7 +12,34 @@ internal data class StallEvent(
     val source: StallSource,
     val observedMs: Long,
     val memory: MemoryDiagnostics.Snapshot? = null,
+    val processDelta: ProcessTimes? = null,
 )
+
+/**
+ * Process CPU time and continuous (sleep-inclusive) wall time, sampled either side of the
+ * watchdog's own suspend point. The pair is what lets a [StallKind.WatchdogStarved] gap say
+ * whether the OS suspended the whole process or the process froze itself.
+ */
+internal data class ProcessTimes(val cpuMs: Long, val continuousMs: Long)
+
+/** Reads this process's cumulative CPU and continuous-clock times, or `null` where unavailable. */
+internal expect fun captureProcessTimes(): ProcessTimes?
+
+internal fun processTimesDelta(before: ProcessTimes?, after: ProcessTimes?): ProcessTimes? {
+    if (before == null || after == null) return null
+    return ProcessTimes(
+        cpuMs = after.cpuMs - before.cpuMs,
+        continuousMs = after.continuousMs - before.continuousMs,
+    )
+}
+
+/**
+ * A gap the process was suspended through burns essentially no CPU; one it spun through burns
+ * CPU roughly in step with the wall clock. That difference is the only thing that separates
+ * "iOS held our foreground request" from "we wedged ourselves".
+ */
+internal fun classifyStallCause(delta: ProcessTimes, cpuShareThreshold: Double = 0.25): String =
+    if (delta.cpuMs < delta.continuousMs * cpuShareThreshold) "OS-SUSPENDED" else "SELF-STALLED"
 
 /**
  * Given the gap this loop iteration expected to sleep for ([expectedGapMs], i.e.
@@ -43,8 +70,11 @@ internal fun renderStallMessage(event: StallEvent, stack: String?): String = bui
         }
 
         StallKind.WatchdogStarved -> {
+            val cause = event.processDelta?.let {
+                ", ${classifyStallCause(it)}: cpu +${it.cpuMs}ms over ${it.continuousMs}ms wall"
+            }.orEmpty()
             appendLine(
-                "${prefix}Process/dispatchers stalled ~${event.observedMs}ms (watchdog starved) — " +
+                "${prefix}Process/dispatchers stalled ~${event.observedMs}ms (watchdog starved$cause) — " +
                     "the watchdog's own loop was delayed; likely Dispatchers.Default pool " +
                     "exhaustion or an OS-level freeze."
             )
