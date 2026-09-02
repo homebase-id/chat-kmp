@@ -4,5 +4,3 @@ package id.homebase.core.diagnostics
 // stack the way the JVM/native actuals do — there is nothing to render. Returning null matches
 // the expect's contract for platforms that can't capture a foreign thread's stack.
 internal actual fun captureMainThreadStackTrace(maxFrames: Int): String? = null
-
-internal actual fun captureProcessTimes(): ProcessTimes? = null

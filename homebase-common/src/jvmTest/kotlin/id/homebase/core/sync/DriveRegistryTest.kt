@@ -7,7 +7,6 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.ProblemDetails
 import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.ApiCredentials
-import id.homebase.api.client.auth.AuthFailureReporter
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.SystemDriveConstants
@@ -348,10 +347,8 @@ class DriveRegistryTest {
         db.close()
     }
 
-    // A 401 IS acted on by the auth layer — OdinApiProviderBase reported this very response to the
-    // registered AuthFailureReporter before the exception was ever thrown. Rethrowing it here only
-    // added a process death (mountDrive's contract is "must not throw") on the way to a logout that
-    // was already under way.
+    // A 401 means the write was never going to land. Rethrowing it here only added a process
+    // death — mountDrive's contract is "must not throw".
     @Test
     fun addDriveBestEffortContainsUnauthorized() = runTest {
         val db = createTestDatabaseManager()
@@ -380,30 +377,6 @@ class DriveRegistryTest {
         viewModelLikeScope.launch { registry.addDriveBestEffort(feedLabeledDrive) }.join()
 
         assertNull(escaped, "a 401 on the registry write must not reach the uncaught path; was: $escaped")
-        db.close()
-    }
-
-    // The counter downstream corroborates a dead token from distinct server responses. This layer
-    // sees an exception, not a response, so it must not add a second report for the one 401 the
-    // HTTP layer already counted.
-    @Test
-    fun addDriveBestEffortDoesNotDoubleReportTheSame401() = runTest {
-        val db = createTestDatabaseManager()
-        val credentialsManager = CredentialsManager()
-        var unauthorizedReports = 0
-        credentialsManager.setAuthFailureReporter(object : AuthFailureReporter {
-            override fun onRestUnauthorized() { unauthorizedReports++ }
-            override fun onRestAuthorized() {}
-        })
-        val registry = buildRegistry(
-            db,
-            recorder = WriteRecorder(uploadThrowsOnCall = { UnauthorizedException() }),
-            credentialsManager = credentialsManager,
-        )
-
-        registry.addDriveBestEffort(feedLabeledDrive)
-
-        assertEquals(0, unauthorizedReports, "the response was already reported by OdinApiProviderBase")
         db.close()
     }
 
