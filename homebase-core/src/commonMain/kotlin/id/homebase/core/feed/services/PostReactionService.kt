@@ -14,6 +14,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.api.util.codePointCount
+import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.widget.EmojiReaction
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,8 +60,8 @@ class PostReactionService(
         )
 
     // A followed post has no uniqueId, so the optimistic write can never resolve its row. That miss must
-    // not block the send, which only needs (driveId, fileId). Throws on send failure so the caller can
-    // undo the optimistic UI flip it made before calling.
+    // not block the send, which only needs (driveId, fileId). Throws on a refused enqueue so the caller
+    // can undo the optimistic UI flip it made before calling; the local row is untouched by then.
     private suspend fun toggleInternal(
         driveId: Uuid,
         targetUniqueId: Uuid,
@@ -73,28 +74,25 @@ class PostReactionService(
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
 
-        val (resultType, original) = optimisticWriter.writeReactionToggle(
+        val recipients = resolveRecipients(authorOdinId)
+        val (resultType, outcome) = optimisticWriter.toggleReaction(
             driveId, targetUniqueId, reactionJson,
-        )
-        if (original == null && hasUniqueId) return ToggleReactionResult(resultType = resultType)
-
-        try {
-            val recipients = resolveRecipients(authorOdinId)
-            val enqueued = outboxSync.tryEnqueue(
-                request = ToggleReactionOutboxRequest(
-                    driveId = driveId,
-                    fileId = original?.fileId ?: fileId,
-                    reaction = reactionJson,
-                    recipients = recipients,
-                ),
-            )
-            check(enqueued.enqueued) { "outbox enqueue -> $enqueued" }
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "toggleReaction failed to enqueue: ${t.message}" }
-            original?.let { runCatching { optimisticWriter.rollbackWrite(driveId, it) } }
-            throw t
+        ) { recipients }
+        when (outcome) {
+            MutationOutcome.Queued -> Unit
+            is MutationOutcome.Refused -> throw IllegalStateException("outbox enqueue refused", outcome.cause)
+            MutationOutcome.NoRow -> if (!hasUniqueId) {
+                val enqueued = outboxSync.tryEnqueue(
+                    request = ToggleReactionOutboxRequest(
+                        driveId = driveId,
+                        fileId = fileId,
+                        reaction = reactionJson,
+                        recipients = recipients,
+                    ),
+                )
+                check(enqueued.enqueued) { "outbox enqueue -> $enqueued" }
+            }
         }
-
         return ToggleReactionResult(resultType = resultType)
     }
 
