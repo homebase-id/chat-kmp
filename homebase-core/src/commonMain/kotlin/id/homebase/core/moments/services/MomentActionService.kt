@@ -3,19 +3,15 @@ package id.homebase.core.moments.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
-import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.config.momentsLabeledDrive
 import id.homebase.core.widget.EmojiReaction
@@ -48,7 +44,6 @@ class MomentActionService(
     private val driveFileProvider: DriveFileProvider,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val optimisticWriter: OptimisticWriter,
-    private val outboxSync: OutboxSync,
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
 ) {
@@ -82,16 +77,11 @@ class MomentActionService(
         }
 
     /**
-     * Shared toggle implementation: the writer reads the target row, the
-     * enqueue callback resolves the parent moment id and recipients from the
-     * local DB and queues a [ToggleReactionOutboxRequest], and only then does
-     * the optimistic `reactionPreview` write land (emitting `BatchReceived`
-     * for the UI). Everything stays on the local DB — the old upfront
-     * `getFileHeaderByUid` calls were network round-trips gating the tap.
-     *
-     * `parentMomentFor` extracts the parent moment id from the *original*
-     * (pre-toggle) file: for a moment that's the uniqueId itself, for a
-     * comment that's `appData.groupId`.
+     * Shared toggle implementation. Recipients resolve from the parent moment
+     * on the local DB — the old upfront `getFileHeaderByUid` calls were
+     * network round-trips gating the tap. `parentMomentFor` extracts the
+     * parent moment id from the *original* (pre-toggle) file: for a moment
+     * that's the uniqueId itself, for a comment that's `appData.groupId`.
      */
     private suspend fun toggleReactionInternal(
         targetUniqueId: Uuid,
@@ -104,29 +94,11 @@ class MomentActionService(
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
 
-        val (resultType, _) = try {
-            optimisticWriter.writeReactionToggle(drive, targetUniqueId, reactionJson) { original ->
-                val parentMomentId = parentMomentFor(original)
-                    ?: throw IllegalStateException("missing parent moment for $targetUniqueId")
-                val recipients = resolveAudienceLocal(parentMomentId)
-                val enqueued = outboxSync.tryEnqueue(
-                    request = ToggleReactionOutboxRequest(
-                        driveId = drive,
-                        fileId = original.fileId,
-                        reaction = reactionJson,
-                        recipients = recipients,
-                    ),
-                )
-                if (!enqueued.enqueued) {
-                    Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; reaction not applied" }
-                }
-                enqueued.enqueued
-            }
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "toggleReaction failed to enqueue: ${t.message}" }
-            return ToggleReactionResult(resultType = ToggleReactionResultType.None)
+        val (resultType, _) = optimisticWriter.toggleReaction(drive, targetUniqueId, reactionJson) { original ->
+            val parentMomentId = parentMomentFor(original)
+                ?: throw IllegalStateException("missing parent moment for $targetUniqueId")
+            resolveAudienceLocal(parentMomentId)
         }
-
         return ToggleReactionResult(resultType = resultType)
     }
 
@@ -194,13 +166,7 @@ class MomentActionService(
             null
         }
 
-        try {
-            optimisticWriter.writeDelete(drive, commentId) { original ->
-                enqueueDelete(original.fileId, recipients)
-            }
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "deleteComment failed to enqueue: ${t.message}" }
-        }
+        optimisticWriter.deleteFile(drive, commentId, recipients)
     }
 
     suspend fun deleteMoment(momentId: Uuid, deleteForEveryone: Boolean) {
@@ -216,28 +182,7 @@ class MomentActionService(
             null
         }
 
-        try {
-            optimisticWriter.writeDelete(drive, momentId) { original ->
-                enqueueDelete(original.fileId, recipients)
-            }
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "deleteMoment failed to enqueue: ${t.message}" }
-        }
-    }
-
-    private suspend fun enqueueDelete(fileId: Uuid, recipients: List<OdinId>?): Boolean {
-        val enqueued = outboxSync.tryEnqueue(
-            request = DeleteLocalFilesByFileIdRequest(
-                driveId = drive,
-                fileIds = listOf(fileId),
-                recipients = recipients,
-                hardDelete = false,
-            ),
-        )
-        if (!enqueued.enqueued) {
-            Logger.w(tag = TAG) { "outbox enqueue -> $enqueued; delete not applied" }
-        }
-        return enqueued.enqueued
+        optimisticWriter.deleteFile(drive, momentId, recipients)
     }
 
     // -------------------- LIST --------------------

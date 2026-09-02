@@ -10,8 +10,6 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -25,14 +23,12 @@ import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
-import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -45,10 +41,9 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * The outbox enqueue is the gate for an optimistic mutation: the writer reads the
- * row, hands it to the enqueue callback, and mutates only once that reports a
- * durable enqueue. A refused (or throwing) enqueue leaves the row untouched, so
- * there is no local state that the server will never learn about — and nothing
- * to roll back.
+ * row, queues the server request, and mutates only once that enqueue is durable.
+ * A refused (or throwing) enqueue leaves the row untouched, so there is no local
+ * state the server will never learn about — and nothing to roll back.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class OptimisticWriterEnqueueGateTest {
@@ -62,12 +57,10 @@ class OptimisticWriterEnqueueGateTest {
             val eventsBefore = fx.received.size
 
             fx.failOutboxInserts.set(true)
-            val result = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId) { original ->
-                fx.outboxSync.tryEnqueue(fx.deleteRequest(original)).enqueued
-            }
+            val outcome = fx.optimisticWriter.deleteFile(fx.chatDriveId, messageId, recipients = null)
             fx.failOutboxInserts.set(false)
 
-            assertNull(result, "a refused enqueue must report nothing deleted")
+            assertIs<MutationOutcome.Refused>(outcome)
             assertEquals(0L, fx.dbm.outbox.count(), "the refused enqueue left no outbox row")
             val row = fx.readRow(messageId)
             assertFalse(row.isSoftDeleted(), "the row must not be soft-deleted")
@@ -78,41 +71,20 @@ class OptimisticWriterEnqueueGateTest {
         }
     }
 
-    /** Recipient resolution failing inside the callback is the same as a refusal. */
+    /** Observed at the SQL level: the row is still active when `INSERT INTO Outbox` runs. */
     @Test
-    fun delete_throwingEnqueue_propagatesAndLeavesTheRowUntouched() = runTest {
-        Fixture().use { fx ->
-            fx.build(this)
-            val messageId = fx.seedMessage()
-
-            assertFailsWith<IllegalStateException> {
-                fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId) {
-                    error("no conversation found")
-                }
-            }
-
-            assertFalse(fx.readRow(messageId).isSoftDeleted())
-            assertEquals(0L, fx.dbm.outbox.count())
-        }
-    }
-
-    @Test
-    fun delete_enqueueSeesThePreDeleteRow_andTheWriteLandsAfterIt() = runTest {
+    fun delete_enqueueIsDurableBeforeTheRowIsMutated() = runTest {
         Fixture().use { fx ->
             fx.build(this)
             val messageId = fx.seedMessage(updatedMs = 100_000L)
+            val activeState = fx.readIndexRow(messageId).fileState
 
-            var rowInsideEnqueue: HomebaseFile? = null
-            val result = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId) { original ->
-                rowInsideEnqueue = fx.readRow(messageId)
-                fx.outboxSync.tryEnqueue(fx.deleteRequest(original)).enqueued
-            }
+            var stateAtEnqueue: Long? = null
+            fx.driver.onOutboxInsert = { stateAtEnqueue = fx.driver.rawFileState() }
+            val outcome = fx.optimisticWriter.deleteFile(fx.chatDriveId, messageId, recipients = null)
 
-            assertNotNull(result, "an accepted enqueue must report the original")
-            assertFalse(
-                rowInsideEnqueue!!.isSoftDeleted(),
-                "the local write must not land before the enqueue is durable",
-            )
+            assertEquals(MutationOutcome.Queued, outcome)
+            assertEquals(activeState, stateAtEnqueue, "the local write must not land before the enqueue")
             assertEquals(1L, fx.dbm.outbox.count())
             assertTrue(fx.readRow(messageId).isSoftDeleted())
             assertEquals(100_001L, fx.readIndexRow(messageId).modified)
@@ -120,55 +92,14 @@ class OptimisticWriterEnqueueGateTest {
     }
 
     @Test
-    fun delete_missingRow_neverCallsEnqueue() = runTest {
+    fun delete_missingRow_neverTouchesTheOutbox() = runTest {
         Fixture().use { fx ->
             fx.build(this)
 
-            var called = false
-            val result = fx.optimisticWriter.writeDelete(fx.chatDriveId, Uuid.random()) {
-                called = true
-                true
-            }
+            val outcome = fx.optimisticWriter.deleteFile(fx.chatDriveId, Uuid.random(), recipients = null)
 
-            assertNull(result)
-            assertFalse(called, "there is nothing to delete, so nothing may be queued")
-        }
-    }
-
-    /**
-     * A host write that lands between the read and the optimistic upsert owns the
-     * row: the monotonic guard drops the optimistic copy, and observers must not
-     * be shown it either.
-     */
-    @Test
-    fun delete_hostWriteDuringEnqueue_winsAndIsNotEmittedOver() = runTest {
-        Fixture().use { fx ->
-            fx.build(this)
-            val messageId = fx.seedMessage(updatedMs = 100_000L)
-            advanceUntilIdle()
-            val batchesBefore = fx.received.count { it is BackendEvent.DataEvent.BatchReceived }
-
-            val result = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId) { original ->
-                fx.seedMessage(
-                    messageId = messageId,
-                    fileId = original.fileId,
-                    updatedMs = 200_000L,
-                    content = "edited on another device",
-                )
-                fx.outboxSync.tryEnqueue(fx.deleteRequest(original)).enqueued
-            }
-            advanceUntilIdle()
-
-            assertNotNull(result, "the delete was queued")
-            val row = fx.readRow(messageId)
-            assertFalse(row.isSoftDeleted(), "the newer host row must stand")
-            assertEquals("edited on another device", row.fileMetadata.appData.content)
-            assertEquals(200_000L, fx.readIndexRow(messageId).modified)
-            assertEquals(
-                batchesBefore,
-                fx.received.count { it is BackendEvent.DataEvent.BatchReceived },
-                "the dropped optimistic copy must not be emitted to observers",
-            )
+            assertEquals(MutationOutcome.NoRow, outcome)
+            assertEquals(0L, fx.dbm.outbox.count(), "there is nothing to delete, so nothing may be queued")
         }
     }
 
@@ -181,13 +112,13 @@ class OptimisticWriterEnqueueGateTest {
             val eventsBefore = fx.received.size
 
             fx.failOutboxInserts.set(true)
-            val (resultType, original) = fx.optimisticWriter.writeReactionToggle(
+            val (resultType, outcome) = fx.optimisticWriter.toggleReaction(
                 fx.chatDriveId, messageId, fx.heart,
-            ) { file -> fx.outboxSync.tryEnqueue(fx.reactionRequest(file)).enqueued }
+            ) { emptyList() }
             fx.failOutboxInserts.set(false)
 
             assertEquals(ToggleReactionResultType.None, resultType)
-            assertNull(original)
+            assertIs<MutationOutcome.Refused>(outcome)
             assertEquals(0L, fx.dbm.outbox.count())
             val row = fx.readRow(messageId)
             assertTrue(row.fileMetadata.localAppData?.localReactions.isNullOrEmpty())
@@ -198,27 +129,88 @@ class OptimisticWriterEnqueueGateTest {
         }
     }
 
+    /** Recipient resolution failing is a refusal like any other. */
     @Test
-    fun reaction_enqueueSeesThePreToggleRow_andTheWriteLandsAfterIt() = runTest {
+    fun reaction_throwingRecipients_isRefusedAndLeavesTheRowUntouched() = runTest {
         Fixture().use { fx ->
             fx.build(this)
             val messageId = fx.seedMessage()
 
-            var reactionsInsideEnqueue: List<String>? = null
-            val (resultType, original) = fx.optimisticWriter.writeReactionToggle(
+            val (resultType, outcome) = fx.optimisticWriter.toggleReaction(
                 fx.chatDriveId, messageId, fx.heart,
-            ) { file ->
-                reactionsInsideEnqueue = fx.readRow(messageId).fileMetadata.localAppData?.localReactions
-                fx.outboxSync.tryEnqueue(fx.reactionRequest(file)).enqueued
+            ) { error("no conversation found") }
+
+            assertEquals(ToggleReactionResultType.None, resultType)
+            assertIs<MutationOutcome.Refused>(outcome)
+            assertIs<IllegalStateException>(outcome.cause)
+            assertEquals(0L, fx.dbm.outbox.count())
+            assertTrue(fx.readRow(messageId).fileMetadata.localAppData?.localReactions.isNullOrEmpty())
+        }
+    }
+
+    @Test
+    fun reaction_recipientsSeeThePreToggleRow_andTheWriteLandsAfter() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage()
+
+            var reactionsInsideGate: List<String>? = null
+            val (resultType, outcome) = fx.optimisticWriter.toggleReaction(
+                fx.chatDriveId, messageId, fx.heart,
+            ) {
+                reactionsInsideGate = fx.readRow(messageId).fileMetadata.localAppData?.localReactions
+                emptyList()
             }
 
             assertEquals(ToggleReactionResultType.Added, resultType)
-            assertNotNull(original)
-            assertTrue(reactionsInsideEnqueue.isNullOrEmpty(), "the toggle must not land before the enqueue")
+            assertEquals(MutationOutcome.Queued, outcome)
+            assertTrue(reactionsInsideGate.isNullOrEmpty(), "the toggle must not land before the enqueue")
             assertEquals(1L, fx.dbm.outbox.count())
             assertEquals(
                 listOf(fx.heart),
                 fx.readRow(messageId).fileMetadata.localAppData?.localReactions,
+            )
+        }
+    }
+
+    /**
+     * A host write that lands between the read and the optimistic upsert owns the
+     * row: the monotonic guard drops the optimistic copy, and observers must not
+     * be shown it either.
+     */
+    @Test
+    fun reaction_hostWriteDuringEnqueue_winsAndIsNotEmittedOver() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage(updatedMs = 100_000L)
+            advanceUntilIdle()
+            val batchesBefore = fx.received.count { it is BackendEvent.DataEvent.BatchReceived }
+
+            val (_, outcome) = fx.optimisticWriter.toggleReaction(
+                fx.chatDriveId, messageId, fx.heart,
+            ) { original ->
+                fx.seedMessage(
+                    messageId = messageId,
+                    fileId = original.fileId,
+                    updatedMs = 200_000L,
+                    content = "edited on another device",
+                )
+                emptyList()
+            }
+            advanceUntilIdle()
+
+            assertEquals(MutationOutcome.Queued, outcome, "the toggle was queued")
+            val row = fx.readRow(messageId)
+            assertTrue(
+                row.fileMetadata.localAppData?.localReactions.isNullOrEmpty(),
+                "the newer host row must stand",
+            )
+            assertEquals("edited on another device", row.fileMetadata.appData.content)
+            assertEquals(200_000L, fx.readIndexRow(messageId).modified)
+            assertEquals(
+                batchesBefore,
+                fx.received.count { it is BackendEvent.DataEvent.BatchReceived },
+                "the dropped optimistic copy must not be emitted to observers",
             )
         }
     }
@@ -232,19 +224,7 @@ class OptimisticWriterEnqueueGateTest {
         val received = mutableListOf<BackendEvent>()
         val heart = """{"emoji":"❤️"}"""
 
-        fun deleteRequest(original: HomebaseFile) = DeleteLocalFilesByFileIdRequest(
-            driveId = chatDriveId,
-            fileIds = listOf(original.fileId),
-            recipients = null,
-            hardDelete = false,
-        )
-
-        fun reactionRequest(original: HomebaseFile) = ToggleReactionOutboxRequest(
-            driveId = chatDriveId,
-            fileId = original.fileId,
-            reaction = heart,
-            recipients = emptyList(),
-        )
+        lateinit var driver: RefusingOutboxInsertDriver
 
         lateinit var dbm: DatabaseManager
         lateinit var eventBus: EventBus
@@ -253,9 +233,9 @@ class OptimisticWriterEnqueueGateTest {
 
         suspend fun build(scope: TestScope) {
             dbm = DatabaseManager({
-                val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-                OdinDatabase.Schema.create(driver)
-                RefusingOutboxInsertDriver(driver, failOutboxInserts)
+                val raw = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+                OdinDatabase.Schema.create(raw)
+                RefusingOutboxInsertDriver(raw, failOutboxInserts).also { driver = it }
             })
             eventBus = EventBus()
             scope.backgroundScope.launch(UnconfinedTestDispatcher(scope.testScheduler)) {
@@ -382,11 +362,25 @@ private object ThrowingUploader : OutboxUploader {
         error("uploader must not run — the outbox is offline in this test")
 }
 
-/** Fails `INSERT INTO Outbox` while armed, so `tryEnqueue` reports a refusal. */
+/**
+ * Fails `INSERT INTO Outbox` while armed, so `tryEnqueue` reports a refusal, and lets
+ * a test observe the database at the moment the outbox row is written.
+ */
 private class RefusingOutboxInsertDriver(
     private val delegate: SqlDriver,
     private val refusing: AtomicBoolean,
 ) : SqlDriver {
+
+    var onOutboxInsert: (() -> Unit)? = null
+
+    /** `fileState` of the single DriveMainIndex row, read on the driver directly. */
+    fun rawFileState(): Long = delegate.executeQuery(
+        null,
+        "SELECT fileState FROM DriveMainIndex",
+        { cursor -> cursor.next(); QueryResult.Value(cursor.getLong(0)!!) },
+        0,
+        null,
+    ).value
 
     override fun execute(
         identifier: Int?,
@@ -394,8 +388,9 @@ private class RefusingOutboxInsertDriver(
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)?,
     ): QueryResult<Long> {
-        if (refusing.get() && sql.contains("INSERT INTO Outbox")) {
-            throw IllegalStateException("simulated outbox INSERT failure")
+        if (sql.contains("INSERT INTO Outbox")) {
+            if (refusing.get()) throw IllegalStateException("simulated outbox INSERT failure")
+            onOutboxInsert?.invoke()
         }
         return delegate.execute(identifier, sql, parameters, binders)
     }

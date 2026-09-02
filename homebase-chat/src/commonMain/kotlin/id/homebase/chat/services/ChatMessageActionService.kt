@@ -6,10 +6,8 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDownloadService
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
-import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResult
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.drives.upload.FileIdFileIdentifier
@@ -243,26 +241,9 @@ class ChatMessageActionService(
 
         // The writer's own point lookup supplies fileId — nothing here may scan the
         // drive (the old requireFileId QueryBatch cost ~500 ms ahead of the bubble update).
-        val (resultType, _) = try {
-            optimisticWriter.writeReactionToggle(chatDrive, messageId, reactionJson) { original ->
-                val result = outboxSync.tryEnqueue(
-                    request = ToggleReactionOutboxRequest(
-                        driveId = chatDrive,
-                        fileId = original.fileId,
-                        reaction = reactionJson,
-                        recipients = getRecipients(conversationId),
-                    )
-                )
-                if (!result.enqueued) {
-                    Logger.w("toggleReaction: outbox enqueue → $result — reaction not applied")
-                }
-                result.enqueued
-            }
-        } catch (t: Throwable) {
-            Logger.e("toggleReaction failed to enqueue", t)
-            return ToggleReactionResult(resultType = ToggleReactionResultType.None)
+        val (resultType, _) = optimisticWriter.toggleReaction(chatDrive, messageId, reactionJson) {
+            getRecipients(conversationId)
         }
-
         return ToggleReactionResult(resultType = resultType)
     }
 
@@ -327,24 +308,7 @@ class ChatMessageActionService(
             null
         }
 
-        try {
-            optimisticWriter.writeDelete(chatDrive, messageId) { original ->
-                val result = outboxSync.tryEnqueue(
-                    request = DeleteLocalFilesByFileIdRequest(
-                        driveId = chatDrive,
-                        fileIds = listOf(original.fileId),
-                        recipients = recipients,
-                        hardDelete = hardDelete,
-                    )
-                )
-                if (!result.enqueued) {
-                    Logger.w("deleteMessage: outbox enqueue → $result — message not deleted")
-                }
-                result.enqueued
-            }
-        } catch (t: Throwable) {
-            Logger.e("deleteMessage failed to enqueue", t)
-        }
+        optimisticWriter.deleteFile(chatDrive, messageId, recipients, hardDelete)
     }
 
     

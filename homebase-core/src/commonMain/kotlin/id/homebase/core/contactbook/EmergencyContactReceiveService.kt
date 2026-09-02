@@ -99,7 +99,7 @@ class EmergencyContactReceiveService(
             .getOrDefault(false)
         if (!queued) return
         messageFile.fileMetadata.appData.uniqueId?.let { uniqueId ->
-            runCatching { optimisticWriter.writeDelete(chatDrive, uniqueId) { true } }
+            runCatching { optimisticWriter.writeDeleteAlreadyQueued(chatDrive, uniqueId) }
                 .onFailure { Logger.w(it) { "emergency consume: local soft-delete failed" } }
         }
     }

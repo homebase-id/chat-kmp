@@ -2,9 +2,8 @@ package id.homebase.core.feed.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.sync.database.OutboxSync
-import id.homebase.api.sync.database.enqueued
+import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.outbox.OptimisticWriter
 import kotlin.uuid.Uuid
 
@@ -21,23 +20,10 @@ class FeedPostSenderService(
     }
 
     suspend fun deletePost(channelId: Uuid, postUniqueId: Uuid) {
-        val original = optimisticWriter.writeDelete(channelId, postUniqueId) { original ->
-            // recipients null = local + own-host removal.
-            val postDelete = outboxSync.tryEnqueue(
-                request = DeleteLocalFilesByFileIdRequest(
-                    driveId = channelId,
-                    fileIds = listOf(original.fileId),
-                    recipients = null,
-                    hardDelete = false,
-                ),
-            )
-            if (!postDelete.enqueued) {
-                Logger.w(tag = TAG) { "deletePost: post delete enqueue -> $postDelete; post not deleted" }
-            }
-            postDelete.enqueued
-        }
-        if (original == null) {
-            Logger.w(tag = TAG) { "deletePost: post $postUniqueId not found locally or not queued" }
+        // recipients null = local + own-host removal.
+        val outcome = optimisticWriter.deleteFile(channelId, postUniqueId, recipients = null)
+        if (outcome != MutationOutcome.Queued) {
+            Logger.w(tag = TAG) { "deletePost: post $postUniqueId → $outcome; skipping comment cleanup" }
             return
         }
 

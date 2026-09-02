@@ -470,7 +470,7 @@ class GroupHealService(
             audit.checkWarn("localSoftDeleteSkipped", "heal status message has no uniqueId — relying on server-side soft-delete by fileId")
         } else if (serverDeleteQueued) {
             audit.step(1, "optimisticWriter.writeDelete(heal message uniqueId=$healMessageUniqueId)")
-            optimisticWriter.writeDelete(chatDrive, healMessageUniqueId) { true }
+            optimisticWriter.writeDeleteAlreadyQueued(chatDrive, healMessageUniqueId)
         } else {
             audit.checkWarn("localSoftDeleteSkipped", "server soft-delete not queued — local row left untouched")
         }

@@ -24,6 +24,11 @@ import id.homebase.api.sync.database.CancelOutcome
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.api.sync.database.EnqueueResult
+import id.homebase.api.sync.database.enqueued
+import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
+import kotlinx.coroutines.CancellationException
 import id.homebase.api.client.drives.upload.UpdateLocalAppdataContentOutboxRequest
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -495,27 +500,74 @@ class OptimisticWriter(
     }
 
     /**
-     * Soft-deletes a file locally and emits BatchReceived so the UI shows it as deleted
-     * before the outbox round-trip. [enqueue] runs after the row is read and before it
-     * is mutated, and is the gate: return false (or throw) and the row is left
-     * untouched, so a refused enqueue can never leave a local mutation the server will
-     * never learn about. Pass `{ true }` only when the server request is already
-     * durably queued. Returns the pre-delete file once the enqueue succeeded (even if
-     * the local write then failed — sync brings the row back), null when the row is
-     * missing or the enqueue was refused.
+     * Soft-deletes a file: queues the server delete, then marks the local row deleted
+     * and emits BatchReceived so the UI shows it before the outbox round-trip. The
+     * enqueue is the gate — a refused enqueue leaves the row untouched, so there is
+     * never a local mutation the server will not learn about. Once queued, a failing
+     * local write is non-fatal: the outbox delivers and sync brings the row back.
      */
-    suspend fun writeDelete(
+    suspend fun deleteFile(
         driveId: Uuid,
         uniqueId: Uuid,
-        enqueue: suspend (original: HomebaseFile) -> Boolean,
-    ): HomebaseFile? {
+        recipients: List<OdinId>?,
+        hardDelete: Boolean = false,
+    ): MutationOutcome = writeDelete(driveId, uniqueId) { original ->
+        outboxSync.tryEnqueue(
+            request = DeleteLocalFilesByFileIdRequest(
+                driveId = driveId,
+                fileIds = listOf(original.fileId),
+                recipients = recipients,
+                hardDelete = hardDelete,
+            )
+        )
+    }
+
+    /**
+     * Local half of [deleteFile] alone, for a caller whose server delete is keyed by a
+     * fileId it already holds and is already durably queued.
+     */
+    suspend fun writeDeleteAlreadyQueued(driveId: Uuid, uniqueId: Uuid): MutationOutcome =
+        writeDelete(driveId, uniqueId, enqueue = null)
+
+    /**
+     * Toggles the caller's reaction: queues the server toggle, then updates
+     * `reactionPreview` and `localAppData.localReactions` and emits BatchReceived.
+     * [recipients] resolves from the pre-toggle row inside the gate, so a throw there
+     * leaves the row untouched too. Runs under the per-message lock, so rapid taps
+     * enqueue in the order their local toggles apply. The result type is
+     * [ToggleReactionResultType.None] unless the outcome is [MutationOutcome.Queued].
+     */
+    suspend fun toggleReaction(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        reactionJson: String,
+        recipients: suspend (original: HomebaseFile) -> List<OdinId>,
+    ): Pair<ToggleReactionResultType, MutationOutcome> =
+        writeReactionToggle(driveId, uniqueId, reactionJson) { original ->
+            outboxSync.tryEnqueue(
+                request = ToggleReactionOutboxRequest(
+                    driveId = driveId,
+                    fileId = original.fileId,
+                    reaction = reactionJson,
+                    recipients = recipients(original),
+                )
+            )
+        }
+
+    private suspend fun writeDelete(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        enqueue: (suspend (original: HomebaseFile) -> EnqueueResult)?,
+    ): MutationOutcome {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return null
+        ) ?: return MutationOutcome.NoRow
 
-        if (!enqueue(existingFile)) return null
+        if (enqueue != null) {
+            gate("delete", uniqueId) { enqueue(existingFile) }?.let { return it }
+        }
 
         val deletedFile = existingFile.copy(
             fileState = FileState.Deleted,
@@ -545,59 +597,24 @@ class OptimisticWriter(
             }
         }
 
-        return existingFile
+        return MutationOutcome.Queued
     }
 
-    // Emits only what passed the DriveMainIndex monotonic guard: a host write that landed
-    // between the read and this upsert owns the row, and observers must not see the stale
-    // optimistic copy.
-    private suspend fun upsertAndEmit(identityId: Uuid, driveId: Uuid, file: HomebaseFile) {
-        val written = fileProcessor.baseUpsertEntryZapZap(
-            identityId = identityId,
-            driveId = driveId,
-            fileHeaders = listOf(file),
-            cursor = null
-        )
-        if (written.isEmpty()) {
-            Logger.w(tag = TAG) {
-                "Optimistic write for fileId=${file.fileId} lost to a newer row — not emitted"
-            }
-            return
-        }
-        eventBus.emit(
-            BackendEvent.DataEvent.BatchReceived(
-                driveId = driveId,
-                batchData = written,
-            )
-        )
-    }
-
-    // Stamped past the row that was read so the mutation wins the DriveMainIndex
-    // monotonic guard.
-    private fun HomebaseFile.optimisticStamp(): UnixTimeUtc =
-        fileMetadata.updated.addMilliseconds(1)
-
-    /**
-     * Toggles the caller's reaction on `reactionPreview` and
-     * `localAppData.localReactions` and emits BatchReceived. Same gate as
-     * [writeDelete]: [enqueue] runs under the per-message lock, after the read and
-     * before the write, so rapid taps enqueue in the order their local toggles
-     * apply. Returns [ToggleReactionResultType.None] with null when the row is
-     * missing or the enqueue was refused.
-     */
-    suspend fun writeReactionToggle(
+    private suspend fun writeReactionToggle(
         driveId: Uuid,
         uniqueId: Uuid,
         reactionJson: String,
-        enqueue: suspend (original: HomebaseFile) -> Boolean,
-    ): Pair<ToggleReactionResultType, HomebaseFile?> = reactionLockFor(driveId, uniqueId).withLock {
+        enqueue: suspend (original: HomebaseFile) -> EnqueueResult,
+    ): Pair<ToggleReactionResultType, MutationOutcome> = reactionLockFor(driveId, uniqueId).withLock {
         val credentials = credentialsManager.requireActiveCredentials()
 
         val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
             credentials.getIdentityId(), driveId, uniqueId
-        ) ?: return@withLock Pair(ToggleReactionResultType.None, null)
+        ) ?: return@withLock Pair(ToggleReactionResultType.None, MutationOutcome.NoRow)
 
-        if (!enqueue(existingFile)) return@withLock Pair(ToggleReactionResultType.None, null)
+        gate("reaction toggle", uniqueId) { enqueue(existingFile) }?.let {
+            return@withLock Pair(ToggleReactionResultType.None, it)
+        }
 
         val lastModified = existingFile.optimisticStamp()
 
@@ -669,8 +686,61 @@ class OptimisticWriter(
             ToggleReactionResultType.Added
         else
             ToggleReactionResultType.Deleted
-        Pair(resultType, existingFile)
+        Pair(resultType, MutationOutcome.Queued)
     }
+
+    // Null means "queued, go ahead". A throw from the enqueue (recipient resolution,
+    // typically) is a refusal like any other; only cancellation propagates.
+    private suspend fun gate(
+        what: String,
+        uniqueId: Uuid,
+        enqueue: suspend () -> EnqueueResult,
+    ): MutationOutcome.Refused? {
+        val result = try {
+            enqueue()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Logger.e(throwable = t, tag = TAG) {
+                "Optimistic $what: enqueue threw for uniqueId=$uniqueId — row left untouched"
+            }
+            return MutationOutcome.Refused(t)
+        }
+        if (result.enqueued) return null
+        Logger.w(tag = TAG) {
+            "Optimistic $what: outbox enqueue → $result for uniqueId=$uniqueId — row left untouched"
+        }
+        return MutationOutcome.Refused((result as? EnqueueResult.Failed)?.cause)
+    }
+
+    // Emits only what passed the DriveMainIndex monotonic guard: a host write that landed
+    // between the read and this upsert owns the row, and observers must not see the stale
+    // optimistic copy.
+    private suspend fun upsertAndEmit(identityId: Uuid, driveId: Uuid, file: HomebaseFile) {
+        val written = fileProcessor.baseUpsertEntryZapZap(
+            identityId = identityId,
+            driveId = driveId,
+            fileHeaders = listOf(file),
+            cursor = null
+        )
+        if (written.isEmpty()) {
+            Logger.w(tag = TAG) {
+                "Optimistic write for fileId=${file.fileId} lost to a newer row — not emitted"
+            }
+            return
+        }
+        eventBus.emit(
+            BackendEvent.DataEvent.BatchReceived(
+                driveId = driveId,
+                batchData = written,
+            )
+        )
+    }
+
+    // Stamped past the row that was read so the mutation wins the DriveMainIndex
+    // monotonic guard.
+    private fun HomebaseFile.optimisticStamp(): UnixTimeUtc =
+        fileMetadata.updated.addMilliseconds(1)
 
     suspend fun stampConversationExitedAt(driveId: Uuid, conversationId: Uuid): UpdateLocalAppdataContentOutboxRequest? =
         stampConversationLocalAppData(driveId, conversationId, "stampConversationExitedAt") {
@@ -897,4 +967,12 @@ class OptimisticWriter(
             Logger.e(throwable = e, tag = TAG) { "Optimistic tag update failed for uniqueId=$uniqueId" }
         }
     }
+}
+
+/** How an optimistic mutation ended. [Queued] means the server request is durable; the local
+ *  write is best-effort after that. [Refused] carries the enqueue failure, if any. */
+sealed interface MutationOutcome {
+    data object Queued : MutationOutcome
+    data object NoRow : MutationOutcome
+    data class Refused(val cause: Throwable?) : MutationOutcome
 }

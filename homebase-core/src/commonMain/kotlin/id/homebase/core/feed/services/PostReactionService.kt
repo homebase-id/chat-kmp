@@ -14,6 +14,7 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.enqueued
 import id.homebase.api.util.codePointCount
+import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.widget.EmojiReaction
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,29 +74,26 @@ class PostReactionService(
 
         val reactionJson = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
 
-        try {
-            val recipients = resolveRecipients(authorOdinId)
-            val enqueue: suspend (Uuid) -> Boolean = { targetFileId ->
+        val recipients = resolveRecipients(authorOdinId)
+        val (resultType, outcome) = optimisticWriter.toggleReaction(
+            driveId, targetUniqueId, reactionJson,
+        ) { recipients }
+        when (outcome) {
+            MutationOutcome.Queued -> Unit
+            is MutationOutcome.Refused -> throw IllegalStateException("outbox enqueue refused", outcome.cause)
+            MutationOutcome.NoRow -> if (!hasUniqueId) {
                 val enqueued = outboxSync.tryEnqueue(
                     request = ToggleReactionOutboxRequest(
                         driveId = driveId,
-                        fileId = targetFileId,
+                        fileId = fileId,
                         reaction = reactionJson,
                         recipients = recipients,
                     ),
                 )
                 check(enqueued.enqueued) { "outbox enqueue -> $enqueued" }
-                true
             }
-            val (resultType, original) = optimisticWriter.writeReactionToggle(
-                driveId, targetUniqueId, reactionJson,
-            ) { original -> enqueue(original.fileId) }
-            if (original == null && !hasUniqueId) enqueue(fileId)
-            return ToggleReactionResult(resultType = resultType)
-        } catch (t: Throwable) {
-            Logger.e(throwable = t, tag = TAG) { "toggleReaction failed to enqueue: ${t.message}" }
-            throw t
         }
+        return ToggleReactionResult(resultType = resultType)
     }
 
 
