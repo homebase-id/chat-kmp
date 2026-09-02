@@ -10,7 +10,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -23,12 +23,13 @@ import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
-import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.services.ChatProtocol
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -39,195 +40,177 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 
 /**
- * Rollback of an optimistic write must actually restore the local row, at the
- * original `modified` value.
- *
- * `writeDelete` stamps `updated + 1ms` so the mutated row wins the
- * `DriveMainIndex` monotonic guard (`WHERE excluded.modified >
- * DriveMainIndex.modified`). Re-upserting the ORIGINAL file through that guard
- * loses (it is 1ms older) and is dropped silently; stamping the restore PAST
- * the stored value wins but leaves the row claiming to be newer than the
- * server's real `updated`, which then drops a host edit that was already in
- * flight. The rollback is a compare-and-swap instead: restore the original
- * `modified`, conditioned on the optimistic stamp still being the stored one.
+ * The outbox enqueue is the gate for an optimistic mutation: the writer reads the
+ * row, queues the server request, and mutates only once that enqueue is durable.
+ * A refused (or throwing) enqueue leaves the row untouched, so there is no local
+ * state the server will never learn about — and nothing to roll back.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class OptimisticWriterRollbackTest {
+class OptimisticWriterEnqueueGateTest {
 
     @Test
-    fun rollbackAfterDelete_restoresTheRow() = runTest {
-        Fixture().use { fx ->
-            fx.build(this)
-            val messageId = fx.seedMessage()
-
-            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
-                ?: error("writeDelete returned null — nothing to roll back")
-
-            assertTrue(
-                fx.readRow(messageId).isSoftDeleted(),
-                "sanity: the optimistic delete should have landed",
-            )
-
-            fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original)
-
-            val afterRollback = fx.readRow(messageId)
-            assertFalse(
-                afterRollback.isSoftDeleted(),
-                "rollback must restore the row: isSoftDeleted() is still true",
-            )
-            assertEquals(
-                original.fileState,
-                afterRollback.fileState,
-                "rollback must restore fileState",
-            )
-            assertEquals(
-                "hello world",
-                afterRollback.fileMetadata.appData.content,
-                "rollback must restore the message content",
-            )
-            assertEquals(0L, fx.dbm.outbox.count(), "nothing should be queued")
-        }
-    }
-
-    /**
-     * The same thing through the real refused-enqueue path the callers use:
-     * the outbox INSERT fails, `tryEnqueue` returns a non-enqueued result, and
-     * the caller rolls the optimistic write back.
-     */
-    @Test
-    fun refusedEnqueue_rollsBackToAnUndeletedRow() = runTest {
-        Fixture().use { fx ->
-            fx.build(this)
-            val messageId = fx.seedMessage()
-
-            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
-                ?: error("writeDelete returned null — nothing to roll back")
-
-            fx.failOutboxInserts.set(true)
-            val result = fx.outboxSync.tryEnqueue(
-                request = DeleteLocalFilesByFileIdRequest(
-                    driveId = fx.chatDriveId,
-                    fileIds = listOf(original.fileId),
-                    recipients = null,
-                    hardDelete = false,
-                ),
-            )
-            fx.failOutboxInserts.set(false)
-            assertFalse(result.enqueued, "the outbox INSERT was supposed to be refused")
-
-            fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original)
-
-            val afterRollback = fx.readRow(messageId)
-            assertEquals(0L, fx.dbm.outbox.count(), "the refused enqueue left no outbox row")
-            assertFalse(
-                afterRollback.isSoftDeleted(),
-                "refused enqueue + rollback left the message deleted locally with nothing queued",
-            )
-        }
-    }
-
-    /**
-     * The re-stamp implementation left the row at `optimistic + 1ms`, permanently ahead
-     * of the server's real `updated` for that file.
-     */
-    @Test
-    fun rollbackAfterDelete_restoresTheOriginalModified() = runTest {
+    fun delete_refusedEnqueue_leavesTheRowUntouched() = runTest {
         Fixture().use { fx ->
             fx.build(this)
             val messageId = fx.seedMessage(updatedMs = 100_000L)
-
-            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
-                ?: error("writeDelete returned null — nothing to roll back")
-
-            assertEquals(
-                100_001L,
-                fx.readIndexRow(messageId).modified,
-                "sanity: the optimistic delete stamps updated + 1ms",
-            )
-
-            assertTrue(fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original))
-
-            assertEquals(
-                100_000L,
-                fx.readIndexRow(messageId).modified,
-                "rollback must restore the original modified, not stamp past the stored value",
-            )
-        }
-    }
-
-    /**
-     * A host write that lands between the optimistic write and the rollback owns the row.
-     * The CAS finds a `modified` that is no longer its own stamp and no-ops.
-     */
-    @Test
-    fun hostWriteBetweenOptimisticWriteAndRollback_isNotClobbered() = runTest {
-        Fixture().use { fx ->
-            fx.build(this)
-            val messageId = fx.seedMessage(updatedMs = 100_000L)
-
-            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
-                ?: error("writeDelete returned null — nothing to roll back")
-
-            fx.seedMessage(
-                messageId = messageId,
-                fileId = original.fileId,
-                updatedMs = 200_000L,
-                content = "edited on another device",
-            )
-
             advanceUntilIdle()
             val eventsBefore = fx.received.size
-            assertFalse(
-                fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original),
-                "rollback must report that it was superseded",
-            )
 
-            val afterRollback = fx.readRow(messageId)
-            assertEquals(
-                "edited on another device",
-                afterRollback.fileMetadata.appData.content,
-                "rollback clobbered a host write that landed after the optimistic one",
-            )
-            assertEquals(
-                200_000L,
-                fx.readIndexRow(messageId).modified,
-                "rollback must not touch the host row's modified",
-            )
+            fx.failOutboxInserts.set(true)
+            val outcome = fx.optimisticWriter.deleteFile(fx.chatDriveId, messageId, recipients = null)
+            fx.failOutboxInserts.set(false)
+
+            assertIs<MutationOutcome.Refused>(outcome)
+            assertEquals(0L, fx.dbm.outbox.count(), "the refused enqueue left no outbox row")
+            val row = fx.readRow(messageId)
+            assertFalse(row.isSoftDeleted(), "the row must not be soft-deleted")
+            assertEquals("hello world", row.fileMetadata.appData.content)
+            assertEquals(100_000L, fx.readIndexRow(messageId).modified, "modified must be untouched")
             advanceUntilIdle()
+            assertEquals(eventsBefore, fx.received.size, "nothing was written, so nothing is emitted")
+        }
+    }
+
+    /** Observed at the SQL level: the row is still active when `INSERT INTO Outbox` runs. */
+    @Test
+    fun delete_enqueueIsDurableBeforeTheRowIsMutated() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage(updatedMs = 100_000L)
+            val activeState = fx.readIndexRow(messageId).fileState
+
+            var stateAtEnqueue: Long? = null
+            fx.driver.onOutboxInsert = { stateAtEnqueue = fx.driver.rawFileState() }
+            val outcome = fx.optimisticWriter.deleteFile(fx.chatDriveId, messageId, recipients = null)
+
+            assertEquals(MutationOutcome.Queued, outcome)
+            assertEquals(activeState, stateAtEnqueue, "the local write must not land before the enqueue")
+            assertEquals(1L, fx.dbm.outbox.count())
+            assertTrue(fx.readRow(messageId).isSoftDeleted())
+            assertEquals(100_001L, fx.readIndexRow(messageId).modified)
+        }
+    }
+
+    @Test
+    fun delete_missingRow_neverTouchesTheOutbox() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+
+            val outcome = fx.optimisticWriter.deleteFile(fx.chatDriveId, Uuid.random(), recipients = null)
+
+            assertEquals(MutationOutcome.NoRow, outcome)
+            assertEquals(0L, fx.dbm.outbox.count(), "there is nothing to delete, so nothing may be queued")
+        }
+    }
+
+    @Test
+    fun reaction_refusedEnqueue_leavesTheRowUntouched() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage(updatedMs = 100_000L)
+            advanceUntilIdle()
+            val eventsBefore = fx.received.size
+
+            fx.failOutboxInserts.set(true)
+            val (resultType, outcome) = fx.optimisticWriter.toggleReaction(
+                fx.chatDriveId, messageId, fx.heart,
+            ) { emptyList() }
+            fx.failOutboxInserts.set(false)
+
+            assertEquals(ToggleReactionResultType.None, resultType)
+            assertIs<MutationOutcome.Refused>(outcome)
+            assertEquals(0L, fx.dbm.outbox.count())
+            val row = fx.readRow(messageId)
+            assertTrue(row.fileMetadata.localAppData?.localReactions.isNullOrEmpty())
+            assertNull(row.fileMetadata.reactionPreview)
+            assertEquals(100_000L, fx.readIndexRow(messageId).modified)
+            advanceUntilIdle()
+            assertEquals(eventsBefore, fx.received.size)
+        }
+    }
+
+    /** Recipient resolution failing is a refusal like any other. */
+    @Test
+    fun reaction_throwingRecipients_isRefusedAndLeavesTheRowUntouched() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage()
+
+            val (resultType, outcome) = fx.optimisticWriter.toggleReaction(
+                fx.chatDriveId, messageId, fx.heart,
+            ) { error("no conversation found") }
+
+            assertEquals(ToggleReactionResultType.None, resultType)
+            assertIs<MutationOutcome.Refused>(outcome)
+            assertIs<IllegalStateException>(outcome.cause)
+            assertEquals(0L, fx.dbm.outbox.count())
+            assertTrue(fx.readRow(messageId).fileMetadata.localAppData?.localReactions.isNullOrEmpty())
+        }
+    }
+
+    @Test
+    fun reaction_recipientsSeeThePreToggleRow_andTheWriteLandsAfter() = runTest {
+        Fixture().use { fx ->
+            fx.build(this)
+            val messageId = fx.seedMessage()
+
+            var reactionsInsideGate: List<String>? = null
+            val (resultType, outcome) = fx.optimisticWriter.toggleReaction(
+                fx.chatDriveId, messageId, fx.heart,
+            ) {
+                reactionsInsideGate = fx.readRow(messageId).fileMetadata.localAppData?.localReactions
+                emptyList()
+            }
+
+            assertEquals(ToggleReactionResultType.Added, resultType)
+            assertEquals(MutationOutcome.Queued, outcome)
+            assertTrue(reactionsInsideGate.isNullOrEmpty(), "the toggle must not land before the enqueue")
+            assertEquals(1L, fx.dbm.outbox.count())
             assertEquals(
-                eventsBefore,
-                fx.received.size,
-                "a rollback that changed no row must not emit BatchReceived",
+                listOf(fx.heart),
+                fx.readRow(messageId).fileMetadata.localAppData?.localReactions,
             )
         }
     }
 
     /**
-     * The consequence of the re-stamp: it reserved `[original+1, original+2]` for itself,
-     * so a host edit already in flight when the rollback ran lost the guard and vanished.
+     * A host write that lands between the read and the optimistic upsert owns the
+     * row: the monotonic guard drops the optimistic copy, and observers must not
+     * be shown it either.
      */
     @Test
-    fun hostWriteInTheWindowTheReStampReserved_isNoLongerDropped() = runTest {
+    fun reaction_hostWriteDuringEnqueue_winsAndIsNotEmittedOver() = runTest {
         Fixture().use { fx ->
             fx.build(this)
             val messageId = fx.seedMessage(updatedMs = 100_000L)
+            advanceUntilIdle()
+            val batchesBefore = fx.received.count { it is BackendEvent.DataEvent.BatchReceived }
 
-            val original = fx.optimisticWriter.writeDelete(fx.chatDriveId, messageId)
-                ?: error("writeDelete returned null — nothing to roll back")
-            assertTrue(fx.optimisticWriter.rollbackWrite(fx.chatDriveId, original))
+            val (_, outcome) = fx.optimisticWriter.toggleReaction(
+                fx.chatDriveId, messageId, fx.heart,
+            ) { original ->
+                fx.seedMessage(
+                    messageId = messageId,
+                    fileId = original.fileId,
+                    updatedMs = 200_000L,
+                    content = "edited on another device",
+                )
+                emptyList()
+            }
+            advanceUntilIdle()
 
-            // An edit made on another device shortly BEFORE the rollback, arriving after it.
-            fx.seedMessage(
-                messageId = messageId,
-                fileId = original.fileId,
-                updatedMs = 100_001L,
-                content = "edited on another device",
+            assertEquals(MutationOutcome.Queued, outcome, "the toggle was queued")
+            val row = fx.readRow(messageId)
+            assertTrue(
+                row.fileMetadata.localAppData?.localReactions.isNullOrEmpty(),
+                "the newer host row must stand",
             )
-
+            assertEquals("edited on another device", row.fileMetadata.appData.content)
+            assertEquals(200_000L, fx.readIndexRow(messageId).modified)
             assertEquals(
-                "edited on another device",
-                fx.readRow(messageId).fileMetadata.appData.content,
-                "the rollback left the row stamped ahead, so the host edit was silently dropped",
+                batchesBefore,
+                fx.received.count { it is BackendEvent.DataEvent.BatchReceived },
+                "the dropped optimistic copy must not be emitted to observers",
             )
         }
     }
@@ -239,6 +222,9 @@ class OptimisticWriterRollbackTest {
 
         val failOutboxInserts = AtomicBoolean(false)
         val received = mutableListOf<BackendEvent>()
+        val heart = """{"emoji":"❤️"}"""
+
+        lateinit var driver: RefusingOutboxInsertDriver
 
         lateinit var dbm: DatabaseManager
         lateinit var eventBus: EventBus
@@ -247,9 +233,9 @@ class OptimisticWriterRollbackTest {
 
         suspend fun build(scope: TestScope) {
             dbm = DatabaseManager({
-                val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-                OdinDatabase.Schema.create(driver)
-                RefusingOutboxInsertDriver(driver, failOutboxInserts)
+                val raw = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+                OdinDatabase.Schema.create(raw)
+                RefusingOutboxInsertDriver(raw, failOutboxInserts).also { driver = it }
             })
             eventBus = EventBus()
             scope.backgroundScope.launch(UnconfinedTestDispatcher(scope.testScheduler)) {
@@ -376,11 +362,25 @@ private object ThrowingUploader : OutboxUploader {
         error("uploader must not run — the outbox is offline in this test")
 }
 
-/** Fails `INSERT INTO Outbox` while armed, so `tryEnqueue` reports a refusal. */
+/**
+ * Fails `INSERT INTO Outbox` while armed, so `tryEnqueue` reports a refusal, and lets
+ * a test observe the database at the moment the outbox row is written.
+ */
 private class RefusingOutboxInsertDriver(
     private val delegate: SqlDriver,
     private val refusing: AtomicBoolean,
 ) : SqlDriver {
+
+    var onOutboxInsert: (() -> Unit)? = null
+
+    /** `fileState` of the single DriveMainIndex row, read on the driver directly. */
+    fun rawFileState(): Long = delegate.executeQuery(
+        null,
+        "SELECT fileState FROM DriveMainIndex",
+        { cursor -> cursor.next(); QueryResult.Value(cursor.getLong(0)!!) },
+        0,
+        null,
+    ).value
 
     override fun execute(
         identifier: Int?,
@@ -388,8 +388,9 @@ private class RefusingOutboxInsertDriver(
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)?,
     ): QueryResult<Long> {
-        if (refusing.get() && sql.contains("INSERT INTO Outbox")) {
-            throw IllegalStateException("simulated outbox INSERT failure")
+        if (sql.contains("INSERT INTO Outbox")) {
+            if (refusing.get()) throw IllegalStateException("simulated outbox INSERT failure")
+            onOutboxInsert?.invoke()
         }
         return delegate.execute(identifier, sql, parameters, binders)
     }

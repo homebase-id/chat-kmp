@@ -347,19 +347,36 @@ class DriveRegistryTest {
         db.close()
     }
 
+    // A 401 means the write was never going to land. Rethrowing it here only added a process
+    // death — mountDrive's contract is "must not throw".
     @Test
-    fun addDriveBestEffortPropagatesUnauthorized() = runTest {
-        // 401 is not a permission denial to shrug off — the auth layer has to act on a dead
-        // token. Guards the containment from widening past 403.
+    fun addDriveBestEffortContainsUnauthorized() = runTest {
+        val db = createTestDatabaseManager()
+        val recorder = WriteRecorder(uploadThrowsOnCall = { UnauthorizedException() })
+        val registry = buildRegistry(db, recorder = recorder)
+
+        registry.addDriveBestEffort(feedLabeledDrive)
+
+        assertEquals(1, recorder.uploads.size, "the write was attempted, and refused")
+        db.close()
+    }
+
+    @Test
+    fun unauthorizedDoesNotEscapeAViewModelScopedActivation() = runTest {
         val db = createTestDatabaseManager()
         val registry = buildRegistry(
             db,
             recorder = WriteRecorder(uploadThrowsOnCall = { UnauthorizedException() }),
         )
 
-        assertFailsWith<UnauthorizedException> {
-            registry.addDriveBestEffort(feedLabeledDrive)
-        }
+        var escaped: Throwable? = null
+        val viewModelLikeScope = CoroutineScope(
+            SupervisorJob() + Dispatchers.Unconfined + CoroutineExceptionHandler { _, e -> escaped = e },
+        )
+
+        viewModelLikeScope.launch { registry.addDriveBestEffort(feedLabeledDrive) }.join()
+
+        assertNull(escaped, "a 401 on the registry write must not reach the uncaught path; was: $escaped")
         db.close()
     }
 
@@ -926,8 +943,8 @@ class DriveRegistryTest {
         db: DatabaseManager,
         eventBus: EventBus = EventBus(),
         recorder: WriteRecorder = WriteRecorder(),
+        credentialsManager: CredentialsManager = CredentialsManager(),
     ): DriveRegistry {
-        val credentialsManager = CredentialsManager()
         kotlinx.coroutines.runBlocking {
             credentialsManager.setActiveCredentials(
                 ApiCredentials.create(

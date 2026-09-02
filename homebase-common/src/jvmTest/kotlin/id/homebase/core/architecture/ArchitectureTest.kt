@@ -125,6 +125,48 @@ class ArchitectureTest {
             }
     }
 
+    /**
+     * Single-gateway guard (#1447). A peer's name, avatar and profile card come from
+     * `ContactInfoGateway`, which serves a known contact from the synced Contacts drive and is the
+     * one place allowed to fall back to the peer's `/pub/profile` + `/pub/image`. `internal`
+     * already hides both providers from every other Gradle module; this rule additionally polices
+     * homebase-api, where they are visible.
+     *
+     * Matched as an import of either provider plus `.getPublicProfile(` / `.getPublicImage(` call
+     * shapes. A rule on the `/pub/profile` / `/pub/image` strings, or on the bare type name, only
+     * finds the ~15 files that name them in KDoc. The allowed files are the gateway, the two
+     * providers themselves, the DI wiring, and the two lifecycle owners that sit below the gateway
+     * (logout cache teardown, and the websocket publicProfileContentPublished invalidation).
+     */
+    @Test
+    fun `Public profile fetching is confined to the contact gateway`() {
+        val gatewayAndBelow = setOf(
+            "ContactInfoGateway",
+            "PublicProfileProvider",
+            "PublicProfileProviderCached",
+            "ApiModule",
+            "YouAuthFlowManager",
+            "OwnerSessionRepository",
+        )
+        Konsist.scopeFromProject()
+            .files
+            .filter { !it.hasNameEndingWith("Test") }
+            .filter { it.name !in gatewayAndBelow }
+            .assertFalse(
+                additionalMessage = "Contact name/avatar/profile must be read through " +
+                    "ContactInfoGateway (issue #1447), never through PublicProfileProvider / " +
+                    "PublicProfileProviderCached. Use displayName(), avatarBytes() or " +
+                    "profileCard(); the peer /pub/profile + /pub/image fallback lives inside the " +
+                    "gateway and nowhere else."
+            ) { file ->
+                file.text.contains(
+                    Regex("""import\s+id\.homebase\.api\.client\.profile\.PublicProfileProvider"""),
+                ) ||
+                    file.text.contains(Regex("""\.\s*getPublicProfile\s*\(""")) ||
+                    file.text.contains(Regex("""\.\s*getPublicImage\s*\("""))
+            }
+    }
+
     @Test
     fun `Do not allow calling close on httpClient`() {
         Konsist.scopeFromProject()

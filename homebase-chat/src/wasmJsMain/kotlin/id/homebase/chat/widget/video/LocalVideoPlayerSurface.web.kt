@@ -17,6 +17,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.util.isBlobUrl
 import kotlin.io.encoding.Base64
 import okio.Path.Companion.toPath
 
@@ -51,7 +52,7 @@ private class PlayerSrc(val url: String, val createdByUs: Boolean)
  * and wrapped in a fresh, owned blob URL (the only path that base64s; off the interactive hot path).
  */
 private fun resolvePlayerSrc(filePath: String): PlayerSrc? {
-    if (filePath.startsWith("blob:")) return PlayerSrc(filePath, createdByUs = false)
+    if (filePath.isBlobUrl()) return PlayerSrc(filePath, createdByUs = false)
     val bytes = readOkioBytes(filePath) ?: return null
     return PlayerSrc(bytesToObjectUrl(Base64.encode(bytes), mimeFromPath(filePath)), createdByUs = true)
 }

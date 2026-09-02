@@ -11,7 +11,6 @@ import app.cash.sqldelight.db.SqlPreparedStatement
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
@@ -21,8 +20,6 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.identity.PublicIdentityRepository
-import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -374,12 +371,7 @@ class ChatMessageStreamLoadRaceTest {
                 ),
                 scope = scope.backgroundScope,
             ),
-            ownerSessionRepository = OwnerSessionRepository(
-                publicIdentityRepository = PublicIdentityRepository(httpClient),
-                publicProfileProviderCached = PublicProfileProviderCached(httpClient, fileOps),
-                eventBus = eventBus,
-                scope = scope.backgroundScope,
-            ),
+            ownerDisplayName = { null },
             dbm = dbm,
             eventBus = eventBus,
             scope = scope.backgroundScope,
