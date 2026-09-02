@@ -376,7 +376,7 @@ class ChatMessageStreamLoadRaceTest {
             ),
             ownerSessionRepository = OwnerSessionRepository(
                 publicIdentityRepository = PublicIdentityRepository(httpClient),
-                publicProfileProviderCached = PublicProfileProviderCached(httpClient, fileOps),
+                publicProfileProviderCached = PublicProfileProviderCached(httpClient, fileOps, scope.backgroundScope),
                 eventBus = eventBus,
                 scope = scope.backgroundScope,
             ),

@@ -62,7 +62,8 @@ import kotlin.time.Clock
  */
 class PublicProfileProviderCached(
     private val httpClient: HttpClient,
-    fileOperationsProvider: FileOperationsProvider
+    fileOperationsProvider: FileOperationsProvider,
+    private val scope: CoroutineScope
 ) {
 
     private val serializer = OdinSystemSerializer
@@ -250,11 +251,11 @@ class PublicProfileProviderCached(
 
         if (cacheKey in notFoundCache) return null
 
-        // Pre-mutex peek: pure read, no remove. A hit returns immediately;
-        // a miss or expired entry falls through to the mutex where the
-        // refresh (and any remove) is serialised.
         readCachedOrLog(disk, cacheKey, readFromDisk)?.let { cached ->
-            if (!cached.isExpired(clock)) return cached.value
+            if (cached.isExpired(clock)) {
+                refreshInBackground(cacheKey, disk, ttlMillis, fetch, transform, writeToDisk)
+            }
+            return cached.value
         }
 
         val mutex = getMutex(cacheKey)
@@ -263,52 +264,82 @@ class PublicProfileProviderCached(
 
             if (cacheKey in notFoundCache) return@withLock null
 
-            readCachedOrLog(disk, cacheKey, readFromDisk)?.let { cached ->
-                if (!cached.isExpired(clock)) {
-                    return@withLock cached.value
-                } else {
+            readCachedOrLog(disk, cacheKey, readFromDisk)?.let { return@withLock it.value }
+
+            fetchAndStore(cacheKey, disk, ttlMillis, fetch, transform, writeToDisk, cacheNotFound = true)
+        }
+    }
+
+    private fun <T> refreshInBackground(
+        cacheKey: String,
+        disk: DiskCache,
+        ttlMillis: Long,
+        fetch: suspend () -> HttpResponse,
+        transform: suspend (HttpResponse) -> T,
+        writeToDisk: (Path, Long, T) -> Unit
+    ) {
+        scope.launch {
+            val mutex = getMutex(cacheKey)
+            // tryLock dedupes concurrent refreshes but leaves no handle to await;
+            // swap in a per-key Deferred map if a caller ever needs to join one.
+            if (!mutex.tryLock()) return@launch
+            try {
+                fetchAndStore(cacheKey, disk, ttlMillis, fetch, transform, writeToDisk, cacheNotFound = false)
+            } catch (e: Exception) {
+                Logger.w(tag = "PublicProfileIO", throwable = e) { "background refresh failed key=$cacheKey" }
+            } finally {
+                mutex.unlock()
+            }
+        }
+    }
+
+    // Caller owns the per-key mutex; this never takes it.
+    private suspend fun <T> fetchAndStore(
+        cacheKey: String,
+        disk: DiskCache,
+        ttlMillis: Long,
+        fetch: suspend () -> HttpResponse,
+        transform: suspend (HttpResponse) -> T,
+        writeToDisk: (Path, Long, T) -> Unit,
+        cacheNotFound: Boolean
+    ): T? {
+        val response = fetch()
+
+        return when (response.status.value) {
+
+            200 -> {
+                val expiry = now() + ttlMillis
+
+                val value = transform(response)
+
+                val editor = disk.openEditor(cacheKey.toDiskKey())
+                if (editor != null) {
                     try {
-                        disk.remove(cacheKey.toDiskKey())
+                        writeToDisk(editor.data, expiry, value)
+                        editor.commit()
                     } catch (e: Exception) {
-                        Logger.w(tag = "PublicProfileIO", throwable = e) { "remove expired entry failed key=$cacheKey" }
+                        try { editor.abort() } catch (_: Exception) {}
+                        Logger.w(tag = "PublicProfileIO", throwable = e) { "cache-write failed key=$cacheKey" }
                     }
                 }
+
+                value
             }
 
-            val response = fetch()
-
-            when (response.status.value) {
-
-                200 -> {
-                    val expiry = now() + ttlMillis
-
-                    val value = transform(response)
-
-                    val editor = disk.openEditor(cacheKey.toDiskKey())
-                    if (editor != null) {
-                        try {
-                            writeToDisk(editor.data, expiry, value)
-                            editor.commit()
-                        } catch (e: Exception) {
-                            try { editor.abort() } catch (_: Exception) {}
-                            Logger.w(tag = "PublicProfileIO", throwable = e) { "cache-write failed key=$cacheKey" }
-                        }
-                    }
-
-                    value
-                }
-
-                404 -> {
+            404 -> {
+                // Only a total miss may poison the key: notFoundCache has no TTL, so
+                // a background 404 would blank a working avatar for the whole session.
+                if (cacheNotFound) {
                     notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
-                    null
                 }
+                null
+            }
 
-                else -> {
-                    Logger.w(tag = "PublicProfileIO") {
-                        "unexpected status=${response.status.value} key=$cacheKey"
-                    }
-                    throw Exception("Fetch failed: ${response.status}")
+            else -> {
+                Logger.w(tag = "PublicProfileIO") {
+                    "unexpected status=${response.status.value} key=$cacheKey"
                 }
+                throw Exception("Fetch failed: ${response.status}")
             }
         }
     }
