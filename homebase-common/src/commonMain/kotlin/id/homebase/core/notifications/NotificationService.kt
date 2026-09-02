@@ -6,7 +6,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.notifications.PushSubscriptionResponse
-import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.youauth.YouAuthState
@@ -168,7 +168,7 @@ internal suspend fun resolveCompanionAppUrlEvent(
 class NotificationService(
     private val api: PushNotificationApi,
     private val scope: CoroutineScope,
-    private val profileProvider: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     private val userPreferences: UserPreferences,
     private val credentialsManager: CredentialsManager,
     private val pendingNotificationTap: PendingNotificationTap,
@@ -416,7 +416,7 @@ class NotificationService(
                 // Fetch sender avatar for rich notification display
                 val senderImageBytes = try {
                     withTimeout(5_000) {
-                        profileProvider.getPublicImage(OdinId(notification.senderId))
+                        contactInfo.avatarBytes(OdinId(notification.senderId))
                     }
                 } catch (_: Exception) {
                     null
@@ -514,12 +514,11 @@ class NotificationService(
         }
     }
 
-    /** Resolves sender display name from public profile, with timeout and fallback. */
+    /** Resolves the sender's display name through the contact gateway, with timeout and fallback. */
     private suspend fun resolveSenderName(senderId: String): String {
         return try {
             withTimeout(5_000) {
-                val profile = profileProvider.getPublicProfile(OdinId(senderId))
-                profile?.name?.ifBlank { senderId } ?: senderId
+                contactInfo.displayName(OdinId(senderId))?.ifBlank { null } ?: senderId
             }
         } catch (_: Exception) {
             senderId

@@ -22,6 +22,7 @@ import id.homebase.api.file.wipeOutboxStaging
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.core.config.dataUpgradeReturnUrl
 
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
@@ -497,7 +498,7 @@ val appModule = module {
             credentialsManager = get(),
             httpClient = get(),
             driveFileProviderCached = get(),
-            publicProfileProviderCached = get(),
+            contactInfo = get(),
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -781,8 +782,17 @@ val appModule = module {
     singleOf(::PostCreateIntroductionPreflightBus)
     singleOf(::ChatServerHistory)
     single {
+        val ownerSession: OwnerSessionRepository = get()
         ChatMessageStream(
-            get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            credentialsManager = get(),
+            contactService = get(),
+            ownerDisplayName = { ownerSession.user.value?.displayName },
+            dbm = get(),
+            eventBus = get(),
+            scope = get(),
+            driveFileProvider = get(),
+            optimisticWriter = get(),
+            serverHistory = get(),
         ).also { stream ->
             // #887: wire auto-pin at construction, NOT in onPostAuthenticated. That
             // post-auth block is deferred and frequently never runs on a warm
@@ -818,7 +828,7 @@ val appModule = module {
         NotificationService(
             api = get(),
             scope = get(),
-            profileProvider = get(),
+            contactInfo = get(),
             userPreferences = get(),
             credentialsManager = get(),
             pendingNotificationTap = get(),
@@ -1100,7 +1110,7 @@ val appModule = module {
             channelService = get(),
             contactService = get(),
             credentialsManager = get(),
-            publicProfileProvider = get(),
+            contactInfo = get(),
             senderService = get(),
             reportingUrlProvider = get(),
             feedPermissionViewModel = get(FeedPermissionQualifier),
@@ -1118,7 +1128,7 @@ val appModule = module {
             credentialsManager = get(),
             contactService = get(),
             stickerStream = get(),
-            publicProfileProvider = get(),
+            contactInfo = get(),
             reportingUrlProvider = get(),
             permissionService = get(),
         )

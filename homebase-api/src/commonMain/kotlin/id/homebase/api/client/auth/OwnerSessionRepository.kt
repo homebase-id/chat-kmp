@@ -23,7 +23,7 @@ import kotlinx.serialization.json.longOrNull
 private const val PUBLIC_PROFILE_REFRESH_DEBOUNCE_MS = 300L
 private const val TAG = "OwnerSessionRepository"
 
-class OwnerSessionRepository(
+class OwnerSessionRepository internal constructor(
     private val publicIdentityRepository: PublicIdentityRepository,
     private val publicProfileProviderCached: PublicProfileProviderCached,
     private val eventBus: EventBus,
