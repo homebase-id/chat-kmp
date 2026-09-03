@@ -8,12 +8,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -29,6 +30,8 @@ fun FallbackAvatar(
     imageVector: ImageVector = Icons.Default.Person
 ) {
     val fontSize = options.fontSize ?: (options.size.value * 0.4f).sp
+    val container = options.containerColor.takeOrElse { MaterialTheme.colorScheme.secondaryContainer }
+    val content = options.contentColor.takeOrElse { MaterialTheme.colorScheme.onSecondaryContainer }
 
     val clickableModifier =
         if (options.onClick != null) {
@@ -43,13 +46,13 @@ fun FallbackAvatar(
         }
 
     Box(
-        modifier = clickableModifier.background(Color.Gray, CircleShape),
+        modifier = clickableModifier.background(container, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         if (!initials.isNullOrBlank()) {
             Text(
                 text = initials,
-                color = Color.White,
+                color = content,
                 fontSize = fontSize,
                 fontWeight = FontWeight.SemiBold
             )
@@ -58,7 +61,7 @@ fun FallbackAvatar(
                 modifier = Modifier.size(options.size / 2),
                 imageVector = imageVector,
                 contentDescription = stringResource(MR.string.avatar_default),
-                tint = Color.White
+                tint = content
             )
         }
     }
