@@ -144,6 +144,12 @@ object DarkColors {
 object HomebaseBrand {
     val Purple = Color(0xFF603E90)
     val Blue = Color(0xFF425985)
+
+    /** The ramp raised in OkLCh lightness, hue and chroma held, so a brand fill clears 4.5:1 on
+     *  [DarkColors.Surface] — the base pair sits at 2.1:1 and 2.4:1 there. */
+    val PurpleOnDark = Color(0xFF9473CA)
+    val BlueOnDark = Color(0xFF748EBD)
+
     val White = Color(0xFFFFFFFF)
     val Black = Color(0xFF000000)
 
