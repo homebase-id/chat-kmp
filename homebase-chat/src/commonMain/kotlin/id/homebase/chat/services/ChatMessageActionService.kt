@@ -264,13 +264,19 @@ class ChatMessageActionService(
             return MutationOutcome.Refused(IllegalArgumentException("invalid reaction code"))
         }
         val toJson = { code: String -> OdinSystemSerializer.serialize(ReactionContent(emoji = code)) }
-        return optimisticWriter.setReactions(
+        val rowKey = Md5.toGuidId("reaction-set:$messageId:${change.scope}")
+        val outcome = optimisticWriter.setReactions(
             driveId = chatDrive,
             uniqueId = messageId,
-            rowKey = Md5.toGuidId("reaction-set:$messageId:${change.scope}"),
+            rowKey = rowKey,
             add = change.add.map(toJson).toSet(),
             remove = change.remove.map(toJson).toSet(),
         ) { getRecipients(conversationId) }
+        Logger.i(tag = REACTIONS_TAG) {
+            "setReactions msg=$messageId scope=${change.scope} add=${change.add} remove=${change.remove} " +
+                "rowKey=$rowKey outcome=$outcome"
+        }
+        return outcome
     }
 
     // -------------------- DELETE --------------------

@@ -599,6 +599,10 @@ class OptimisticWriter(
         val actuallyRemoved = remove.filter { it in currentLocalReactions }
         val actuallyAdded = add.filter { it !in currentLocalReactions }
         val updatedLocalReactions = currentLocalReactions - actuallyRemoved.toSet() + actuallyAdded
+        Logger.i(tag = TAG) {
+            "Optimistic reaction set uniqueId=$uniqueId rowKey=$rowKey own before=$currentLocalReactions " +
+                "after=$updatedLocalReactions"
+        }
 
         val currentReactions =
             existingFile.fileMetadata.reactionPreview?.reactions.orEmpty().toMutableMap()

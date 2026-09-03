@@ -450,14 +450,25 @@ class DriveOutboxUploader(
         val lock = reactionSetLocksGuard.withLock {
             reactionSetLocks.getOrPut(request.fileId) { Mutex() }
         }
+        val row = outboxRecord.uniqueId
+        Logger.i(
+            "$TAG setReactions: row=$row file=${request.fileId} attempt=${outboxRecord.checkOutCount + 1} " +
+                "remove=${request.remove} add=${request.add} recipients=${request.recipients.size}"
+        )
         lock.withLock {
             for (reaction in request.remove) {
-                reactionProvider.deleteReaction(
-                    driveId = request.driveId,
-                    fileId = request.fileId,
-                    reaction = reaction,
-                    recipients = request.recipients,
-                )
+                try {
+                    reactionProvider.deleteReaction(
+                        driveId = request.driveId,
+                        fileId = request.fileId,
+                        reaction = reaction,
+                        recipients = request.recipients,
+                    )
+                    Logger.i("$TAG setReactions: row=$row deleted $reaction")
+                } catch (t: Throwable) {
+                    Logger.e("$TAG setReactions: row=$row FAILED deleting $reaction: ${t.message}")
+                    throw t
+                }
             }
             for (reaction in request.add) {
                 try {
@@ -467,12 +478,19 @@ class DriveOutboxUploader(
                         reaction = reaction,
                         recipients = request.recipients,
                     )
+                    Logger.i("$TAG setReactions: row=$row added $reaction")
                 } catch (e: ClientException) {
                     // The server's add is not idempotent: a reaction that already landed (an
                     // earlier attempt of this row, or the user's other device) is a 400. The
                     // desired state holds, so it is a success for a set-state row.
-                    if (!e.isDuplicateReaction()) throw e
-                    Logger.i("$TAG setReactions: reaction already present on ${request.fileId} — treating as applied")
+                    if (!e.isDuplicateReaction()) {
+                        Logger.e("$TAG setReactions: row=$row FAILED adding $reaction: ${e.message}")
+                        throw e
+                    }
+                    Logger.i("$TAG setReactions: row=$row $reaction already present — treating as applied")
+                } catch (t: Throwable) {
+                    Logger.e("$TAG setReactions: row=$row FAILED adding $reaction: ${t.message}")
+                    throw t
                 }
             }
         }

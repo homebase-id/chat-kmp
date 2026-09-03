@@ -885,6 +885,13 @@ class OutboxSync(
             )
             return EnqueueResult.WouldStrandCreate
         }
+        if (existing != null) {
+            Logger.i(
+                "OutboxSync: replaceEnqueue superseding pending uniqueId=$uniqueId " +
+                    "${existing.uploadTypeLabel()} attempts=${existing.checkOutCount} " +
+                    "inFlight=${existing.checkOutStamp != null} with ${uploadTypeName(uploadType)}"
+            )
+        }
         databaseManager.outbox.deleteBy(driveId, uniqueId)
         return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
     }
