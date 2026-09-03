@@ -94,7 +94,7 @@ object DarkColors {
     val ErrorContainer = Color(0xFF930006)
     val OnErrorContainer = Color(0xFFFFDAD6)
 
-    val Outline = Color(0xFF5C5E65)
+    val Outline = Color(0xFF71747C)
     val OutlineVariant = Color(0xFF3E414A)
 
     // Surface Elevation Variants
@@ -135,6 +135,26 @@ object DarkColors {
     val Background92 = Color(0xEB1B1C1F)
     val Surface87 = Color(0xDE1B1C1F)
     val SurfaceVariant92 = Color(0xEB303133)
+}
+
+/**
+ * Homebase.id Design Manual v2 (Dec 2024) pp.10-11. One brand, not a light and a dark one, so these
+ * are constants rather than scheme roles: anything painted in brand colour keeps them in both themes.
+ */
+object HomebaseBrand {
+    val Purple = Color(0xFF603E90)
+    val Blue = Color(0xFF425985)
+    val White = Color(0xFFFFFFFF)
+    val Black = Color(0xFF000000)
+
+    /** Secondary (p11): "provide variety and visual depth" — the Northern Lights of p5. */
+    val Green = Color(0xFF00966D)
+
+    /** Accent (p11): "only used for smaller parts". Inferred, not specified — the manual gives this
+     *  swatch no name, RGB or hex, and prints it under a column header reading 50%, as if it were a
+     *  tint of the magenta beside it. Sampling p11 returns (0,235,235), so it is its own hue; this
+     *  constant is that sample. Replace it if a future manual states the value. */
+    val Cyan = Color(0xFF00EBEB)
 }
 
 /** Extended color palette for custom UI elements */

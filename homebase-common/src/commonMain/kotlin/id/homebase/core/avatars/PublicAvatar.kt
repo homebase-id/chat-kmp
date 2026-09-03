@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -119,7 +121,12 @@ fun PublicAvatar(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = options.contentColor.takeOrElse {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        },
+                    )
                 }
             }
 
