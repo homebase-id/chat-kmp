@@ -15,6 +15,7 @@ import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionEntry
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.eventbus.BackendEvent
@@ -56,7 +57,7 @@ class OptimisticWriter(
     private val fileProcessor: MainIndexMetaHelpers.HomebaseFileProcessor =
         MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
 
-    // Per-message lock guarding the read-modify-write inside writeReactionToggle.
+    // Per-message lock guarding the read-modify-write inside writeReactionToggle and setReactions.
     // Without this, rapid taps on the bottom sheet have all five coroutines
     // read the same starting state, each compute "remove my one", and last-
     // writer-wins clobbers most of the removes. Per-(driveId, uniqueId) so
@@ -553,6 +554,99 @@ class OptimisticWriter(
                 )
             )
         }
+
+    /**
+     * Declares the caller's reaction state for one scope of a message: [remove] is deleted,
+     * [add] is added, as ONE outbox row keyed by [rowKey] (see [OutboxSync.replaceEnqueue])
+     * that replaces any still-pending row for the same scope. Unlike [toggleReaction] the
+     * intent is fixed at tap time, so a retry cannot flip it. The local mirror only counts
+     * reactions that actually change, so re-applying the same state is a no-op there too.
+     */
+    suspend fun setReactions(
+        driveId: Uuid,
+        uniqueId: Uuid,
+        rowKey: Uuid,
+        add: Set<String>,
+        remove: Set<String>,
+        recipients: suspend (original: HomebaseFile) -> List<OdinId>,
+    ): MutationOutcome = reactionLockFor(driveId, uniqueId).withLock {
+        val credentials = credentialsManager.requireActiveCredentials()
+
+        val existingFile = dbm.driveMainIndex.selectHomebaseFileByUnique(
+            credentials.getIdentityId(), driveId, uniqueId
+        )
+        if (existingFile == null) {
+            Logger.w(tag = TAG) { "Optimistic reaction set: no row for uniqueId=$uniqueId" }
+            return@withLock MutationOutcome.NoRow
+        }
+
+        gate("reaction set", uniqueId) {
+            outboxSync.replaceEnqueue(
+                request = SetReactionsOutboxRequest(
+                    driveId = driveId,
+                    fileId = existingFile.fileId,
+                    add = add.toList(),
+                    remove = remove.toList(),
+                    recipients = recipients(existingFile),
+                ),
+                uniqueId = rowKey,
+                dependencyUniqueId = uniqueId,
+            )
+        }?.let { return@withLock it }
+
+        val currentLocalReactions =
+            existingFile.fileMetadata.localAppData?.localReactions.orEmpty()
+        val actuallyRemoved = remove.filter { it in currentLocalReactions }
+        val actuallyAdded = add.filter { it !in currentLocalReactions }
+        val updatedLocalReactions = currentLocalReactions - actuallyRemoved.toSet() + actuallyAdded
+
+        val currentReactions =
+            existingFile.fileMetadata.reactionPreview?.reactions.orEmpty().toMutableMap()
+        for (reactionJson in actuallyRemoved) {
+            val key = currentReactions.entries
+                .firstOrNull { it.value.reactionContent == reactionJson }?.key ?: continue
+            val entry = currentReactions.getValue(key)
+            if (entry.count <= 1) currentReactions.remove(key)
+            else currentReactions[key] = entry.copy(count = entry.count - 1)
+        }
+        for (reactionJson in actuallyAdded) {
+            val key = currentReactions.entries
+                .firstOrNull { it.value.reactionContent == reactionJson }?.key
+            if (key == null) {
+                currentReactions[reactionJson] = ReactionEntry(
+                    key = reactionJson,
+                    count = 1,
+                    reactionContent = reactionJson
+                )
+            } else {
+                val entry = currentReactions.getValue(key)
+                currentReactions[key] = entry.copy(count = entry.count + 1)
+            }
+        }
+
+        val updatedFile = existingFile.copy(
+            fileMetadata = existingFile.fileMetadata.copy(
+                updated = existingFile.optimisticStamp(),
+                reactionPreview = (existingFile.fileMetadata.reactionPreview
+                    ?: ReactionSummary()).copy(
+                    reactions = currentReactions
+                ),
+                localAppData = (existingFile.fileMetadata.localAppData
+                    ?: LocalAppMetadata()).copy(
+                    localReactions = updatedLocalReactions
+                ),
+            )
+        )
+
+        try {
+            upsertAndEmit(credentials.getIdentityId(), driveId, updatedFile)
+        } catch (e: Exception) {
+            Logger.e(throwable = e, tag = TAG) {
+                "Optimistic reaction set failed (non-fatal, already queued) for uniqueId=$uniqueId"
+            }
+        }
+        MutationOutcome.Queued
+    }
 
     private suspend fun writeDelete(
         driveId: Uuid,

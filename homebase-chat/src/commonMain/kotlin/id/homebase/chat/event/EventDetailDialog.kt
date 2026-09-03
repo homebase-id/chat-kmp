@@ -59,6 +59,7 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import kotlinx.collections.immutable.ImmutableList
 import id.homebase.chat.services.ChatMessageActionService
+import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.widget.ChatMarkdown
 import id.homebase.chat.widget.MediaItem
@@ -580,20 +581,10 @@ private suspend fun applyRsvp(
     currentRsvp: String?,
     newRsvp: String,
 ) {
-    // The reaction toggle uses toggle semantics (add if absent, remove if present); compute the
-    // RSVP the user ends up on so the reminder can be reconciled to match.
-    val resultingRsvp: String? = if (currentRsvp == newRsvp) {
-        // Same button tapped twice → toggle off (no RSVP).
-        actionService.toggleReaction(conversationId, messageId, newRsvp)
-        null
-    } else {
-        if (currentRsvp != null) {
-            // Switch RSVP: clear the prior one before recording the new.
-            actionService.toggleReaction(conversationId, messageId, currentRsvp)
-        }
-        actionService.toggleReaction(conversationId, messageId, newRsvp)
-        newRsvp
-    }
+    val change = EventRsvp.change(currentRsvp, newRsvp)
+    val outcome = actionService.setReactions(conversationId, messageId, change)
+    if (outcome != MutationOutcome.Queued) return
+    val resultingRsvp: String? = change.add.firstOrNull()
 
     // Reconcile the self-reminder to the resulting state: Going schedules, anything else (Maybe /
     // Not going / retracted) cancels. Best-effort — a reminder hiccup must never fail the RSVP,
