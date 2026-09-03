@@ -387,6 +387,10 @@ fun AppNavHost(
 
     // Only show bottom nav if on a top-level route AND not showing only detail pane
     val isOnTopLevelScreen = isAuthenticated && isTopLevelRoute && !showingOnlyDetailPane
+
+    // Safe only because login's top-left is bare in both its layouts: brand artwork on the
+    // two-pane, plain surface in portrait — the traffic lights land on nothing either way.
+    val paintsUnderTitleBar = chromeDestination?.hasRoute(Route.Login::class) == true
     val showNavigationRail = isExpandedLayout()
     val vaultUiState by vaultViewModel.uiState.collectAsStateWithLifecycle()
     val isVaultGalleryOpen = vaultUiState.fullScreenOverlay != null
@@ -833,7 +837,7 @@ fun AppNavHost(
                         Modifier.windowInsetsPadding(WindowInsets.statusBars)
                     } else {
                         Modifier
-                    }.padding(top = if (railVisible) 0.dp else topInset),
+                    }.padding(top = if (railVisible || paintsUnderTitleBar) 0.dp else topInset),
                 ) {
                     if (isOnTopLevelScreen) {
                         if (showUpdateBanner) {
