@@ -72,6 +72,7 @@ import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCall
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.RenderCallback
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.format.RV32BufferFormat
 import java.io.File
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.util.UUID
@@ -182,7 +183,7 @@ actual fun VideoPlayerSurface(
                         )
 
                         val totalSize = content.metadata.fileSize
-                        val server = HttpServer.create(InetSocketAddress(0), 0).apply {
+                        val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0).apply {
                         createContext("/") { exchange ->
                             val name = exchange.requestURI.path.trimStart('/')
                             if (name.endsWith(".m3u8")) {
@@ -233,7 +234,7 @@ actual fun VideoPlayerSurface(
                     }
                         httpServer = server
                         progressJob.cancel()
-                        state = VpsState.Playing("http://localhost:${server.address.port}/index.m3u8")
+                        state = VpsState.Playing("http://127.0.0.1:${server.address.port}/index.m3u8")
                     }
                     is VideoContent.Mp4Bytes -> error("Mp4Bytes is the web-only variant — resolveVideoContent was given fileOps")
                     is VideoContent.Mp4File -> {
