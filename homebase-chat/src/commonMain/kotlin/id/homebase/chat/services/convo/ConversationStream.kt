@@ -63,6 +63,14 @@ private const val ORPHAN_SWEEP_BOOT_DELAY_MS = 10_000L
 // coalesced-enrichment region in ConversationStream.
 private const val UNREAD_ENRICH_DEBOUNCE_MS = 500L
 
+/** Page size for the post-sync emergency-status replay scan. */
+private const val EMERGENCY_REPLAY_PAGE = 200L
+
+/** Persisted rowId cursor for [ConversationStream.replayEmergencyStatusMessages]. Wiped on logout
+ *  with the rest of keyValue, so a new identity replays its own history from the start. */
+private val EMERGENCY_REPLAY_CURSOR_KEY: Uuid =
+    Uuid.parse("00000000-0000-0000-0000-0000000a0901")
+
 class ConversationStream(
     private val credentialsManager: CredentialsManager,
     private val contactService: ContactService,
@@ -328,6 +336,14 @@ class ConversationStream(
                                     }
                                 }
                             }
+
+                            // Emergency designations/revocations only reach their handlers
+                            // from the live BatchReceived path; DriveSync writes them straight
+                            // to DriveMainIndex with no event, so one that arrived while we
+                            // were offline would sit in the DB undispatched and the peer would
+                            // never appear in "Who you can locate". Replay from the DB here.
+                            // Own launch, so it isn't queued behind the reload pipeline above.
+                            scope.launch { replayEmergencyStatusMessages() }
                         }
 
                         // One-shot, once per process: after the chat drive's initial sync
@@ -426,6 +442,76 @@ class ConversationStream(
                 Logger.e(e) { "ConversationStream: heal-request handler threw for sender=${sender.domainName}: ${e.message}" }
             }
         }
+    }
+
+    /**
+     * Re-dispatches emergency designations/revocations that a DriveSync round wrote straight to
+     * DriveMainIndex — the live [BackendEvent.DataEvent.BatchReceived] path is the only one that
+     * reaches [dispatchEmergencyDesignations], so a designation that arrived while we were offline
+     * would otherwise sit in the DB forever and the peer would never appear in "Who you can locate".
+     *
+     * Bounded by a persisted rowId cursor: a synced row is an INSERT, so the scan only covers what
+     * landed since the last pass. Handled messages are consumed (soft-deleted) by the receive
+     * service, and both handlers are idempotent, so replaying one already applied is a no-op.
+     *
+     * Bails without advancing the cursor when the handlers aren't wired yet — `start()` runs before
+     * AppModule assigns them, and burning the cursor there would drop the very messages this exists
+     * to recover.
+     */
+    private suspend fun replayEmergencyStatusMessages() {
+        if (onEmergencyContactDesignated == null && onEmergencyContactRevoked == null) return
+        val identityId = runCatching {
+            credentialsManager.requireActiveCredentials().getIdentityId()
+        }.getOrNull() ?: return
+
+        val self = runCatching { credentialsManager.getActiveDomain() }
+            .getOrNull()?.domainName ?: return
+
+        var cursor = readEmergencyReplayCursor()
+        while (true) {
+            val batch = runCatching {
+                dbm.driveMainIndex.selectHomebaseFilesByFileTypeAndDataTypeSince(
+                    identityId = identityId,
+                    driveId = chatDrive,
+                    fileType = ChatProtocol.MessageFileType.toLong(),
+                    dataType = ChatProtocol.ChatStatusMessageDataType.toLong(),
+                    sinceRowId = cursor,
+                    limit = EMERGENCY_REPLAY_PAGE,
+                )
+            }.onFailure {
+                Logger.w(it) { "ConversationStream: emergency replay query failed" }
+            }.getOrNull() ?: return
+            if (batch.isEmpty()) return
+
+            // The live path only ever sees incoming batches; this scan sees our own sent
+            // copies too, and handing one to onDesignated would have us designate ourselves.
+            val files = batch.map { it.file }.filterNot { file ->
+                val sender = file.fileMetadata.originalAuthor ?: file.fileMetadata.senderOdinId
+                sender == null || sender.domainName.equals(self, ignoreCase = true)
+            }
+            if (files.isNotEmpty()) {
+                dispatchEmergencyDesignations(files)
+                dispatchEmergencyRevocations(files)
+            }
+
+            cursor = batch.last().rowId
+            writeEmergencyReplayCursor(cursor)
+            if (batch.size < EMERGENCY_REPLAY_PAGE) return
+        }
+    }
+
+    private suspend fun readEmergencyReplayCursor(): Long = runCatching {
+        dbm.keyValue.selectByKey(EMERGENCY_REPLAY_CURSOR_KEY) { _, data -> data }
+            ?.decodeToString()?.toLongOrNull()
+    }.getOrNull() ?: 0L
+
+    private suspend fun writeEmergencyReplayCursor(rowId: Long) {
+        runCatching {
+            dbm.keyValue.upsertValue(
+                EMERGENCY_REPLAY_CURSOR_KEY,
+                rowId.toString().encodeToByteArray(),
+            )
+        }.onFailure { Logger.w(it) { "ConversationStream: emergency replay cursor write failed" } }
     }
 
     private suspend fun dispatchEmergencyDesignations(messageFiles: List<HomebaseFile>) {
