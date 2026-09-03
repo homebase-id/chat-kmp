@@ -71,9 +71,9 @@ import org.koin.compose.koinInject
  *    tally, and Yes / Maybe / No vote buttons reflecting the viewer's choice
  *  - the leading slot highlighted by score (Y=2, M=1, N=0)
  *
- * Voting writes ordinary chat reactions ([GroodleVote] codes). Tapping a
- * different choice clears the user's prior vote for that slot first (clear-then-
- * set), so the two can't coexist. Past the deadline the buttons lock.
+ * Voting writes ordinary chat reactions ([GroodleVote] codes). A tap declares
+ * the whole slot's state in one idempotent row (set the choice, clear the slot's
+ * others), so two choices can't coexist. Past the deadline the buttons lock.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalUuidApi::class)
 @Composable
@@ -218,7 +218,15 @@ private fun GroodleDetailContent(
                     isClosed = isClosed,
                     onVote = { choice ->
                         scope.launch {
-                            applyVote(actionService, conversationId, messageId, myVotes[slotIndex], slotIndex, choice)
+                            applyVote(
+                                actionService,
+                                conversationId,
+                                messageId,
+                                myVotes[slotIndex],
+                                slotIndex,
+                                choice,
+                                descriptor.allowMaybe,
+                            )
                         }
                     },
                 )
@@ -387,16 +395,11 @@ private suspend fun applyVote(
     currentChoice: GroodleVote.Choice?,
     slotIndex: Int,
     newChoice: GroodleVote.Choice,
+    allowMaybe: Boolean,
 ) {
-    val newCode = GroodleVote.encode(slotIndex, newChoice)
-    if (currentChoice == newChoice) {
-        // Same choice tapped twice → toggle off (clear the vote).
-        actionService.toggleReaction(conversationId, messageId, newCode)
-        return
-    }
-    if (currentChoice != null) {
-        // Switch choice: clear the prior vote for this slot first.
-        actionService.toggleReaction(conversationId, messageId, GroodleVote.encode(slotIndex, currentChoice))
-    }
-    actionService.toggleReaction(conversationId, messageId, newCode)
+    actionService.setReactions(
+        conversationId,
+        messageId,
+        GroodleVote.change(slotIndex, currentChoice, newChoice, allowMaybe),
+    )
 }

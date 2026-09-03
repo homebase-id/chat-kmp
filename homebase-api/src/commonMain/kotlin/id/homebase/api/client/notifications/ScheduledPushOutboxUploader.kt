@@ -191,7 +191,7 @@ class ScheduledPushOutboxUploader(
     companion object {
         private const val TAG = "ScheduledPushOutboxUploader"
 
-        // uploadType ids — continue the DriveOutboxUploader sequence (1..9) without overlapping it.
+        // uploadType ids — continue the DriveOutboxUploader sequence (1..9, 12) without overlapping it.
         const val SchedulePush = 10L
         const val CancelPush = 11L
     }
