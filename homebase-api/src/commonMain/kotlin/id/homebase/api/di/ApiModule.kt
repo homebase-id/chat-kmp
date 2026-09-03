@@ -99,7 +99,16 @@ val apiModule = module {
     single { DriveOutboxUploader(get(), get(), get(), get(), get(), get()) }
     single { ScheduledPushOutboxUploader(get()) }
     single<OutboxUploader> { CompositeOutboxUploader(get(), get()) }
-    singleOf(::OutboxSync)
+    // Explicit `single` (not `singleOf`) because the ctor's background-assertion factory is
+    // an intentional Kotlin default the container can't resolve reflectively.
+    single {
+        OutboxSync(
+            databaseManager = get(),
+            uploader = get(),
+            eventBus = get(),
+            scope = get<CoroutineScope>(),
+        )
+    }
 
     // YouAuthFlowManager is bound in homebase-core's AppModule where the platform
     // singletons (ImageLoader, FileOperationsProvider) needed by its

@@ -25,6 +25,8 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.crypto.toUtf8ByteArray
+import id.homebase.api.platform.BackgroundExecutionAssertion
+import id.homebase.api.platform.beginBackgroundExecutionAssertion
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
@@ -121,7 +123,9 @@ class OutboxSync(
     private val databaseManager: DatabaseManager,
     private val uploader: OutboxUploader,
     private val eventBus: EventBus,
-    scope: CoroutineScope? = null
+    scope: CoroutineScope? = null,
+    private val beginBackgroundAssertion: (String) -> BackgroundExecutionAssertion =
+        ::beginBackgroundExecutionAssertion,
 ) {
     // The threads use the DB & Network, so we use the IO dispatcher
     private val scope = scope ?: supervisedScope("outbox-sync", ioDispatcher)
@@ -148,6 +152,11 @@ class OutboxSync(
     private val counterMutex = Mutex()
 
     private val checkoutMutex = Mutex()
+
+    // Held for as long as any worker is draining, so iOS doesn't suspend the process
+    // mid-POST (#1467). Only ever touched under counterMutex, alongside the
+    // Started/Completed events that mark the same 0↔1 worker transitions.
+    private var backgroundAssertion: BackgroundExecutionAssertion? = null
 
     // The send() function spawns a thread when it acquires the lock.
     // Then send() returns true if it begins processing in a thread, and false if
@@ -179,6 +188,7 @@ class OutboxSync(
             try {
                 counterMutex.withLock {
                     if (activeThreads.incrementAndGet() == 1) {
+                        backgroundAssertion = beginBackgroundAssertion(ASSERTION_NAME)
                         eventBus.emit(BackendEvent.OutboxEvent.Started)
                     }
                 }
@@ -189,6 +199,11 @@ class OutboxSync(
                 try {
                     counterMutex.withLock {
                         if (activeThreads.decrementAndGet() == 0) {
+                            // Before nextScheduled()/emit, and before the backoff sleep
+                            // below: nothing is uploading any more, so keeping the OS
+                            // window open past here is pure cost.
+                            backgroundAssertion?.end()
+                            backgroundAssertion = null
                             val n = totalSent.getAndSet(0)
                             nextSend = databaseManager.outbox.nextScheduled()
                             eventBus.emit(BackendEvent.OutboxEvent.Completed(n))
@@ -581,6 +596,8 @@ class OutboxSync(
         /** Max outbox upload attempts before a row is dropped (~48h of backoff).
          *  Shown in Message Info as "Attempt N of MAX_ATTEMPTS". */
         public const val MAX_ATTEMPTS: Int = 20
+
+        internal const val ASSERTION_NAME: String = "outbox-drain"
     }
 
     // Checkout stamps of rows currently held by a LIVE upload worker in THIS
