@@ -1606,7 +1606,7 @@
     <string name="location_perm_open_settings">Open settings</string>
     <string name="location_perm_always_hint">Needed to record your location when the app is in the background or closed.</string>
     <string name="location_perm_always_settings_hint">Android won't ask again — tap Open settings, then choose "Allow all the time" for Location.</string>
-    <string name="location_status_section">Status</string>
+    <string name="location_status_section">Status on this device</string>
     <string name="location_status_last_fix">Last fix</string>
     <string name="location_status_points_today">Points today</string>
     <string name="location_status_pending">Waiting to upload</string>
@@ -1696,7 +1696,7 @@
     <string name="location_tile_on">On</string>
     <string name="location_tile_off">Off</string>
     <string name="location_tile_badge_count">%1$d</string>
-    <string name="location_tile_emergency_status">%1$d can locate you · you can locate %2$d</string>
+    <string name="location_tile_emergency_status">You can locate %1$d · %2$d can locate you</string>
     <string name="location_tile_emergency_stale">%1$d without a signal for over 2 days</string>
     <string name="location_tile_emergency_stale_cd">Warning: %1$d contacts without a tracking signal for more than 2 days</string>
     <string name="location_tile_history_status">%1$d points today · %2$d devices</string>

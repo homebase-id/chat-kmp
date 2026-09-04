@@ -116,8 +116,8 @@ fun LocationTileHomeContent(
                             stringResource(MR.string.location_tile_emergency_stale, tiles.staleCount)
                         tiles.emergencyOn -> stringResource(
                             MR.string.location_tile_emergency_status,
-                            tiles.canLocateMeCount,
                             tiles.canLocateCount,
+                            tiles.canLocateMeCount,
                         )
                         else -> pressToSetUp
                     },
