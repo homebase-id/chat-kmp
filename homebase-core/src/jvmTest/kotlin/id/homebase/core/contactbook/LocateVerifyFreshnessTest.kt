@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.location
+package id.homebase.core.contactbook
 
 import kotlin.test.Test
 import kotlin.test.assertFalse

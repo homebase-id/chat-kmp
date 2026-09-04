@@ -23,6 +23,8 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Button
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -40,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
@@ -55,6 +59,7 @@ import id.homebase.resources.contactbook_home_subtitle
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.export_log
 import id.homebase.resources.homebase_logo
+import id.homebase.resources.location_attention_cd
 import id.homebase.resources.location_home_subtitle
 import id.homebase.resources.location_label
 import id.homebase.resources.moments_home_subtitle
@@ -77,6 +82,7 @@ fun HomeScreen(
     onNavigateToExamples: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val locationAttention by viewModel.locationAttention.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -129,6 +135,7 @@ fun HomeScreen(
         onNavigateToMoments = onNavigateToMoments,
         onNavigateToLocation = onNavigateToLocation,
         onNavigateToContacts = onNavigateToContacts,
+        locationAttention = locationAttention,
     )
 }
 
@@ -142,6 +149,7 @@ fun HomeUi(
     onNavigateToMoments: () -> Unit = {},
     onNavigateToLocation: () -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
+    locationAttention: Boolean = false,
 ) {
     val scrollState = rememberScrollState()
     Scaffold(
@@ -198,6 +206,8 @@ fun HomeUi(
                 label = stringResource(MR.string.location_label),
                 subtitle = stringResource(MR.string.location_home_subtitle),
                 onClick = onNavigateToLocation,
+                badged = locationAttention,
+                badgeContentDescription = stringResource(MR.string.location_attention_cd),
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -222,6 +232,8 @@ private fun FeatureCard(
     label: String,
     subtitle: String,
     onClick: () -> Unit,
+    badged: Boolean = false,
+    badgeContentDescription: String? = null,
 ) {
     ElevatedCard(
         onClick = onClick,
@@ -238,21 +250,38 @@ private fun FeatureCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = CircleShape,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(24.dp),
-                )
+            val iconCircle: @Composable () -> Unit = {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+            if (badged) {
+                BadgedBox(
+                    badge = {
+                        Badge(
+                            modifier = if (badgeContentDescription != null) {
+                                Modifier.semantics { contentDescription = badgeContentDescription }
+                            } else {
+                                Modifier
+                            },
+                        )
+                    },
+                ) { iconCircle() }
+            } else {
+                iconCircle()
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {

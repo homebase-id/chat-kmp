@@ -1329,7 +1329,6 @@
 
     <!-- Location add-on -->
     <string name="location_label">Lokation</string>
-    <string name="location_dashboard_title">Lokations-dashboard</string>
     <string name="location_settings_title">Lokationsindstillinger</string>
     <string name="location_home_subtitle">Din private lokationshistorik</string>
     <string name="location_onboarding_title">Dine steder, kun dine</string>
@@ -1359,9 +1358,6 @@
     <string name="location_status_last_flush">Seneste upload</string>
     <string name="location_status_never">Aldrig</string>
     <string name="location_menu_more">Flere muligheder</string>
-    <string name="location_menu_find_device">Find enhed</string>
-    <string name="location_menu_setup">Indstillinger</string>
-    <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Lokationshistorik</string>
     <string name="location_devices_section">Find min enhed</string>
     <string name="location_locatable_section">Hvem du kan lokalisere</string>
@@ -1383,10 +1379,8 @@
     <string name="location_locate_ambush_explainer">Hvis du tror, at personen kan blive holdt som gidsel, så markér dette felt for at forsinke notifikationen til personen i 24 timer.</string>
     <string name="location_locate_confirm">Anmod om placeringsdata</string>
     <string name="location_locate_fetch_failed">Kunne ikke hente deres placeringsdata. Meddelelsen om anmodningen blev stadig sendt.</string>
-    <string name="location_emergency_contacts_section">Nødkontakter</string>
     <string name="location_emergency_access_section">Hvem kan lokalisere dig</string>
     <string name="location_emergency_access_manage">Tilføj nødkontakter</string>
-    <string name="location_emergency_access_missing">Ingen nødlokationsadgangskreds endnu. Tryk på + for at oprette en i din ejer konsol.</string>
     <string name="location_emergency_access_none">Ingen kan lokalisere dig endnu. Tryk på + for at tilføje personer.</string>
     <string name="location_emergency_access_more">+%1$d</string>
     <string name="location_device_this_device">Denne enhed</string>
@@ -1423,14 +1417,32 @@
     <string name="location_maps_off_cta">Slå kort til</string>
     <string name="location_dashboard_sharing_with">Du deler med</string>
     <string name="location_dashboard_sharing_with_you">Deler med dig</string>
-    <string name="location_dashboard_sharing_show">Vis listen</string>
-    <string name="location_dashboard_sharing_hide">Skjul listen</string>
     <string name="location_dashboard_share_until">indtil %1$s</string>
     <string name="location_dashboard_share_until_stopped">indtil den stoppes</string>
     <string name="location_dashboard_stop_one_cd">Stop deling med %1$s</string>
     <string name="location_dashboard_stop_everyone">Stop deling med alle</string>
     <string name="location_dashboard_stop_confirm_title">Stop al deling?</string>
     <string name="location_dashboard_stop_confirm_body">Dette afslutter alle live-placeringsdelinger, du har startet.</string>
+    <string name="location_tile_emergency_title">Nødlokation</string>
+    <string name="location_tile_settings_title">Indstillinger</string>
+    <string name="location_tile_press_to_activate">Tryk for at aktivere</string>
+    <string name="location_tile_press_to_set_up">Tryk for at sætte op</string>
+    <string name="location_tile_on">Til</string>
+    <string name="location_tile_off">Fra</string>
+    <string name="location_tile_badge_count">%1$d</string>
+    <string name="location_tile_emergency_status">%1$d kan lokalisere dig · du kan lokalisere %2$d</string>
+    <string name="location_tile_emergency_stale">%1$d uden signal i over 2 dage</string>
+    <string name="location_tile_emergency_stale_cd">Advarsel: %1$d kontakter uden sporingssignal i mere end 2 dage</string>
+    <string name="location_tile_history_status">%1$d punkter i dag · %2$d enheder</string>
+    <string name="location_tile_live_status">Deler med %1$d · %2$d deler med dig</string>
+    <string name="location_tile_live_off">Ingen deler lige nu</string>
+    <string name="location_tile_settings_status">Kort: %1$s</string>
+    <string name="location_attention_cd">En nødkontakt kræver opmærksomhed</string>
+    <string name="location_emergency_helper">Personer, du kan lokalisere, vises, når de tilføjer dig til deres nødkreds. Tryk på en person for at anmode om deres lokation i en nødsituation.</string>
+    <string name="location_history_overview_helper">Din lokationshistorik optages på denne enhed og gemmes krypteret på dit drev. Tryk på kortet for at gennemse dag for dag, eller på en enhed for at finde den.</string>
+    <string name="location_history_overview_needs_permission">Giv lokationstilladelse under Indstillinger for at starte sporing.</string>
+    <string name="location_live_helper">Start deling af din live-lokation fra en samtale. Delinger stopper automatisk på det tidspunkt, du valgte.</string>
+    <string name="location_settings_helper">Sporing, tilladelser og kortvisning for denne enhed.</string>
     <string name="share_live_location">Del live-placering</string>
     <string name="live_share_back">Del din live-placering</string>
     <string name="live_share_duration_prompt">Del live-placering i</string>
