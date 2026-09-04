@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.location
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +22,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -39,12 +43,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.common.OdinId
 import id.homebase.chat.data.ContactUiModel
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.PublicAvatar
@@ -55,6 +61,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.live_location_age_minutes
 import id.homebase.resources.location_emergency_access_manage
+import id.homebase.resources.location_emergency_access_more
 import id.homebase.resources.location_emergency_access_none
 import id.homebase.resources.location_emergency_access_section
 import id.homebase.resources.location_emergency_helper
@@ -177,11 +184,14 @@ fun LocationEmergencyScreen(
                 val pendingIds = remember(uiState.whoCanLocateMePending) {
                     uiState.whoCanLocateMePending.map { it.odinId }.toSet()
                 }
+                // Collapsed to a facepile by default: the reason to open this screen is the
+                // health of the people YOU can locate, listed above.
                 PeopleListBody(
                     loaded = uiState.whoCanLocateMeLoaded,
                     members = (uiState.whoCanLocateMe + uiState.whoCanLocateMePending)
                         .distinctBy { it.odinId },
                     emptyText = stringResource(MR.string.location_emergency_access_none),
+                    collapsible = true,
                     rowTrailing = { member ->
                         EmergencyContactTrailing(
                             name = member.name,
@@ -253,7 +263,10 @@ private fun PeopleListBody(
     rowTrailing: (@Composable (ContactUiModel) -> Unit)? = null,
     /** Per-member tap action; return null for an inert row (no ripple, no handler). */
     memberClick: ((ContactUiModel) -> (() -> Unit)?)? = null,
+    /** Start as a facepile that expands to the named rows on tap. */
+    collapsible: Boolean = false,
 ) {
+    var expanded by rememberSaveable { mutableStateOf(!collapsible) }
     when {
         !loaded -> Box(
             modifier = Modifier.fillMaxWidth().padding(24.dp),
@@ -270,8 +283,30 @@ private fun PeopleListBody(
         )
 
         else -> Column {
+            if (collapsible) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { expanded = !expanded }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AvatarStackRow(
+                        items = members.map { AvatarStackItem(it.odinId, it.avatarInitials) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            AnimatedVisibility(visible = expanded) {
+                Column {
             members.forEachIndexed { index, member ->
-                if (index > 0) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                if (index > 0 || collapsible) HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 val onClick = memberClick?.invoke(member)
                 Row(
                     modifier = Modifier
@@ -296,6 +331,58 @@ private fun PeopleListBody(
                     )
                     rowTrailing?.invoke(member)
                 }
+            }
+                }
+            }
+        }
+    }
+}
+
+private data class AvatarStackItem(val odinId: OdinId, val initials: String)
+
+@Composable
+private fun AvatarStackRow(
+    items: List<AvatarStackItem>,
+    modifier: Modifier = Modifier,
+    maxVisible: Int = 6,
+) {
+    val visible = items.take(maxVisible)
+    val overflow = items.size - visible.size
+    val avatarSize = 36.dp
+    val ringSize = avatarSize + 4.dp
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(-(avatarSize / 3)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        visible.forEach { item ->
+            Box(
+                modifier = Modifier
+                    .size(ringSize)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                PublicAvatar(
+                    odinId = item.odinId,
+                    initials = item.initials,
+                    options = AvatarOptions(size = avatarSize),
+                )
+            }
+        }
+        if (overflow > 0) {
+            Box(
+                modifier = Modifier
+                    .size(ringSize)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(MR.string.location_emergency_access_more, overflow),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }

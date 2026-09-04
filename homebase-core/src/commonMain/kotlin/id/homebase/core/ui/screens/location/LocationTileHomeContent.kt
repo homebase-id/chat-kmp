@@ -41,13 +41,17 @@ import id.homebase.resources.location_tile_emergency_stale
 import id.homebase.resources.location_tile_emergency_stale_cd
 import id.homebase.resources.location_tile_emergency_status
 import id.homebase.resources.location_tile_emergency_title
+import id.homebase.resources.location_device_unnamed
 import id.homebase.resources.location_tile_history_status
+import id.homebase.resources.location_tile_history_tracked_by
+import id.homebase.resources.location_tile_history_viewer_off
 import id.homebase.resources.location_tile_live_off
 import id.homebase.resources.location_tile_live_status
 import id.homebase.resources.location_tile_press_to_activate
 import id.homebase.resources.location_tile_press_to_set_up
 import id.homebase.resources.location_tile_settings_status
 import id.homebase.resources.location_tile_settings_title
+import kotlin.time.Clock
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -59,7 +63,7 @@ fun LocationTileHomeContent(
     onOpenLiveSharing: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val tiles = deriveLocationTiles(uiState)
+    val tiles = deriveLocationTiles(uiState, Clock.System.now().toEpochMilliseconds())
     val pressToSetUp = stringResource(MR.string.location_tile_press_to_set_up)
     Column(
         modifier = Modifier
@@ -112,8 +116,8 @@ fun LocationTileHomeContent(
                             stringResource(MR.string.location_tile_emergency_stale, tiles.staleCount)
                         tiles.emergencyOn -> stringResource(
                             MR.string.location_tile_emergency_status,
-                            tiles.canLocateMeCount,
                             tiles.canLocateCount,
+                            tiles.canLocateMeCount,
                         )
                         else -> pressToSetUp
                     },
@@ -130,14 +134,21 @@ fun LocationTileHomeContent(
                     icon = Icons.Outlined.History,
                     title = stringResource(MR.string.location_dashboard_history_section),
                     on = tiles.historyOn,
-                    statusText = if (tiles.historyOn) {
-                        stringResource(
+                    statusText = when {
+                        tiles.trackedDevice != null -> stringResource(
+                            MR.string.location_tile_history_tracked_by,
+                            tiles.trackedDevice.name
+                                ?: stringResource(MR.string.location_device_unnamed, tiles.trackedDevice.shortId),
+                            tiles.pointsToday,
+                        )
+                        tiles.historyOn -> stringResource(
                             MR.string.location_tile_history_status,
                             tiles.pointsToday,
                             tiles.deviceCount,
                         )
-                    } else {
-                        stringResource(MR.string.location_tile_press_to_activate)
+                        // Viewer devices can never track; don't invite a tap that leads nowhere.
+                        uiState.trackingAvailable -> stringResource(MR.string.location_tile_press_to_activate)
+                        else -> stringResource(MR.string.location_tile_history_viewer_off)
                     },
                     onClick = onOpenHistory,
                     modifier = Modifier.weight(1f).aspectRatio(1f),

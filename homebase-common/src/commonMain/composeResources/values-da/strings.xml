@@ -1351,7 +1351,7 @@
     <string name="location_perm_open_settings">Åbn indstillinger</string>
     <string name="location_perm_always_hint">Kræves for at optage din placering, når appen er i baggrunden eller lukket.</string>
     <string name="location_perm_always_settings_hint">Android spørger ikke igen — tryk på Åbn indstillinger, og vælg derefter "Tillad altid" for Placering.</string>
-    <string name="location_status_section">Status</string>
+    <string name="location_status_section">Status på denne enhed</string>
     <string name="location_status_last_fix">Seneste position</string>
     <string name="location_status_points_today">Punkter i dag</string>
     <string name="location_status_pending">Venter på upload</string>
@@ -1430,10 +1430,12 @@
     <string name="location_tile_on">Til</string>
     <string name="location_tile_off">Fra</string>
     <string name="location_tile_badge_count">%1$d</string>
-    <string name="location_tile_emergency_status">%1$d kan lokalisere dig · du kan lokalisere %2$d</string>
+    <string name="location_tile_emergency_status">Du kan lokalisere %1$d · %2$d kan lokalisere dig</string>
     <string name="location_tile_emergency_stale">%1$d uden signal i over 2 dage</string>
     <string name="location_tile_emergency_stale_cd">Advarsel: %1$d kontakter uden sporingssignal i mere end 2 dage</string>
     <string name="location_tile_history_status">%1$d punkter i dag · %2$d enheder</string>
+    <string name="location_tile_history_tracked_by">Spores af %1$s · %2$d punkter i dag</string>
+    <string name="location_tile_history_viewer_off">Slå sporing til på din telefon</string>
     <string name="location_tile_live_status">Deler med %1$d · %2$d deler med dig</string>
     <string name="location_tile_live_off">Ingen deler lige nu</string>
     <string name="location_tile_settings_status">Kort: %1$s</string>
