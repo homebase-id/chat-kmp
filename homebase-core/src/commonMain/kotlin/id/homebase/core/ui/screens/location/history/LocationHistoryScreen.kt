@@ -70,7 +70,7 @@ import kotlin.time.Instant
 fun LocationHistoryScreen(
     viewModel: LocationHistoryViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToDashboard: () -> Unit = {},
+    onOpenTrackingToggle: () -> Unit = {},
     /** Non-null = emergency-locate peer mode: the contact's name titles the screen (#894). */
     subjectName: String? = null,
     /** False hides the delete-day menu — peer mode is a read-only view of someone else's data. */
@@ -195,7 +195,7 @@ fun LocationHistoryScreen(
                 showMapTiles = uiState.showMapTiles,
                 isLoading = uiState.isLoading,
                 allowLocationHistory = uiState.allowLocationHistory,
-                onEnableTracking = onNavigateToDashboard,
+                onEnableTracking = onOpenTrackingToggle,
                 modifier = Modifier.weight(1f),
             )
         }

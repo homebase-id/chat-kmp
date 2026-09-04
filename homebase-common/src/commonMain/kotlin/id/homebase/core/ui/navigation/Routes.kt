@@ -272,6 +272,22 @@ sealed class Route {
     data object LocationEmergencyContactAdd : Route()
 
     @Serializable
+    @SerialName("location-emergency")
+    data object LocationEmergency : Route()
+
+    @Serializable
+    @SerialName("location-history-overview")
+    data object LocationHistoryOverview : Route()
+
+    @Serializable
+    @SerialName("location-live-sharing")
+    data object LocationLiveSharing : Route()
+
+    @Serializable
+    @SerialName("location-settings")
+    data object LocationSettings : Route()
+
+    @Serializable
     @SerialName("crop")
     data class Crop(val requestId: String, val lockedAspect: String? = null) : Route()
 

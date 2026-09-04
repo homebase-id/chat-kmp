@@ -70,6 +70,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -136,7 +138,12 @@ import id.homebase.core.moments.MomentsPreferences
 import id.homebase.core.moments.services.MomentsFeedService
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.ui.screens.location.EmergencyContactPickerScreen
+import id.homebase.core.contactbook.EmergencyContactService
+import id.homebase.core.ui.screens.location.LocationEmergencyScreen
+import id.homebase.core.ui.screens.location.LocationHistoryOverviewScreen
+import id.homebase.core.ui.screens.location.LocationLiveSharingScreen
 import id.homebase.core.ui.screens.location.LocationScreen
+import id.homebase.core.ui.screens.location.LocationSettingsScreen
 import id.homebase.core.ui.screens.location.LocationUiEvent
 import id.homebase.core.ui.screens.location.LocationViewModel
 import id.homebase.core.ui.screens.location.devices.FindDeviceScreen
@@ -186,6 +193,7 @@ import id.homebase.resources.contactbook_label
 import id.homebase.resources.nav_chats
 import id.homebase.resources.nav_feed
 import id.homebase.resources.nav_home
+import id.homebase.resources.location_attention_cd
 import id.homebase.resources.location_label
 import id.homebase.resources.location_emergency_action_failed
 import id.homebase.resources.location_locate_fetch_failed
@@ -285,6 +293,7 @@ fun AppNavHost(
     val locationPreferences = koinInject<LocationPreferences>()
     val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
     val locationViewModel: LocationViewModel = koinViewModel()
+    val locationAttention by koinInject<EmergencyContactService>().hasStale.collectAsStateWithLifecycle()
     val contactBookPreferences = koinInject<ContactBookPreferences>()
     val contactBookIconVisible by contactBookPreferences.iconVisible.collectAsStateWithLifecycle()
     val contactBookOnboardingComplete by contactBookPreferences.onboardingComplete.collectAsStateWithLifecycle()
@@ -730,6 +739,7 @@ fun AppNavHost(
                                     topLevelRoute = topLevelRoute,
                                     showMomentsBadge = momentsUnseenCount > 0,
                                     showEmailBadge = emailUnreadCount > 0,
+                                    showLocationBadge = locationAttention,
                                 )
                             },
                             label = {
@@ -783,6 +793,7 @@ fun AppNavHost(
                                 topLevelRoute = topLevelRoute,
                                 selected = isSelected,
                                 showMomentsBadge = momentsUnseenCount > 0,
+                                showLocationBadge = locationAttention,
                                 onClick = {
                                     when {
                                         isSelected -> navController.currentBackStackEntry
@@ -1739,20 +1750,61 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 LocationScreen(
                                     viewModel = locationViewModel,
-                                    onNavigateToHistory = {
-                                        navController.navigate(Route.LocationHistory)
+                                    onOpenEmergency = { navController.navigate(Route.LocationEmergency) },
+                                    onOpenHistoryOverview = {
+                                        navController.navigate(Route.LocationHistoryOverview)
                                     },
-                                    onNavigateToFindDevice = { deviceId ->
-                                        navController.navigate(
-                                            Route.LocationFindDevice(deviceId?.toString())
-                                        )
-                                    },
-                                    onNavigateToLiveMap = {
-                                        navController.navigate(Route.LocationLive)
-                                    },
-                                    onNavigateToEmergencyContactAdd = {
+                                    onOpenLiveSharing = { navController.navigate(Route.LocationLiveSharing) },
+                                    onOpenSettings = { navController.navigate(Route.LocationSettings) },
+                                )
+                            }
+                        }
+
+                        // The four detail screens share the home's LocationViewModel instance: a
+                        // koinViewModel() here would build a second VM with its own verify loop.
+                        composable<Route.LocationEmergency> {
+                            if (isAuthenticated) {
+                                LocationEmergencyScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onManageEmergencyAccess = {
                                         navController.navigate(Route.LocationEmergencyContactAdd)
                                     },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationHistoryOverview> {
+                            if (isAuthenticated) {
+                                LocationHistoryOverviewScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onOpenHistory = { navController.navigate(Route.LocationHistory) },
+                                    onOpenDevice = { deviceId ->
+                                        navController.navigate(
+                                            Route.LocationFindDevice(deviceId.toString())
+                                        )
+                                    },
+                                    onOpenSettings = { navController.navigate(Route.LocationSettings) },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationLiveSharing> {
+                            if (isAuthenticated) {
+                                LocationLiveSharingScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
+                                    onOpenLiveMap = { navController.navigate(Route.LocationLive) },
+                                )
+                            }
+                        }
+
+                        composable<Route.LocationSettings> {
+                            if (isAuthenticated) {
+                                LocationSettingsScreen(
+                                    viewModel = locationViewModel,
+                                    onNavigateBack = { navController.popBackStack() },
                                 )
                             }
                         }
@@ -1771,12 +1823,12 @@ fun AppNavHost(
                                 LocationHistoryScreen(
                                     viewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
-                                    // Empty-day "turn on location tracking" link → the dashboard, where
-                                    // the tracking toggle lives (reuse the existing instance).
-                                    onNavigateToDashboard = {
-                                        navController.navigate(Route.Location) {
+                                    // Empty-day "turn on location tracking" link → the history
+                                    // overview, where the tracking toggle lives.
+                                    onOpenTrackingToggle = {
+                                        navController.navigate(Route.LocationHistoryOverview) {
                                             launchSingleTop = true
-                                            popUpTo(Route.Location) { inclusive = false }
+                                            popUpTo(Route.LocationHistoryOverview) { inclusive = false }
                                         }
                                     },
                                 )
@@ -2219,6 +2271,7 @@ private fun RailItem(
     topLevelRoute: TopLevelRoute,
     selected: Boolean,
     showMomentsBadge: Boolean,
+    showLocationBadge: Boolean,
     onClick: () -> Unit,
 ) {
     Box(
@@ -2230,6 +2283,7 @@ private fun RailItem(
         TopLevelNavIcon(
             topLevelRoute = topLevelRoute,
             showMomentsBadge = showMomentsBadge,
+            showLocationBadge = showLocationBadge,
             size = RailIconSize,
             tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2264,6 +2318,7 @@ private fun TopLevelNavIcon(
     topLevelRoute: TopLevelRoute,
     showMomentsBadge: Boolean,
     showEmailBadge: Boolean = false,
+    showLocationBadge: Boolean = false,
     size: Dp = 24.dp,
     tint: Color = LocalContentColor.current,
 ) {
@@ -2278,10 +2333,23 @@ private fun TopLevelNavIcon(
     val badged = (topLevelRoute is TopLevelRoute.Moments && showMomentsBadge) ||
         // Count-less like Moments: the dot says "there is mail", and the number itself lives on
         // the Email setup screen where there is room to say what it means.
-        (topLevelRoute is TopLevelRoute.Email && showEmailBadge)
+        (topLevelRoute is TopLevelRoute.Email && showEmailBadge) ||
+        // A person I can locate has gone quiet for over 2 days (EmergencyContactService.hasStale).
+        (topLevelRoute is TopLevelRoute.Location && showLocationBadge)
 
     if (badged) {
-        BadgedBox(badge = { Badge() }) { icon() }
+        val badgeDescription = if (topLevelRoute is TopLevelRoute.Location) {
+            stringResource(MR.string.location_attention_cd)
+        } else null
+        BadgedBox(
+            badge = {
+                Badge(
+                    modifier = if (badgeDescription != null) {
+                        Modifier.semantics { contentDescription = badgeDescription }
+                    } else Modifier,
+                )
+            },
+        ) { icon() }
     } else {
         icon()
     }

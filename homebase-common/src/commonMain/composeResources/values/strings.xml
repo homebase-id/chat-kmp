@@ -1584,7 +1584,6 @@
 
     <!-- Location add-on -->
     <string name="location_label">Location</string>
-    <string name="location_dashboard_title">Location Dashboard</string>
     <string name="location_settings_title">Location Settings</string>
     <string name="location_home_subtitle">Your private location history</string>
     <string name="location_onboarding_title">Your places, only yours</string>
@@ -1614,9 +1613,6 @@
     <string name="location_status_last_flush">Last upload</string>
     <string name="location_status_never">Never</string>
     <string name="location_menu_more">More options</string>
-    <string name="location_menu_find_device">Find device</string>
-    <string name="location_menu_setup">Settings</string>
-    <string name="location_menu_dashboard">Dashboard</string>
     <string name="location_dashboard_history_section">Location History</string>
     <string name="location_devices_section">Find my device</string>
     <string name="location_locatable_section">Who you can locate</string>
@@ -1638,10 +1634,8 @@
     <string name="location_locate_ambush_explainer">If you believe the person might be held hostage, check this box to delay the notification to the person for 24 hours.</string>
     <string name="location_locate_confirm">Request location data</string>
     <string name="location_locate_fetch_failed">Couldn't retrieve their location data. The request notice was still sent.</string>
-    <string name="location_emergency_contacts_section">Emergency contacts</string>
     <string name="location_emergency_access_section">Who can locate you</string>
     <string name="location_emergency_access_manage">Add emergency contacts</string>
-    <string name="location_emergency_access_missing">No Emergency Location Access circle yet. Tap + to set one up in your owner console.</string>
     <string name="location_emergency_access_none">No one can locate you yet. Tap + to add people.</string>
     <string name="location_emergency_access_more">+%1$d</string>
     <string name="location_emergency_add_title">Add emergency contacts</string>
@@ -1689,14 +1683,32 @@
     <string name="location_maps_off_cta">Turn on maps</string>
     <string name="location_dashboard_sharing_with">You're sharing with</string>
     <string name="location_dashboard_sharing_with_you">Sharing with you</string>
-    <string name="location_dashboard_sharing_show">Show the list</string>
-    <string name="location_dashboard_sharing_hide">Hide the list</string>
     <string name="location_dashboard_share_until">until %1$s</string>
     <string name="location_dashboard_share_until_stopped">until stopped</string>
     <string name="location_dashboard_stop_one_cd">Stop sharing with %1$s</string>
     <string name="location_dashboard_stop_everyone">Stop sharing with everyone</string>
     <string name="location_dashboard_stop_confirm_title">Stop all sharing?</string>
     <string name="location_dashboard_stop_confirm_body">This ends every live location share you've started.</string>
+    <string name="location_tile_emergency_title">Emergency location</string>
+    <string name="location_tile_settings_title">Settings</string>
+    <string name="location_tile_press_to_activate">Press to activate</string>
+    <string name="location_tile_press_to_set_up">Press to set up</string>
+    <string name="location_tile_on">On</string>
+    <string name="location_tile_off">Off</string>
+    <string name="location_tile_badge_count">%1$d</string>
+    <string name="location_tile_emergency_status">%1$d can locate you · you can locate %2$d</string>
+    <string name="location_tile_emergency_stale">%1$d without a signal for over 2 days</string>
+    <string name="location_tile_emergency_stale_cd">Warning: %1$d contacts without a tracking signal for more than 2 days</string>
+    <string name="location_tile_history_status">%1$d points today · %2$d devices</string>
+    <string name="location_tile_live_status">Sharing with %1$d · %2$d sharing with you</string>
+    <string name="location_tile_live_off">No one is sharing right now</string>
+    <string name="location_tile_settings_status">Map: %1$s</string>
+    <string name="location_attention_cd">Emergency contact needs attention</string>
+    <string name="location_emergency_helper">People you can locate appear when they add you to their emergency circle. Tap a person to request their location in an emergency.</string>
+    <string name="location_history_overview_helper">Your location history is recorded on this device and stored encrypted on your drive. Tap the map to browse day by day, or a device to find it.</string>
+    <string name="location_history_overview_needs_permission">Grant location permission in Settings to start tracking.</string>
+    <string name="location_live_helper">Start sharing your live location from a conversation. Shares end automatically at the time you chose.</string>
+    <string name="location_settings_helper">Tracking, permissions and map display for this device.</string>
     <string name="share_live_location">Share live location</string>
     <string name="live_share_back">Share your live location</string>
     <string name="live_share_duration_prompt">Share live location for</string>

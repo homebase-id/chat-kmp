@@ -30,9 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.location.LocationPreviewProvider
-import id.homebase.core.ui.screens.location.DeviceRow
-import id.homebase.core.ui.screens.location.dashboardTraceColors
 import id.homebase.core.ui.screens.location.history.LocationTraceCanvas
+import id.homebase.core.ui.screens.location.history.mapTraceColors
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.location_device_unnamed
@@ -175,7 +174,7 @@ fun FindDeviceScreen(
                                     traces = listOf(trace),
                                     showMapTiles = uiState.showMapTiles,
                                     fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
-                                    traceColors = dashboardTraceColors(),
+                                    traceColors = mapTraceColors,
                                     highlightLast = true,
                                 )
                         }
