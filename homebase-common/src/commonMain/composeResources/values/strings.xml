@@ -1700,6 +1700,8 @@
     <string name="location_tile_emergency_stale">%1$d without a signal for over 2 days</string>
     <string name="location_tile_emergency_stale_cd">Warning: %1$d contacts without a tracking signal for more than 2 days</string>
     <string name="location_tile_history_status">%1$d points today · %2$d devices</string>
+    <string name="location_tile_history_tracked_by">Tracked by %1$s · %2$d points today</string>
+    <string name="location_tile_history_viewer_off">Turn on tracking on your phone</string>
     <string name="location_tile_live_status">Sharing with %1$d · %2$d sharing with you</string>
     <string name="location_tile_live_off">No one is sharing right now</string>
     <string name="location_tile_settings_status">Map: %1$s</string>

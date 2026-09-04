@@ -1434,6 +1434,8 @@
     <string name="location_tile_emergency_stale">%1$d uden signal i over 2 dage</string>
     <string name="location_tile_emergency_stale_cd">Advarsel: %1$d kontakter uden sporingssignal i mere end 2 dage</string>
     <string name="location_tile_history_status">%1$d punkter i dag · %2$d enheder</string>
+    <string name="location_tile_history_tracked_by">Spores af %1$s · %2$d punkter i dag</string>
+    <string name="location_tile_history_viewer_off">Slå sporing til på din telefon</string>
     <string name="location_tile_live_status">Deler med %1$d · %2$d deler med dig</string>
     <string name="location_tile_live_off">Ingen deler lige nu</string>
     <string name="location_tile_settings_status">Kort: %1$s</string>
