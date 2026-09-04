@@ -482,8 +482,9 @@ class ConversationStream(
 
         // For each file in the batch, map to model (fetch last message from DB if needed).
         // Keep the original HomebaseFile alongside the mapped MessageUiModel so we can
-        // pull the SQL-faithful userDate via `file.sqlUserDateMs()` — `MessageUiModel.userDate`
-        // is clamped to `transitCreated` for display and can underrun the SQL column.
+        // pull the SQL-faithful ordering key via `file.orderingDateMs()` —
+        // `MessageUiModel.userDate` is clamped to `transitCreated` for display and can
+        // underrun the SQL columns.
         val incoming = ArrayList<Pair<HomebaseFile, MessageUiModel>>(messageFiles.size)
         for (file in messageFiles) {
             val mapped = mapToMessageData(file, credentialsManager, ::resolveDisplayName)
@@ -552,7 +553,7 @@ class ConversationStream(
                 _conversations.value = _conversations.value.copy(
                     items = _conversations.value.items.map { if (it.id == revived.id) revived else it }
                 )
-                updateConversationFromNewMessage(revived, m, file.sqlUserDateMs())
+                updateConversationFromNewMessage(revived, m, file.orderingDateMs())
 
                 // Intentionally do NOT trigger server-side recovery here. A
                 // drive-sync batch handler is the wrong place to enqueue
@@ -593,7 +594,7 @@ class ConversationStream(
                         id = m.conversationId,
                         name = "Conversation missing...",
                         lastMessage = m.content,
-                        latestMessageTimestamp = Instant.fromEpochMilliseconds(file.sqlUserDateMs()),
+                        latestMessageTimestamp = Instant.fromEpochMilliseconds(file.orderingDateMs()),
                         admins = (if (m.originalAuthor == null) emptySet() else setOf(m.originalAuthor)),
                         unreadCount = 0,
                         avatarTiny = null,
@@ -681,7 +682,7 @@ class ConversationStream(
                 }
                 // endregion
             } else {
-                updateConversationFromNewMessage(matchingConversation, m, file.sqlUserDateMs())
+                updateConversationFromNewMessage(matchingConversation, m, file.orderingDateMs())
             }
         }
 
@@ -1151,11 +1152,11 @@ class ConversationStream(
         val rows = dbm.chatReadCount.selectAllConversationPlusLastMessage(c.getIdentityId())
         val afterQuery = Clock.System.now().toEpochMilliseconds()
 
-        // Carry the SQL `msgUserDate` (DriveMainIndex.userDate) alongside the
-        // file. The conversation list's `latestMessageTimestamp` must use this
-        // SQL value, not the clamped `MessageUiModel.userDate`, so it stays in
-        // lock-step with what `selectAllUnreadCount` filters on. See
-        // `HomebaseFile.sqlUserDateMs()` for the formula.
+        // Carry the SQL `msgUserDate` (MAX(DriveMainIndex.userDate, created))
+        // alongside the file. The conversation list's `latestMessageTimestamp` must
+        // use this SQL value, not the clamped `MessageUiModel.userDate`, so it stays
+        // in lock-step with what `selectAllUnreadCount` filters on. See
+        // `HomebaseFile.orderingDateMs()` for the formula.
         val msgByConversation = HashMap<Uuid, Pair<id.homebase.api.client.drives.HomebaseFile, Long?>>(rows.size)
         for (row in rows) {
             val convoId = row.conversation.fileMetadata.appData.uniqueId ?: continue

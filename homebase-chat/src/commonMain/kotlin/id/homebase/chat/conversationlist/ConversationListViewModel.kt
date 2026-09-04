@@ -1956,8 +1956,8 @@ class ConversationListViewModel(
                                 val messages = windowMessages.filterNot { it.isHiddenByExit(exitedAt) }
                                 val timezone = TimeZone.currentSystemDefault()
                                 val groupedMessages =
-                                    messages.sortedBy { it.userDate }.groupBy { message ->
-                                        val date = message.userDate.toLocalDateTime(timezone).date
+                                    messages.sortedBy { it.sortDate }.groupBy { message ->
+                                        val date = message.sortDate.toLocalDateTime(timezone).date
                                         date
                                     }
                                 // Top of the list: spinner while older messages page in,
