@@ -108,6 +108,7 @@ import id.homebase.core.ui.screens.contactbook.ContactCardImport
 import id.homebase.core.ui.screens.contactbook.ShareContactPickerViewModel
 import id.homebase.core.ui.screens.contactbook.add.AddContactViewModel
 import id.homebase.core.ui.screens.contactbook.detail.ContactDetailViewModel
+import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionViewModel
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultService
 import id.homebase.core.ui.screens.vault.VaultStream
@@ -1083,6 +1084,15 @@ val appModule = module {
             overrideStore = get(),
             chatMessageSenderService = get(),
             fileOperationsProvider = get(),
+        )
+    }
+    // Manual block: odinId arrives as a Koin runtime parameter from the review modal's caller.
+    viewModel { params ->
+        ReviewConnectionViewModel(
+            odinIdArg = params.get(),
+            connectionService = get(),
+            connectionNetworkProvider = get(),
+            followProvider = get(),
         )
     }
     viewModelOf(::ContactDetailViewModel)

@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
+import id.homebase.core.ui.screens.contactbook.ContactStateInfo
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_connected
 import id.homebase.resources.contactbook_self_you
@@ -35,6 +36,8 @@ fun ContactBookRow(
     disabledReason: String? = null,
     /** Optional trailing content (e.g. a pending-request marker). Replaces the connected check. */
     trailing: (@Composable () -> Unit)? = null,
+    /** Null for rows with no connection (a plain address-book entry, a pending request). */
+    stateInfo: ContactStateInfo? = null,
 ) {
     val disabled = disabledReason != null
     Row(
@@ -59,21 +62,34 @@ fun ContactBookRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            val circles = stateInfo?.circles.orEmpty()
+            val pendingCircles = stateInfo?.pendingCircles.orEmpty()
             val subtitle = disabledReason ?: entry.subtitle
-            if (subtitle != null) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            when {
+                // A Circle contact's second line is the circles themselves — that access is more
+                // informative here than repeating the identity already shown on the avatar.
+                disabledReason == null && (circles.isNotEmpty() || pendingCircles.isNotEmpty()) -> {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    ContactCircleRow(circles = circles, pendingCircles = pendingCircles)
+                }
+                subtitle != null -> {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         if (trailing != null) {
             Spacer(modifier = Modifier.width(8.dp))
             trailing()
+        } else if (stateInfo != null) {
+            Spacer(modifier = Modifier.width(8.dp))
+            ContactStateIcon(stateInfo.state)
         } else if (connected) {
             Spacer(modifier = Modifier.width(8.dp))
             Icon(

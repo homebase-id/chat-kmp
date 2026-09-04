@@ -5,6 +5,7 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
+import id.homebase.api.client.connections.ReviewConnectionResult
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
@@ -165,6 +166,7 @@ class ConnectionService(
         scope.launch {
             hydrateFromCache()
             launchRefresh()
+            drainPendingEnrollments()
         }
     }
 
@@ -182,6 +184,23 @@ class ConnectionService(
         started = false
         _connections.value = ConnectionState(isLoaded = false, map = emptyMap())
         _circles.value = CircleMembershipState()
+    }
+
+    /**
+     * Review decisions that needed this app's key are queued server-side and retried by nothing
+     * else — if no app drains them, the owner's choice silently never takes effect. Failure here
+     * is not fatal to start-up: the next launch retries.
+     */
+    private suspend fun drainPendingEnrollments() {
+        try {
+            val completed = provider.processPendingEnrollments()
+            if (completed > 0) {
+                Logger.i { "ConnectionService completed $completed pending circle enrollments" }
+                refresh()
+            }
+        } catch (e: Exception) {
+            Logger.w(e) { "ConnectionService pending-enrollment drain failed" }
+        }
     }
 
     private suspend fun hydrateFromCache() {
@@ -217,6 +236,12 @@ class ConnectionService(
                 val connected = connectedDeferred.await()
                 val blocked = blockedDeferred.await()
                 Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
+                Logger.d {
+                    "ReviewDiag/connections " + connected.results.joinToString {
+                        "${it.odinId.domainName}[reviewedAt=${it.reviewedAt} vetted=${it.vetted} " +
+                            "origin=${it.connectionRequestOrigin}]"
+                    }
+                }
                 _connections.value = ConnectionState(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
@@ -226,8 +251,13 @@ class ConnectionService(
                     // Verifies the Confirmed (bb2683fa…) / Auto (9e22b429…) system-circle ids
                     // actually come back here so the membership-driven pills are reliable.
                     Logger.d {
-                        "ConnectionService circles: " +
-                            circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
+                        "ReviewDiag/circles " +
+                            circles.joinToString {
+                                "${it.circle.id}(${it.circle.name}) grantOn=${it.circle.grantOn} " +
+                                    "designation=${it.circle.designation} appId=${it.circle.appId} " +
+                                    "ownerPersonal=${it.circle.isOwnerGrantedPersonal} " +
+                                    "members=${it.members.map { m -> m.domainName }}"
+                            }
                     }
                 }
                 runCatching {
@@ -292,6 +322,37 @@ class ConnectionService(
     suspend fun addToCircle(circleId: Uuid, odinId: OdinId) {
         provider.addToCircle(circleId, odinId)
         refresh()
+    }
+
+    /**
+     * Completes the connection review: stamps `reviewedAt` and enrols [circleIds] atomically.
+     * An empty [circleIds] is the chat-only outcome — it records the decision and grants nothing.
+     *
+     * [circleIds] must already be the full list the server should enrol, including the `Connect`
+     * circle of any checked app the contact isn't yet a member of; the server expands nothing
+     * and warns about nothing. Build it with
+     * `id.homebase.core.ui.screens.contactbook.reviewEnrollment`.
+     */
+    suspend fun review(odinId: OdinId, circleIds: List<Uuid>): ReviewConnectionResult {
+        val result = provider.review(odinId, circleIds)
+        refresh()
+        return result
+    }
+
+    /** Clears the review stamp. Rejected while the contact holds an owner-granted personal circle. */
+    suspend fun unreview(odinId: OdinId) {
+        provider.unreview(odinId)
+        refresh()
+    }
+
+    /**
+     * Drains review decisions queued waiting on this app's key. Nothing else retries them, so an
+     * owner's choice never takes effect if this is never called — it belongs on app start-up.
+     */
+    suspend fun processPendingEnrollments(): Int {
+        val completed = provider.processPendingEnrollments()
+        if (completed > 0) refresh()
+        return completed
     }
 
     /** Revoke [odinId]'s membership in [circleId] — also drops any still-pending deposit. */

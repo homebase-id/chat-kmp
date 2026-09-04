@@ -11,6 +11,7 @@ import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.SharedMediaItem
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.ContactDraft
+import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
@@ -57,6 +58,10 @@ data class ContactDetailUiState(
     val requestDirection: RequestDirection? = null,
     /** True when this contact is the logged-in identity's own (self) contact. */
     val isSelf: Boolean = false,
+    /** Null when this contact isn't a connection. Drives the review call-to-action. */
+    val contactState: ContactState? = null,
+    /** True while the review modal is open over this screen. */
+    val reviewOpen: Boolean = false,
     /** Display name of the identity that introduced this contact, when the connection
      *  originated from an introduction. Null otherwise. */
     val introducedByName: String? = null,
@@ -139,6 +144,8 @@ sealed interface ContactDetailAction {
     data object CircleDetailDismiss : ContactDetailAction
     /** Tapped another contact's row inside the circle-detail dialog. */
     data class CircleMemberClicked(val entry: ContactBookEntry) : ContactDetailAction
+    data object ReviewClicked : ContactDetailAction
+    data object ReviewDismissed : ContactDetailAction
 }
 
 sealed interface ContactDetailEvent {

@@ -34,7 +34,7 @@ private const val TAG = "CircleMemberPickerViewModel"
  * Generic "add contact to circle" picker — works for any circle by [circleId], not just
  * emergency-location access. Candidate list: every connected identity, excluding anyone already
  * a real member of [circleId] (cheap, from the already-loaded bulk circle-members read). A
- * connected-but-unvetted (unconfirmed) identity is still shown — hiding it entirely made it look
+ * connected-but-unreviewed identity is still shown — hiding it entirely made it look
  * like the contact didn't exist, which was confusing — but marked ineligible ([CircleMemberCandidate.eligible]
  * = false) and can't be selected, since the server 400s circles/add for those identities
  * (CannotGrantAutoConnectedMoreCircles). A duplicate add on a still-pending contact simply hits
@@ -77,7 +77,7 @@ class CircleMemberPickerViewModel(
                 connectedRegistrations
                     .map { reg ->
                         val domain = reg.odinId.domainName.lowercase()
-                        CircleMemberCandidate(entry = byOdin[domain] ?: syntheticEntry(domain), eligible = reg.vetted)
+                        CircleMemberCandidate(entry = byOdin[domain] ?: syntheticEntry(domain), eligible = reg.isReviewed)
                     }
                     .filter { q.isEmpty() || it.entry.displayName.lowercase().contains(q) || it.entry.odinId?.lowercase()?.contains(q) == true }
                     .sortedBy { it.entry.displayName.lowercase() }

@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Badge
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,13 +26,16 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.components.ContactBookEmptyState
 import id.homebase.core.ui.screens.contactbook.components.ContactBookRow
 import id.homebase.resources.MR
-import id.homebase.resources.contactbook_circle_unvetted
+import id.homebase.resources.contact_state_chat
+import id.homebase.resources.contact_state_chat_empty
+import id.homebase.resources.contact_state_new
+import id.homebase.resources.contact_state_new_empty
+import id.homebase.resources.contactbook_circle_members_empty
 import id.homebase.resources.contactbook_filter_all
+import id.homebase.resources.review_action
+import id.homebase.resources.contactbook_filter_circles
 import id.homebase.resources.contactbook_no_results
 import id.homebase.resources.contactbook_requests_header
-import id.homebase.resources.contactbook_unvetted_empty
-import id.homebase.resources.contactbook_vetted
-import id.homebase.resources.contactbook_vetted_empty
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
@@ -40,7 +45,7 @@ fun ContactBookContent(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        FilterRow(uiState.filter, onAction)
+        FilterRow(uiState, onAction)
 
         // Incoming requests are the actionable set (outgoing has nothing to do here but Cancel,
         // already reachable from the resolved identity itself) — surfaced as a normal section at
@@ -50,8 +55,9 @@ fun ContactBookContent(
 
         val list = when (uiState.filter) {
             ContactFilter.ALL -> uiState.contacts
-            ContactFilter.UNVETTED -> uiState.unvetted
-            ContactFilter.VETTED -> uiState.vetted
+            ContactFilter.NEW -> uiState.newContacts
+            ContactFilter.CHAT -> uiState.chatContacts
+            ContactFilter.CIRCLE -> uiState.circleContacts
         }
 
         when {
@@ -64,11 +70,14 @@ fun ContactBookContent(
                 CenterText(stringResource(MR.string.contactbook_no_results))
 
             list.isEmpty() && incomingRequests.isEmpty() -> when (uiState.filter) {
-                ContactFilter.UNVETTED ->
-                    CenterText(stringResource(MR.string.contactbook_unvetted_empty))
+                ContactFilter.NEW ->
+                    CenterText(stringResource(MR.string.contact_state_new_empty))
 
-                ContactFilter.VETTED ->
-                    CenterText(stringResource(MR.string.contactbook_vetted_empty))
+                ContactFilter.CHAT ->
+                    CenterText(stringResource(MR.string.contact_state_chat_empty))
+
+                ContactFilter.CIRCLE ->
+                    CenterText(stringResource(MR.string.contactbook_circle_members_empty))
 
                 ContactFilter.ALL -> ContactBookEmptyState(
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
@@ -115,12 +124,21 @@ fun ContactBookContent(
                             )
                         }
                         items(entries, key = { it.uniqueId.toString() }) { entry ->
+                            val stateInfo = uiState.statesByOdinId[entry.odinId?.lowercase()]
                             ContactBookRow(
                                 entry = entry,
                                 onClick = { onAction(ContactBookUiAction.ContactClicked(entry)) },
-                                // Check shows whenever the identity is connected, in every
-                                // filter (an unvetted contact is still a connection).
                                 connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
+                                stateInfo = stateInfo,
+                                // A New contact's whole point is that a decision is outstanding,
+                                // so the trailing slot carries the action rather than the icon.
+                                trailing = if (stateInfo?.state == ContactState.New) {
+                                    {
+                                        TextButton(
+                                            onClick = { onAction(ContactBookUiAction.ReviewClicked(entry)) },
+                                        ) { Text(stringResource(MR.string.review_action)) }
+                                    }
+                                } else null,
                             )
                         }
                     }
@@ -146,9 +164,10 @@ private fun CenterText(text: String) {
 
 @Composable
 private fun FilterRow(
-    filter: ContactFilter,
+    uiState: ContactBookUiState,
     onAction: (ContactBookUiAction) -> Unit,
 ) {
+    val filter = uiState.filter
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -162,14 +181,29 @@ private fun FilterRow(
             label = { Text(stringResource(MR.string.contactbook_filter_all)) },
         )
         FilterChip(
-            selected = filter == ContactFilter.UNVETTED,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.UNVETTED)) },
-            label = { Text(stringResource(MR.string.contactbook_circle_unvetted)) },
+            selected = filter == ContactFilter.NEW,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.NEW)) },
+            label = { Text(stringResource(MR.string.contact_state_new)) },
+            trailingIcon = if (uiState.newContacts.isNotEmpty()) {
+                { Badge { Text(uiState.newContacts.size.toString()) } }
+            } else null,
         )
         FilterChip(
-            selected = filter == ContactFilter.VETTED,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.VETTED)) },
-            label = { Text(stringResource(MR.string.contactbook_vetted)) },
+            selected = filter == ContactFilter.CHAT,
+            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CHAT)) },
+            label = { Text(stringResource(MR.string.contact_state_chat)) },
         )
+        FilterChip(
+            selected = filter == ContactFilter.CIRCLE && uiState.selectedCircleId == null,
+            onClick = { onAction(ContactBookUiAction.CircleFilterChanged(null)) },
+            label = { Text(stringResource(MR.string.contactbook_filter_circles)) },
+        )
+        uiState.filterCircles.forEach { circle ->
+            FilterChip(
+                selected = uiState.selectedCircleId.equals(circle.id, ignoreCase = true),
+                onClick = { onAction(ContactBookUiAction.CircleFilterChanged(circle.id)) },
+                label = { Text(circle.emoji?.takeIf { it.isNotBlank() }?.plus(" ").orEmpty() + circle.name) },
+            )
+        }
     }
 }

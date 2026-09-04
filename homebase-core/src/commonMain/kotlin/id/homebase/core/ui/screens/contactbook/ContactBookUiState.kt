@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.contactbook
 import androidx.compose.runtime.Immutable
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
@@ -12,13 +13,13 @@ import kotlin.uuid.Uuid
 enum class ContactTab { CONTACTS, CIRCLES }
 
 /**
- * People-list pill: everyone, connections that haven't been explicitly confirmed yet
- * (auto-connected, introduced-but-not-confirmed, or a plain direct connection never confirmed),
- * or connections that have been explicitly confirmed (server-computed `vetted` flag).
- * Pending connection requests are no longer a pill — they surface as a section at the top of
- * the list instead (see [ContactBookUiState.requests]).
+ * People-list chip. [NEW] and [CHAT] are the two reviewable states; [CIRCLE] is every contact in
+ * at least one of the owner's circles, and a specific circle is selected via
+ * [ContactBookUiState.selectedCircleId] instead of its own enum constant.
+ * Pending connection requests are not a chip — they surface as a section at the top of the list
+ * instead (see [ContactBookUiState.requests]).
  */
-enum class ContactFilter { ALL, UNVETTED, VETTED }
+enum class ContactFilter { ALL, NEW, CHAT, CIRCLE }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -142,10 +143,21 @@ data class ContactBookUiState(
     val totalCount: Int = 0,
     /** Domains (lowercased) that are connected — drives the "connected" badge. */
     val connectedOdinIds: Set<String> = emptySet(),
-    /** Unvetted filter: connected but not confirmed (server-computed `vetted` flag is false). */
-    val unvetted: List<ContactBookEntry> = emptyList(),
-    /** Vetted filter: connected AND confirmed (server-computed `vetted` flag is true). */
-    val vetted: List<ContactBookEntry> = emptyList(),
+    /** New filter: connected, never reviewed. Excludes audience members, who are approved in the
+     *  app owning their circle and would otherwise flood this with subscribers. */
+    val newContacts: List<ContactBookEntry> = emptyList(),
+    /** Chat filter: reviewed, holding no circle the owner deliberately granted. */
+    val chatContacts: List<ContactBookEntry> = emptyList(),
+    /** Circle filter: in at least one owner-granted personal circle. */
+    val circleContacts: List<ContactBookEntry> = emptyList(),
+    /** Per-identity state + circles, keyed by lowercased domain. Drives the row indicators. */
+    val statesByOdinId: Map<String, ContactStateInfo> = emptyMap(),
+    /** Owner-granted personal circles, for the filter chips. */
+    val filterCircles: List<RedactedCircleDefinition> = emptyList(),
+    /** Set when [filter] is [ContactFilter.CIRCLE] and one specific circle is chosen. */
+    val selectedCircleId: String? = null,
+    /** Identity whose review modal is open, if any. */
+    val reviewing: ContactBookEntry? = null,
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
@@ -182,7 +194,12 @@ sealed interface ContactBookUiAction {
     ) : ContactBookUiAction
     data class SearchChanged(val query: String) : ContactBookUiAction
     data class FilterChanged(val filter: ContactFilter) : ContactBookUiAction
+    /** Null selects the "all circles" chip; an id narrows to that one circle. */
+    data class CircleFilterChanged(val circleId: String?) : ContactBookUiAction
     data class ContactClicked(val entry: ContactBookEntry) : ContactBookUiAction
+    /** Open the review modal for a New contact. */
+    data class ReviewClicked(val entry: ContactBookEntry) : ContactBookUiAction
+    data object ReviewDismissed : ContactBookUiAction
     data object AddClicked : ContactBookUiAction
     data class EditClicked(val entry: ContactBookEntry) : ContactBookUiAction
     data class DeleteClicked(val entry: ContactBookEntry) : ContactBookUiAction

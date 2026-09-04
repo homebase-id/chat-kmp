@@ -78,6 +78,13 @@ enum class OdinClientErrorCode(val value: Int) {
     IdentityAlreadyFollowed(3009),
     CannotGrantAutoConnectedMoreCircles(3010),
     IncomingRequestNotFound(3011),
+    /** Un-review refused: the contact still holds a circle the owner deliberately granted
+     *  (designation personal, grantOn none). Remove them from those circles first. */
+    CannotUnreviewCircleMember(3012),
+    /** An owner-managed circle carrying read grants was named from an app context. */
+    CircleNotOwnedByApp(3015),
+    /** `pending-enrollments/process` called without an app context. */
+    NotAnAppContext(3016),
 
     // Drive management errors 40xx
     CannotAllowAnonymousReadsOnOwnerOnlyDrive(4001),

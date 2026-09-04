@@ -45,6 +45,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,6 +56,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -76,6 +79,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionSheet
+import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionUiEvent
+import id.homebase.core.ui.screens.contactbook.review.ReviewConnectionViewModel
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.AvatarFullScreenViewer
@@ -91,7 +97,9 @@ import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.components.ContactBookAvatar
 import id.homebase.core.ui.screens.contactbook.components.ContactEditSheet
 import id.homebase.core.util.formatTimestamp
+import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.resources.MR
+import id.homebase.resources.review_added_pending
 import id.homebase.resources.cancel
 import id.homebase.resources.contactbook_action_blocked
 import id.homebase.resources.contactbook_action_request_accepted
@@ -140,7 +148,12 @@ import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
 import org.jetbrains.compose.resources.StringResource
+import id.homebase.resources.review_action
+import id.homebase.resources.review_cta_body
+import id.homebase.resources.review_cta_title
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -158,6 +171,38 @@ fun ContactDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val msgReviewPending = stringResource(MR.string.review_added_pending)
+
+    val reviewOdinId = uiState.entry?.odinId
+    if (uiState.reviewOpen && reviewOdinId != null) {
+        val reviewViewModel: ReviewConnectionViewModel = koinViewModel(
+            key = reviewOdinId,
+            parameters = { parametersOf(reviewOdinId) },
+        )
+        val reviewState by reviewViewModel.uiState.collectAsStateWithLifecycle()
+        val reviewSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+        LaunchedEffect(reviewOdinId) {
+            reviewViewModel.setDisplayName(uiState.entry?.displayName.orEmpty())
+        }
+        LaunchedEffect(reviewViewModel) {
+            // Every outcome closes the sheet; the new state re-renders from the connection data
+            // ConnectionService already refreshed.
+            reviewViewModel.events.collect {
+                viewModel.onAction(ContactDetailAction.ReviewDismissed)
+                if (it is ReviewConnectionUiEvent.Completed && it.notYetActiveCount > 0) {
+                    snackbarHostState.showSnackbar(msgReviewPending)
+                }
+            }
+        }
+
+        ReviewConnectionSheet(
+            uiState = reviewState,
+            sheetState = reviewSheetState,
+            onAction = reviewViewModel::onAction,
+            onDismiss = { viewModel.onAction(ContactDetailAction.ReviewDismissed) },
+        )
+    }
 
     val errSave = stringResource(MR.string.contactbook_error_save)
     val errPhoto = stringResource(MR.string.contactbook_error_photo)
@@ -440,6 +485,14 @@ private fun ContactDetailContent(
                             )
                             when (currentTab) {
                                 ContactDetailTab.DETAILS -> {
+                                    // The public profile above is all a New contact can see of
+                                    // us and all we show of them; the outstanding decision is
+                                    // the most useful thing on this screen.
+                                    if (uiState.contactState == ContactState.New) {
+                                        ReviewCallToAction(
+                                            onReview = { onAction(ContactDetailAction.ReviewClicked) },
+                                        )
+                                    }
                                     uiState.introducedByName?.let { IntroducedBySection(it) }
                                     ContactFieldsSection(
                                         entry = entry,
@@ -825,4 +878,34 @@ private fun ConfirmDialog(
             TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
         },
     )
+}
+
+@Composable
+private fun ReviewCallToAction(onReview: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(MR.string.review_cta_title),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = stringResource(MR.string.review_cta_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            FilledTonalButton(onClick = onReview) {
+                Text(stringResource(MR.string.review_action))
+            }
+        }
+    }
 }

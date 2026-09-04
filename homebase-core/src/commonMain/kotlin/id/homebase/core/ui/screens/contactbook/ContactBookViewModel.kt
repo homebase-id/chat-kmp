@@ -79,6 +79,8 @@ class ContactBookViewModel(
     private val _selectedTab = MutableStateFlow(ContactTab.CONTACTS)
     private val _searchQuery = MutableStateFlow("")
     private val _filter = MutableStateFlow(ContactFilter.ALL)
+    private val _selectedCircleId = MutableStateFlow<String?>(null)
+    private val _reviewing = MutableStateFlow<ContactBookEntry?>(null)
     private val _overlay = MutableStateFlow<ContactBookOverlay?>(null)
     private val _circles = MutableStateFlow<List<CircleWithMembers>>(emptyList())
     private val _circlesLoading = MutableStateFlow(false)
@@ -100,6 +102,10 @@ class ContactBookViewModel(
         // skipped by the headless/foreground promotion race and leave the list spinning.
         // Idempotent once loaded.
         viewModelScope.launch { repo.ensureLoaded() }
+        // Circle definitions are no longer only the Circles tab's concern: the Contacts tab
+        // derives its three states from owner-granted personal circle membership, so without
+        // this every contact renders as New until the user opens the other tab.
+        loadCircles()
         // Idempotent — already started by the conversation list / app bootstrap; calling it here
         // makes the Requests pill self-sufficient if the Contact Book is the first screen shown.
         viewModelScope.launch { connectionRequestService.start() }
@@ -180,12 +186,14 @@ class ContactBookViewModel(
         val filter: ContactFilter,
         val tab: ContactTab,
         val overlay: ContactBookOverlay?,
+        val selectedCircleId: String?,
     )
 
     private data class CirclesBundle(
         val circles: List<CircleWithMembers>,
         val loading: Boolean,
         val members: CircleMembersUi?,
+        val reviewing: ContactBookEntry?,
     )
 
     private data class RequestsBundle(
@@ -207,17 +215,19 @@ class ContactBookViewModel(
         ) { c, l, conn, overrides ->
             ContactsBundle(c, l, conn, overrides)
         },
-        combine(_searchQuery, _filter, _selectedTab, _overlay) { q, f, tab, o ->
-            UiBits(q, f, tab, o)
+        combine(_searchQuery, _filter, _selectedTab, _overlay, _selectedCircleId) { q, f, tab, o, c ->
+            UiBits(q, f, tab, o, c)
         },
-        combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
+        combine(_circles, _circlesLoading, _circleMembers, _reviewing) { c, l, m, r ->
+            CirclesBundle(c, l, m, r)
+        },
         _header,
         combine(
             connectionRequestService.incomingRequests,
             connectionRequestService.outgoingRequests,
         ) { incoming, outgoing -> RequestsBundle(incoming, outgoing) },
     ) { contactsData, ui, circlesData, header, requestsData ->
-        // Apply user overrides up front so every downstream list (All, Unvetted, Requests,
+        // Apply user overrides up front so every downstream list (All, New, Requests,
         // introducer names) shows the user's renamed/edited values, not the synced ones.
         val overriddenContacts = contactsData.contacts
             .map { it.withOverride(contactsData.overrides[it.uniqueId]) }
@@ -225,15 +235,20 @@ class ContactBookViewModel(
             .filterValues { it.status == ConnectionStatus.Connected }
         val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
 
-        // Unvetted = connected but not confirmed. Confirmed is the server-computed `vetted` flag
-        // (connected AND a member of the Confirmed Connections system circle — see issue #919);
-        // it rides with the connection data itself, so this needs no circle load/fallback. This
-        // is a full complement over connected identities, not just auto-connected/introduced —
-        // a plain direct connection that hasn't been explicitly confirmed is unvetted too.
-        val confirmedDomains = connectedRegs.filterValues { it.vetted }
-            .keys.map { it.domainName.lowercase() }
+        // The three states, derived from reviewedAt plus owner-granted personal circle membership.
+        // Circle definitions are required here, not just connection data — see ContactStates for
+        // why designation alone is not enough.
+        val states = ContactStates(circlesData.circles)
+        val stateInfos = connectedRegs.entries.associate { (odinId, reg) ->
+            odinId.domainName.lowercase() to states.infoFor(reg)
+        }
+        fun domainsInState(state: ContactState) = stateInfos
+            .filterValues { it.state == state }.keys
+        val newDomains = domainsInState(ContactState.New)
+            .filterNot { states.isAudienceMember(it) }
             .toSet()
-        val unvettedDomains = connectedDomains - confirmedDomains
+        val chatDomains = domainsInState(ContactState.Chat)
+        val circleDomains = domainsInState(ContactState.Circle)
 
         // contact-domain (lowercase) → saved contact entry, for resolving requests/introducers.
         val contactsByOdin = overriddenContacts
@@ -243,7 +258,7 @@ class ContactBookViewModel(
         // ALL = saved contacts plus every other connection. A connection with no saved contact
         // entry would otherwise fall through both pills. Connections already in the book show via
         // their saved entry; the rest get a synthetic display-only entry, the same projection
-        // Unvetted uses.
+        // the state lists use.
         val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
         val selfEntry = header.ownerSession?.let { selfContact(it) }
         val all = buildList {
@@ -259,15 +274,21 @@ class ContactBookViewModel(
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        val unvetted = entriesForDomains(unvettedDomains, overriddenContacts)
+        fun entriesIn(domains: Set<String>) = entriesForDomains(domains, overriddenContacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        val vetted = entriesForDomains(confirmedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
+        val newContacts = entriesIn(newDomains)
+        val chatContacts = entriesIn(chatDomains)
+        val selectedCircleId = ui.selectedCircleId
+        val circleContacts = entriesIn(
+            if (selectedCircleId == null) circleDomains
+            else circleDomains.filter { domain ->
+                stateInfos[domain]?.circles.orEmpty().any { it.id.equals(selectedCircleId, ignoreCase = true) }
+            }.toSet()
+        )
 
-        // Pending connection requests, projected onto contact entries the same way Unvetted is:
+        // Pending connection requests, projected onto contact entries the same way the state lists are:
         // reuse the saved contact when we have one, else a synthetic display-only entry for the
         // identity. The service's UI-model names are placeholders ("TODO …"), so we deliberately
         // resolve names through the contact book / domain, not those fields.
@@ -295,8 +316,16 @@ class ContactBookViewModel(
             contacts = all,
             totalCount = all.size,
             connectedOdinIds = connectedDomains,
-            unvetted = unvetted,
-            vetted = vetted,
+            newContacts = newContacts,
+            chatContacts = chatContacts,
+            circleContacts = circleContacts,
+            statesByOdinId = stateInfos,
+            filterCircles = circlesData.circles
+                .map { it.circle }
+                .filter { it.countsAsOwnerCircle() }
+                .sortedBy { it.name.lowercase() },
+            selectedCircleId = selectedCircleId,
+            reviewing = circlesData.reviewing,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
@@ -361,6 +390,7 @@ class ContactBookViewModel(
                 if (action.tab == ContactTab.CIRCLES &&
                     _circles.value.isEmpty() && !_circlesLoading.value
                 ) loadCircles()
+
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
@@ -370,7 +400,16 @@ class ContactBookViewModel(
             is ContactBookUiAction.CircleRemoveMemberClicked ->
                 handleCircleRemoveMember(action.circleId, action.member)
             is ContactBookUiAction.SearchChanged -> _searchQuery.value = action.query
-            is ContactBookUiAction.FilterChanged -> _filter.value = action.filter
+            is ContactBookUiAction.FilterChanged -> {
+                _filter.value = action.filter
+                if (action.filter != ContactFilter.CIRCLE) _selectedCircleId.value = null
+            }
+            is ContactBookUiAction.ReviewClicked -> _reviewing.value = action.entry
+            ContactBookUiAction.ReviewDismissed -> _reviewing.value = null
+            is ContactBookUiAction.CircleFilterChanged -> {
+                _selectedCircleId.value = action.circleId
+                _filter.value = ContactFilter.CIRCLE
+            }
             is ContactBookUiAction.ContactClicked -> {
                 _circleMembers.value = null // close the circle sheet if a member was tapped
                 _events.tryEmit(
