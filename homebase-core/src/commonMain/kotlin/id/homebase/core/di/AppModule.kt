@@ -102,6 +102,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.contactbook.EmergencyReconcileAttemptLog
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
@@ -746,6 +747,7 @@ val appModule = module {
     singleOf(::ConnectionService)
     singleOf(::EmergencyCircleNotifier)
     singleOf(::EmergencyContactReceiveService)
+    single { EmergencyReconcileAttemptLog(get()) }
     singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
     singleOf(::ConversationStream) bind ConversationLoader::class
