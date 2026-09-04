@@ -2,10 +2,12 @@
 
 package id.homebase.core.contactbook
 
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactWriteResponse
 import id.homebase.api.client.contacts.appDataFor
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.config.AppConfig
 import kotlinx.coroutines.flow.Flow
@@ -54,6 +56,18 @@ val ContactRepository.locatableContacts: Flow<List<Contact>>
  */
 internal fun List<Contact>.filterLocatable(): List<Contact> =
     filter { it.iCanLocate() }.distinctBy { it.content.odinId }
+
+/**
+ * Whether [odinId] resolves to the locally logged-in identity's own domain (case-insensitive) — used
+ * to guard the two `iCanLocate`-setting paths (issue #982) so a self-contact can never be flagged: a
+ * designation/reconcile that would otherwise apply to your own identity is a no-op instead. Resolves
+ * to `false` (not-self) when the active domain can't be determined, matching the existing VM-level
+ * self filter's fail-open behavior — a transient resolution failure must not block a real designation.
+ */
+internal suspend fun CredentialsManager.isSelf(odinId: OdinId): Boolean {
+    val self = runCatching { getActiveDomain() }.getOrNull()?.domainName?.lowercase() ?: return false
+    return odinId.domainName.lowercase() == self
+}
 
 private fun Contact.chatAppData(): ChatContactAppData? =
     appDataFor(AppConfig.APP_ID)?.let {

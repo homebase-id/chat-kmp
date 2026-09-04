@@ -2,10 +2,15 @@
 
 package id.homebase.core.contactbook
 
+import id.homebase.api.client.auth.ApiCredentials
+import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactContent
 import id.homebase.api.client.contacts.toCanonicalAppId
+import id.homebase.api.common.OdinId
+import id.homebase.api.common.SecureByteArray
 import id.homebase.core.config.AppConfig
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -103,5 +108,45 @@ class EmergencyContactTest {
         )
 
         assertEquals(listOf(locatable), listOf(locatable, notLocatable).filterLocatable())
+    }
+
+    // ── isSelf guard (issue #982 bug 2) ─────────────────────────────────────────
+
+    private suspend fun credentialsManagerFor(activeDomain: String?): CredentialsManager =
+        CredentialsManager().apply {
+            if (activeDomain == null) return@apply
+            val creds = ApiCredentials.create(
+                domain = OdinId(activeDomain),
+                clientAccessToken = "test-token",
+                sharedSecret = SecureByteArray("0123456789abcdef".encodeToByteArray()),
+            )
+            storeCredentials(creds)
+            setActiveCredentials(creds)
+        }
+
+    @Test
+    fun isSelf_sameDomain_isTrue() = runTest {
+        val creds = credentialsManagerFor("sam.dotyou.cloud")
+        assertTrue(creds.isSelf(OdinId("sam.dotyou.cloud")))
+    }
+
+    @Test
+    fun isSelf_caseInsensitive_isTrue() = runTest {
+        val creds = credentialsManagerFor("sam.dotyou.cloud")
+        assertTrue(creds.isSelf(OdinId("SAM.DOTYOU.CLOUD")))
+    }
+
+    @Test
+    fun isSelf_differentDomain_isFalse() = runTest {
+        val creds = credentialsManagerFor("sam.dotyou.cloud")
+        assertFalse(creds.isSelf(OdinId("frodo.dotyou.cloud")))
+    }
+
+    @Test
+    fun isSelf_noActiveDomain_isFalse() = runTest {
+        // Fail-open (not-self) when the active domain can't be resolved, mirroring the VM filter's
+        // existing behavior — a transient resolution failure must not block a real designation.
+        val creds = credentialsManagerFor(activeDomain = null)
+        assertFalse(creds.isSelf(OdinId("sam.dotyou.cloud")))
     }
 }
