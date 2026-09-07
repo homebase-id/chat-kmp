@@ -35,7 +35,11 @@ import id.homebase.core.settings.createSettings
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.updater.AndroidUpdateAppManager
 import id.homebase.core.updater.UpdateAppManager
+import id.homebase.core.util.AlbumSaver
+import id.homebase.core.util.AndroidAlbumSaver
+import id.homebase.core.util.AndroidNetworkMonitor
 import id.homebase.core.util.AndroidPlatformInfo
+import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.diagnostics.AndroidDiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.util.PlatformInfo
@@ -46,6 +50,8 @@ import org.koin.dsl.module
 actual fun platformModule(): Module = module {
     single<FileOperationsProvider> { AndroidFileOperationsProvider(androidContext()) }
     single { ShareCacheStorage(androidContext()) }
+    single<AlbumSaver> { AndroidAlbumSaver(androidContext()) }
+    single<NetworkMonitor> { AndroidNetworkMonitor(androidContext()) }
     single { createSettings(androidContext()) }
     single<PlatformGalleryManager> { AndroidGalleryManager(androidContext()) }
     single(createdAtStart = true) {
