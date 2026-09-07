@@ -1,5 +1,9 @@
 package id.homebase.chat.services.convo.contact
 
+import id.homebase.api.client.BlockingCircle
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.blockingCircles
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
@@ -33,6 +37,15 @@ private const val REFRESH_DEBOUNCE_MS = 300L
  *  [ConnectionService.circles] to complete their first real load before reading them — bounds a
  *  cold-start caller against racing [ConnectionService.start]'s async hydrate+refresh. */
 private const val CONNECTIONS_LOAD_WAIT_MS = 15_000L
+
+/**
+ * A review could not be cleared because the contact still holds circles that keep them reviewed.
+ * [circles] is the complete set the server named, never just the first one.
+ */
+class UnreviewBlockedException(
+    val circles: List<BlockingCircle>,
+    cause: Throwable? = null,
+) : RuntimeException("Un-review blocked by ${circles.size} circle(s)", cause)
 
 data class ConnectionState(
     val isLoaded: Boolean,
@@ -318,12 +331,21 @@ class ConnectionService(
     /**
      * Clear [odinId]'s review stamp, dropping them back to New.
      *
-     * Withdraws the vouching only — every circle and grant they hold survives. Rejected with
-     * [id.homebase.api.client.OdinClientErrorCode.CannotClearReviewWhilePersonalCircleMember]
-     * while they still hold a review-granted personal circle; remove them from it first.
+     * Withdraws the vouching only — every circle and grant they hold survives.
+     *
+     * @throws UnreviewBlockedException naming every circle standing in the way. The server returns
+     *   the whole set in one response, so the caller can list them rather than have the user
+     *   discover them one rejection at a time.
      */
     suspend fun clearConnectionReview(odinId: OdinId) {
-        provider.clearConnectionReview(odinId)
+        try {
+            provider.clearConnectionReview(odinId)
+        } catch (e: ClientException) {
+            if (e.errorCode == OdinClientErrorCode.CannotClearReviewWhilePersonalCircleMember) {
+                throw UnreviewBlockedException(e.problem?.blockingCircles().orEmpty(), e)
+            }
+            throw e
+        }
         refresh()
     }
 
