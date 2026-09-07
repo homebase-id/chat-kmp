@@ -40,7 +40,7 @@ import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.assignableCircles
-import id.homebase.core.ui.screens.contactbook.isSystemCircle
+import id.homebase.core.ui.screens.contactbook.isUserCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
@@ -265,17 +265,17 @@ class ContactDetailViewModel(
                         else -> null
                     }
                 }
-                // User-defined circles only — the Confirmed/Auto system circles are surfaced
-                // through the connection status, not as chips. Real membership is reactive
-                // (circ.circlesFor); pending membership is a live-read snapshot (pendingCircleIds,
-                // refreshed by refreshPendingCircles) merged in here, since there's no bulk
-                // "list this contact's pending circles" endpoint to observe reactively.
+                // User circles only — app default circles are surfaced through the connection
+                // status, not as chips. Real membership is reactive (circ.circlesFor); pending
+                // membership is a live-read snapshot (pendingCircleIds, refreshed by
+                // refreshPendingCircles) merged in here, since there's no bulk "list this
+                // contact's pending circles" endpoint to observe reactively.
                 val realCircles = domain?.let { d -> circ.circlesFor(d) }.orEmpty()
-                    .filterNot { it.disabled || isSystemCircle(it.id) }
+                    .filter { it.isUserCircle() }
                 val realIds = realCircles.map { it.id.lowercase() }.toSet()
                 val pendingCircles = pendingCircleIds
                     .mapNotNull { pid -> circ.circles.map { it.circle }.firstOrNull { it.id.equals(pid, ignoreCase = true) } }
-                    .filterNot { it.disabled || isSystemCircle(it.id) || it.id.lowercase() in realIds }
+                    .filter { it.isUserCircle() && it.id.lowercase() !in realIds }
                 val circleItems = (
                     realCircles.map { ContactCircleUi(it.id, it.name, pending = false) } +
                         pendingCircles.map { ContactCircleUi(it.id, it.name, pending = true) }

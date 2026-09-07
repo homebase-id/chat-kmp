@@ -9,6 +9,7 @@ import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
@@ -24,7 +25,6 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.contactbook.ContactOverrideStore
@@ -145,7 +145,7 @@ class ContactBookViewModel(
             connectionService.circles.collect { circleState ->
                 val circles = circleState.circles
                     .filterNot { it.circle.disabled }
-                    .sortedWith(compareBy({ it.circle.id.circleSortRank() }, { it.circle.name.lowercase() }))
+                    .sortedWith(compareBy({ it.circle.circleSortRank() }, { it.circle.name.lowercase() }))
                 _circles.value = circles
                 _circlesLoading.value = !circleState.isLoaded
 
@@ -485,9 +485,9 @@ class ContactBookViewModel(
         // sheet stale, #1096).
         val domains = circle.members.map { it.domainName }.toSet()
         val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
-        // System circles (Confirmed/Auto-connected) are computed by the vetting flow, not
-        // manually curated — hide the add/remove affordances for those, editable for the rest.
-        val manageable = !isSystemCircleId(circle.circle.id)
+        // App default circles are enrolled by their owning app, not manually curated — hide the
+        // add/remove affordances for those, editable for the rest.
+        val manageable = !circle.circle.isAppDefaultCircle()
         _circleMembers.value = CircleMembersUi(
             circleId = circle.circle.id,
             circleName = circle.circle.name,
@@ -638,19 +638,13 @@ private fun CircleWithMembers.matchesQuery(query: String): Boolean {
         circle.description?.lowercase()?.contains(q) == true
 }
 
-/** Matches ContactDetailViewModel's equivalent check — case-insensitive since nothing
- *  guarantees the server always returns these ids in the same casing. */
-private fun isSystemCircleId(id: String): Boolean =
-    id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
-        id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
-
 /**
- * Sort bucket for the Circles tab: the auto-connected ("Unvetted") system circle first, the
- * user's own circles (including Emergency Location Access — a user circle, not a system one)
- * in the middle, and the confirmed-connected system circle last.
+ * Sort bucket for the Circles tab: the auto-connected ("Unvetted") circle first, the user's own
+ * circles (including Emergency Location Access — a user circle, not an app default) in the
+ * middle, and every other app default circle last.
  */
-private fun String.circleSortRank(): Int = when {
-    equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true) -> 0
-    equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) -> 2
+private fun RedactedCircleDefinition.circleSortRank(): Int = when {
+    id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true) -> 0
+    isAppDefaultCircle() -> 2
     else -> 1
 }
