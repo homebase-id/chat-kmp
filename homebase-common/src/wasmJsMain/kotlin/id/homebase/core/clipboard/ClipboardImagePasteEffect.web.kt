@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.window.LocalActiveClipEventsTarget
 import co.touchlab.kermit.Logger
+import id.homebase.api.browser.guardJsCallback
 import kotlin.io.encoding.Base64
 import kotlin.js.Promise
 import kotlinx.coroutines.await
@@ -51,15 +52,17 @@ actual fun ClipboardImagePasteEffect(enabled: Boolean, onImagePasted: (ByteArray
         if (target == null) return@DisposableEffect onDispose { }
 
         val listener = EventListener { event ->
-            // clipboardData is only live for the duration of the dispatch, so pull the image out
-            // synchronously; only the byte read is deferred to the coroutine.
-            val pending = pastedImageBase64(event)
-            scope.launch {
-                val base64 = runCatching { pending.await<JsString>().toString() }
-                    .onFailure { Logger.w("Reading a pasted image failed", it) }
-                    .getOrNull()
-                    .orEmpty()
-                if (base64.isNotBlank()) currentOnImagePasted(Base64.decode(base64))
+            guardJsCallback("clipboard.paste") {
+                // clipboardData is only live for the duration of the dispatch, so pull the image
+                // out synchronously; only the byte read is deferred to the coroutine.
+                val pending = pastedImageBase64(event)
+                scope.launch {
+                    val base64 = runCatching { pending.await<JsString>().toString() }
+                        .onFailure { Logger.w("Reading a pasted image failed", it) }
+                        .getOrNull()
+                        .orEmpty()
+                    if (base64.isNotBlank()) currentOnImagePasted(Base64.decode(base64))
+                }
             }
         }
 

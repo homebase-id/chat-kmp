@@ -2,6 +2,7 @@
 
 package id.homebase.core.auth
 
+import id.homebase.api.browser.guardJsCallback
 import kotlinx.browser.window
 import org.w3c.dom.MessageEvent
 import org.w3c.dom.events.Event
@@ -25,14 +26,16 @@ actual object BrowserLauncher {
         // Drop any stale listener from a previous (cancelled) attempt.
         removeListener()
 
-        val handler: (Event) -> Unit = handler@{ event ->
-            val msg = event as? MessageEvent ?: return@handler
-            // Only trust messages from our own origin (the popup's callback page).
-            if (msg.origin != window.location.origin) return@handler
-            val callbackUrl = extractCallbackUrl(msg.data) ?: return@handler
-            // One-shot — tear down before delivering.
-            removeListener()
-            onCallbackUrl(callbackUrl)
+        val handler: (Event) -> Unit = { event ->
+            guardJsCallback("youauth.message") {
+                val msg = event as? MessageEvent ?: return@guardJsCallback
+                // Only trust messages from our own origin (the popup's callback page).
+                if (msg.origin != window.location.origin) return@guardJsCallback
+                val callbackUrl = extractCallbackUrl(msg.data) ?: return@guardJsCallback
+                // One-shot — tear down before delivering.
+                removeListener()
+                onCallbackUrl(callbackUrl)
+            }
         }
         listener = handler
         window.addEventListener("message", handler)

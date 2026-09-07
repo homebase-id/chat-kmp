@@ -2,6 +2,7 @@
 
 package id.homebase.api.video
 
+import id.homebase.api.browser.guardJsCallback
 import kotlin.io.encoding.Base64
 import kotlin.js.Promise
 import kotlinx.coroutines.await
@@ -114,7 +115,9 @@ internal object FFmpegBridge {
      * [onProgress] receives 0..1 from ffmpeg.wasm's native progress event during the run.
      */
     suspend fun exec(args: List<String>, onProgress: ((Float) -> Unit)? = null): Int {
-        if (onProgress != null) ffSetProgress { d -> onProgress(d.toFloat()) }
+        if (onProgress != null) {
+            ffSetProgress { d -> guardJsCallback("ffmpeg.progress") { onProgress(d.toFloat()) } }
+        }
         try {
             return ffExec(toJsonArray(args)).await<JsString>().toString().toIntOrNull() ?: -1
         } finally {
