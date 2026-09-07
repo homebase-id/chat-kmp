@@ -6,6 +6,8 @@ import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
+import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.isAppDefaultCircle
@@ -104,5 +106,56 @@ class AssignableCirclesTest {
     @Test
     fun aCircleWithoutAnEmojiCarriesNull() {
         assertNull(state(circle("hh", "Buddies")).assignableCircles().single().emoji)
+    }
+}
+
+class ReviewCircleGroupsTest {
+
+    private fun circle(
+        id: String,
+        name: String,
+        grantOn: CircleGrantOn = CircleGrantOn.None,
+        designation: CircleDesignation = CircleDesignation.Personal,
+    ) = RedactedCircleDefinition(id = id, name = name, grantOn = grantOn, designation = designation)
+
+    private fun state(vararg defs: RedactedCircleDefinition) =
+        CircleMembershipState(isLoaded = true, circles = defs.map { CircleWithMembers(circle = it) })
+
+    @Test
+    fun theThreeGroupsSplitOnGrantOnAndTheSpecialId() {
+        val groups = state(
+            circle("aa", "Friends"),
+            circle(EMERGENCY_LOCATION_CIRCLE_ID, "Emergency Location Access"),
+            circle("cc", "Moments", grantOn = CircleGrantOn.Review),
+        ).reviewCircleGroups()
+
+        assertEquals(listOf("Friends"), groups.yours.map { it.name })
+        assertEquals(listOf("Emergency Location Access"), groups.special.map { it.name })
+        assertEquals(listOf("Moments"), groups.appDefaults.map { it.name })
+    }
+
+    /**
+     * The gap this replaced: a review circle counts toward the Circle state, so a review that
+     * cannot enrol one can never produce that state through the circle the spec names.
+     */
+    @Test
+    fun aReviewCircleIsOfferedRatherThanFilteredOut() {
+        val groups = state(circle("cc", "Moments", grantOn = CircleGrantOn.Review)).reviewCircleGroups()
+
+        assertFalse(groups.isEmpty)
+        assertEquals(listOf("Moments"), groups.appDefaults.map { it.name })
+    }
+
+    @Test
+    fun ambientAudienceAndVendorCirclesAreOfferedInNoGroup() {
+        val groups = state(
+            circle("aa", "Chat", grantOn = CircleGrantOn.Connect),
+            circle("bb", "Vendor", grantOn = CircleGrantOn.OwnFlowConnect),
+            circle("cc", "Subscribers", designation = CircleDesignation.Audience),
+            circle("dd", "Bank", designation = CircleDesignation.Vendor),
+            circle(AUTO_CONNECTIONS_CIRCLE_ID, "Auto Connections"),
+        ).reviewCircleGroups()
+
+        assertTrue(groups.isEmpty)
     }
 }

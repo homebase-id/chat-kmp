@@ -7,7 +7,6 @@ import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
-import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 
 /** The two sections of the unified Contacts screen. */
 enum class ContactTab { CONTACTS, CIRCLES }
@@ -172,8 +171,8 @@ data class ContactBookUiState(
     val requests: List<PendingRequestEntry> = emptyList(),
     /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
-    /** Circles the review sheet offers — user circles only, A–Z. */
-    val assignableCircles: List<ContactCircleUi> = emptyList(),
+    /** Circles the review sheet offers, in its three groups. */
+    val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Circles tab. */
     val circles: List<CircleWithMembers> = emptyList(),
     val circlesLoading: Boolean = false,

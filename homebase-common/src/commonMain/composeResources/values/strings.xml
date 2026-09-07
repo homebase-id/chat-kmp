@@ -1807,6 +1807,13 @@
     <string name="contact_review_submit_chat_only">Chat only</string>
     <string name="contact_review_chat_only_hint">They will see your public profile only. You can add them to circles anytime.</string>
     <string name="contact_review_keep_new">Keep as new</string>
+    <string name="contact_review_group_yours">Your circles</string>
+    <string name="contact_review_group_special">Special access</string>
+    <string name="contact_review_group_special_caption">These grant more than profile visibility.</string>
+    <string name="contact_review_group_apps">App defaults</string>
+    <string name="contact_review_group_apps_summary">%1$s</string>
+    <string name="contact_review_group_apps_expand">Show app defaults</string>
+    <string name="contact_review_group_apps_collapse">Hide app defaults</string>
     <string name="contact_review_action">Review</string>
     <string name="contact_review_failed">Couldn't save the review. Please try again.</string>
 

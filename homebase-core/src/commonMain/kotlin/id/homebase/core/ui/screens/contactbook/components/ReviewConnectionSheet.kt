@@ -1,5 +1,18 @@
 package id.homebase.core.ui.screens.contactbook.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.ui.Alignment
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
+import id.homebase.resources.contact_review_group_apps
+import id.homebase.resources.contact_review_group_apps_collapse
+import id.homebase.resources.contact_review_group_apps_expand
+import id.homebase.resources.contact_review_group_apps_summary
+import id.homebase.resources.contact_review_group_special
+import id.homebase.resources.contact_review_group_special_caption
+import id.homebase.resources.contact_review_group_yours
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -58,7 +71,7 @@ import org.jetbrains.compose.resources.stringResource
 fun ReviewConnectionSheet(
     displayName: String,
     introducedBy: String?,
-    circles: List<ContactCircleUi>,
+    groups: ReviewCircleGroups,
     alreadyHeldCircleIds: Set<String>,
     isSubmitting: Boolean,
     errorText: String?,
@@ -94,28 +107,74 @@ fun ReviewConnectionSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                circles.forEach { circle ->
-                    val held = circle.id in alreadyHeldCircleIds
-                    val isSelected = held || circle.id in selected
-                    FilterChip(
-                        selected = isSelected,
-                        enabled = !held && !isSubmitting,
-                        onClick = {
-                            selected = if (circle.id in selected) selected - circle.id
-                            else selected + circle.id
-                        },
-                        label = { CircleLabel(emoji = circle.emoji, name = circle.name) },
-                        leadingIcon = if (isSelected) {
-                            {
-                                Icon(
-                                    Icons.Outlined.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(FilterChipDefaults.IconSize),
-                                )
-                            }
-                        } else null,
+            val toggle: (String) -> Unit = { id ->
+                selected = if (id in selected) selected - id else selected + id
+            }
+
+            if (groups.yours.isNotEmpty()) {
+                CircleGroup(
+                    title = stringResource(MR.string.contact_review_group_yours),
+                    circles = groups.yours,
+                    selected = selected,
+                    alreadyHeldCircleIds = alreadyHeldCircleIds,
+                    enabled = !isSubmitting,
+                    onToggle = toggle,
+                )
+            }
+
+            if (groups.special.isNotEmpty()) {
+                CircleGroup(
+                    title = stringResource(MR.string.contact_review_group_special),
+                    caption = stringResource(MR.string.contact_review_group_special_caption),
+                    circles = groups.special,
+                    selected = selected,
+                    alreadyHeldCircleIds = alreadyHeldCircleIds,
+                    enabled = !isSubmitting,
+                    onToggle = toggle,
+                )
+            }
+
+            if (groups.appDefaults.isNotEmpty()) {
+                var expanded by rememberSaveable { mutableStateOf(false) }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isSubmitting) { expanded = !expanded },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(MR.string.contact_review_group_apps),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        if (!expanded) {
+                            Text(
+                                text = stringResource(
+                                    MR.string.contact_review_group_apps_summary,
+                                    groups.appDefaults.joinToString { it.name },
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        contentDescription = stringResource(
+                            if (expanded) MR.string.contact_review_group_apps_collapse
+                            else MR.string.contact_review_group_apps_expand
+                        ),
+                    )
+                }
+                if (expanded) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    CircleChips(
+                        circles = groups.appDefaults,
+                        selected = selected,
+                        alreadyHeldCircleIds = alreadyHeldCircleIds,
+                        enabled = !isSubmitting,
+                        onToggle = toggle,
                     )
                 }
             }
@@ -162,6 +221,67 @@ fun ReviewConnectionSheet(
             ) {
                 Text(stringResource(MR.string.contact_review_keep_new))
             }
+        }
+    }
+}
+
+
+/** One labelled group of circle chips. */
+@Composable
+private fun CircleGroup(
+    title: String,
+    circles: List<ContactCircleUi>,
+    selected: Set<String>,
+    alreadyHeldCircleIds: Set<String>,
+    enabled: Boolean,
+    onToggle: (String) -> Unit,
+    caption: String? = null,
+) {
+    Spacer(modifier = Modifier.height(16.dp))
+    Text(text = title, style = MaterialTheme.typography.labelLarge)
+    if (caption != null) {
+        Text(
+            text = caption,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Spacer(modifier = Modifier.height(8.dp))
+    CircleChips(circles, selected, alreadyHeldCircleIds, enabled, onToggle)
+}
+
+/**
+ * A circle the contact already holds renders selected and disabled: the review only ever grants,
+ * so an unchecked box would offer a removal this call cannot perform.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CircleChips(
+    circles: List<ContactCircleUi>,
+    selected: Set<String>,
+    alreadyHeldCircleIds: Set<String>,
+    enabled: Boolean,
+    onToggle: (String) -> Unit,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        circles.forEach { circle ->
+            val held = circle.id in alreadyHeldCircleIds
+            val isSelected = held || circle.id in selected
+            FilterChip(
+                selected = isSelected,
+                enabled = !held && enabled,
+                onClick = { onToggle(circle.id) },
+                label = { CircleLabel(emoji = circle.emoji, name = circle.name) },
+                leadingIcon = if (isSelected) {
+                    {
+                        Icon(
+                            Icons.Outlined.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    }
+                } else null,
+            )
         }
     }
 }

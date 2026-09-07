@@ -318,8 +318,8 @@ class ContactBookViewModel(
             statesLoading = circlesData.loading,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
-            assignableCircles = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
-                .assignableCircles(),
+            reviewCircleGroups = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
+                .reviewCircleGroups(),
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
             circleMembers = circlesData.members,

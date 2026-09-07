@@ -311,7 +311,7 @@ fun ContactBookScreen(
         is ContactBookOverlay.Review -> ReviewConnectionSheet(
             displayName = overlay.entry.displayName,
             introducedBy = overlay.introducedBy,
-            circles = uiState.assignableCircles,
+            groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = overlay.alreadyHeldCircleIds,
             isSubmitting = overlay.isSubmitting,
             errorText = if (overlay.failed) stringResource(MR.string.contact_review_failed) else null,
