@@ -102,6 +102,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
@@ -672,6 +673,7 @@ val appModule = module {
                 // event) is never applied. Recover missed SETs against the temporal-access
                 // preflight in the background — no screen required. Set-only: the reconciler
                 // never clears; revocation is applied solely by onRevoked above (issue #961).
+                get<EmergencyContactService>().apply { reset(); start() }
                 get<EmergencyContactReconciler>().start()
                 // endregion
 
@@ -745,6 +747,15 @@ val appModule = module {
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
     singleOf(::EmergencyCircleNotifier)
+    single {
+        EmergencyContactService(
+            contactRepository = get(),
+            temporalRead = get(),
+            authConnectionCoordinator = get(),
+            credentialsManager = get(),
+            scope = get(),
+        )
+    }
     singleOf(::EmergencyContactReceiveService)
     singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
@@ -1018,7 +1029,7 @@ val appModule = module {
             contactRepository = get(),
             connectionService = get(),
             contactService = get(),
-            temporalDriveReadProvider = get(),
+            emergencyContacts = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),

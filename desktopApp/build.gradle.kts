@@ -59,6 +59,9 @@ kotlin {
 
     jvmToolchain {
         languageVersion.set(JavaLanguageVersion.of(21))
+        // Conveyor's Gradle plugin maps this vendor to the JDK it bundles; an unset vendor
+        // means "openjdk", whose 21 line is frozen at 21.0.2 and crashes C1 on aarch64 (JDK-8335662).
+        vendor.set(JvmVendorSpec.ADOPTIUM)
     }
 
     sourceSets {
