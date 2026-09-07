@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
@@ -110,8 +111,10 @@ actual fun VideoPlayerSurface(
                     val url = bytesToObjectUrl(Base64.encode(content.bytes), mime)
                     objectUrl = url
                     val el = createVideoOverlay(muted, controls = true)
-                    addVideoOverlayProgressListener(el) { _, _ -> onProgress(1f) }
-                    addVideoOverlayEndedListener(el) { onEnded() }
+                    addVideoOverlayProgressListener(el) { _, _ ->
+                        guardJsCallback("video.progress") { onProgress(1f) }
+                    }
+                    addVideoOverlayEndedListener(el) { guardJsCallback("video.ended") { onEnded() } }
                     setVideoOverlaySrc(el, url)
                     // NOTE: do NOT play here — the element has no on-screen bounds yet, so it
                     // would play through invisibly and end before it's ever shown. Play is kicked

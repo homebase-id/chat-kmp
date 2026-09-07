@@ -16,6 +16,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.util.isBlobUrl
 import kotlin.io.encoding.Base64
@@ -135,19 +136,23 @@ actual fun TrimmableVideoPlayerSurface(
         // No native controls — the trim screen draws its own scrubber.
         val el = createVideoOverlay(muted = false, controls = false)
         addVideoOverlayProgressListener(el) { currentSec, _ ->
-            val ms = (currentSec * 1000).toLong()
-            onPositionState.value(ms)
-            // Loop within [clipStart, clipEnd]: when playback runs past the clip end, jump back
-            // to the clip start (matches the native trim players' looping contract).
-            val end = clipEndState.value
-            if (end > 0L && ms >= end) {
-                setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+            guardJsCallback("trimVideo.progress") {
+                val ms = (currentSec * 1000).toLong()
+                onPositionState.value(ms)
+                // Loop within [clipStart, clipEnd]: when playback runs past the clip end, jump
+                // back to the clip start (matches the native trim players' looping contract).
+                val end = clipEndState.value
+                if (end > 0L && ms >= end) {
+                    setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+                }
             }
         }
         // Seek to the clip start once the first frame is decoded (assigning currentTime before
         // metadata is loaded is unreliable).
         addVideoOverlayLoadedListener(el) {
-            setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+            guardJsCallback("trimVideo.loaded") {
+                setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+            }
         }
         setVideoOverlaySrc(el, src.url)
         element = el
