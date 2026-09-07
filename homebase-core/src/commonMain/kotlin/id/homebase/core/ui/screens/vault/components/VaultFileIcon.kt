@@ -63,6 +63,8 @@ import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.resources.vault_gallery_send_webdrop
+import androidx.compose.material.icons.outlined.Redeem
 
 /**
  * Returns the appropriate icon for a given MIME content type.
@@ -122,6 +124,8 @@ fun formatFileInfo(sizeBytes: Long, createdAt: Long): String {
 fun VaultFileDropdownMenu(
     file: VaultEntry,
     onShare: (VaultEntry) -> Unit,
+    /** Entry-scoped: the whole entry leaves as one WebDrop. Null hides the item (drive not activated). */
+    onSendAsWebDrop: ((VaultEntry) -> Unit)? = null,
     onDelete: (VaultEntry) -> Unit,
     onDeletePage: (() -> Unit)? = null,
     sections: List<VaultSection> = emptyList(),
@@ -153,6 +157,22 @@ fun VaultFileDropdownMenu(
                     onClick = {
                         expanded = false
                         onShare(file)
+                    },
+                )
+            }
+            if (onSendAsWebDrop != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(MR.string.vault_gallery_send_webdrop)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Redeem,
+                            contentDescription = null,
+                            tint = iconTint,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSendAsWebDrop(file)
                     },
                 )
             }

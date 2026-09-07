@@ -4,6 +4,7 @@ package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.util.isBlobUrl
 import kotlin.js.Promise
 import kotlin.math.abs
 import kotlin.random.Random
@@ -49,7 +50,7 @@ actual object FFmpegUtils {
         // Editor fast path: a blob: URL (minted from the picked File) has no okio bytes for mp4box
         // to parse. Read the duration straight off an HTML5 <video> instead — any codec the browser
         // can decode, no bytes copied into wasm, no 22 MB core.
-        if (inputPath.startsWith("blob:")) return videoDurationMsFromUrl(inputPath)
+        if (inputPath.isBlobUrl()) return videoDurationMsFromUrl(inputPath)
         val bytes = readOkioBytes(inputPath) ?: return 0L
         return FFmpegBridge.probe(bytes)?.durationMs ?: 0L
     }
@@ -88,7 +89,7 @@ actual object FFmpegUtils {
         //    (fetch → mp4box / ffmpeg.writeFile); the original never enters Kotlin and is never
         //    base64'd. Size comes from the probe.
         //  - okio path (e.g. a compressed intermediate, or native) → read bytes into Kotlin as before.
-        val isBlob = inputPath.startsWith("blob:")
+        val isBlob = inputPath.isBlobUrl()
         val inputBytes =
             if (isBlob) null
             else (readOkioBytes(inputPath)

@@ -79,6 +79,7 @@ import id.homebase.resources.contactbook_error_message
 import id.homebase.resources.conversation_jump_message_after_exit
 import id.homebase.resources.conversation_jump_message_unavailable
 import id.homebase.resources.live_share_ended
+import id.homebase.api.image.MediaQuality
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.collections.immutable.toPersistentMap
@@ -196,14 +197,20 @@ class ConversationListViewModel(
     private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
-    private val _uiState = MutableStateFlow(ConversationListUiState())
+    private val _uiState = MutableStateFlow(
+        ConversationListUiState(listTopSnapshotId = userPreferences.conversationListTopId)
+    )
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
+
+    private val events = ConversationListEvents()
+    val uiEvents: Flow<ConversationListUiEvent> = events.events
 
     private val _messagesUiState = MutableStateFlow(
         MessageListUiState(
             userDefaultReactions = userPreferences.preferredUserReactions
                 .distinctByEmoji()
-                .toPersistentList()
+                .toPersistentList(),
+            mediaQuality = userPreferences.mediaQuality,
         )
     )
     val messagesUiState: StateFlow<MessageListUiState> = _messagesUiState.asStateFlow()
@@ -1096,10 +1103,6 @@ class ConversationListViewModel(
         }.onFailure { Logger.e(throwable = it, tag = "LiveRelay") { "live-share update failed" } }
     }
 
-    fun eventConsumed() {
-        _uiState.update { it.copy(uiEvent = null) }
-    }
-
     fun dialogClosed() {
         _uiState.update { it.copy(uiDialog = null) }
     }
@@ -1267,10 +1270,10 @@ class ConversationListViewModel(
             }
 
             is ConversationListUiAction.NewConversationClicked -> {
-                _uiState.value = _uiState.value.copy(
-                    uiEvent = NavigateToNewConversation
-                )
+                sendEvent(NavigateToNewConversation)
             }
+
+            is ConversationListUiAction.SnapshotListTop -> snapshotListTop()
 
             is ConversationListUiAction.ClearSelection -> {
                 ActiveConversation.selectConversation(null)
@@ -1548,6 +1551,12 @@ class ConversationListViewModel(
 
             is ConversationListUiAction.ApplyTrimResult -> attachmentHandler.handleApplyTrimResult(action)
 
+            is ConversationListUiAction.ToggleMediaQuality -> {
+                userPreferences.mediaQuality =
+                    if (userPreferences.mediaQuality == MediaQuality.HIGH) MediaQuality.STANDARD
+                    else MediaQuality.HIGH
+                _messagesUiState.update { it.copy(mediaQuality = userPreferences.mediaQuality) }
+            }
             is ConversationListUiAction.ToggleStickerAttachment -> attachmentHandler.handleToggleStickerAttachment(action)
 
             is ConversationListUiAction.ShowRecordingHelp -> attachmentHandler.handleShowRecordingHelp()
@@ -1635,6 +1644,20 @@ class ConversationListViewModel(
                 currentSearchResultIndex = startIndex,
             )
         }
+    }
+
+    /**
+     * Search results share [ConversationListUiState.conversationsContent] with the conversation
+     * list, and their #1 row has nothing to do with the list's — never snapshot one.
+     */
+    private fun snapshotListTop() {
+        if (conversationSearchTextState.text.isNotEmpty()) return
+        val items =
+            _uiState.value.conversationsContent as? ConversationListContentState.Items ?: return
+        val topId = resolveTopConversationId(items.list) ?: return
+        if (topId == _uiState.value.listTopSnapshotId) return
+        userPreferences.conversationListTopId = topId
+        _uiState.update { it.copy(listTopSnapshotId = topId) }
     }
 
     private fun updateListContent() {
@@ -2197,7 +2220,7 @@ class ConversationListViewModel(
     }
 
     private fun sendEvent(event: ConversationListUiEvent) {
-        _uiState.update { it.copy(uiEvent = event) }
+        events.send(event)
     }
 
     /**

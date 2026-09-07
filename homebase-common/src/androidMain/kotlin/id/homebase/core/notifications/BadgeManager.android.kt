@@ -15,6 +15,10 @@ actual object BadgeManager {
         badgeCount++
     }
 
+    actual fun setCount(count: Int) {
+        badgeCount = count.coerceAtLeast(0)
+    }
+
     actual fun resetCount() {
         badgeCount = 0
     }
@@ -24,8 +28,9 @@ actual object BadgeManager {
         notificationManager()?.cancelAll()
     }
 
-    actual fun cancelConversationNotifications(messageId: Int, summaryId: Int) {
+    actual fun cancelConversationNotifications(conversationId: String) {
         val nm = notificationManager() ?: return
+        val (messageId, summaryId) = conversationNotificationIds(conversationId)
         nm.cancel(messageId)
         nm.cancel(summaryId)
     }

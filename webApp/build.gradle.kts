@@ -10,6 +10,33 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 }
 
+// wasm-opt with Kotlin's default pass list (--type-ssa, -O3 four times over, --type-merging, -Oz)
+// peaked at 10.3 GB RSS on this app (measured 2026-08-31). Next to the 8 GB Gradle and Kotlin
+// daemons, that OOM-killed every CI image build on GitHub's 16 GB runners - surfacing as
+// "The operation was canceled" mid compileProductionExecutableKotlinWasmJsOptimize. The lighter
+// pass list below measured 4.4 GB peak and ran 3x faster on the same input, costing ~9% output
+// size (22.2 MB -> 24.2 MB). Feature and safety flags are identical to Kotlin's defaults; only
+// the optimization passes changed. Revisit if binaryen or the runners change shape.
+tasks.withType<org.jetbrains.kotlin.gradle.targets.wasm.binaryen.BinaryenExec>().configureEach {
+    binaryenArgs = mutableListOf(
+        "--enable-gc",
+        "--enable-reference-types",
+        "--enable-exception-handling",
+        "--enable-bulk-memory",
+        "--enable-nontrapping-float-to-int",
+        "--closed-world",
+        "--no-inline=kotlin.wasm.internal.throwValue",
+        "--no-inline=kotlin.wasm.internal.getKotlinException",
+        "--no-inline=kotlin.wasm.internal.jsToKotlinStringAdapter",
+        "--inline-functions-with-loops",
+        "--traps-never-happen",
+        "--fast-math",
+        "-O2",
+        "--gufa",
+        "-Oz",
+    )
+}
+
 // Sub-path mount support. Pass -PpublicPath=/apps/chat-wasm/ to host the bundle under a sub-path
 // (odin-core's CI does this); defaults to "/" for standalone runs. The normalized value flows to:
 //   - webpack `output.publicPath` (via the generated webpack.config.d/00-publicPath.js)

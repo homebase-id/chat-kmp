@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Visibility
@@ -27,8 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
-import id.homebase.resources.menu_back
 import id.homebase.resources.vault_settings_biometrics
 import id.homebase.resources.vault_settings_open
 import id.homebase.resources.vault_settings_section
@@ -65,16 +64,9 @@ fun VaultSettingsUi(
     val scrollState = rememberScrollState()
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.vault_settings_section)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back),
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.vault_settings_section),
+                onBack = onBackClick,
             )
         },
     ) { innerPadding ->

@@ -3,6 +3,7 @@ package id.homebase.auth.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.api.exception.AuthInProgressException
 import id.homebase.api.isIos
@@ -52,10 +53,13 @@ class LoginViewModel(
     private val notificationService: NotificationService,
     private val httpClient: HttpClient,
     private val driveSyncManager: DriveSyncManager,
+    private val contactInfo: ContactInfoGateway,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
+
+    private val previewResolver = IdentityPreviewResolver(viewModelScope, contactInfo::profileCard)
 
     // Tracks the active auth-state observer so AppResumed doesn't stack multiple collectors.
     private var authStateJob: Job? = null
@@ -64,6 +68,7 @@ class LoginViewModel(
 
     init {
         loadUsernameFromStorage()
+        observeIdentityPreview()
         observeCreatedIdentity()
         observeDriveStatuses()
         observeAuthState()
@@ -88,6 +93,24 @@ class LoginViewModel(
             LoginUiAction.AppResumed -> {
                 // Auth flow may have completed or been cancelled
                 observeAuthState()
+            }
+
+            is LoginUiAction.IdentityInputChanged -> {
+                previewResolver.onInput(action.domain)
+            }
+
+            LoginUiAction.UseDifferentId -> {
+                // Cleared so the form, composed for the first time on this flip, seeds empty
+                // rather than with the identity the user just declined.
+                _uiState.update {
+                    it.copy(showIdField = true, homebaseId = "", identityPreview = null)
+                }
+            }
+
+            LoginUiAction.ContinueAsLastIdentity -> {
+                val last = _uiState.value.lastIdentity ?: return
+                _uiState.update { it.copy(identityPreview = last) }
+                startLogin(last.odinId.domainName)
             }
         }
     }
@@ -135,7 +158,10 @@ class LoginViewModel(
         } catch (_: Exception) {
             Logger.w(tag = "LoginViewModel", messageString = "Invalid Homebase ID: $homebaseIdValue")
             _uiState.update {
-                it.copy(error = LoginError.Res(MR.string.login_error_invalid_id))
+                it.copy(
+                    error = LoginError.Res(MR.string.login_error_invalid_id),
+                    showIdField = true,
+                )
             }
             return
         }
@@ -175,6 +201,7 @@ class LoginViewModel(
                         isPinging = false,
                         error = LoginError.Res(errorRes, homebaseId.domainName),
                         errorDetails = details,
+                        showIdField = true,
                     )
                 }
 
@@ -207,16 +234,44 @@ class LoginViewModel(
                         error = e.message?.let { msg -> LoginError.Message(msg) }
                             ?: LoginError.Res(MR.string.login_error_generic),
                         errorDetails = "${e::class.simpleName ?: "Error"}: ${e.message ?: "(no message)"}",
+                        showIdField = true,
                     )
                 }
             }
         }
     }
 
+    private fun observeIdentityPreview() {
+        viewModelScope.launch {
+            previewResolver.preview.collect { preview ->
+                _uiState.update { it.copy(identityPreview = preview) }
+            }
+        }
+    }
+
     private fun loadUsernameFromStorage() {
         val savedUsername = usernameStorage.loadUsername()
-        if (savedUsername.isNotBlank()) {
-            _uiState.update { it.copy(homebaseId = savedUsername) }
+        val lastOdinId = savedUsername.takeIf { OdinId.isValid(it) }?.let { OdinId(it) }
+        _uiState.update {
+            it.copy(
+                homebaseId = if (savedUsername.isNotBlank()) savedUsername else it.homebaseId,
+                lastIdentity = lastOdinId?.let { odinId -> IdentityPreview(odinId) },
+                showIdField = lastOdinId == null,
+            )
+        }
+        if (lastOdinId == null) return
+
+        // Best effort: the card is on screen already and stays there whether or not this lands.
+        viewModelScope.launch {
+            val card = runCatching { contactInfo.profileCard(lastOdinId) }
+                .onFailure {
+                    Logger.d(
+                        tag = "LoginViewModel",
+                        messageString = "No public profile for $savedUsername: $it",
+                    )
+                }
+                .getOrNull() ?: return@launch
+            _uiState.update { it.copy(lastIdentity = card.toPreview(lastOdinId)) }
         }
     }
 
@@ -281,7 +336,8 @@ class LoginViewModel(
                     _uiState.update {
                         it.copy(
                             error = error.message?.let { msg -> LoginError.Message(msg) }
-                                ?: LoginError.Res(MR.string.error_unknown)
+                                ?: LoginError.Res(MR.string.error_unknown),
+                            showIdField = true,
                         )
                     }
                 }
@@ -338,7 +394,8 @@ class LoginViewModel(
                                     isLoading = false,
                                     isAuthenticated = false,
                                     isAwaitingAuthConfirmation = false,
-                                    error = LoginError.Message(authState.message)
+                                    error = LoginError.Message(authState.message),
+                                    showIdField = true,
                                 )
                             }
                         }

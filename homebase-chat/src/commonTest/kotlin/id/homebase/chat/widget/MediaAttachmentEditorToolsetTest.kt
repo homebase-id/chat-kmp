@@ -5,6 +5,8 @@ import id.homebase.core.gallery.GalleryImage
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class MediaAttachmentEditorToolsetTest {
@@ -101,6 +103,32 @@ class MediaAttachmentEditorToolsetTest {
         assertEquals(
             EditorToolset(showCrop = true, showDraw = true, showSave = false),
             editorToolsetFor(fileImage(), canCrop = true, canDraw = true, canSave = false),
+        )
+    }
+
+    @Test
+    fun quality_showsForImagesAndVideo_hidesForDocuments() {
+        fun showQuality(current: AttachmentPendingFile?) =
+            editorToolsetFor(
+                current,
+                canCrop = true,
+                canDraw = true,
+                canSave = true,
+                canSetQuality = true,
+            ).showQuality
+
+        assertTrue(showQuality(fileImage()))
+        assertTrue(showQuality(gallery()))
+        assertTrue(showQuality(video()))
+        // A document ships byte-for-byte in both modes, so offering the toggle would mislead.
+        assertFalse(showQuality(file()))
+        assertFalse(showQuality(null))
+    }
+
+    @Test
+    fun quality_hiddenWhenTheCallbackIsNotWired() {
+        assertFalse(
+            editorToolsetFor(fileImage(), canCrop = true, canDraw = true, canSave = true).showQuality,
         )
     }
 }

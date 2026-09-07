@@ -8,6 +8,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
@@ -27,6 +28,8 @@ import id.homebase.core.upgrade.PendingUpgradeManager
 import id.homebase.core.upgrade.PendingUpgradeState
 import id.homebase.core.upgrade.registerDataUpgradeCallbackHandler
 import id.homebase.core.upgrade.unregisterDataUpgradeCallbackHandler
+import id.homebase.core.session.IdentitySessionScope
+import id.homebase.core.session.get
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -46,7 +49,12 @@ class AppViewModel(
     private val updateAppManager: UpdateAppManager,
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
-    private val momentCreateFlowState: MomentCreateFlowState,
+    private val conversationStream: ConversationStream,
+    // Not the MomentCreateFlowState itself: that is identity-scoped and this ViewModel is
+    // app-lifetime (it exists before login), so holding a direct reference would pin one
+    // identity's draft for the life of the process. Resolved on demand instead — the share
+    // hand-off below only happens while logged in.
+    private val identitySession: IdentitySessionScope,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -79,6 +87,7 @@ class AppViewModel(
             }
         }
         collectNotificationEvents()
+        syncIconBadge()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
         registerMomentShareHandler { handleMomentShareIntent() }
         registerPermissionCallbackHandler { canceled ->
@@ -133,16 +142,22 @@ class AppViewModel(
         authConnectionCoordinator.setForeground(true)
         refreshData()
         checkForUpdate()
-        // Reset the icon-badge counter without wiping the tray — notifications
-        // clear per conversation when the user taps or reads them, so opening
-        // the app from the launcher leaves other senders' notifications intact.
-        BadgeManager.resetCount()
+        // Re-assert the real total rather than zeroing: the iOS extension has been counting
+        // pushes on its own while backgrounded, and messages still unread must stay shown.
+        conversationStream.currentUnreadTotal()?.let { BadgeManager.setCount(it) }
     }
 
     /** Called when the app leaves RESUMED state. */
     fun onPaused() {
         notificationService.isAppInForeground = false
         authConnectionCoordinator.setForeground(false)
+    }
+
+    /** Keeps the app-icon badge in lock-step with the real unread total. */
+    private fun syncIconBadge() {
+        viewModelScope.launch {
+            conversationStream.totalUnreadCount.collect { BadgeManager.setCount(it) }
+        }
     }
 
     /** Collects notification events from NotificationService and forwards to UI. */
@@ -238,7 +253,7 @@ class AppViewModel(
             sharedMediaAttachment(shareContentProcessor.resolveFilePath(name), mime)
         }
         Logger.i(tag = "AppViewModel") { "Moment share: seeding draft with ${attachments.size} attachments" }
-        momentCreateFlowState.setDraft(
+        identitySession.get<MomentCreateFlowState>().setDraft(
             MomentCreateFlowState.Draft(
                 attachments = attachments,
                 description = descriptor.text ?: "",

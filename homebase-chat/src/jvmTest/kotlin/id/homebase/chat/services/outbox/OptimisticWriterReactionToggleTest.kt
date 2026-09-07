@@ -17,6 +17,7 @@ import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.chat.services.ChatProtocol
+import id.homebase.chat.services.outbox.MutationOutcome
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -214,12 +215,12 @@ class OptimisticWriterReactionToggleTest {
         val messageId = seedMessage()
         val reaction = emojiJson("👍")
 
-        val (resultType, original) = writer.writeReactionToggle(
+        val (resultType, outcome) = writer.toggleReaction(
             chatDriveId, messageId, reaction
-        )
+        ) { emptyList() }
 
         assertEquals(ToggleReactionResultType.Added, resultType)
-        assertNotNull(original, "original should be returned for rollback")
+        assertEquals(MutationOutcome.Queued, outcome)
 
         val updated = readBack(messageId)
         assertEquals(
@@ -242,9 +243,9 @@ class OptimisticWriterReactionToggleTest {
             initialReactionPreview = mapOf(reaction to 1),
         )
 
-        val (resultType, _) = writer.writeReactionToggle(
+        val (resultType, _) = writer.toggleReaction(
             chatDriveId, messageId, reaction
-        )
+        ) { emptyList() }
 
         assertEquals(ToggleReactionResultType.Deleted, resultType)
         val updated = readBack(messageId)
@@ -275,9 +276,9 @@ class OptimisticWriterReactionToggleTest {
             initialReactionPreview = mapOf(reaction to 1), // someone else's reaction
         )
 
-        val (resultType, _) = writer.writeReactionToggle(
+        val (resultType, _) = writer.toggleReaction(
             chatDriveId, messageId, reaction
-        )
+        ) { emptyList() }
 
         assertEquals(
             ToggleReactionResultType.Added, resultType,
@@ -304,12 +305,12 @@ class OptimisticWriterReactionToggleTest {
         val reaction = emojiJson("🚀")
         val messageId = seedMessage()
 
-        val (firstType, _) = writer.writeReactionToggle(
+        val (firstType, _) = writer.toggleReaction(
             chatDriveId, messageId, reaction
-        )
-        val (secondType, _) = writer.writeReactionToggle(
+        ) { emptyList() }
+        val (secondType, _) = writer.toggleReaction(
             chatDriveId, messageId, reaction
-        )
+        ) { emptyList() }
 
         assertEquals(ToggleReactionResultType.Added, firstType)
         assertEquals(ToggleReactionResultType.Deleted, secondType)
@@ -329,12 +330,12 @@ class OptimisticWriterReactionToggleTest {
         setUp()
         val nonExistent = Uuid.random()
 
-        val (resultType, original) = writer.writeReactionToggle(
+        val (resultType, outcome) = writer.toggleReaction(
             chatDriveId, nonExistent, emojiJson("😀")
-        )
+        ) { emptyList() }
 
         assertEquals(ToggleReactionResultType.None, resultType)
-        assertNull(original)
+        assertEquals(MutationOutcome.NoRow, outcome)
         assertNull(
             dbm.driveMainIndex.selectHomebaseFileByUnique(
                 testIdentityId, chatDriveId, nonExistent
@@ -358,9 +359,9 @@ class OptimisticWriterReactionToggleTest {
             initialReactionPreview = mapOf(first to 1),
         )
 
-        val (resultType, _) = writer.writeReactionToggle(
+        val (resultType, _) = writer.toggleReaction(
             chatDriveId, messageId, second
-        )
+        ) { emptyList() }
 
         assertEquals(ToggleReactionResultType.Added, resultType)
         val updated = readBack(messageId)
@@ -409,7 +410,7 @@ class OptimisticWriterReactionToggleTest {
 
         coroutineScope {
             for (e in emojis) {
-                launch { writer.writeReactionToggle(chatDriveId, messageId, e) }
+                launch { writer.toggleReaction(chatDriveId, messageId, e) { emptyList() } }
             }
         }
 

@@ -121,6 +121,22 @@ import id.homebase.core.ui.theme.withEmojiFont
  * the caller uses to choose the layout container — so the rendering shape and the
  * container never disagree.
  *
+ * ### Mentions
+ * A mention is plain body text (`@<odinId>`), not a header descriptor, so it is recognised by
+ * shape — see [id.homebase.api.util.findMentionRanges] for the rule and how it lines up with the
+ * web client's. Shapes 2 and 3 share ONE [com.mikepenz.markdown.model.MarkdownAnnotator]
+ * ([rememberMentionAnnotator]), which is why the chip looks the same in a one-line message and in
+ * a bulleted one. Shape 1 deliberately does not carry it: a search-active body is already flattened
+ * to plain text, dropping bold, italic, link styling and the inline-code chip alike, and after that
+ * flattening a mention inside a code span is indistinguishable from one in prose — the highlight is
+ * what that surface is for.
+ *
+ * The chip is decoration only: no [androidx.compose.ui.text.LinkAnnotation], nothing to tap. That
+ * keeps shape 2 a plain styled Text — a link annotation re-registers with TextLinkScope on hover,
+ * the very thing the single-style link [TextLinkStyles] below exists to avoid inside the bubble's
+ * timestamp-tucking Layout — and leaves the destination (contact sheet? 1:1 conversation?) to be
+ * decided where the navigation callbacks actually live.
+ *
  * [maxLines] / [overflow] are honoured on the single-Text paths (1 and 2) and
  * exposed so the read-more (Task F) cap merges cleanly.
  */
@@ -255,6 +271,10 @@ fun ChatMarkdown(
         ),
     )
 
+    // Hoisted out of rememberMarkdownState's argument, which is re-evaluated on every
+    // recomposition: withChatHardLineBreaks runs a full MarkdownParser pass. It is also the exact
+    // string the mention scanner indexes into.
+    val parsedContent = remember(content) { content.withChatHardLineBreaks() }
     // Parse the markdown SYNCHRONOUSLY (immediate = true) so the block bubble measures
     // at its final height on the first frame. The default async parse renders an empty
     // loading placeholder for ~400ms then jumps to full height, reflowing the message
@@ -262,13 +282,17 @@ fun ChatMarkdown(
     // header) and the parse is remember(content)-memoized, so the synchronous cost is
     // small; the library's "blocks composition" warning targets large documents.
     val markdownState = rememberMarkdownState(
-        content = content.withChatHardLineBreaks(),
+        content = parsedContent,
         immediate = true,
     )
     Markdown(
         markdownState = markdownState,
         colors = colors,
         typography = typography,
+        // Published as LocalMarkdownAnnotator, so paragraphs, headings, list items, quotes and
+        // table cells all pick up the same mention chip the inline path draws. Code fences take a
+        // different route inside mikepenz and are never offered to an annotator.
+        annotator = rememberMentionAnnotator(parsedContent, mentionSpanStyle(style, color)),
         // Default is fillMaxSize(); a chat bubble must wrap its content.
         modifier = modifier.wrapContentSize(),
         dimens = markdownDimens(
@@ -368,9 +392,11 @@ internal fun buildChatInlineAnnotatedString(
     ).toSpanStyle().copy(background = color.copy(alpha = INLINE_CODE_BG_ALPHA))
     // annotatorSettings is @Composable (it can read CompositionLocals), so it stays in
     // composition; its output here is fully determined by the stable link/code styles.
+    val parsedContent = remember(content) { content.withChatHardLineBreaks() }
     val settings = annotatorSettings(
         linkTextSpanStyle = linkSpanStyle,
         codeSpanStyle = inlineCodeStyle,
+        annotator = rememberMentionAnnotator(parsedContent, mentionSpanStyle(style, color)),
         referenceLinkHandler = null,
     )
     // The actual parse (buildMarkdownAnnotatedString) is a pure, non-composable string
@@ -382,8 +408,8 @@ internal fun buildChatInlineAnnotatedString(
     // where withEmojiFont returns the string untouched. Part of the remember key so the emoji
     // pass is memoized with the parse rather than redone on every recomposition.
     val emojiFamily = emojiFontFamily()
-    return remember(content, style, color, emojiFamily) {
-        content.withChatHardLineBreaks().buildMarkdownAnnotatedString(
+    return remember(parsedContent, style, color, emojiFamily) {
+        parsedContent.buildMarkdownAnnotatedString(
             style = style,
             annotatorSettings = settings,
         ).withEmojiFont(emojiFamily)

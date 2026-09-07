@@ -33,7 +33,8 @@ import kotlin.time.TimeSource
  *    `delay(tickIntervalMs)` and compares it to the wall-clock gap after waking up. If the gap
  *    vastly exceeds what was requested, the loop itself was starved — logged as
  *    [StallKind.WatchdogStarved] the instant it recovers. Needs nothing to run *during* the
- *    freeze.
+ *    freeze. Process CPU time is sampled either side of the same gap so the breadcrumb says
+ *    whether the OS suspended us or we froze ourselves (see [classifyStallCause]).
  *  - **[MainThreadLivenessProbe]** (Android/JVM only): a raw OS thread, scheduled directly by
  *    the OS rather than any coroutine dispatcher, independently checks the UI thread is alive.
  *    It survives `Dispatchers.Default` pool exhaustion that would otherwise silence this loop
@@ -116,10 +117,12 @@ class MainThreadWatchdog(
                 // rescheduling us: if that takes far longer than requested, the watchdog's own
                 // loop — not just the UI thread — was starved.
                 val checkpointMs = nowMs()
+                val checkpointTimes = captureProcessTimes()
                 delay(tickIntervalMs)
                 val actualGapMs = nowMs() - checkpointMs
                 val starvedMs = detectWatchdogStarvation(expectedGapMs = tickIntervalMs, actualGapMs = actualGapMs)
                 if (starvedMs != null) {
+                    val processDelta = processTimesDelta(checkpointTimes, captureProcessTimes())
                     val stack = captureMainThreadStackTrace()
                     reporter.reportIfDue {
                         renderStallMessage(
@@ -128,6 +131,7 @@ class MainThreadWatchdog(
                                 source = StallSource.CoroutineLoop,
                                 observedMs = starvedMs,
                                 memory = MemoryDiagnostics.capture(),
+                                processDelta = processDelta,
                             ),
                             stack = stack,
                         )

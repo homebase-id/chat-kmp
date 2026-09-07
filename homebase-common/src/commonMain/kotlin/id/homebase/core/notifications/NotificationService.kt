@@ -6,7 +6,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.notifications.PushSubscriptionResponse
-import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.youauth.YouAuthState
@@ -168,7 +168,7 @@ internal suspend fun resolveCompanionAppUrlEvent(
 class NotificationService(
     private val api: PushNotificationApi,
     private val scope: CoroutineScope,
-    private val profileProvider: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     private val userPreferences: UserPreferences,
     private val credentialsManager: CredentialsManager,
     private val pendingNotificationTap: PendingNotificationTap,
@@ -260,8 +260,7 @@ class NotificationService(
      */
     private fun clearConversationNotifications(conversationId: String) {
         counts.clear(conversationId)
-        val (messageId, summaryId) = conversationNotificationIds(conversationId)
-        BadgeManager.cancelConversationNotifications(messageId, summaryId)
+        BadgeManager.cancelConversationNotifications(conversationId)
     }
 
     /** Logout: clear all accumulated per-conversation counts and reset the chime cooldown. */
@@ -416,7 +415,7 @@ class NotificationService(
                 // Fetch sender avatar for rich notification display
                 val senderImageBytes = try {
                     withTimeout(5_000) {
-                        profileProvider.getPublicImage(OdinId(notification.senderId))
+                        contactInfo.avatarBytes(OdinId(notification.senderId))
                     }
                 } catch (_: Exception) {
                     null
@@ -495,9 +494,9 @@ class NotificationService(
                 } else if (Platform.osName.contains("iOS", ignoreCase = true) ||
                     Platform.osName.contains("iPadOS", ignoreCase = true)
                 ) {
-                    // iOS: Notification Service Extension handles background display;
-                    // posting here would create a duplicate notification.
-                    BadgeManager.increment()
+                    // iOS: the Notification Service Extension owns both the visible
+                    // notification and the badge. It runs for every mutable-content push
+                    // whether or not this process is alive, so counting here double-counts.
                 } else {
                     // Android + Desktop (Windows/macOS/Linux): display rich notification
                     // from app code. On desktop this routes through Nucleus via
@@ -514,12 +513,11 @@ class NotificationService(
         }
     }
 
-    /** Resolves sender display name from public profile, with timeout and fallback. */
+    /** Resolves the sender's display name through the contact gateway, with timeout and fallback. */
     private suspend fun resolveSenderName(senderId: String): String {
         return try {
             withTimeout(5_000) {
-                val profile = profileProvider.getPublicProfile(OdinId(senderId))
-                profile?.name?.ifBlank { senderId } ?: senderId
+                contactInfo.displayName(OdinId(senderId))?.ifBlank { null } ?: senderId
             }
         } catch (_: Exception) {
             senderId
@@ -727,6 +725,11 @@ class NotificationService(
     /** Navigate to the moments composer (used for the "New Moment" share deep link). */
     fun navigateToMomentCompose() {
         _navigationEvents.trySend(NotificationNavigationEvent.OpenMomentCompose)
+    }
+
+    /** Navigate to the WebDrop composer (used for the "New WebDrop" share deep link). */
+    fun navigateToWebDropCompose() {
+        _navigationEvents.trySend(NotificationNavigationEvent.OpenWebDropCompose)
     }
 
     /** Displays a rich notification using platform-specific APIs. */

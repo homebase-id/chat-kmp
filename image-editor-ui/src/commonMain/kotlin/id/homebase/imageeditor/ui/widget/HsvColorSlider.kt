@@ -33,20 +33,7 @@ fun HsvColorSlider(
 ) {
     var width by remember { mutableFloatStateOf(0f) }
 
-    val gradient = remember {
-        Brush.horizontalGradient(
-            0.00f to Color.Black,
-            0.05f to Color.Black,
-            0.18f to Color.Red,
-            0.32f to Color.Yellow,
-            0.46f to Color.Green,
-            0.60f to Color.Cyan,
-            0.74f to Color.Blue,
-            0.88f to Color.Magenta,
-            0.95f to Color.White,
-            1.00f to Color.White,
-        )
-    }
+    val gradient = remember { Brush.horizontalGradient(*ColorSliderStops) }
 
     Canvas(
         modifier = modifier

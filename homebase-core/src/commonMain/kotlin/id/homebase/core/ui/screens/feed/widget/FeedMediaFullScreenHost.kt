@@ -71,8 +71,6 @@ internal fun FeedMediaFullScreenHost(
 
 // Drive resolution mirrors PostMedia: a received post (senderOdinId + globalTransitId + a parseable channel
 // alias) points at the author's channel drive over peer; our own posts stay local on [FeedPostItem.driveId].
-// The image viewer honours those peer fields; the video player does not yet — peer video playback still issues
-// a local read and falls back to its poster frame.
 internal fun feedMediaOverlay(
     post: FeedPostItem,
     index: Int,
@@ -100,6 +98,8 @@ internal fun feedMediaOverlay(
             keyHeader = post.keyHeader,
             payload = payload,
             isEncrypted = post.isEncrypted,
+            remoteOdinId = post.senderOdinId?.takeIf { isPeerMedia },
+            globalTransitId = post.globalTransitId?.takeIf { isPeerMedia },
         )
     } else {
         FullScreenOverlay.ViewMessageData(

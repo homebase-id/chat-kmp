@@ -143,6 +143,10 @@ fun MediaMessage(
         payloads.size == 1 && payloads[0].key == ChatProtocol.PAYLOAD_KEY_LINKS
     }
 
+    val isHighQualitySolo = remember(payloads) {
+        payloads.size == 1 && payloads[0].isHighQualityImage()
+    }
+
     Box(modifier = Modifier.testTag(ChatBubbleTestTags.MEDIA).animateContentSize()) {
         when (payloads.size) {
             1 -> {
@@ -249,6 +253,13 @@ fun MediaMessage(
                 status = uploadStatus,
                 modifier = Modifier.matchParentSize(),
             )
+        }
+
+        // Solo photos only: a gallery cell is too small to carry it, and the fullscreen
+        // viewer badges each item there instead. Top-start keeps it clear of the
+        // bottom timestamp scrim, which is drawn over this Box by the parent bubble.
+        if (isHighQualitySolo) {
+            HdBadge(modifier = Modifier.align(Alignment.TopStart))
         }
     }
 }

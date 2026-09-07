@@ -93,6 +93,56 @@ class MainThreadWatchdogTest {
         assertTrue(!withoutMemory.contains("Memory at stall"))
     }
 
+    @Test
+    fun watchdogStarved_withNoCpuBurnedAcrossTheGap_readsOsSuspended() {
+        val message = renderStallMessage(
+            StallEvent(
+                kind = StallKind.WatchdogStarved,
+                source = StallSource.CoroutineLoop,
+                observedMs = 28961,
+                processDelta = ProcessTimes(cpuMs = 3, continuousMs = 28961),
+            ),
+            stack = null,
+        )
+        assertTrue(
+            message.startsWith(
+                "Process/dispatchers stalled ~28961ms (watchdog starved, OS-SUSPENDED: cpu +3ms over 28961ms wall)"
+            ),
+            message,
+        )
+    }
+
+    @Test
+    fun watchdogStarved_withCpuBurnedInStep_readsSelfStalled() {
+        val message = renderStallMessage(
+            StallEvent(
+                kind = StallKind.WatchdogStarved,
+                source = StallSource.CoroutineLoop,
+                observedMs = 28961,
+                processDelta = ProcessTimes(cpuMs = 28400, continuousMs = 28961),
+            ),
+            stack = null,
+        )
+        assertTrue(message.contains("SELF-STALLED: cpu +28400ms over 28961ms wall"), message)
+    }
+
+    // --- classifyStallCause ------------------------------------------------------------------
+
+    @Test
+    fun classifyStallCause_splitsOnTheCpuShareThreshold() {
+        assertEquals("OS-SUSPENDED", classifyStallCause(ProcessTimes(cpuMs = 200, continuousMs = 10_000)))
+        assertEquals("SELF-STALLED", classifyStallCause(ProcessTimes(cpuMs = 9_500, continuousMs = 10_000)))
+    }
+
+    @Test
+    fun processTimesDelta_isNullUnlessBothSamplesExist() {
+        val before = ProcessTimes(cpuMs = 100, continuousMs = 1_000)
+        val after = ProcessTimes(cpuMs = 103, continuousMs = 30_000)
+        assertEquals(ProcessTimes(cpuMs = 3, continuousMs = 29_000), processTimesDelta(before, after))
+        assertNull(processTimesDelta(null, after))
+        assertNull(processTimesDelta(before, null))
+    }
+
     // --- detectWatchdogStarvation ----------------------------------------------------------
 
     @Test

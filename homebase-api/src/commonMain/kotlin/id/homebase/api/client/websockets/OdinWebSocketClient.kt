@@ -747,6 +747,15 @@ class OdinWebSocketClient(
         val driveId = fileNotification.targetDrive!!.alias
         val header = fileNotification.header
 
+        // Logged on ARRIVAL, before either path. The pure-push path returns early, so a working
+        // push previously left no trace at all and only failures were visible — which makes
+        // "did the event arrive, or was this drive never subscribed?" unanswerable from a log.
+        // Answering it is the difference between debugging the server and debugging the client.
+        Logger.d(tag = "WebSocket") {
+            "WSFileEvent: received ${notification.notificationType} drive=$driveId " +
+                "headerPresent=${header != null}"
+        }
+
         if (header != null) {
             val worker = getOrCreateWorker(driveId)
             if (worker != null) {

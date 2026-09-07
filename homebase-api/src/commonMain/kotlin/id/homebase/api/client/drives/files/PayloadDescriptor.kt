@@ -2,6 +2,7 @@ package id.homebase.api.client.drives.files
 
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
 import kotlinx.serialization.Serializable
@@ -138,11 +139,16 @@ sealed interface DescriptorContent {
      * Additive and backward-compatible: a blank or legacy descriptor parses to
      * `ImageFile(isSticker = false, format = null)` and older receivers ignore [format]
      * (OdinSystemSerializer has ignoreUnknownKeys = true).
+     *
+     * [quality] is the send quality the sender chose. null means "not recorded" — every
+     * image sent before this field shipped, which is why a null must never render as
+     * "not HD": that would mislabel every HD photo sent before it.
      */
     @Serializable
     data class ImageFile(
         val isSticker: Boolean = false,
         val format: String? = null,
+        val quality: MediaQuality? = null,
     ) : DescriptorContent {
         /**
          * Filename extension for a downloaded sticker, derived from [format]. Defaults to
@@ -180,10 +186,15 @@ sealed interface DescriptorContent {
         /**
          * Serialize an [ImageFile] descriptor (e.g. `{"isSticker":true,"format":"image/png"}`)
          * for the wire. [format] is the detected image content type — carried so a receiver
-         * can name a downloaded sticker "StickerFile.<ext>".
+         * can name a downloaded sticker "StickerFile.<ext>". [quality] is the chosen send
+         * quality; leave it null to record nothing.
          */
-        fun descriptorContentFromImage(isSticker: Boolean, format: String? = null): String {
-            return OdinSystemSerializer.serialize(ImageFile(isSticker, format))
+        fun descriptorContentFromImage(
+            isSticker: Boolean,
+            format: String? = null,
+            quality: MediaQuality? = null,
+        ): String {
+            return OdinSystemSerializer.serialize(ImageFile(isSticker, format, quality))
         }
     }
 }

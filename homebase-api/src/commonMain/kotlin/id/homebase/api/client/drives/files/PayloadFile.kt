@@ -1,6 +1,7 @@
 package id.homebase.api.client.drives.files
 
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.video.VideoQuality
 import kotlinx.serialization.Serializable
 
 /**
@@ -23,6 +24,8 @@ data class PayloadFile(
     val trimStartMs: Long? = null,
     /** Video-only: trim end, ms, applied during compression. Null = no trim. */
     val trimEndMs: Long? = null,
+    /** Video-only: encoder tier for the compress step. Not part of [equals]/[hashCode]. */
+    val videoQuality: VideoQuality = VideoQuality.STANDARD,
     /**
      * Web-only, video-only: a `blob:` object URL for the original picked file, used as the ffmpeg
      * compress INPUT so the bytes are read in JS (no Kotlin copy / base64). Null elsewhere. Not part

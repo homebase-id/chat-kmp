@@ -5,8 +5,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.browser.RedirectConfig
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.http.UriBuilder
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -16,6 +16,7 @@ import id.homebase.api.crypto.EccKeySize
 import id.homebase.api.crypto.generateEccKeyPair
 import id.homebase.api.crypto.publicKeyToJwkBase64Url
 import id.homebase.api.decodeUrl
+import id.homebase.api.device.deviceDisplayName
 import id.homebase.api.exception.AuthInProgressException
 import id.homebase.api.generateUuidBytes
 import id.homebase.api.generateUuidString
@@ -91,7 +92,7 @@ class YouAuthFlowManager(
     private val credentialsManager: CredentialsManager,
     private val httpClient: HttpClient,
     private val driveFileProviderCached: DriveFileProviderCached,
-    private val publicProfileProviderCached: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     // Platform-level cache teardown invoked during logout, alongside the per-cache
     // clearCaches() calls below. Injected from the module that owns platform
     // singletons (homebase-core) so this class doesn't have to depend on coil3 or
@@ -261,7 +262,7 @@ class YouAuthFlowManager(
                 AppAuthorizationParams.create(
                     appName = appName,
                     appId = appId,
-                    friendlyName = clientFriendlyName ?: "Homebase KMP App",
+                    friendlyName = clientFriendlyName ?: deviceDisplayName(),
                     drives = drives,
                     circleDrives = circleDrives,
                     circles = circles,
@@ -275,7 +276,7 @@ class YouAuthFlowManager(
                 YouAuthorizationParams(
                     clientId = appId,
                     clientType = ClientType.app,
-                    clientInfo = clientFriendlyName ?: "Homebase KMP App",
+                    clientInfo = clientFriendlyName ?: deviceDisplayName(),
                     publicKey = publicKeyToJwkBase64Url(keyPair.publicKey),
                     permissionRequest = permissionRequest.toJson(),
                     state = state,
@@ -455,7 +456,7 @@ class YouAuthFlowManager(
 
         stepOrLog("clearStorage") { driveSyncManager.clearStorage() }
         stepOrLog("driveFileProvider.clearCaches") { driveFileProviderCached.clearCaches() }
-        stepOrLog("publicProfileProvider.clearCaches") { publicProfileProviderCached.clearCaches() }
+        stepOrLog("contactInfo.clearCaches") { contactInfo.clearCaches() }
         // Platform caches (Coil memory cache, orphan coil3_disk_cache dir, anything
         // else the app-level module wants to flush).
         stepOrLog("clearPlatformCaches") { clearPlatformCaches() }

@@ -17,6 +17,12 @@ data class ConversationLocalAppDataJson(
     val lastReadTime: UnixTimeUtc? = null,
     val lastExitedAt: UnixTimeUtc? = null,
     /**
+     * Baseline for auto-unarchive; null on threads archived before this field
+     * existed. `fileMetadata.updated` can't stand in — `updateLocalTags` stamps
+     * `updated + 1ms`, a version counter, not a wall clock.
+     */
+    val archivedAt: UnixTimeUtc? = null,
+    /**
      * Sort key for the conversation list: the userDate of the most recent
      * message known the last time this conversation was stamped. It rides
      * along with the [lastReadTime] writeback (no separate push), so it is

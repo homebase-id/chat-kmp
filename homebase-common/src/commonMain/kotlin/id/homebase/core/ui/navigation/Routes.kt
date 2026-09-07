@@ -108,8 +108,28 @@ sealed class Route {
     data object Defragmenter : Route()
 
     @Serializable
+    @SerialName("email")
+    data object Email : Route()
+
+    @Serializable
+    @SerialName("email-client")
+    data object EmailClientPicker : Route()
+
+    @Serializable
+    @SerialName("email-secrets")
+    data object EmailSecrets : Route()
+
+    @Serializable
+    @SerialName("email-settings")
+    data object EmailSettings : Route()
+
+    @Serializable
     @SerialName("vault")
     data object Vault : Route()
+
+    @Serializable
+    @SerialName("webdrop")
+    data object WebDrop : Route()
 
     @Serializable
     @SerialName("vault-settings")
@@ -250,6 +270,22 @@ sealed class Route {
     @Serializable
     @SerialName("location-emergency-contact-add")
     data object LocationEmergencyContactAdd : Route()
+
+    @Serializable
+    @SerialName("location-emergency")
+    data object LocationEmergency : Route()
+
+    @Serializable
+    @SerialName("location-history-overview")
+    data object LocationHistoryOverview : Route()
+
+    @Serializable
+    @SerialName("location-live-sharing")
+    data object LocationLiveSharing : Route()
+
+    @Serializable
+    @SerialName("location-settings")
+    data object LocationSettings : Route()
 
     @Serializable
     @SerialName("crop")

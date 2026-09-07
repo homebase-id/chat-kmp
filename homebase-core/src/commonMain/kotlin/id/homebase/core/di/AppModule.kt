@@ -2,6 +2,15 @@
 
 package id.homebase.core.di
 
+import id.homebase.core.ui.screens.email.clients.EmailClientPickerViewModel
+import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
+import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
+import id.homebase.core.ui.screens.email.EmailService
+import id.homebase.core.ui.screens.email.EmailStream
+import id.homebase.core.config.getEmailPermissionExtensionConfig
+import id.homebase.core.ui.screens.email.settings.EmailSettingsViewModel
+import id.homebase.core.ui.screens.email.EmailViewModel
+import id.homebase.core.email.EmailPreferences
 import co.touchlab.kermit.Logger
 import coil3.ImageLoader
 import id.homebase.api.di.apiModule
@@ -13,6 +22,7 @@ import id.homebase.api.file.wipeOutboxStaging
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.core.config.dataUpgradeReturnUrl
 
+import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
@@ -92,6 +102,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
@@ -105,6 +116,10 @@ import id.homebase.core.ui.screens.vault.VaultStream
 import id.homebase.core.ui.screens.vault.settings.VaultSettingsViewModel
 import id.homebase.core.ui.screens.vault.VaultUploaderService
 import id.homebase.core.ui.screens.vault.VaultViewModel
+import id.homebase.core.ui.screens.webdrop.WebDropService
+import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
+import id.homebase.core.ui.screens.webdrop.WebDropStream
+import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -187,6 +202,7 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 import id.homebase.core.config.getLocationPermissionExtensionConfig
 import id.homebase.core.config.getVaultPermissionExtensionConfig
+import id.homebase.core.config.getWebDropPermissionExtensionConfig
 import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
@@ -211,8 +227,12 @@ import id.homebase.core.ui.screens.location.devices.LocationDeviceDirectory
 import id.homebase.core.ui.screens.location.history.LocationHistoryViewModel
 import id.homebase.core.ui.screens.location.livelocation.LiveLocationViewModel
 import id.homebase.core.ui.screens.location.share.ShareLocationViewModel
+import id.homebase.core.session.IdentitySessionScope
+import id.homebase.core.session.IdentitySessionQualifier
 
 val VaultPermissionQualifier = named("vaultPermission")
+val WebDropPermissionQualifier = named("webDropPermission")
+val EmailPermissionQualifier = named("emailPermission")
 
 val FeedPermissionQualifier = named("feedPermission")
 val MomentsPermissionQualifier = named("momentsPermission")
@@ -269,8 +289,8 @@ val appModule = module {
     singleOf(::FeedPermissionService)
     singleOf(::ReportingUrlProvider)
 
-    single { MomentCreateFlowState() }
     single { VaultPreferences(get()) }
+    single { EmailPreferences(get()) }
 
     // Contact Book add-on (contact manager). Reads from the mandatory Contacts
     // drive; writes through the api-layer ContactsProvider. No optional-drive
@@ -480,7 +500,7 @@ val appModule = module {
             credentialsManager = get(),
             httpClient = get(),
             driveFileProviderCached = get(),
-            publicProfileProviderCached = get(),
+            contactInfo = get(),
             clearPlatformCaches = {
                 // Logout sweep. In dry-run for the broader cleanup; the orphan
                 // coil3_disk_cache is actually deleted by CacheSweeper now — that absorbs
@@ -523,6 +543,28 @@ val appModule = module {
         )
     }
 
+    // Lifetime of the per-identity object graph. App-lifetime itself (it outlives any one
+    // session — it is what opens and closes them), but everything it hands out is not.
+    single { IdentitySessionScope(getKoin()) }
+
+    // Per-identity object graph. Destroyed on logout (IdentitySessionScope.close), so nothing
+    // here can serve one identity's state to the next.
+    //
+    // ViewModels live here alongside the services they consume, not at root. A definition can
+    // only reach identity-scoped dependencies if the definition itself is in the scope — Koin
+    // rebinds the resolution context to root on linked-scope fallback, so a root-registered
+    // ViewModel injecting a scoped service fails at runtime. ScopeResolutionMechanicsTest pins
+    // that behaviour; IdentityScopeProvider is what makes koinViewModel() resolve from here.
+    scope(IdentitySessionQualifier) {
+        // The moment draft: the user's photos and description, held while they hop from the
+        // composer to the audience picker. Cleared on a successful post — but abandoning the
+        // flow and logging out used to leave it in memory for the next identity, whose composer
+        // reads it on construction. See MomentDraftSurvivesLogoutTest.
+        scoped { MomentCreateFlowState() }
+        viewModelOf(::MomentComposeViewModel)
+        viewModelOf(::MomentAudienceViewModel)
+    }
+
     single {
         AuthConnectionCoordinator(
             credentialsManager = get(),
@@ -535,6 +577,7 @@ val appModule = module {
             driveRegistry = get(),
             securityContextProvider = get(),
             peerWebSocketManager = get(),
+            identitySession = get(),
             // Start headless only where the OS can cold-wake us in the background
             // (Android/iOS). Desktop/Web report false → start in foreground mode so
             // a missing promoteToForeground() can't hang the app on "syncing".
@@ -631,6 +674,7 @@ val appModule = module {
                 // event) is never applied. Recover missed SETs against the temporal-access
                 // preflight in the background — no screen required. Set-only: the reconciler
                 // never clears; revocation is applied solely by onRevoked above (issue #961).
+                get<EmergencyContactService>().apply { reset(); start() }
                 get<EmergencyContactReconciler>().start()
                 // endregion
 
@@ -641,7 +685,11 @@ val appModule = module {
                 // endregion
 
                 get<VaultPreferences>().reset()
+            get<EmailPreferences>().reset()
+            get<EmailStream>().apply { reset(); start() }
                 get<VaultStream>().apply { reset(); start() }
+                get<WebDropStream>().apply { reset(); start() }
+                get<WebDropShareFlowState>().clear()
                 // Contact Book: re-seed prefs + reload the contact list for the new
                 // identity (singletons survive logout — clear stale in-memory state).
                 get<ContactBookPreferences>().reset()
@@ -700,6 +748,15 @@ val appModule = module {
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
     singleOf(::EmergencyCircleNotifier)
+    single {
+        EmergencyContactService(
+            contactRepository = get(),
+            temporalRead = get(),
+            authConnectionCoordinator = get(),
+            credentialsManager = get(),
+            scope = get(),
+        )
+    }
     singleOf(::EmergencyContactReceiveService)
     singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
@@ -737,8 +794,17 @@ val appModule = module {
     singleOf(::PostCreateIntroductionPreflightBus)
     singleOf(::ChatServerHistory)
     single {
+        val ownerSession: OwnerSessionRepository = get()
         ChatMessageStream(
-            get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            credentialsManager = get(),
+            contactService = get(),
+            ownerDisplayName = { ownerSession.user.value?.displayName },
+            dbm = get(),
+            eventBus = get(),
+            scope = get(),
+            driveFileProvider = get(),
+            optimisticWriter = get(),
+            serverHistory = get(),
         ).also { stream ->
             // #887: wire auto-pin at construction, NOT in onPostAuthenticated. That
             // post-auth block is deferred and frequently never runs on a warm
@@ -774,7 +840,7 @@ val appModule = module {
         NotificationService(
             api = get(),
             scope = get(),
-            profileProvider = get(),
+            contactInfo = get(),
             userPreferences = get(),
             credentialsManager = get(),
             pendingNotificationTap = get(),
@@ -799,6 +865,10 @@ val appModule = module {
     singleOf(::VaultStream)
     singleOf(::VaultService)
     singleOf(::VaultUploaderService)
+
+    singleOf(::WebDropStream)
+    single { WebDropService(get(), get(), get()) }
+    single { WebDropShareFlowState() }
 
     // Sticker library (saved "My Stickers" tray) — mirrors the Vault singles. The
     // Stickers drive is optional/on-demand (mounted lazily by StickerService), so it
@@ -960,7 +1030,7 @@ val appModule = module {
             contactRepository = get(),
             connectionService = get(),
             contactService = get(),
-            temporalDriveReadProvider = get(),
+            emergencyContacts = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),
@@ -1047,8 +1117,6 @@ val appModule = module {
             locationPreferences = get(),
         )
     }
-    viewModelOf(::MomentComposeViewModel)
-    viewModelOf(::MomentAudienceViewModel)
     viewModelOf(::CreateMomentGroupViewModel)
     viewModelOf(::MomentsFeedViewModel)
 
@@ -1063,7 +1131,7 @@ val appModule = module {
             channelService = get(),
             contactService = get(),
             credentialsManager = get(),
-            publicProfileProvider = get(),
+            contactInfo = get(),
             senderService = get(),
             reportingUrlProvider = get(),
             feedPermissionViewModel = get(FeedPermissionQualifier),
@@ -1081,7 +1149,7 @@ val appModule = module {
             credentialsManager = get(),
             contactService = get(),
             stickerStream = get(),
-            publicProfileProvider = get(),
+            contactInfo = get(),
             reportingUrlProvider = get(),
             permissionService = get(),
         )
@@ -1113,6 +1181,24 @@ val appModule = module {
             autoCheck = false,
         )
     }
+    viewModel(WebDropPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getWebDropPermissionExtensionConfig(),
+            autoCheck = false,
+        )
+    }
+    viewModel(EmailPermissionQualifier) {
+        ExtendPermissionViewModel(
+            get(),
+            get(),
+            get(),
+            getEmailPermissionExtensionConfig(),
+            autoCheck = false,
+        )
+    }
     viewModel(FeedPermissionQualifier) {
         ExtendPermissionViewModel(
             get(),
@@ -1135,6 +1221,15 @@ val appModule = module {
     viewModelOf(::LoginViewModel)
     viewModelOf(::DesktopViewModel)
     viewModel {
+        WebDropViewModel(
+            webDropService = get(),
+            webDropStream = get(),
+            webDropPermissionViewModel = get(WebDropPermissionQualifier),
+            optionalDriveActivation = get(),
+            webDropShareFlowState = get(),
+        )
+    }
+    viewModel {
         VaultViewModel(
             vaultPreferences = get(),
             vaultPermissionViewModel = get(VaultPermissionQualifier),
@@ -1149,9 +1244,27 @@ val appModule = module {
             driveSyncManager = get(),
             cropResultBus = get(),
             drawResultBus = get(),
+            webDropShareFlowState = get(),
         )
     }
     viewModelOf(::VaultSettingsViewModel)
+
+    viewModel {
+        EmailViewModel(
+            emailPreferences = get(),
+            emailPermissionViewModel = get(EmailPermissionQualifier),
+            optionalDriveActivation = get(),
+            mailProvider = get(),
+            emailStream = get(),
+            credentialsManager = get(),
+        )
+    }
+    singleOf(::EmailStream)
+    singleOf(::EmailService)
+    viewModelOf(::EmailSetupViewModel)
+    viewModelOf(::EmailSecretsViewModel)
+    viewModelOf(::EmailClientPickerViewModel)
+    viewModelOf(::EmailSettingsViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(
             sectionId = params[0],

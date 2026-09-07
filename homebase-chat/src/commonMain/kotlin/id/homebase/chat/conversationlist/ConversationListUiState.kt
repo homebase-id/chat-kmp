@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ImageMetadata
@@ -53,7 +54,6 @@ data class ConversationListUiState(
      */
     val liveSharePinAnyUntilMs: Long? = null,
     val uiDialog: ConversationListUiDialog? = null,
-    val uiEvent: ConversationListUiEvent? = null,
     /** Non-null while a long-ish service op is in flight. Drives the full-screen
      *  scrim+spinner overlay so the user gets visible feedback that something is
      *  happening; otherwise the brief delay between tap and follow-up UI feels
@@ -64,12 +64,13 @@ data class ConversationListUiState(
      *  Null means no overlay. Cleared on both success and error. */
     val inFlightOperationLabel: StringResource? = null,
     /** When non-null, the screen should pop the scaffold detail pane (i.e. close the
-     *  open conversation). Use a dedicated state field rather than [uiEvent] because
-     *  delete fires multiple events back-to-back (close + snackbar) and `uiEvent` is
-     *  a single slot — successive sends overwrite each other and the close was being
-     *  eaten by the snackbar. The screen calls [closeDetailPaneRequestConsumed] when
-     *  it has handled the request. */
+     *  open conversation). The screen calls [closeDetailPaneRequestConsumed] when it
+     *  has handled the request. */
     val closeDetailPaneRequest: Uuid? = null,
+    /** Id of the #1 conversation as of the last time the list was on screen, mirrored from
+     *  [id.homebase.core.settings.UserPreferences.conversationListTopId]. Compared against the
+     *  current #1 by [shouldScrollToTop] on every return to the list. */
+    val listTopSnapshotId: Uuid? = null,
 )
 
 @Immutable
@@ -83,6 +84,7 @@ data class MessageListUiState(
     val scrollPosition: ScrollPosition? = null,
     val fullScreenOverlay: FullScreenOverlay? = null,
     val replyToMessage: MessageUiModel? = null,
+    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
     val battleTargetMessage: MessageUiModel? = null,
     val isSearchActive: Boolean = false,
     val searchQuery: String = "",
@@ -359,6 +361,9 @@ sealed interface FullScreenOverlay {
         val uploadMessageId: Uuid? = null,
         /** False for a public feed post: plaintext payload, no per-payload IV. */
         val isEncrypted: Boolean = true,
+        /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
+        val remoteOdinId: OdinId? = null,
+        val globalTransitId: Uuid? = null,
     ) : FullScreenOverlay
 
     @Immutable

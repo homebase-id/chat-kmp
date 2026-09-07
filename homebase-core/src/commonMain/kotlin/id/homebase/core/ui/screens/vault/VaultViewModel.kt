@@ -20,8 +20,14 @@ import id.homebase.core.pdf.generatePdfThumbnailFromFile
 import id.homebase.core.config.vaultDefaultSections
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.sync.DriveRegistry
+import id.homebase.core.config.webDropLabeledDrive
 import id.homebase.core.sync.OptionalDriveActivation
+import id.homebase.core.ui.screens.webdrop.WebDropShareFlowState
+import id.homebase.core.ui.screens.webdrop.model.PickedDropFile
+import id.homebase.core.webdrop.WebDropProtocol
 import id.homebase.core.ui.screens.vault.model.VaultEntry
+import id.homebase.core.ui.screens.vault.model.webDropFileNames
+import id.homebase.core.ui.screens.vault.model.webDropGuardKey
 import id.homebase.core.ui.screens.vault.model.VaultSection
 import id.homebase.core.ui.screens.vault.model.VaultSectionContent
 import id.homebase.core.util.contentType
@@ -65,12 +71,14 @@ class VaultViewModel(
     private val driveSyncManager: DriveSyncManager,
     private val cropResultBus: CropResultBus,
     private val drawResultBus: DrawResultBus,
+    private val webDropShareFlowState: WebDropShareFlowState,
 ) : ViewModel() {
 
     private val _overlayState = MutableStateFlow<VaultOverlay?>(null)
     private val _syncingState = MutableStateFlow(false)
     private val _checkingPermissions = MutableStateFlow(false)
     private val _preparingShareKeys = MutableStateFlow<Set<String>>(emptySet())
+    private val _webDropActivated = MutableStateFlow(false)
     private val _pendingEditor = MutableStateFlow<VaultPendingEditor?>(null)
 
     /**
@@ -91,9 +99,9 @@ class VaultViewModel(
         combine(_overlayState, _pendingEditor) { o, p -> o to p },
         _syncingState,
         _checkingPermissions,
-        _preparingShareKeys,
-    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), syncing, checkingPermissions, preparing ->
-        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing)
+        combine(_preparingShareKeys, _webDropActivated) { p, w -> p to w },
+    ) { (sections, entriesBySection, isLoaded), (overlay, pendingEditor), syncing, checkingPermissions, (preparing, webDrop) ->
+        buildUiState(sections, entriesBySection, isLoaded, overlay, pendingEditor, syncing, checkingPermissions, preparing, webDrop)
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
@@ -114,6 +122,7 @@ class VaultViewModel(
             syncing = _syncingState.value,
             checkingPermissions = _checkingPermissions.value,
             preparingShareKeys = _preparingShareKeys.value,
+            webDropActivated = _webDropActivated.value,
         ),
     )
 
@@ -130,6 +139,7 @@ class VaultViewModel(
         syncing: Boolean,
         checkingPermissions: Boolean,
         preparingShareKeys: Set<String>,
+        webDropActivated: Boolean,
     ): VaultUiState {
         val sectionModels = sections.mapIndexed { index, section ->
             section.copy(
@@ -150,6 +160,7 @@ class VaultViewModel(
             fullScreenOverlay = refreshedOverlay ?: overlay,
             preparingShareKeys = preparingShareKeys,
             pendingEditor = pendingEditor,
+            webDropActivated = webDropActivated,
         )
     }
 
@@ -170,6 +181,12 @@ class VaultViewModel(
     }
 
     init {
+        viewModelScope.launch {
+            optionalDriveActivation.isActivatedFlow(webDropLabeledDrive).collect { activated ->
+                _webDropActivated.value = activated
+            }
+        }
+
         // React to VaultStream reset/load cycles (logout → login as different user).
         // When isLoaded flips false (reset) → null out activation so the UI shows
         // loading. When it flips true (loadAll done) → re-check DriveRegistry.
@@ -269,6 +286,7 @@ class VaultViewModel(
             is VaultUiAction.UpdateLabel,
             is VaultUiAction.MoveEntryToSection,
             is VaultUiAction.SharePage,
+            is VaultUiAction.SendAsWebDrop,
             is VaultUiAction.SavePage,
             is VaultUiAction.ShareFile,
             is VaultUiAction.RenameFile,
@@ -318,6 +336,7 @@ class VaultViewModel(
             is VaultUiAction.UpdateLabel -> handleUpdateLabel(action)
             is VaultUiAction.MoveEntryToSection -> handleMoveEntryToSection(action)
             is VaultUiAction.SharePage -> handleSharePage(action)
+            is VaultUiAction.SendAsWebDrop -> handleSendAsWebDrop(action)
             is VaultUiAction.SavePage -> handleSavePage(action)
             is VaultUiAction.EntryClicked -> handleEntryClicked(action)
             is VaultUiAction.ShareFile -> handleShareFile(action)
@@ -914,6 +933,57 @@ class VaultViewModel(
                 }
             } finally {
                 _preparingShareKeys.update { it - action.payloadKey }
+            }
+        }
+    }
+
+    /**
+     * The whole entry leaves as ONE drop: every payload is decrypted to a temp path, the WebDrop
+     * draft is seeded, and the screen navigates to the composer - which opens with the files
+     * already picked (consume-once draft, same hand-off as the OS share sheet). Guards on
+     * payloadDescriptors.size, never pageCount: a 30-page PDF is one payload, one dropped file.
+     */
+    private fun handleSendAsWebDrop(action: VaultUiAction.SendAsWebDrop) {
+        val file = action.file
+        if (file.isPending) return
+        if (file.payloadDescriptors.isEmpty()) return
+        if (file.payloadDescriptors.size > WebDropProtocol.MaxFilesPerDrop) {
+            _events.tryEmit(
+                VaultUiEvent.Error(VaultError.WebDropTooManyFiles(WebDropProtocol.MaxFilesPerDrop)),
+            )
+            return
+        }
+
+        // Same effectively-atomic UI-thread reasoning as handleSharePage (#850); a synthetic
+        // key scopes the guard (and the gallery's spinner) to the entry, not a page.
+        val guardKey = webDropGuardKey(file)
+        if (guardKey in _preparingShareKeys.value) return
+        _preparingShareKeys.update { it + guardKey }
+        viewModelScope.launch {
+            val names = file.webDropFileNames()
+            val staged = mutableListOf<PickedDropFile>()
+            try {
+                file.payloadDescriptors.forEachIndexed { index, descriptor ->
+                    val tempPath = vaultUploaderService.downloadPayload(file, descriptor.key)
+                    if (tempPath == null) {
+                        // No partial drop: reap what was already materialized and abort loudly.
+                        staged.forEach { fileOperationsProvider.deleteTempFile(it.path) }
+                        _events.tryEmit(VaultUiEvent.Error(VaultError.WebDropPrepareFailed))
+                        return@launch
+                    }
+                    staged += PickedDropFile(
+                        path = tempPath,
+                        name = names[index],
+                        contentType = descriptor.contentType ?: file.contentType,
+                        size = 0,
+                    )
+                }
+                // Seed strictly BEFORE navigating: WebDropViewModel consumes the draft in its
+                // init, which runs the moment Route.WebDrop composes.
+                webDropShareFlowState.setDraft(staged)
+                _events.tryEmit(VaultUiEvent.OpenWebDrop)
+            } finally {
+                _preparingShareKeys.update { it - guardKey }
             }
         }
     }

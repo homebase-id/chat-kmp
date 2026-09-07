@@ -44,7 +44,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.chat.conversationlist.materializeForUpload
+import id.homebase.core.files.materializeForUpload
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.chat.services.builder.toImageAttachmentInput
 import id.homebase.chat.services.sticker.SavedSticker

@@ -30,14 +30,21 @@ Stalwart directly. An in-app reader may come later; nothing here precludes it.
 
 1. Extend-permissions dialog (standard add-on step) — includes the email drive.
 2. Create the **email drive**.
-3. Generate the **E2E encryption keypair on the device**, store it encrypted on the
-   email drive (⇒ Shamir-recoverable, multi-device via drive sync; the private key
-   never exists outside owner-locked storage — keys doc custody table).
-4. Choose the **primary address** (below).
-5. Call the server's `POST /api/owner/v1/mail/activate` — the server does the rest
-   (DKIM generation, DNS records, DID/WKD publication, Stalwart provisioning).
+3. Choose the **primary address** (defaults to `mail@<identity>`) and call
+   `POST /api/v2/mail/setup/mailbox` — DKIM generation, DNS records and the mailbox itself.
+4. Generate the **encryption keypair** LAST, via `POST /api/v2/mail/setup/keys`. The server
+   generates it — chat-kmp has no OpenPGP implementation, and cryptography-kotlin cannot be
+   seeded — mixing in entropy the app collects from the phone's accelerometer, and writes the
+   keyring straight to the email drive before publishing its certificate. The app reads it back
+   by the returned unique id. (⇒ Shamir-recoverable, multi-device via drive sync.)
+5. Issue an **app password** (`POST /api/v2/mail/app-passwords`) — only possible once a key is
+   published, so it comes after step 4, not before.
 6. Show the address as live; delegated vs manual-records domains may surface a
-   "records pending" state fed by the owner API status endpoints.
+   "records pending" state fed by the status endpoint.
+
+Every step is idempotent and its completion is observable (drive mounted, server status,
+credential files on the drive), so setup resumes after the app is killed without the client
+keeping a progress file.
 
 Deactivation/uninstall hides the app but deletes nothing; teardown is a separate,
 deliberately heavy destructive action (mail and keys are on the line).

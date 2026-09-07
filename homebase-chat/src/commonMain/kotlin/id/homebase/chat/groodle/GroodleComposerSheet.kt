@@ -39,7 +39,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SheetState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -144,10 +143,9 @@ fun GroodleComposerSheet(
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
-    GuardedComposerSheet(onDismiss = onDismiss) { sheetState, requestClose, reportUnsaved ->
+    GuardedComposerSheet(onDismiss = onDismiss) { requestClose, reportUnsaved ->
         GroodleComposerContent(
             conversationId = conversationId,
-            sheetState = sheetState,
             onDismiss = onDismiss,
             onSent = onSent,
             onRequestClose = requestClose,
@@ -160,7 +158,6 @@ fun GroodleComposerSheet(
 @Composable
 private fun GroodleComposerContent(
     conversationId: Uuid,
-    sheetState: SheetState,
     onDismiss: () -> Unit,
     onSent: () -> Unit,
     onRequestClose: () -> Unit = onDismiss,
@@ -236,7 +233,6 @@ private fun GroodleComposerContent(
                         previousMessageUniqueId = null,
                     )
                 }
-                sheetState.hide()
                 onSent()
             }
         }

@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.Logout
@@ -31,6 +30,8 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Error
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.MailOutline
+import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
@@ -79,13 +80,16 @@ import id.homebase.core.widget.DialogTitle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
+import id.homebase.resources.webdrop_home_subtitle
+import id.homebase.resources.webdrop_label
+import id.homebase.resources.settings_data_storage
 import id.homebase.resources.app_version
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.contactbook_settings_section
 import id.homebase.resources.location_settings_section
-import id.homebase.resources.menu_back
 import id.homebase.resources.moments_settings_section
 import id.homebase.resources.settings
 import id.homebase.resources.settings_appearance
@@ -119,6 +123,8 @@ import id.homebase.resources.settings_storage
 import id.homebase.resources.settings_storage_desc
 import id.homebase.resources.settings_storage_used
 import id.homebase.resources.settings_vault_desc
+import id.homebase.resources.settings_email_desc
+import id.homebase.resources.email_settings_section
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.stringResource
 
@@ -126,6 +132,7 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     actions: SettingsActions,
+    showDeveloperMenu: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -187,6 +194,7 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             actions = actions,
+            showDeveloperMenu = showDeveloperMenu,
         )
 
         if (uiState.isLoggingOut) {
@@ -241,30 +249,19 @@ fun SettingsUi(
     uiState: SettingsUiState,
     onAction: (SettingsUiAction) -> Unit,
     actions: SettingsActions,
+    // Defaults to hidden so previews and tests that do not care stay unchanged.
+    showDeveloperMenu: Boolean = false,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(MR.string.settings),
-                        modifier = Modifier.testTag("settingsTitle")
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = actions.onBack,
-                        modifier = Modifier.testTag("settingsBackButton"),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                },
+            SettingsTopBar(
+                title = stringResource(MR.string.settings),
+                titleModifier = Modifier.testTag("settingsTitle"),
+                navigationIconModifier = Modifier.testTag("settingsBackButton"),
+                onBack = actions.onBack,
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -359,6 +356,28 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onVaultSettings),
                 )
             }
+            // Email setup is developer-menu gated while the arc is in progress: every host has
+            // Email:TenantMail:Enabled off, so the screen can only say "no email here" today.
+            if (showDeveloperMenu) {
+                item {
+                    SettingsRow(
+                        modifier = Modifier.testTag("emailSettingsButton"),
+                        icon = Icons.Outlined.MailOutline,
+                        title = stringResource(MR.string.email_settings_section),
+                        supportingText = stringResource(MR.string.settings_email_desc),
+                        action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                    )
+                }
+            }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("webDropButton"),
+                    icon = Icons.Outlined.Redeem,
+                    title = stringResource(MR.string.webdrop_label),
+                    supportingText = stringResource(MR.string.webdrop_home_subtitle),
+                    action = SettingsRowAction.Navigate(actions.onOpenWebDrop),
+                )
+            }
             item {
                 SettingsRow(
                     modifier = Modifier.testTag("locationSettingsButton"),
@@ -383,7 +402,7 @@ fun SettingsUi(
                 SettingsRow(
                     modifier = Modifier.testTag("storageButton"),
                     icon = Icons.Outlined.Storage,
-                    title = stringResource(MR.string.settings_storage),
+                    title = stringResource(MR.string.settings_data_storage),
                     supportingText = uiState.storageUsedBytes
                         ?.let { stringResource(MR.string.settings_storage_used, formatBytes(it)) }
                         ?: stringResource(MR.string.settings_storage_desc),
@@ -575,6 +594,8 @@ fun SettingsUiPreview() {
                 onHelp = {},
                 onMomentsSettings = {},
                 onVaultSettings = {},
+                onEmailSettings = {},
+                onOpenWebDrop = {},
                 onLocation = {},
                 onContactBookSettings = {},
                 onProfileEdit = {},

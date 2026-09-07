@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.ExtendPermissionViewModel
 import id.homebase.chat.services.convo.contact.ContactService
@@ -54,7 +54,7 @@ class FeedTimelineViewModel(
     private val channelService: ChannelDefinitionService,
     private val contactService: ContactService,
     private val credentialsManager: CredentialsManager,
-    private val publicProfileProvider: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     private val senderService: FeedPostSenderService,
     private val reportingUrlProvider: ReportingUrlProvider,
     private val feedPermissionViewModel: ExtendPermissionViewModel,
@@ -117,7 +117,7 @@ class FeedTimelineViewModel(
         viewModelScope.launch {
             val self = credentialsManager.getActiveCredentials()?.domain ?: return@launch
             _uiState.update { it.copy(selfOdinId = self) }
-            val name = runCatching { publicProfileProvider.getPublicProfile(self)?.name }.getOrNull()
+            val name = runCatching { contactInfo.displayName(self) }.getOrNull()
             if (!name.isNullOrBlank()) _selfName.value = self to name
         }
         viewModelScope.launch {

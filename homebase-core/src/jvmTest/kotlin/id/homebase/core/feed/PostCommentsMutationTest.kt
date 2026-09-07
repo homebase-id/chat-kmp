@@ -89,6 +89,7 @@ class PostCommentsMutationTest {
         fileOps = env.fileOps,
         driveQueryProvider = env.driveQueryProvider,
         scope = scope,
+        userPreferences = env.userPreferences,
     )
 
     private fun keyHeader(fill: Byte = 1) =
@@ -354,7 +355,7 @@ class PostCommentsMutationTest {
     }
 
     @Test
-    fun removeComment_whenEnqueueFails_rollsBackSoTheCommentStaysInTheThread() =
+    fun removeComment_whenEnqueueFails_leavesTheCommentInTheThread() =
         runFeedTest(blockOutboxInserts = true) {
             val postId = Uuid.random()
             val commentId = Uuid.random()
@@ -374,7 +375,7 @@ class PostCommentsMutationTest {
             assertEquals(0L, env.outboxCount(), "the delete must not be queued when the insert fails")
             assertEquals(
                 listOf(commentId), comments.value.map { it.id },
-                "a refused enqueue must roll the optimistic delete back so the comment reappears",
+                "a refused enqueue must leave the comment in place",
             )
         }
 }

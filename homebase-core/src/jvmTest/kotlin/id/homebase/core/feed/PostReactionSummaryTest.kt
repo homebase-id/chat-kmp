@@ -320,7 +320,7 @@ class PostReactionSummaryTest {
     }
 
     @Test
-    fun toggleReaction_whenEnqueueFails_rollsBackTheOptimisticReaction() =
+    fun toggleReaction_whenEnqueueFails_leavesTheLocalRowUntouched() =
         runFeedTest(blockOutboxInserts = true) {
             val post = seedPost()
             advanceUntilIdle()
@@ -339,12 +339,14 @@ class PostReactionSummaryTest {
             advanceUntilIdle()
 
             assertEquals(0L, env.outboxCount(), "nothing may be queued when the insert fails")
-            val restored = batches.last().batchData.single()
-            assertEquals(post.id, restored.fileMetadata.appData.uniqueId)
-            assertTrue(
-                restored.fileMetadata.localAppData?.localReactions.isNullOrEmpty(),
-                "the last state published must be the pre-toggle one (rollback)",
+            assertTrue(batches.isEmpty(), "nothing was written, so observers see nothing")
+            val local = env.databaseManager.driveMainIndex.selectHomebaseFileByUnique(
+                env.credentialsManager.requireActiveCredentials().getIdentityId(), channelDrive, post.id,
             )
-            assertNull(restored.fileMetadata.reactionPreview)
+            assertTrue(
+                local?.fileMetadata?.localAppData?.localReactions.isNullOrEmpty(),
+                "a refused enqueue must leave the reaction off the local row",
+            )
+            assertNull(local?.fileMetadata?.reactionPreview)
         }
 }

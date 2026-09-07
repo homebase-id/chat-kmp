@@ -39,6 +39,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.Uuid
+import id.homebase.core.files.materializeForUpload
 
 /**
  * Handles attachment-editor and audio-recording action arms (attach / unattach
@@ -269,9 +270,8 @@ internal class AttachmentHandler(
                         val rawPath = gallery.file.toPlayableUrl()
                         // iOS quick-switch hands a bare PHAsset localIdentifier (ph://… / …/L0/…)
                         // that AVPlayer (the editor preview) and the thumbnail/duration probe can't
-                        // open — materialize it to a real temp file first. Other platforms
-                        // (Android content://, desktop real path) are already playable; pass through.
-                        // The send path resolves file (the identifier) on its own, so it's untouched.
+                        // open — materialize it to a real temp file first. Android content:// and
+                        // desktop paths are playable as-is; send resolves `file` separately either way.
                         val playable = if (rawPath.startsWith("ph://") || rawPath.contains("/L0/")) {
                             fileOperationsProvider.resolveToFilePath(rawPath)
                         } else {

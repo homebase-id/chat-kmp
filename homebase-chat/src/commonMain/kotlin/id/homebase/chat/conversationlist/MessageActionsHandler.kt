@@ -7,6 +7,7 @@ import id.homebase.api.file.SourceUnavailableException
 import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageUtils
 import id.homebase.api.image.convertHeicToJpeg
+import id.homebase.api.util.isBlobUrl
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.contactcard.SharedVCardDetector
 import id.homebase.chat.contactcard.VCardDescriptorFactory
@@ -79,6 +80,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
+import id.homebase.core.files.toUploadPath
 
 private const val TAG = "ConversationListViewModel"
 
@@ -710,10 +712,10 @@ internal class MessageActionsHandler(
                                 displayName = attachment.sourceFileName ?: attachment.file.name,
                                 trimStartMs = attachment.trimStartMs,
                                 trimEndMs = attachment.trimEndMs,
-                                // Web: the blob: URL becomes the ffmpeg compress INPUT (read in JS,
-                                // no Kotlin copy / base64). Null on native. Not revoked here — it
-                                // also backs the sent bubble's local preview; freed on logout/reload.
-                                inputBlobUrl = attachment.playablePath,
+                                // Web-only ffmpeg input (blob: object URL); native ffmpeg reads the
+                                // withResolvedFile path. Not revoked here — it also backs the sent
+                                // bubble's local preview; freed on logout/reload.
+                                inputBlobUrl = attachment.playablePath?.takeIf { it.isBlobUrl() },
                             )
                         )
                     }
@@ -879,6 +881,7 @@ internal class MessageActionsHandler(
                     val bundle = MessageAttachmentBuilder.build(
                         attachments = attachments,
                         fileOperationsProvider = fileOperationsProvider,
+                        mediaQuality = userPreferences.mediaQuality,
                         payloadKeyFactory = { index, _ ->
                             "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                         })
@@ -1029,6 +1032,7 @@ internal class MessageActionsHandler(
                 val bundle = MessageAttachmentBuilder.build(
                     attachments = attachments,
                     fileOperationsProvider = fileOperationsProvider,
+                    mediaQuality = userPreferences.mediaQuality,
                     payloadKeyFactory = { index, _ ->
                         "${ChatProtocol.PAYLOAD_KEY_MESSAGE_WEB}$index"
                     }

@@ -1,11 +1,18 @@
 package id.homebase.core.widget
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentType
@@ -14,6 +21,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -22,6 +30,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+
+// No theme token lands on 6dp (small is 8, extraSmall is 4) and the radius was picked by hand.
+val HomebaseFieldShape = RoundedCornerShape(6.dp)
 
 /**
  * Shared input for a Homebase id (domain). Stores the text with spaces internally — the visual
@@ -38,6 +49,7 @@ fun HomebaseIdField(
     placeholder: @Composable (() -> Unit)? = null,
     supportingText: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null,
+    textStyle: TextStyle = LocalTextStyle.current,
     isError: Boolean = false,
     enabled: Boolean = true,
     readOnly: Boolean = false,
@@ -58,10 +70,29 @@ fun HomebaseIdField(
     } else {
         baseModifier
     }
+
+    // Owned here, not a parameter, so every call site gets the focus treatment unchanged.
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+
+    val containerTarget = when {
+        !enabled -> MaterialTheme.colorScheme.surfaceContainerLow
+        // Not solid errorContainer: it is (147,0,6) in the dark scheme, and a 400x56 block of it
+        // makes a recoverable typo read as a system failure.
+        isError -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
+        focused -> MaterialTheme.colorScheme.surfaceContainerHighest
+        else -> MaterialTheme.colorScheme.surfaceContainer
+    }
+    // The tonal fill carries the state change; a 1dp-to-2dp outline on its own is near invisible
+    // against a pale surface. Default spring spec — MaterialTheme.motionScheme is internal in
+    // Compose Multiplatform's material3 1.9.0, so no theme-tracking spec is reachable here.
+    val containerColor by animateColorAsState(targetValue = containerTarget)
+
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = fieldModifier,
+        textStyle = textStyle,
         label = label,
         placeholder = placeholder,
         supportingText = supportingText,
@@ -70,7 +101,14 @@ fun HomebaseIdField(
         isError = isError,
         enabled = enabled,
         readOnly = readOnly,
-        shape = RoundedCornerShape(24.dp),
+        interactionSource = interactionSource,
+        shape = HomebaseFieldShape,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = containerColor,
+            unfocusedContainerColor = containerColor,
+            disabledContainerColor = containerColor,
+            errorContainerColor = containerColor,
+        ),
         visualTransformation = remember {
             VisualTransformation { text ->
                 TransformedText(

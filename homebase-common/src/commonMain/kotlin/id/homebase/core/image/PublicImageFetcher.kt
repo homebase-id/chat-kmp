@@ -8,7 +8,7 @@ import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
-import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.PUB_IMAGE_PATH
 import okio.Buffer
@@ -16,11 +16,11 @@ import okio.Buffer
 class PublicImageFetcher(
     private val odinId: OdinId,
     private val options: Options,
-    private val provider: PublicProfileProvider
+    private val contactInfo: ContactInfoGateway
 ) : Fetcher {
 
     override suspend fun fetch(): FetchResult? {
-        val bytes = provider.getPublicImage(odinId) ?: return null
+        val bytes = contactInfo.avatarBytes(odinId) ?: return null
         val buffer = Buffer().write(bytes)
         return SourceFetchResult(
             source = ImageSource(buffer, options.fileSystem),
@@ -37,10 +37,10 @@ class PublicImageFetcher(
     // diagnostic logs showed Factory<Any>.create fired for custom data
     // classes like HomebaseImageData but never for a mapped http Uri).
     // Factory<Uri> is the correct type for http URL inputs.
-    class Factory(private val provider: PublicProfileProvider) : Fetcher.Factory<Uri> {
+    class Factory(private val contactInfo: ContactInfoGateway) : Fetcher.Factory<Uri> {
         override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
             val odinId = resolveOdinId(data) ?: return null
-            return PublicImageFetcher(odinId, options, provider)
+            return PublicImageFetcher(odinId, options, contactInfo)
         }
     }
 

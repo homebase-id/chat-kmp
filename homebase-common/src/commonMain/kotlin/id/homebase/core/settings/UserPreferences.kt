@@ -1,6 +1,7 @@
 package id.homebase.core.settings
 
 import com.russhwolf.settings.Settings
+import id.homebase.api.image.MediaQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.uuid.Uuid
@@ -10,6 +11,8 @@ class UserPreferences(private val settings: Settings) {
         PreferenceState(
             theme = theme,
             hapticsEnabled = hapticsEnabled,
+            showDeveloperMenu = showDeveloperMenu,
+            mediaQuality = mediaQuality,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -28,9 +31,17 @@ class UserPreferences(private val settings: Settings) {
             _preferenceState.value = _preferenceState.value.copy(theme = value)
         }
 
+    /**
+     * Mirrored into [preferenceState] because it now gates UI chrome that must react immediately:
+     * the Email setup toolbar entry is built from this in AppNavHost, and reading the plain
+     * property there would leave the icon missing until the next app start.
+     */
     var showDeveloperMenu: Boolean
         get() = settings.getBoolean("show_developer_menu", false)
-        set(value) = settings.putBoolean("show_developer_menu", value)
+        set(value) {
+            settings.putBoolean("show_developer_menu", value)
+            _preferenceState.value = _preferenceState.value.copy(showDeveloperMenu = value)
+        }
 
     /**
      * Feed tab mode: the native KMP feed (default) vs the legacy WebView feed. Lets users opt back
@@ -46,6 +57,17 @@ class UserPreferences(private val settings: Settings) {
         set(value) {
             settings.putBoolean("haptics_enabled", value)
             _preferenceState.value = _preferenceState.value.copy(hapticsEnabled = value)
+        }
+
+    /**
+     * Compression tier for outgoing photos and videos. The key is new, so existing installs read
+     * the default too — Standard for everyone, no migration.
+     */
+    var mediaQuality: MediaQuality
+        get() = MediaQuality.fromCode(settings.getStringOrNull("media_quality"))
+        set(value) {
+            settings.putString("media_quality", value.code)
+            _preferenceState.value = _preferenceState.value.copy(mediaQuality = value)
         }
 
     var preferredUserReactions: List<String>
@@ -69,6 +91,25 @@ class UserPreferences(private val settings: Settings) {
     var includeMutedChatsInBadge: Boolean
         get() = settings.getBoolean("notification_include_muted_badge", false)
         set(value) = settings.putBoolean("notification_include_muted_badge", value)
+
+    /**
+     * Id of the conversation at the top of the chat list the last time the user was looking at it.
+     * Persisted rather than held in memory because process death is the case index-based scroll
+     * restore gets wrong.
+     */
+    var conversationListTopId: Uuid?
+        get() {
+            val raw = settings.getStringOrNull("conversationListTopId") ?: return null
+            return try {
+                Uuid.parse(raw)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
+        set(value) {
+            if (value == null) settings.remove("conversationListTopId")
+            else settings.putString("conversationListTopId", value.toString())
+        }
 
    
     /**
@@ -113,6 +154,8 @@ class UserPreferences(private val settings: Settings) {
 data class PreferenceState(
     val theme: ThemeState,
     val hapticsEnabled: Boolean,
+    val showDeveloperMenu: Boolean = false,
+    val mediaQuality: MediaQuality = MediaQuality.STANDARD,
 )
 
 enum class ThemeState {

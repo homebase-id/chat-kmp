@@ -11,19 +11,30 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.forms.InputProvider
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import kotlinx.coroutines.CompletableJob
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.system.measureTimeMillis
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -40,21 +51,28 @@ class PublicProfileProviderCachedTest {
     private var requestCount = 0
     private var nextException: Exception? = null
     private var nextStatus = HttpStatusCode.OK
+    private var nextCacheControl: String? = null
+    private var nextDelayMillis = 0L
     private val imageBytes = ByteArray(128) { it.toByte() }
+    private val refreshedImageBytes = ByteArray(64) { 0x7F }
+    private var nextImageBytes = imageBytes
 
     private val mockEngine = MockEngine { _ ->
         requestCount++
+        if (nextDelayMillis > 0) delay(nextDelayMillis)
         nextException?.let { e -> throw e }
+        val headers = nextCacheControl?.let { headersOf(HttpHeaders.CacheControl, it) } ?: Headers.Empty
         if (nextStatus == HttpStatusCode.OK) {
-            respond(imageBytes, nextStatus)
+            respond(nextImageBytes, nextStatus, headers)
         } else {
-            respond("", nextStatus)
+            respond("", nextStatus, headers)
         }
     }
 
     private val httpClient = HttpClient(mockEngine)
     private var tempDir: String = ""
     private lateinit var provider: PublicProfileProviderCached
+    private lateinit var scopeJob: CompletableJob
 
     private val logCollector = CollectingLogWriter()
 
@@ -63,9 +81,11 @@ class PublicProfileProviderCachedTest {
     @BeforeTest
     fun setup() {
         tempDir = Files.createTempDirectory("hb-pub-profile-cache-test").toString()
+        scopeJob = SupervisorJob()
 
         provider = PublicProfileProviderCached(
             httpClient = httpClient,
+            scope = CoroutineScope(scopeJob + Dispatchers.Default),
             fileOperationsProvider = object : FileOperationsProvider {
                 override fun getCacheDirectory() = tempDir
                 override fun openFileInput(path: String): InputProvider = error("not used in tests")
@@ -81,12 +101,16 @@ class PublicProfileProviderCachedTest {
         requestCount = 0
         nextException = null
         nextStatus = HttpStatusCode.OK
+        nextCacheControl = null
+        nextDelayMillis = 0L
+        nextImageBytes = imageBytes
         logCollector.entries.clear()
         Logger.setLogWriters(listOf(logCollector))
     }
 
     @AfterTest
     fun tearDown() {
+        scopeJob.cancel()
         httpClient.close()
         runCatching {
             Files.walk(Path.of(tempDir))
@@ -107,6 +131,21 @@ class PublicProfileProviderCachedTest {
         val second = provider.getPublicImage(odinId)
         assertNotNull(second)
         assertEquals(1, requestCount, "disk cache must prevent a second network call")
+    }
+
+    @Test
+    fun `a peer's no-store does not stop the client from caching`() = runTest {
+        nextCacheControl = "no-store"
+
+        val first = provider.getPublicImage(odinId)
+        assertNotNull(first)
+        assertEquals(imageBytes.size, first.size)
+        assertEquals(1, requestCount)
+
+        val second = provider.getPublicImage(odinId)
+        assertNotNull(second)
+        assertEquals(imageBytes.size, second.size)
+        assertEquals(1, requestCount, "no-store must not prevent the client-owned disk cache from serving the second call")
     }
 
     @Test
@@ -237,6 +276,100 @@ class PublicProfileProviderCachedTest {
         )
     }
 
+    @Test
+    fun `a total cache miss still fetches from the network`() = runTest {
+        assertEquals(0, requestCount)
+
+        val fresh = provider.getPublicImage(odinId)
+        assertContentEquals(imageBytes, fresh, "a total miss must be served from the network")
+        assertEquals(1, requestCount)
+
+        val second = provider.getPublicImage(odinId)
+        assertContentEquals(imageBytes, second)
+        assertEquals(1, requestCount, "the freshly written entry must serve the second call")
+    }
+
+    /**
+     * Real threads, not `runTest`'s virtual clock: the point of the test is that
+     * the caller returns while a genuinely slow request is still in flight.
+     */
+    @Test
+    fun `a stale entry is served without waiting on the network`() = runBlocking {
+        provider.getPublicImage(odinId)
+        expireCachedImageEntry()
+
+        nextDelayMillis = 10_000L
+        nextImageBytes = refreshedImageBytes
+
+        val elapsed = measureTimeMillis {
+            val stale = provider.getPublicImage(odinId)
+            assertContentEquals(imageBytes, stale, "the stale entry must be served, not the pending refresh")
+        }
+
+        assertTrue(elapsed < 2_000L, "stale read blocked on the network for ${elapsed}ms")
+
+        // Proves the entry really was treated as expired — a fresh one launches no refresh.
+        withTimeout(5_000L) { while (requestCount < 2) delay(10) }
+    }
+
+    @Test
+    fun `a failed background refresh leaves the stale entry intact`() = runBlocking {
+        provider.getPublicImage(odinId)
+        expireCachedImageEntry()
+
+        nextStatus = HttpStatusCode.InternalServerError
+        logCollector.entries.clear()
+
+        val stale = provider.getPublicImage(odinId)
+        assertContentEquals(imageBytes, stale, "a 500 refresh must not stop the stale entry being served")
+
+        awaitBackgroundRefreshes()
+        assertTrue(
+            logCollector.hasWarn(tag = "PublicProfileIO", substring = "background refresh failed"),
+            "expected the refresh to run and fail; got: ${logCollector.messages("PublicProfileIO")}"
+        )
+
+        val again = provider.getPublicImage(odinId)
+        assertContentEquals(imageBytes, again, "the failed refresh must not have removed the stale entry")
+        awaitBackgroundRefreshes()
+    }
+
+    @Test
+    fun `a successful background refresh replaces the stale entry`() = runBlocking {
+        provider.getPublicImage(odinId)
+        expireCachedImageEntry()
+
+        nextImageBytes = refreshedImageBytes
+
+        val stale = provider.getPublicImage(odinId)
+        assertContentEquals(imageBytes, stale, "the first read after expiry must still be the stale value")
+
+        awaitBackgroundRefreshes()
+        val countAfterRefresh = requestCount
+
+        val fresh = provider.getPublicImage(odinId)
+        assertContentEquals(refreshedImageBytes, fresh, "the refresh must have replaced the stale entry")
+        assertEquals(countAfterRefresh, requestCount, "the refreshed entry is fresh — no new request")
+    }
+
+    private suspend fun awaitBackgroundRefreshes() {
+        withTimeout(10_000L) { scopeJob.children.toList().forEach { it.join() } }
+    }
+
+    /** No clock seam on the provider, so expiry is forced by rewriting the entry's leading long. */
+    private fun expireCachedImageEntry() {
+        val entryBytes = (8 + 4 + imageBytes.size).toLong()
+        val entry = Files.walk(Path.of(tempDir, "homebase-public-images-v2")).use { stream ->
+            stream.filter {
+                Files.isRegularFile(it) && it.fileName.toString() != "journal" && Files.size(it) == entryBytes
+            }.toList()
+        }.single()
+
+        val bytes = Files.readAllBytes(entry)
+        ByteBuffer.wrap(bytes).putLong(0, System.currentTimeMillis() - 60_000L)
+        Files.write(entry, bytes)
+    }
+
     /**
      * Mirror of DriveFileProviderCachedTest's per-cache-resilience assertion.
      * A single FileKache ctor failure must not hide the healthy sibling row.
@@ -277,6 +410,9 @@ private class CollectingLogWriter : LogWriter() {
 
     fun hasError(tag: String, substring: String): Boolean =
         entries.any { it.tag == tag && it.severity == Severity.Error && it.message.contains(substring) }
+
+    fun hasWarn(tag: String, substring: String): Boolean =
+        entries.any { it.tag == tag && it.severity == Severity.Warn && it.message.contains(substring) }
 
     fun messages(tag: String): List<String> =
         entries.filter { it.tag == tag }.map { "[${it.severity}] ${it.message}" }

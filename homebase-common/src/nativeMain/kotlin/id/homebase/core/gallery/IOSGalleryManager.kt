@@ -6,15 +6,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSSortDescriptor
 import platform.Foundation.timeIntervalSince1970
+import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetMediaTypeImage
 import platform.Photos.PHAssetMediaTypeVideo
 import platform.Photos.PHAssetResource
+import platform.Photos.PHAuthorizationStatusAuthorized
+import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHFetchOptions
+import platform.Photos.PHPhotoLibrary
 
 class IOSGalleryManager : PlatformGalleryManager {
     override suspend fun fetchGalleryImages(limit: Int): List<GalleryImage> =
         withContext(Dispatchers.Default) {
+            if (!photoLibraryReadAuthorized()) return@withContext emptyList()
+            registerGalleryObserverIfAuthorized()
+
             val fetchOptions = PHFetchOptions().apply {
                 sortDescriptors = listOf(NSSortDescriptor("creationDate", false))
                 fetchLimit = limit.toULong()
@@ -76,4 +83,11 @@ class IOSGalleryManager : PlatformGalleryManager {
 
         return items
     }
+}
+
+// Any Photos read while authorization is notDetermined raises the system dialog, so every
+// startup-reachable entry point checks this first and leaves the asking to the picker.
+internal fun photoLibraryReadAuthorized(): Boolean {
+    val status = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
+    return status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited
 }

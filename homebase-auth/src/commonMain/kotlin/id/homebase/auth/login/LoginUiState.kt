@@ -21,8 +21,24 @@ data class LoginUiState(
     // nothing extra to show.
     val errorDetails: String? = null,
     val driveProgresses: ImmutableList<DriveProgress> = persistentListOf(),
+    /** Public profile for what is currently typed. Null is the resting state, not an error. */
+    val identityPreview: IdentityPreview? = null,
+    /** Last identity that signed in on this device, seeded from `UsernameStorage`. */
+    val lastIdentity: IdentityPreview? = null,
+    // Must default to true: every LoginUiTest case builds this state without it and asserts the
+    // form is there.
+    val showIdField: Boolean = true,
     val uiEvent: LoginUiEvent? = null
-)
+) {
+    /** The saved identity is an offer, not a fact about this attempt. */
+    val offeringLastIdentity: Boolean get() = lastIdentity != null && !showIdField
+
+    /**
+     * Who the brand panel names. Falls back to the saved identity only while its card is still on
+     * offer — once declined, the panel must not keep painting the identity the user just refused.
+     */
+    val signingInAs: IdentityPreview? get() = identityPreview ?: lastIdentity?.takeIf { !showIdField }
+}
 
 /**
  * A login error to surface to the user. The ViewModel can't call `stringResource` (no Compose

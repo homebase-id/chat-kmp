@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.logging.LogFileExporter
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.util.PlatformInfo
@@ -19,7 +20,11 @@ import kotlinx.coroutines.launch
 
 class HomeViewModel(
     platformInfo: PlatformInfo,
+    emergencyContacts: EmergencyContactService,
 ): ViewModel() {
+    /** A person I can locate has gone quiet for over 2 days — dot on the Location card. */
+    val locationAttention: StateFlow<Boolean> = emergencyContacts.hasStale
+
     private val _uiState = MutableStateFlow(HomeUiState(appVersion = platformInfo.versionName))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 

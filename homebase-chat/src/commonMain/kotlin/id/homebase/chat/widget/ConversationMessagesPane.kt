@@ -364,11 +364,19 @@ fun ConversationMessagesPane(
                     }
 
                     is FullScreenOverlay.AttachmentData -> {
+                        var captionEmojiPickerOpen by remember { mutableStateOf(false) }
                         MediaAttachmentEditor(
                             attachments = data.attachments,
                             currentPage = currentGalleryPage,
                             onPageChanged = { currentGalleryPage = it },
                             onSaveFile = { onUiAction(SaveFile(it)) },
+                            mediaQuality = uiState.mediaQuality,
+                            onToggleMediaQuality = {
+                                onUiAction(
+                                    id.homebase.chat.conversationlist.ConversationListUiAction
+                                        .ToggleMediaQuality
+                                )
+                            },
                             onAddFile = { fileLauncher.launch() },
                             onAddImage = { galleryLauncher.launch() },
                             onCameraClick = { cameraLauncher.launch() },
@@ -421,14 +429,15 @@ fun ConversationMessagesPane(
                                     )
                                 }
                             },
+                            collapseSecondaryChrome = captionEmojiPickerOpen,
                             bottomBar = {
                                 MessageTextFieldForAttachment(
                                     modifier = Modifier.fillMaxWidth().padding(16.dp).imePadding(),
                                     state = textFieldState,
-                                    onSmileyClick = {},
                                     onSendMessage = {
                                         onUiAction(SendFile(data.conversationId, textFieldState.toMessageMarkdown(), data.attachments))
                                     },
+                                    onEmojiPickerVisibilityChanged = { captionEmojiPickerOpen = it },
                                 )
                             },
                         )

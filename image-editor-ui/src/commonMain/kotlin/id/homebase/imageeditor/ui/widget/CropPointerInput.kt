@@ -14,9 +14,8 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import id.homebase.imageeditor.core.ControlPoint
-import id.homebase.imageeditor.core.Matrix2D
+import id.homebase.imageeditor.core.CropHandles
 import id.homebase.imageeditor.core.PointF
-import id.homebase.imageeditor.core.RectF
 import id.homebase.imageeditor.core.session.EditSession
 import id.homebase.imageeditor.ui.MatrixSnapshot
 import kotlin.math.hypot
@@ -161,7 +160,7 @@ private fun distance(a: Offset, b: Offset): Float =
     hypot(a.x - b.x, a.y - b.y)
 
 /**
- * Hit-test a screen-pixel point against the four corner thumbs of the crop.
+ * Hit-test a canvas-pixel point against the four corner thumbs of the crop.
  * Returns the matching [ControlPoint] or null.
  */
 private fun hitTestThumb(
@@ -169,39 +168,11 @@ private fun hitTestThumb(
     snapshot: MatrixSnapshot,
     hitRadiusPx: Float,
 ): ControlPoint? {
-    val canvasCorners = cropRectCornersInCanvas(snapshot.cropRect, snapshot.viewLocal)
-    val candidates = listOf(
-        ControlPoint.TOP_LEFT to canvasCorners[0],
-        ControlPoint.TOP_RIGHT to canvasCorners[1],
-        ControlPoint.BOTTOM_RIGHT to canvasCorners[2],
-        ControlPoint.BOTTOM_LEFT to canvasCorners[3],
-    )
-    var best: ControlPoint? = null
-    var bestDist = Float.MAX_VALUE
-    for ((cp, corner) in candidates) {
-        val d = distance(screenPoint, corner)
-        if (d <= hitRadiusPx && d < bestDist) {
-            best = cp
-            bestDist = d
-        }
-    }
-    return best
-}
-
-private fun cropRectCornersInCanvas(cropRect: RectF, viewLocal: Matrix2D): List<Offset> {
-    val src = floatArrayOf(
-        cropRect.left, cropRect.top,
-        cropRect.right, cropRect.top,
-        cropRect.right, cropRect.bottom,
-        cropRect.left, cropRect.bottom,
-    )
-    val dst = FloatArray(8)
-    viewLocal.mapPoints(dst, src, count = 4)
-    return listOf(
-        Offset(dst[0], dst[1]),
-        Offset(dst[2], dst[3]),
-        Offset(dst[4], dst[5]),
-        Offset(dst[6], dst[7]),
+    return CropHandles.hitTest(
+        canvasX = screenPoint.x,
+        canvasY = screenPoint.y,
+        cropToCanvas = snapshot.cropToCanvas,
+        hitRadiusPx = hitRadiusPx,
     )
 }
 

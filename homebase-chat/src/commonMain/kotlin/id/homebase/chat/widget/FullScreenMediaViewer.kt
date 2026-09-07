@@ -67,6 +67,8 @@ import id.homebase.core.media.subsample.ZoomableSubSamplingImage
 import id.homebase.core.util.formatTimestamp
 import id.homebase.resources.MR
 import id.homebase.resources.chat_image_unavailable
+import id.homebase.resources.chat_media_quality_hd
+import id.homebase.resources.chat_message_image_attachment
 import id.homebase.resources.chat_options
 import id.homebase.resources.menu_back
 import id.homebase.resources.share
@@ -159,7 +161,7 @@ fun FullScreenMediaViewer(
                     }
                     ZoomableSubSamplingImage(
                         source = source,
-                        contentDescription = payload.descriptorContent,
+                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                         animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
@@ -187,7 +189,7 @@ fun FullScreenMediaViewer(
                     }
                     ZoomableSubSamplingImage(
                         source = source,
-                        contentDescription = payload.descriptorContent,
+                        contentDescription = stringResource(MR.string.chat_message_image_attachment),
                         onTap = { showUI = !showUI },
                         sharedTransitionScope = if (page == initialPage) sharedTransitionScope else null,
                         animatedVisibilityScope = if (page == initialPage) animatedVisibilityScope else null,
@@ -233,8 +235,13 @@ fun FullScreenMediaViewer(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
+                        val currentIsHighQuality = data.payloads
+                            .firstOrNull { it.key == currentPayloadKey }
+                            ?.isHighQualityImage() == true
+                        val hdLabel = stringResource(MR.string.chat_media_quality_hd)
+                        val timestamp = formatTimestamp(data.userDate)
                         Text(
-                            text = formatTimestamp(data.userDate),
+                            text = if (currentIsHighQuality) "$timestamp · $hdLabel" else timestamp,
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
@@ -393,7 +400,7 @@ fun FullScreenMediaViewer(
                                     shape = RoundedCornerShape(8.dp)
                                 ),
                             contentScale = ContentScale.Crop,
-                            contentDescription = payload.descriptorContent,
+                            contentDescription = stringResource(MR.string.chat_message_image_attachment),
                             animatedVisibilityScope = animatedVisibilityScope,
                             sharedTransitionScope = null,
                         )

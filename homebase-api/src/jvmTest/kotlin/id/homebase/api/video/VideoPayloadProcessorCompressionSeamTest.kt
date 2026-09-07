@@ -33,8 +33,16 @@ class VideoPayloadProcessorCompressionSeamTest {
     /** Minimal in-memory [FileOperationsProvider] backed by a path→bytes map. */
     private inner class FakeFileOperationsProvider(
         private val store: MutableMap<String, ByteArray>,
+        // content:// → copy path, mirroring AndroidFileOperationsProvider.resolveToFilePath.
+        private val resolveMap: Map<String, String> = emptyMap(),
     ) : FileOperationsProvider {
         private var stagingCounter = 0
+
+        override suspend fun resolveToFilePath(path: String): String {
+            val target = resolveMap[path] ?: return path
+            store[target] = store[path] ?: error("missing source: $path")
+            return target
+        }
 
         override fun openFileInput(path: String): InputProvider =
             throw UnsupportedOperationException("not used")
@@ -177,6 +185,64 @@ class VideoPayloadProcessorCompressionSeamTest {
         assertEquals("video/mp4", result.videoMetadata.mimeType)
         assertNull(result.videoMetadata.hlsPlaylist)
         assertEquals(12_345f, result.videoMetadata.duration)
+    }
+
+    @Test
+    fun contentUriInputIsResolvedBeforeCompressionEvenWhenInputBlobUrlIsNotABlob() = runTest {
+        // #1457: on Android the gallery strip's content:// URI leaked into inputBlobUrl and won
+        // over the withResolvedFile copy, so ffmpeg got a URI it can't open.
+        val contentUri = "content://media/external/video/media/1000041257"
+        val resolvedPath = "$cacheDir/resolved_1457.mp4"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val store = mutableMapOf(
+            contentUri to ByteArray(1024),
+            compressedPath to ByteArray(1024),
+        )
+        val fileOps = FakeFileOperationsProvider(store, resolveMap = mapOf(contentUri to resolvedPath))
+        val compressor = FakeVideoCompressor(
+            compressedPath = compressedPath,
+            segmented = SegmentedVideo("$cacheDir/playlist.m3u8", "$cacheDir/segments.ts"),
+        )
+        val processor = VideoPayloadProcessor(fileOps, compressor, FakeVideoProbe(1_000L))
+
+        processor.process(
+            payload = PayloadFile(key = "vid", filePath = contentUri),
+            keyHeader = KeyHeader.newRandom16(),
+            onProgress = null,
+            descriptorContentPayloadKey = "descriptor",
+            inputBlobUrl = contentUri,
+        )
+
+        assertEquals(resolvedPath, compressor.compressInput)
+        assertFalse(store.containsKey(resolvedPath), "resolved copy must be reaped by withResolvedFile")
+        assertTrue(store.containsKey(contentUri), "the caller-owned source must not be reaped")
+    }
+
+    @Test
+    fun blobInputBlobUrlStillFeedsFfmpegDirectly() = runTest {
+        val inputPath = "$cacheDir/input.mp4"
+        val blobUrl = "blob:https://app.example/0c1d2e3f"
+        val compressedPath = "$cacheDir/compressed.mp4"
+        val store = mutableMapOf(
+            inputPath to ByteArray(1024),
+            compressedPath to ByteArray(1024),
+        )
+        val fileOps = FakeFileOperationsProvider(store)
+        val compressor = FakeVideoCompressor(
+            compressedPath = compressedPath,
+            segmented = SegmentedVideo("$cacheDir/playlist.m3u8", "$cacheDir/segments.ts"),
+        )
+        val processor = VideoPayloadProcessor(fileOps, compressor, FakeVideoProbe(1_000L))
+
+        processor.process(
+            payload = PayloadFile(key = "vid", filePath = inputPath),
+            keyHeader = KeyHeader.newRandom16(),
+            onProgress = null,
+            descriptorContentPayloadKey = "descriptor",
+            inputBlobUrl = blobUrl,
+        )
+
+        assertEquals(blobUrl, compressor.compressInput)
     }
 
     @Test

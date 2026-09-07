@@ -33,6 +33,8 @@ class SettingsUiTest {
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },
             onVaultSettings = { fired += "vault" },
+            onEmailSettings = { fired += "email" },
+            onOpenWebDrop = { fired += "webdrop" },
             onLocation = { fired += "location" },
             onContactBookSettings = { fired += "contactBook" },
             onProfileEdit = { fired += "profileEdit" },

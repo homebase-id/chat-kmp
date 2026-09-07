@@ -442,20 +442,16 @@ class GroupHealService(
         val healMessageFileId = messageFile.fileId
         val healMessageUniqueId = messageFile.fileMetadata.appData.uniqueId
 
-        // Step 2 of the self-destruct: soft-delete locally and on the server.
-        // Local soft-delete (writeDelete) zeros appData.content, sets
-        // FileState.Deleted, and hides the row from the chat UI immediately.
-        // The dispatcher in ConversationStream.dispatchGroupHealRequests
-        // short-circuits on `content == null`, so the (very unlikely) case
-        // of this same status message being re-dispatched naturally no-ops.
-        if (healMessageUniqueId != null) {
-            audit.step(0, "optimisticWriter.writeDelete(heal message uniqueId=$healMessageUniqueId)")
-            optimisticWriter.writeDelete(chatDrive, healMessageUniqueId)
-        } else {
-            audit.checkWarn("localSoftDeleteSkipped", "heal status message has no uniqueId — relying on server-side soft-delete by fileId")
-        }
-        audit.step(1, "outboxSync.tryEnqueue(DeleteLocalFilesByFileIdRequest hardDelete=false recipients=null fileIds=[$healMessageFileId])")
-        runCatching {
+        // Step 2 of the self-destruct: soft-delete on the server, then locally.
+        // The server delete is keyed by fileId and never needs the local row, so
+        // it is queued first; the local soft-delete (writeDelete zeros
+        // appData.content, sets FileState.Deleted, hides the row from the chat
+        // UI) only lands once the delete is durably queued. The dispatcher in
+        // ConversationStream.dispatchGroupHealRequests short-circuits on
+        // `content == null`, so the (very unlikely) case of this same status
+        // message being re-dispatched naturally no-ops.
+        audit.step(0, "outboxSync.tryEnqueue(DeleteLocalFilesByFileIdRequest hardDelete=false recipients=null fileIds=[$healMessageFileId])")
+        val serverDeleteQueued = runCatching {
             outboxSync.tryEnqueue(
                 DeleteLocalFilesByFileIdRequest(
                     driveId = chatDrive,
@@ -468,6 +464,16 @@ class GroupHealService(
             if (enqueued.enqueued) audit.checkPass("healMsgSoftDeleteEnqueue")
             else audit.checkWarn("healMsgSoftDeleteEnqueue", "tryEnqueue → $enqueued")
         }.onFailure { e -> audit.threw("healMsgSoftDeleteEnqueue", e) }
+            .map { it.enqueued }.getOrDefault(false)
+
+        if (healMessageUniqueId == null) {
+            audit.checkWarn("localSoftDeleteSkipped", "heal status message has no uniqueId — relying on server-side soft-delete by fileId")
+        } else if (serverDeleteQueued) {
+            audit.step(1, "optimisticWriter.writeDelete(heal message uniqueId=$healMessageUniqueId)")
+            optimisticWriter.writeDeleteAlreadyQueued(chatDrive, healMessageUniqueId)
+        } else {
+            audit.checkWarn("localSoftDeleteSkipped", "server soft-delete not queued — local row left untouched")
+        }
 
         val mainFile = convoOps.getConversationHomebaseFile(info.conversationUniqueId)
         val adminFile = convoOps.getConversationAdminHomebaseFile(info.conversationUniqueId)

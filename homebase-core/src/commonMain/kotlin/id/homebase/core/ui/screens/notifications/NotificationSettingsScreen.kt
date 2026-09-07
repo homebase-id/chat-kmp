@@ -12,10 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.outlined.MusicNote
@@ -53,8 +53,8 @@ import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.core.widget.SettingsSectionHeader
+import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
-import id.homebase.resources.menu_back
 import id.homebase.resources.not_available
 import id.homebase.resources.settings_badge_count
 import id.homebase.resources.settings_copy_token
@@ -139,16 +139,11 @@ fun NotificationSettingsUi(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(MR.string.settings_notifications), modifier = Modifier.testTag("notificationsTitle")) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(MR.string.menu_back)
-                        )
-                    }
-                })
+            SettingsTopBar(
+                title = stringResource(MR.string.settings_notifications),
+                titleModifier = Modifier.testTag("notificationsTitle"),
+                onBack = onBackClick,
+            )
         }) { innerPadding ->
         Column(
             modifier = Modifier
@@ -236,14 +231,16 @@ fun NotificationSettingsUi(
                 ),
             )
             if (uiState.showContentLevelPicker) {
-                NotificationContentLevel.entries.forEach { level ->
-                    SettingsOptionRow(
-                        label = stringResource(level.label),
-                        selected = level == uiState.notificationContentLevel,
-                        onClick = {
-                            onAction(NotificationSettingsUiAction.SetContentLevel(level))
-                        },
-                    )
+                Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+                    NotificationContentLevel.entries.forEach { level ->
+                        SettingsOptionRow(
+                            label = stringResource(level.label),
+                            selected = level == uiState.notificationContentLevel,
+                            onClick = {
+                                onAction(NotificationSettingsUiAction.SetContentLevel(level))
+                            },
+                        )
+                    }
                 }
             }
             Text(

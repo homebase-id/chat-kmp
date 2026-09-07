@@ -66,6 +66,7 @@ import id.homebase.core.ui.screens.contactbook.mergeSeed
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.syncedDraft
 import id.homebase.core.ui.screens.contactbook.toDraft
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.resources.MR
 import id.homebase.resources.contactbook_edit_add_email

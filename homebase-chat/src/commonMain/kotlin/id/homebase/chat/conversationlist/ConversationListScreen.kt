@@ -5,15 +5,21 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,14 +52,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
-import id.homebase.chat.archivedconversations.ArchivedConversationsUi
-import id.homebase.chat.archivedconversations.ArchivedConversationsUiAction
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactcard.ContactCardDescriptor
@@ -67,6 +82,8 @@ import id.homebase.core.connections.ConnectRequestViewModel
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.horizontalResizeCursor
+import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
@@ -113,7 +130,7 @@ import id.homebase.resources.chat_leave_and_delete
 import id.homebase.resources.chat_leave_and_delete_conversation_text
 import id.homebase.resources.chat_leave_and_delete_conversation_title
 import id.homebase.resources.chat_select_a_conversation
-import id.homebase.resources.chat_select_a_conversation_subtitle
+import id.homebase.resources.chat_select_a_conversation_hint
 import id.homebase.resources.discard
 import id.homebase.resources.error_unknown
 import id.homebase.resources.file_save_failed
@@ -123,6 +140,24 @@ import kotlinx.coroutines.launch
 import kotlinx.io.files.Path
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
+
+private const val LIST_PANE_MIN_PERCENT = 25
+private const val LIST_PANE_MAX_PERCENT = 50
+private val SPLITTER_HIT_WIDTH = 8.dp
+
+/**
+ * showSnackbar defaults to `Indefinite` whenever an action label is set, which pins the
+ * snackbar over the FAB and blocks every later snackbar on its mutex until the user taps
+ * the action — so the duration is always explicit here.
+ */
+internal suspend fun SnackbarHostState.showTimedSnackbar(
+    message: String,
+    actionLabel: String?,
+): SnackbarResult = showSnackbar(
+    message = message,
+    actionLabel = actionLabel,
+    duration = SnackbarDuration.Short,
+)
 
 @Composable
 fun ConversationListScreen(
@@ -177,89 +212,65 @@ fun ConversationListScreen(
         }
     }
 
-    val infoString = (conversationsUiState.uiEvent as? ConversationListUiEvent.ShowInfoMessage)?.res?.let { stringResource(it) } ?: ""
-    LaunchedEffect(conversationsUiState.uiEvent) {
-        when (val event = conversationsUiState.uiEvent) {
-            is ConversationListUiEvent.NavigateBack -> {
-                viewModel.eventConsumed()
-                onNavigateBack()
-            }
+    LaunchedEffect(Unit) {
+        viewModel.uiEvents.collect { event ->
+            when (event) {
+                is ConversationListUiEvent.NavigateBack -> onNavigateBack()
 
-            is ConversationListUiEvent.ShowErrorMessage -> {
-                viewModel.eventConsumed()
-                scope.launch {
+                is ConversationListUiEvent.ShowErrorMessage -> {
                     val text = event.detail?.let { detail ->
                         TranslationUtil.getString(
                             event.res,
                             detail.ifBlank { TranslationUtil.getString(MR.string.error_unknown) },
                         )
                     } ?: TranslationUtil.getString(event.res)
-                    snackbarHostState.showSnackbar(message = text)
+                    scope.launch { snackbarHostState.showSnackbar(message = text) }
                 }
-            }
 
-            is ConversationListUiEvent.ShowInfoMessage -> {
-                viewModel.eventConsumed()
-                scope.launch { snackbarHostState.showSnackbar(message = infoString) }
-            }
+                is ConversationListUiEvent.ShowInfoMessage -> {
+                    val text = TranslationUtil.getString(event.res)
+                    val actionLabel = event.actionLabel?.let { TranslationUtil.getString(it) }
+                    // Launched on `scope` rather than awaited inline: showSnackbar suspends for
+                    // the snackbar's whole visible life, and blocking the collector would stall
+                    // every event queued behind it.
+                    scope.launch {
+                        val result = snackbarHostState.showTimedSnackbar(text, actionLabel)
+                        if (result == SnackbarResult.ActionPerformed) {
+                            event.action?.let(viewModel::onAction)
+                        }
+                    }
+                }
 
-            is ConversationListUiEvent.NavigateToNewConversation -> {
-                viewModel.eventConsumed()
-                onNavigateToNewConversation()
-            }
+                is ConversationListUiEvent.NavigateToNewConversation -> onNavigateToNewConversation()
 
-            is ConversationListUiEvent.NavigateToLiveLocationMap -> {
-                viewModel.eventConsumed()
-                onNavigateToLiveLocationMap()
-            }
+                is ConversationListUiEvent.NavigateToLiveLocationMap -> onNavigateToLiveLocationMap()
 
-            is ConversationListUiEvent.NavigateToLocationSetup -> {
-                viewModel.eventConsumed()
-                onNavigateToLocationSetup()
-            }
+                is ConversationListUiEvent.NavigateToLocationSetup -> onNavigateToLocationSetup()
 
-            is ConversationListUiEvent.NavigateToShareLocation -> {
-                viewModel.eventConsumed()
-                onNavigateToShareLocation(event.conversationId)
-            }
+                is ConversationListUiEvent.NavigateToShareLocation ->
+                    onNavigateToShareLocation(event.conversationId)
 
-            is ConversationListUiEvent.NavigateToShareContact -> {
-                viewModel.eventConsumed()
-                onNavigateToShareContact(event.conversationId)
-            }
+                is ConversationListUiEvent.NavigateToShareContact ->
+                    onNavigateToShareContact(event.conversationId)
 
-            is ConversationListUiEvent.NavigateToContactInfo -> {
-                viewModel.eventConsumed()
-                onNavigateToContactInfo(event.odinId)
-            }
+                is ConversationListUiEvent.NavigateToContactInfo ->
+                    onNavigateToContactInfo(event.odinId)
 
-            is ConversationListUiEvent.NavigateToGroupSettings -> {
-                viewModel.eventConsumed()
-                onNavigateToGroupSettings(event.conversationId)
-            }
+                is ConversationListUiEvent.NavigateToGroupSettings ->
+                    onNavigateToGroupSettings(event.conversationId)
 
-            is ConversationListUiEvent.NavigateToConversationSettings -> {
-                viewModel.eventConsumed()
-                onNavigateToConversationSettings(event.conversationId)
-            }
+                is ConversationListUiEvent.NavigateToConversationSettings ->
+                    onNavigateToConversationSettings(event.conversationId)
 
-            is ConversationListUiEvent.NavigateToMessageInfo -> {
-                viewModel.eventConsumed()
-                onNavigateToMessageInfo(
+                is ConversationListUiEvent.NavigateToMessageInfo -> onNavigateToMessageInfo(
                     event.message.conversationId,
                     event.message.id,
                     event.message.fileId,
                 )
-            }
 
-            is ConversationListUiEvent.ShareText -> {
-                viewModel.eventConsumed()
-                fileSystemHandler.shareText(event.text)
-            }
+                is ConversationListUiEvent.ShareText -> fileSystemHandler.shareText(event.text)
 
-            is ConversationListUiEvent.ShareFile -> {
-                viewModel.eventConsumed()
-                fileSystemHandler.shareFile(
+                is ConversationListUiEvent.ShareFile -> fileSystemHandler.shareFile(
                     file = Path(event.filePath),
                     onError = { error ->
                         scope.launch {
@@ -273,16 +284,11 @@ fun ConversationListScreen(
                         }
                     },
                 )
-            }
 
-            is ConversationListUiEvent.OpenFile -> {
-                viewModel.eventConsumed()
-                fileSystemHandler.openFile(Path(event.filePath), showChooser = true)
-            }
+                is ConversationListUiEvent.OpenFile ->
+                    fileSystemHandler.openFile(Path(event.filePath), showChooser = true)
 
-            is ConversationListUiEvent.SaveFileToDevice -> {
-                viewModel.eventConsumed()
-                fileSystemHandler.saveFile(
+                is ConversationListUiEvent.SaveFileToDevice -> fileSystemHandler.saveFile(
                     file = Path(event.filePath),
                     suggestedName = event.suggestedName,
                     onSuccess = { location ->
@@ -303,36 +309,21 @@ fun ConversationListScreen(
                         }
                     },
                 )
-            }
 
-            is ConversationListUiEvent.OpenUrl -> {
-                viewModel.eventConsumed()
-                fileSystemHandler.openUrl(event.url)
-            }
+                is ConversationListUiEvent.OpenUrl -> fileSystemHandler.openUrl(event.url)
 
-            is ConversationListUiEvent.OpenSendConnectionRequestDialog -> {
-                viewModel.eventConsumed()
-                connectRequestViewModel.onAction(
-                    ConnectRequestAction.OpenDialogWithRecipient(event.odinId)
-                )
-            }
+                is ConversationListUiEvent.OpenSendConnectionRequestDialog ->
+                    connectRequestViewModel.onAction(
+                        ConnectRequestAction.OpenDialogWithRecipient(event.odinId)
+                    )
 
-            is ConversationListUiEvent.NavigateToCropper -> {
-                viewModel.eventConsumed()
-                onNavigateToCropper(event.requestId)
-            }
+                is ConversationListUiEvent.NavigateToCropper -> onNavigateToCropper(event.requestId)
 
-            is ConversationListUiEvent.NavigateToDrawer -> {
-                viewModel.eventConsumed()
-                onNavigateToDrawer(event.requestId)
-            }
+                is ConversationListUiEvent.NavigateToDrawer -> onNavigateToDrawer(event.requestId)
 
-            is ConversationListUiEvent.NavigateToSaveContactCard -> {
-                viewModel.eventConsumed()
-                onSaveContactCard(event.descriptor)
+                is ConversationListUiEvent.NavigateToSaveContactCard ->
+                    onSaveContactCard(event.descriptor)
             }
-
-            null -> {}
         }
     }
 
@@ -547,7 +538,6 @@ fun ConversationListScreen(
             messageInputTextFieldState = viewModel.messageInputTextState,
             messagesSearchTextState = viewModel.messagesSearchTextState,
             onUiAction = viewModel::onAction,
-            onEventConsumed = viewModel::eventConsumed,
             onNavigateToSettingsScreen = onNavigateToSettingsScreen,
             onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged
         )
@@ -765,7 +755,6 @@ fun ConversationListUi(
      *  the in-scope scaffoldNavigator). Defaults to no-op so the existing call
      *  site at the bottom of the file (ConversationListUiPreview) and any other
      *  caller that doesn't drive events still compiles. */
-    onEventConsumed: () -> Unit = {},
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
 ) {
@@ -800,12 +789,25 @@ fun ConversationListUi(
     )
     val scope = rememberCoroutineScope()
     val backNavigationBehavior = BackNavigationBehavior.PopUntilScaffoldValueChange
+    // Anchors are the only bound the scaffold offers: a drag can overshoot but settles to the
+    // nearest one, so the ladder's ends are what actually clamp the list pane. Kept remembered
+    // because rememberPaneExpansionState restarts its restore effect whenever the list changes.
+    val paneAnchors = remember {
+        (LIST_PANE_MIN_PERCENT..LIST_PANE_MAX_PERCENT).map {
+            PaneExpansionAnchor.Proportion(it / 100f)
+        }
+    }
+    val splitterInteractionSource = remember { MutableInteractionSource() }
+    // The scaffold lets a drag run to the full layout and only bounds it on release, via anchors.
+    // Measuring both edges lets consumeDragDelta stop the pane at the limits mid-drag instead.
+    var scaffoldLeft by remember { mutableFloatStateOf(0f) }
+    var scaffoldWidth by remember { mutableFloatStateOf(0f) }
+    var splitterCenter by remember { mutableFloatStateOf(0f) }
+    val conversationSearchFocusRequester = remember { FocusRequester() }
 
     // closeDetailPaneRequest handler — has to live inside ConversationListUi (not
     // the outer screen) because scaffoldNavigator + backNavigationBehavior are in
-    // scope here. Uses a dedicated state field rather than uiEvent because the
-    // delete flow also fires a snackbar event back-to-back, and uiEvent is a
-    // single slot — the snackbar would overwrite the close request.
+    // scope here.
     //
     // Pops the detail pane with PopUntilContentChange (same mechanic the
     // BackHandler uses) so this works in BOTH expanded (desktop) and compact
@@ -826,6 +828,20 @@ fun ConversationListUi(
     val isDetailPaneVisible =
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
     val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
+
+    // Record what the user last saw at the top, so the return can tell whether the list reordered
+    // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
+    // guaranteed to run before the OS kills a backgrounded process.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (!isListPaneHidden) onUiAction(ConversationListUiAction.SnapshotListTop)
+    }
+    var listPaneWasVisible by remember { mutableStateOf(!isListPaneHidden) }
+    LaunchedEffect(isListPaneHidden) {
+        if (listPaneWasVisible && isListPaneHidden) {
+            onUiAction(ConversationListUiAction.SnapshotListTop)
+        }
+        listPaneWasVisible = !isListPaneHidden
+    }
 
     LaunchedEffect(isExpanded) {
         if (!isExpanded && scaffoldNavigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail) {
@@ -881,58 +897,45 @@ fun ConversationListUi(
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) {
         ListDetailPaneScaffold(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                scaffoldLeft = it.positionInRoot().x
+                scaffoldWidth = it.size.width.toFloat()
+            }.onPreviewKeyEvent { keyEvent ->
+                if (isDesktopOrWeb() &&
+                    keyEvent.type == KeyEventType.KeyDown &&
+                    keyEvent.key == Key.F &&
+                    (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
+                ) {
+                    // The field is absent in the archived and icon-only list modes.
+                    runCatching { conversationSearchFocusRequester.requestFocus() }
+                    true
+                } else {
+                    false
+                }
+            },
             directive = scaffoldNavigator.scaffoldDirective,
             scaffoldState = scaffoldNavigator.scaffoldState,
             listPane = {
                 AnimatedPane(modifier = Modifier) {
-                    if (uiState.showArchived) {
-                        ArchivedConversationsUi(
-                            snackbarHostState = snackbarHostState,
-                            uiState = archivedConversationsUiState,
-                            selectedConversationId = uiState.selectedConversationId,
-                            onUiAction = { action ->
-                                when (action) {
-                                    is ArchivedConversationsUiAction.BackClicked -> {
-                                        onUiAction(ConversationListUiAction.ArchiveBackClicked)
-                                    }
-                                    is ArchivedConversationsUiAction.ShowConversation -> {
-                                        onUiAction(ConversationListUiAction.ConversationClicked(action.conversationId, null))
-                                        Logger.i(tag = "ConversationListUi") { "Navigating to detail for ${action.conversationId} from archived" }
-                                        scope.launch {
-                                            scaffoldNavigator.navigateTo(
-                                                ListDetailPaneScaffoldRole.Detail,
-                                                action.conversationId
-                                            )
-                                        }
-                                    }
-                                    is ArchivedConversationsUiAction.ShowConversationSettings -> {
-                                        onUiAction(ConversationListUiAction.ShowConversationSettings(action.conversation))
-                                    }
-                                    is ArchivedConversationsUiAction.UnarchiveConversation -> {
-                                        onUiAction(ConversationListUiAction.UnarchiveConversation(action.conversationId))
-                                    }
-                                }
-                            },
-                        )
-                    } else {
-                        ConversationListPane(
-                            uiState = uiState,
-                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                            searchTextState = conversationSearchTextFieldState,
-                            onProfileClick = onNavigateToSettingsScreen,
-                            onUiAction = onUiAction,
-                            onConversationSelected = {
-                                Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
-                                scope.launch {
-                                    scaffoldNavigator.navigateTo(
-                                        ListDetailPaneScaffoldRole.Detail,
-                                        it
-                                    )
-                                }
+                    ConversationListPane(
+                        uiState = uiState,
+                        selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                        searchTextState = conversationSearchTextFieldState,
+                        searchFocusRequester = conversationSearchFocusRequester,
+                        archivedUiState = archivedConversationsUiState,
+                        listPaneVisible = !isListPaneHidden,
+                        onProfileClick = onNavigateToSettingsScreen,
+                        onUiAction = onUiAction,
+                        onConversationSelected = {
+                            Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
+                            scope.launch {
+                                scaffoldNavigator.navigateTo(
+                                    ListDetailPaneScaffoldRole.Detail,
+                                    it
+                                )
                             }
-                        )
-                    }
+                        }
+                    )
                 }
             },
             detailPane = {
@@ -969,7 +972,7 @@ fun ConversationListUi(
                             title = stringResource(
                                 MR.string.chat_select_a_conversation
                             ), subtitle = stringResource(
-                                MR.string.chat_select_a_conversation_subtitle
+                                MR.string.chat_select_a_conversation_hint
                             )
                         )
                     }
@@ -977,23 +980,39 @@ fun ConversationListUi(
             },
             paneExpansionState = rememberPaneExpansionState(
                 keyProvider = scaffoldNavigator.scaffoldValue,
-                anchors = listOf(
-                    PaneExpansionAnchor.Offset.fromStart(96.dp),
-                    PaneExpansionAnchor.Offset.fromStart(280.dp),
-                    PaneExpansionAnchor.Offset.fromStart(320.dp),
-                    PaneExpansionAnchor.Offset.fromStart(360.dp),
-                    PaneExpansionAnchor.Offset.fromStart(400.dp),
-                    PaneExpansionAnchor.Offset.fromStart(440.dp),
-                    PaneExpansionAnchor.Offset.fromStart(480.dp),
-                ),
+                anchors = paneAnchors,
+                consumeDragDelta = { delta ->
+                    if (scaffoldWidth <= 0f) delta else {
+                        val offset = splitterCenter - scaffoldLeft
+                        (offset + delta).coerceIn(
+                            scaffoldWidth * LIST_PANE_MIN_PERCENT / 100f,
+                            scaffoldWidth * LIST_PANE_MAX_PERCENT / 100f,
+                        ) - offset
+                    }
+                },
             ),
-            // IMPORTANT: paneExpansionDragHandle with VerticalDragHandle is intentionally
-            // omitted here. On Compose Desktop (Skiko), the VerticalDragHandle's pointer/hover
-            // tracking causes the rendering loop to run at ~164 fps continuously — even when the
-            // app is completely idle — pinning the GPU at ~15%. This is a known limitation of
-            // Compose Multiplatform's pointer input handling on desktop. The drag handle can be
-            // re-enabled once the upstream issue is resolved.
-            // See: paneExpansionDragHandle = { state -> VerticalDragHandle(...) }
+            // M3's VerticalDragHandle animates itself off the hover interaction, which on Skiko
+            // never goes quiet: it pinned the desktop render loop at ~164 fps and ~15% GPU while
+            // idle. This handle is an invisible hit strip over the hairline ConversationListPane
+            // already draws, with nothing to animate.
+            paneExpansionDragHandle = if (!isDesktopOrWeb()) null else {
+                { state ->
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .width(SPLITTER_HIT_WIDTH)
+                            .onGloballyPositioned {
+                                splitterCenter = it.positionInRoot().x + it.size.width / 2f
+                            }
+                            .horizontalResizeCursor()
+                            .paneExpansionDraggable(
+                                state = state,
+                                minTouchTargetSize = SPLITTER_HIT_WIDTH,
+                                interactionSource = splitterInteractionSource,
+                            )
+                    )
+                }
+            },
             )
     }
 }

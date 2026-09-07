@@ -3,6 +3,7 @@ package id.homebase.chat.archivedconversations
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.chat.data.ConversationState
 import id.homebase.chat.data.ConversationUiModel
@@ -13,15 +14,23 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.requests.ConnectionRequestService
+import id.homebase.resources.MR
+import id.homebase.resources.action_undo
+import id.homebase.resources.chat_conversation_restored_confirmation
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import kotlin.uuid.Uuid
 
 private data class ArchivedConnectionContext(
@@ -42,6 +51,9 @@ class ArchivedConversationsViewModel(
     private val enricher = ConversationEnricher()
     private val _uiState = MutableStateFlow(ArchivedConversationsUiState())
     val uiState: StateFlow<ArchivedConversationsUiState> = _uiState.asStateFlow()
+
+    private val events = Channel<ArchivedConversationsUiEvent>(capacity = Channel.BUFFERED)
+    val uiEvents: Flow<ArchivedConversationsUiEvent> = events.receiveAsFlow()
 
     init {
         viewModelScope.launch {
@@ -107,54 +119,74 @@ class ArchivedConversationsViewModel(
     fun onUiAction(action: ArchivedConversationsUiAction) {
         when (action) {
             is ArchivedConversationsUiAction.BackClicked -> {
-                _uiState.update { it.copy(uiEvent = ArchivedConversationsUiEvent.Back) }
+                sendEvent(ArchivedConversationsUiEvent.Back)
             }
 
             is ArchivedConversationsUiAction.ShowConversation -> {
-                _uiState.update {
-                    it.copy(uiEvent = ArchivedConversationsUiEvent.NavigateToConversation(action.conversationId))
-                }
+                sendEvent(ArchivedConversationsUiEvent.NavigateToConversation(action.conversationId))
             }
 
             is ArchivedConversationsUiAction.UnarchiveConversation -> {
                 viewModelScope.launch {
                     try {
                         conversationService.unarchiveConversation(action.conversationId)
-                    } catch (e: Exception) {
-                        _uiState.update {
-                            it.copy(
-                                uiEvent = ArchivedConversationsUiEvent.Error(
-                                    e.message ?: "Failed to unarchive conversation"
-                                )
+                        sendEvent(
+                            ArchivedConversationsUiEvent.ShowInfoMessage(
+                                res = MR.string.chat_conversation_restored_confirmation,
+                                actionLabel = MR.string.action_undo,
+                                action = ArchivedConversationsUiAction.ArchiveConversation(
+                                    action.conversationId
+                                ),
                             )
-                        }
+                        )
+                    } catch (e: Exception) {
+                        sendEvent(
+                            ArchivedConversationsUiEvent.Error(
+                                e.message ?: "Failed to unarchive conversation"
+                            )
+                        )
                     }
                 }
             }
+
+            is ArchivedConversationsUiAction.ArchiveConversation -> {
+                viewModelScope.launch {
+                    try {
+                        conversationService.archiveConversation(action.conversationId)
+                    } catch (e: Exception) {
+                        sendEvent(
+                            ArchivedConversationsUiEvent.Error(
+                                e.message ?: "Failed to archive conversation"
+                            )
+                        )
+                    }
+                }
+            }
+
             is ArchivedConversationsUiAction.ShowConversationSettings -> {
                 if (action.conversation.isGroupConversation) {
-                    _uiState.update {
-                        it.copy(
-                            uiEvent = ArchivedConversationsUiEvent.NavigateToGroupSettings(
-                                (action.conversation.id.toString())
-                            )
+                    sendEvent(
+                        ArchivedConversationsUiEvent.NavigateToGroupSettings(
+                            action.conversation.id.toString()
                         )
-                    }
+                    )
                 } else {
-                    _uiState.update {
-                        it.copy(
-                            uiEvent = ArchivedConversationsUiEvent.NavigateToConversationSettings(
-                                (action.conversation.id.toString())
-                            )
+                    sendEvent(
+                        ArchivedConversationsUiEvent.NavigateToConversationSettings(
+                            action.conversation.id.toString()
                         )
-                    }
+                    )
                 }
             }
         }
     }
 
-    fun eventConsumed() {
-        _uiState.update { it.copy(uiEvent = null) }
+    private fun sendEvent(event: ArchivedConversationsUiEvent) {
+        events.trySend(event).onFailure {
+            Logger.w(throwable = it, tag = "ArchivedConversationsViewModel") {
+                "dropped ${event::class.simpleName}"
+            }
+        }
     }
 }
 
@@ -162,12 +194,16 @@ class ArchivedConversationsViewModel(
 data class ArchivedConversationsUiState(
     val isLoading: Boolean = true,
     val conversations: ImmutableList<EnrichedConversationUiModel> = persistentListOf(),
-    val uiEvent: ArchivedConversationsUiEvent? = null,
 )
 
 sealed interface ArchivedConversationsUiEvent {
     data object Back : ArchivedConversationsUiEvent
     data class Error(val errorMessage: String) : ArchivedConversationsUiEvent
+    data class ShowInfoMessage(
+        val res: StringResource,
+        val actionLabel: StringResource? = null,
+        val action: ArchivedConversationsUiAction? = null,
+    ) : ArchivedConversationsUiEvent
     data class NavigateToConversation(val conversationId: Uuid) : ArchivedConversationsUiEvent
     data class NavigateToGroupSettings(val conversationId: String) : ArchivedConversationsUiEvent
     data class NavigateToConversationSettings(val conversationId: String) : ArchivedConversationsUiEvent
@@ -177,6 +213,7 @@ sealed interface ArchivedConversationsUiAction {
     data object BackClicked : ArchivedConversationsUiAction
     data class ShowConversation(val conversationId: Uuid) : ArchivedConversationsUiAction
     data class UnarchiveConversation(val conversationId: Uuid) : ArchivedConversationsUiAction
+    data class ArchiveConversation(val conversationId: Uuid) : ArchivedConversationsUiAction
     data class ShowConversationSettings(val conversation: ConversationUiModel) :
         ArchivedConversationsUiAction
 }

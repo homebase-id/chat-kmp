@@ -23,6 +23,7 @@ import id.homebase.imageeditor.core.draw.DrawingModel
 import id.homebase.imageeditor.core.draw.Stroke
 import id.homebase.imageeditor.core.io.CropPreprocessor
 import id.homebase.imageeditor.core.io.DrawFinalizer
+import id.homebase.imageeditor.ui.widget.colorForPosition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -333,47 +334,6 @@ class DrawEditorViewModel(
                 _uiState.update { it.copy(isSaving = false, errorMessageKey = "draw_error_save") }
             }
         }
-    }
-
-    // -------- Helpers --------
-
-    private fun colorForPosition(position: Float): Int {
-        // Mirrors HsvColorSlider's gradient. Position 0..1 across:
-        //   black (0..0.05) → primary spectrum (0.05..0.95) → white (0.95..1.0).
-        val p = position.coerceIn(0f, 1f)
-        return when {
-            p <= 0.05f -> argb(0xFF, lerp(0, 0, (p / 0.05f)), lerp(0, 0, (p / 0.05f)), lerp(0, 0, (p / 0.05f)))
-            p >= 0.95f -> {
-                val t = ((p - 0.95f) / 0.05f).coerceIn(0f, 1f)
-                argb(0xFF, lerp(255, 255, t), lerp(255, 255, t), lerp(255, 255, t))
-            }
-            else -> {
-                val hue = (p - 0.05f) / 0.9f * 360f
-                hsvToArgb(hue, 1f, 1f)
-            }
-        }
-    }
-
-    private fun lerp(a: Int, b: Int, t: Float): Int = (a + (b - a) * t.coerceIn(0f, 1f)).toInt()
-    private fun argb(a: Int, r: Int, g: Int, b: Int): Int = (a shl 24) or (r shl 16) or (g shl 8) or b
-
-    private fun hsvToArgb(hue: Float, saturation: Float, value: Float): Int {
-        val h = ((hue % 360f) + 360f) % 360f
-        val c = value * saturation
-        val x = c * (1f - kotlin.math.abs(((h / 60f) % 2f) - 1f))
-        val m = value - c
-        val (r, g, b) = when ((h / 60f).toInt()) {
-            0 -> Triple(c, x, 0f)
-            1 -> Triple(x, c, 0f)
-            2 -> Triple(0f, c, x)
-            3 -> Triple(0f, x, c)
-            4 -> Triple(x, 0f, c)
-            else -> Triple(c, 0f, x)
-        }
-        val rr = ((r + m) * 255f).toInt().coerceIn(0, 255)
-        val gg = ((g + m) * 255f).toInt().coerceIn(0, 255)
-        val bb = ((b + m) * 255f).toInt().coerceIn(0, 255)
-        return argb(0xFF, rr, gg, bb)
     }
 
     companion object {

@@ -1,7 +1,6 @@
 package id.homebase.chat.services.builder
 
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.chat.conversationlist.sandboxCopyName
 import io.github.vinceglb.filekit.PlatformFile
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.flow.Flow
@@ -40,19 +39,7 @@ class ImageAttachmentContentTypeTest {
         assertEquals("application/octet-stream", copy.toImageAttachmentInput(NoopFileOps()).contentType)
     }
 
-    @Test
-    fun sandboxCopyName_appendsExtensionWhenPickerNameHasNone() {
-        val name = sandboxCopyName("photopicker-1000022602", "image/jpeg")
 
-        assertTrue(name.endsWith("_photopicker-1000022602.jpg"), "expected .jpg suffix, got: $name")
-    }
-
-    @Test
-    fun sandboxCopyName_keepsAnExistingExtensionAndSurvivesAnUnmappedMime() {
-        assertTrue(sandboxCopyName("IMG_2026.jpeg", "image/jpeg").endsWith("_IMG_2026.jpeg"))
-        assertTrue(sandboxCopyName("raw-shot", "image/x-not-a-real-mime").endsWith("_raw-shot"))
-        assertTrue(sandboxCopyName("raw-shot", null).endsWith("_raw-shot"))
-    }
 }
 
 private class NoopFileOps : FileOperationsProvider {

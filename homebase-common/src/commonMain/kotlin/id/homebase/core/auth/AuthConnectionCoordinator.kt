@@ -9,6 +9,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.websockets.OdinWebSocketClient
+import id.homebase.api.client.websockets.isWebSocketUpgradeUnauthorized
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.diagnostics.BgTrace
@@ -23,6 +24,7 @@ import id.homebase.core.config.LabeledDrive
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.sync.DriveRegistry
 import id.homebase.core.avatars.AppConnectionStatus
+import id.homebase.core.session.IdentitySessionScope
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +54,10 @@ class AuthConnectionCoordinator(
     private val driveRegistry: DriveRegistry,
     private val securityContextProvider: SecurityContextProvider,
     private val peerWebSocketManager: PeerWebSocketManager,
+    // Lifetime of every per-identity object in the graph. Opened on the authenticated
+    // transition below, closed on logout — so signing out destroys that state rather than
+    // resetting it, and a stale identity cannot survive into the next session.
+    private val identitySession: IdentitySessionScope,
     private val onPostAuthenticated: () -> Unit = {},
     /**
      * Active location-tracking profile label for the #1109 background-transition line, or null when
@@ -91,6 +97,21 @@ class AuthConnectionCoordinator(
         }
     )
     private var wsClient: OdinWebSocketClient? = null
+
+    // #1349 dead-token detection. The server rejects the notify-WS upgrade with 401 once this
+    // device's app registration is revoked, but the reconnect loop treats that like any other
+    // drop and retries every 5s forever, leaving authState == Authenticated with no way out.
+    // Count only CONSECUTIVE upgrade-401s: a successful connect or any other failure resets, so
+    // a one-off 401 (server hiccup, clock skew, token-refresh race) can never reach the
+    // threshold. Corroboration is DEAD_TOKEN_THRESHOLD separate server responses that each
+    // specifically said 401 to this token.
+    @Volatile
+    private var consecutiveUpgradeAuthFailures = 0
+
+    // logout() has no internal in-flight guard and wipes the DB, so two concurrent callers would
+    // each run a full wipe. 401s keep arriving during the ~seconds logout takes; this latches.
+    @Volatile
+    private var deadTokenLogoutStarted = false
 
     // #1109 background-transition tracking: the last foreground/background state we logged and when,
     // so setForeground() can emit the duration of the window that just ended. Seeded foreground=true
@@ -220,6 +241,17 @@ class AuthConnectionCoordinator(
         logLifecycleSnapshot("onAuthStateChanged:${state::class.simpleName}")
         when (state) {
             is YouAuthState.Authenticated -> {
+                // FIRST, before anything resolves a per-identity service: open this
+                // identity's scope. runPostAuthenticatedOnce() below resolves out of it,
+                // so opening later would build those objects in the wrong (or no) scope.
+                // Re-opening for the same identity is a no-op, which matters because this
+                // branch runs twice on a headless bootstrap that later promotes to
+                // foreground. A different identity closes the previous scope here — the
+                // backstop for a logout we never saw (token expiry, a swapped account).
+                // From the state's own identity rather than a credentials lookup: it is the
+                // identity this transition is about, it cannot be null, and it cannot race a
+                // credential write. A null here would have left the UI gated below forever.
+                identitySession.open(state.identity.domainName)
                 // Foreground-only UI preload — see kdoc on [headless]. Runs FIRST in
                 // foreground mode (matches pre-headless-mode ordering: preload starts
                 // local-DB warmups while drive mount + WS handshake happen in
@@ -340,6 +372,11 @@ class AuthConnectionCoordinator(
             }
             is YouAuthState.Unauthenticated -> {
                 disconnect()
+                // Clear the drive snapshot that gates applyWsHold's authResolved check. Without
+                // this a foreground transition after logout rebuilds a WS with no credentials,
+                // whose connectOnce() returns false rather than throwing — so the reconnect loop
+                // backs off and retries "No active credentials" forever (#1349).
+                lastAuthenticatedDrives = null
                 // Reset the post-auth gate so the next login re-runs onPostAuthenticated().
                 postAuthGate.withLock { postAuthenticatedRan = false }
                 // The profile is loaded here on auth (loadProfile); clear it on the
@@ -353,6 +390,17 @@ class AuthConnectionCoordinator(
                 // stopped — so nothing can re-populate after the services reset.
                 Logger.i(tag = "AuthLifecycle") { "AuthCC: emitting SessionEnded (logout)" }
                 eventBus.tryEmit(BackendEvent.SessionEnded)
+                // Then destroy the identity's scope: every scoped instance is dropped and
+                // its onClose callback fired (coroutine scopes cancelled, collectors torn
+                // down). After this, resolving identity-scoped state throws rather than
+                // handing back a previous identity's object.
+                //
+                // Ordering note for the migration: tryEmit is not synchronous, so a
+                // SessionEnded listener that resolves a scoped service could lose the race
+                // with this close and throw. That race disappears as those listeners are
+                // deleted — a scoped service has no reason to listen for the event that
+                // destroys it — but until then, do not add new ones.
+                identitySession.close()
             }
             else -> {
                 disconnect()
@@ -521,6 +569,10 @@ class AuthConnectionCoordinator(
                         "AuthCC: onConnected fired for ${wsClient?.let { "WS[${it.instanceId}]" } ?: "null-wsClient"}"
                     }
                     _connectionState.update { it.copy(isConnected = true) }
+                    // Also clears the latch: a later session on this same process whose token
+                    // dies must be able to trigger the logout again.
+                    consecutiveUpgradeAuthFailures = 0
+                    deadTokenLogoutStarted = false
                     logLifecycleSnapshot("onConnected")
                     scope.launch {
                         try {
@@ -574,6 +626,11 @@ class AuthConnectionCoordinator(
                     outboxSync.setOnline(false)
                     _connectionState.update { it.copy(isConnected = false, isConnecting = false) }
                     logLifecycleSnapshot("onConnectError")
+                    consecutiveUpgradeAuthFailures =
+                        nextUpgradeAuthFailureCount(consecutiveUpgradeAuthFailures, e)
+                    if (consecutiveUpgradeAuthFailures >= DEAD_TOKEN_THRESHOLD) {
+                        startDeadTokenLogout()
+                    }
                 }
             ).also {
                 Logger.i(tag = "AuthLifecycle") { "AuthCC: WS[${it.instanceId}] created, start() invoked" }
@@ -671,7 +728,29 @@ class AuthConnectionCoordinator(
             peerOwnersMutex.withLock { peerDriveOwners[drive.drive.alias] = owner to drive.drive }
             peerWebSocketManager.mount(owner, drive.drive)
         } else {
-            refreshWsSubscription.trigger()
+            // An explicit activation means the read grant was JUST obtained — typically seconds
+            // ago, in a browser. [grantedDriveIds] is a snapshot taken at connect time, so it
+            // predates that grant, and [retainGrantedDrives] would filter this very drive out of
+            // the subscription we are rebuilding for it. The drive would stay mounted (HTTP sync
+            // works, the grant is live server-side) but deaf to push: files written afterwards
+            // only surface on the next app start.
+            //
+            // So resolve the grant set first, then rebuild. Runs in [scope], not the caller's:
+            // an add-on activates from a viewModelScope that may die with the screen. A failed
+            // fetch leaves the set null, which disables the filter entirely — the drive is
+            // included rather than dropped, so the socket is rebuilt either way.
+            scope.launch {
+                // Rare and consequential (it closes and reopens the socket), so it says so.
+                Logger.i(tag = "AuthLifecycle") {
+                    "AuthCC: activation of '${drive.label}' (${drive.drive.alias}) — refreshing " +
+                        "drive grants, then rebuilding the WS subscription"
+                }
+                try {
+                    refreshGrantedDriveIds()
+                } finally {
+                    refreshWsSubscription.trigger()
+                }
+            }
         }
     }
 
@@ -750,6 +829,16 @@ class AuthConnectionCoordinator(
         // the debouncer — and unmount drives — against a session already being torn down (#1237).
         grantReconcileJob?.cancel()
         grantReconcileJob = null
+        // Forget which drives this identity could read. The field is a snapshot of ONE app
+        // token's grants, and it outlived the session it belonged to: on the next login
+        // retainGrantedDrives() applied the previous token's answer and silently dropped a drive
+        // that had been granted in between — the mount decision ran ~700ms before the fresh
+        // grants resolved, and nothing re-mounts afterwards.
+        //
+        // Null is the documented "grants unknown" state that makes retainGrantedDrives a no-op,
+        // which is exactly what a fresh connect wants: mount from the local registry and let
+        // scheduleGrantReconcile prune in the background.
+        grantedDriveIds = null
         refreshWsSubscription.cancel()
         driveRegistry.stop()
         // Close every per-owner peer websocket so a second login doesn't inherit the first user's
@@ -873,10 +962,54 @@ class AuthConnectionCoordinator(
     }
 
 
+    /**
+     * #1349: the client token is dead — the registration was revoked server-side. Tear the session
+     * down through the normal logout path, so `authState` flips to Unauthenticated and AppNavHost
+     * routes to Login. `force = true` skips the server-side logout notify, which would only 401 too.
+     *
+     * Deliberately NOT a 403 path: a 403 means one drive's ACL was revoked and is already handled
+     * per-drive by DriveSync (unmount for the session). Only a 401 means the whole token is void.
+     */
+    private fun startDeadTokenLogout() {
+        if (deadTokenLogoutStarted) return
+        deadTokenLogoutStarted = true
+        Logger.w(tag = "AuthLifecycle") { "AuthCC: client token is dead — logging out" }
+        // Main, not this scope's default dispatcher. logout() flips authState, and
+        // AuthConnectionCoordinator then closes the Koin identity scope; AppNavHost's body
+        // resolves identity-scoped ViewModels unconditionally (outside its isAuthenticated
+        // gate), so a recomposition landing between the flip and the close resolves from a
+        // closed scope and dies on main. Every existing caller (SettingsViewModel, the dev
+        // menu) already logs out from viewModelScope — Main.immediate — which orders the flip
+        // and the teardown against composition. Match that or reproduce the crash (#1349).
+        scope.launch(Dispatchers.Main.immediate) {
+            try {
+                youAuthFlowManager.logout(force = true)
+            } catch (e: Exception) {
+                deadTokenLogoutStarted = false
+                Logger.e(throwable = e, tag = "AuthLifecycle") { "AuthCC: dead-token logout failed" }
+            }
+        }
+    }
+
     companion object {
         private const val REFRESH_DEBOUNCE_MS = 500L
     }
 }
+
+/**
+ * #1349: how many consecutive WS-upgrade 401s mean the client token is dead rather than a one-off
+ * server hiccup. Each one is a separate server response that specifically rejected this token.
+ */
+internal const val DEAD_TOKEN_THRESHOLD = 3
+
+/**
+ * The consecutive WS-upgrade-401 count after a connect attempt failed with [error]. Only an upgrade
+ * 401 advances the count; every other failure resets it, and a successful connect resets it at the
+ * call site — so a single transient 401 can never reach [DEAD_TOKEN_THRESHOLD]. Pure so the
+ * spurious-logout guard is unit-tested directly.
+ */
+internal fun nextUpgradeAuthFailureCount(previous: Int, error: Throwable): Int =
+    if (error.isWebSocketUpgradeUnauthorized()) previous + 1 else 0
 
 // Match compareStringUuId's normalization so drive ids compare regardless of hyphen/case format.
 internal fun normalizeDriveId(driveId: String): String = driveId.lowercase().replace("-", "")

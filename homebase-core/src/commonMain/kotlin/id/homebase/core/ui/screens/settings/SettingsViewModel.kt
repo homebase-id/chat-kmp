@@ -6,7 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.profile.PublicProfileProviderCached
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.sync.database.DatabaseSizeProbe
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
@@ -31,7 +31,7 @@ class SettingsViewModel(
     private val userPreferences: UserPreferences,
     private val platformInfo: PlatformInfo,
     private val databaseSizeProbe: DatabaseSizeProbe,
-    private val publicProfileProviderCached: PublicProfileProviderCached,
+    private val contactInfo: ContactInfoGateway,
     private val driveFileProviderCached: DriveFileProviderCached,
 ) : ViewModel() {
 
@@ -78,7 +78,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             val bytes = withContext(Dispatchers.Default) {
                 runCatching {
-                    val caches = publicProfileProviderCached.getCacheStats() +
+                    val caches = contactInfo.getCacheStats() +
                         driveFileProviderCached.getCacheStats()
                     caches.sumOf { if (it.sizeBytes == CacheStats.UNAVAILABLE) 0L else it.sizeBytes } +
                         databaseSizeProbe.sizeBytes()

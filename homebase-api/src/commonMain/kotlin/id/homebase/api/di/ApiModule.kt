@@ -11,6 +11,7 @@ import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionRequestProvider
 import id.homebase.api.client.connections.IntroductionSender
 import id.homebase.api.client.contacts.ContactHeaderReader
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactPayloadReader
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
@@ -28,6 +29,7 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.follow.FollowProvider
+import id.homebase.api.client.mail.MailProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.link.LinkPreviewProvider
 import id.homebase.api.client.location.LocationPreviewProvider
@@ -41,7 +43,6 @@ import id.homebase.api.client.peer.PeerWebSocketManager
 import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.client.profile.ProfileProvider
 import id.homebase.api.client.profile.ProfileRepository
-import id.homebase.api.client.profile.PublicProfileProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.client.upgrade.IdentityUpgradeProvider
 import id.homebase.api.file.StartupCacheAudit
@@ -115,6 +116,7 @@ val apiModule = module {
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
     factoryOf(::FollowProvider)
+    factoryOf(::MailProvider)
 
     factoryOf(::ConnectionNetworkProvider)
     factoryOf(::PeerDriveQueryProvider)
@@ -163,7 +165,9 @@ val apiModule = module {
     factoryOf(::ProfileRepository)
     factoryOf(::IdentityUpgradeProvider)
     singleOf(::PublicProfileProviderCached)
-    factoryOf(::PublicProfileProvider)
+    // The single supported entry point for a peer's name/avatar/profile; the provider above
+    // is internal to this module so nothing else can reach /pub/profile or /pub/image.
+    single { ContactInfoGateway(contactRepository = { get() }, publicProfiles = get()) }
 
     factoryOf(::SecurityContextProvider)
     factoryOf(::PushNotificationApi)

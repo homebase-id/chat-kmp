@@ -92,7 +92,9 @@ fun AudioPlayerWidget(
             override fun onProgressUpdate(progressSeconds: Int, totalSeconds: Int) {
                 Logger.i { "Progress: $progressSeconds / $totalSeconds" }
                 currentFileSeconds = progressSeconds
-                totalFileSeconds = totalSeconds
+                // 0 means the player couldn't determine a duration (web: a stream muxed with no
+                // duration box) — keep the length the payload descriptor already gave us.
+                if (totalSeconds > 0) totalFileSeconds = totalSeconds
             }
         })
     }

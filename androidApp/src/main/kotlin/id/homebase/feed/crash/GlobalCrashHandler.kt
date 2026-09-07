@@ -9,6 +9,7 @@ import co.touchlab.kermit.Logger
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import id.homebase.api.client.isMlKitTeardownFailure
+import id.homebase.api.client.isRecoverablePermissionFailure
 import id.homebase.api.client.isRecoverableServerConflict
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.core.crash.CrashMetadata
@@ -69,6 +70,8 @@ object GlobalCrashHandler {
                             "ML Kit/MediaPipe failure (background removal degrades to no cutout)"
                         throwable.isRecoverableServerConflict() ->
                             "Recoverable server conflict (stale versionTag; write dropped, drive-sync reconciles)"
+                        throwable.isRecoverablePermissionFailure() ->
+                            "Permission denied by the server (403; the grant was revoked or narrowed)"
                         else -> "Transient network failure"
                     }
                     "$kind on '${thread.name}'; contained, not crashing: ${throwable.message}"
@@ -117,7 +120,9 @@ object GlobalCrashHandler {
      *    failure**, including a TLS-inspecting VPN/proxy/AV presenting an untrusted cert; and
      *  - an ML Kit / MediaPipe teardown (best-effort background removal on native threads); and
      *  - a recoverable optimistic-concurrency conflict (a 400 VersionTagMismatch — the write was
-     *    dropped because the file's versionTag advanced; drive-sync reconciles). See #1008.
+     *    dropped because the file's versionTag advanced; drive-sync reconciles). See #1008; and
+     *  - a permission denial (a 403 — the app token's grant was revoked or narrowed server-side;
+     *    the extend-permissions flow is how the user restores it).
      *
      * These routinely leak from a coroutine launched on a scope without its own
      * CoroutineExceptionHandler (e.g. a bare `viewModelScope.launch`). Killing the process for
@@ -127,7 +132,8 @@ object GlobalCrashHandler {
     internal fun isContainableNonFatal(throwable: Throwable): Boolean =
         throwable.isTransientNetworkFailure() ||
             throwable.isMlKitTeardownFailure() ||
-            throwable.isRecoverableServerConflict()
+            throwable.isRecoverableServerConflict() ||
+            throwable.isRecoverablePermissionFailure()
 
     /**
      * Whether to launch the [CrashActivity] recovery screen for this crash. Pure so it

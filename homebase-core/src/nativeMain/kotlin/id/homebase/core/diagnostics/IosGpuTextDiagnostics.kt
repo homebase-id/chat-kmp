@@ -104,3 +104,12 @@ fun installGpuTextDiagnostics() {
 fun logPrevention(note: String) {
     Logger.i(tag = GpuTextDiagnostics.TAG) { "prevention: $note" }
 }
+
+/**
+ * Swift-callable launch/lifecycle breadcrumb, same tag as [logPrevention] so one grep gives the
+ * whole "why did this process start → when did the scene go active → when was ComposeView built"
+ * timeline. Exported as `IosGpuTextDiagnosticsKt.logLaunchTrace(note:)`.
+ */
+fun logLaunchTrace(note: String) {
+    Logger.i(tag = GpuTextDiagnostics.TAG) { "launch: $note" }
+}

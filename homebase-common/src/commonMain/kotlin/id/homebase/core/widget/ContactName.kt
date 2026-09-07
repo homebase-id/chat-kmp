@@ -13,7 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import id.homebase.api.client.profile.PublicProfileProvider
+import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.common.OdinId
 import org.koin.compose.koinInject
 
@@ -35,15 +35,12 @@ fun ContactName(
     }
 
     if (needsFetch) {
-        val profileProvider = koinInject<PublicProfileProvider>()
+        val contactInfo = koinInject<ContactInfoGateway>()
         LaunchedEffect(odinId) {
-            try {
-
-                val profile = profileProvider.getPublicProfile(odinId)
-                displayName = profile.name;
-            } catch (_: Exception) {
-                // Keep fallback domain name
-            }
+            runCatching { contactInfo.displayName(odinId) }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { displayName = it }
         }
     }
 

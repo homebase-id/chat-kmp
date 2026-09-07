@@ -11,9 +11,12 @@ import kotlin.uuid.Uuid
  * - [Conversations] runs the chat send path ([ChatMessageSenderService]).
  * - [NewMoment] seeds the moments composer draft and hands off to
  *   `Route.MomentCompose`, reusing the same media-upload pipeline downstream.
+ * - [NewWebDrop] seeds the WebDrop share draft and hands off to `Route.WebDrop`,
+ *   where the compose sheet opens with the shared files already picked.
  */
 @OptIn(ExperimentalUuidApi::class)
 sealed interface ShareTarget {
     data class Conversations(val ids: Set<Uuid>) : ShareTarget
     data object NewMoment : ShareTarget
+    data object NewWebDrop : ShareTarget
 }

@@ -1,5 +1,6 @@
 package id.homebase.api.client.drives.files
 
+import id.homebase.api.image.MediaQuality
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -80,6 +81,62 @@ class PayloadDescriptorImageTest {
         val padded = imageDescriptor("""   [{"url":"https://example.com"}]""").descriptorInfo()
         assertTrue(padded is DescriptorContent.ImageFile, "Expected ImageFile, got $padded")
         assertFalse(padded.isSticker)
+    }
+
+    @Test
+    fun quality_roundTripsThroughTheWire() {
+        val serialized = DescriptorContent.descriptorContentFromImage(
+            isSticker = false,
+            quality = MediaQuality.HIGH,
+        )
+        assertTrue(
+            serialized.contains("\"quality\":\"high\""),
+            "Quality must serialize with its lowercase code, got $serialized",
+        )
+        val info = imageDescriptor(serialized).descriptorInfo()
+        assertTrue(info is DescriptorContent.ImageFile, "Expected ImageFile, got $info")
+        assertEquals(MediaQuality.HIGH, info.quality)
+
+        val standard = DescriptorContent.descriptorContentFromImage(
+            isSticker = false,
+            quality = MediaQuality.STANDARD,
+        )
+        val standardInfo = imageDescriptor(standard).descriptorInfo()
+        assertTrue(standardInfo is DescriptorContent.ImageFile)
+        assertEquals(MediaQuality.STANDARD, standardInfo.quality)
+    }
+
+    @Test
+    fun qualityIsOmittedWhenNotRecorded() {
+        // Absent must stay absent — it is what every pre-flag image reads as, and it must
+        // never be coerced to STANDARD, which would mislabel old HD photos.
+        val serialized = DescriptorContent.descriptorContentFromImage(isSticker = true)
+        assertFalse(serialized.contains("quality"), "Unexpected quality key in $serialized")
+
+        val info = imageDescriptor(serialized).descriptorInfo()
+        assertTrue(info is DescriptorContent.ImageFile)
+        assertNull(info.quality)
+
+        assertNull((imageDescriptor("").descriptorInfo() as DescriptorContent.ImageFile).quality)
+    }
+
+    @Test
+    fun stickerAndQualityCoexist_andQualitySurvivesAnUnknownSibling() {
+        val info = imageDescriptor(
+            """{"isSticker":true,"format":"image/png","quality":"high","futureField":42}"""
+        ).descriptorInfo()
+        assertTrue(info is DescriptorContent.ImageFile)
+        assertTrue(info.isSticker)
+        assertEquals(MediaQuality.HIGH, info.quality)
+    }
+
+    @Test
+    fun unknownQualityValue_coercesToNull_notToAQuality() {
+        // coerceInputValues turns an unrecognised enum into the default (null) rather than
+        // throwing, so a newer sender's vocabulary degrades to "not recorded".
+        val info = imageDescriptor("""{"isSticker":false,"quality":"ultra"}""").descriptorInfo()
+        assertTrue(info is DescriptorContent.ImageFile, "Expected ImageFile, got $info")
+        assertNull(info.quality)
     }
 
     @Test
