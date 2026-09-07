@@ -72,7 +72,62 @@ data class RedactedCircleDefinition(
     val lastUpdated: Long = 0,
     val permissions: RedactedPermissionSet? = null,
     val driveGrants: List<RedactedCircleDriveGrant>? = null,
+    /** Owning app; null = an owner circle. A plain server-side Guid, so hyphenated on the wire. */
+    val appId: Uuid? = null,
+    val grantOn: CircleGrantOn = CircleGrantOn.None,
+    val designation: CircleDesignation = CircleDesignation.Personal,
+    /** Often a multi-codepoint ZWJ sequence — render whole, never substring it. */
+    val emoji: String? = null,
 )
+
+/**
+ * When the owning app wants members enrolled. The app declares, the owner disposes via a per-app
+ * toggle; the effective set is declared AND enabled.
+ *
+ * Nothing on the server reads this yet — the enrollment pipeline is unbuilt — but the field is
+ * already served, and it is what lets a client tell an app default circle from a user circle
+ * without knowing any GUIDs.
+ */
+@Serializable
+enum class CircleGrantOn {
+    /** Manual membership only. Every circle predating the enrollment model is this. */
+    @SerialName("none")
+    None,
+
+    /** Granted at any connection establishment. Deposit-only: write/react, no read, no keys. */
+    @SerialName("connect")
+    Connect,
+
+    /** Granted only through the owning app's own consent flow — the vendor case. */
+    @SerialName("ownFlowConnect")
+    OwnFlowConnect,
+
+    /** Granted when the owner completes the review — the one place read grants may be minted. */
+    @SerialName("review")
+    Review,
+}
+
+/**
+ * What kind of relationship a circle represents. Presentation and filtering only; it never
+ * participates in ACL evaluation.
+ *
+ * This app derives contact states from [Personal] circles alone. [Audience] belongs to the app
+ * that owns it (feed's subscribers), and [Vendor] is invisible here.
+ */
+@Serializable
+enum class CircleDesignation {
+    /** Friends, Family, Emergency Location Access. The default, and what user-created circles are. */
+    @SerialName("personal")
+    Personal,
+
+    /** Pure capability, no intimacy claim — a feed channel's subscribers. */
+    @SerialName("audience")
+    Audience,
+
+    /** Vendor and institution grants — write-only in practice. */
+    @SerialName("vendor")
+    Vendor,
+}
 
 @Serializable
 data class RedactedCircleDriveGrant(
