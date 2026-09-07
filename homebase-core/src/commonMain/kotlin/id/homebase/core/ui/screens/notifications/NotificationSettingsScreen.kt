@@ -49,6 +49,7 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.theme.ExtendedColors
+import id.homebase.core.util.isWeb
 import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
@@ -70,6 +71,7 @@ import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_denied_body
 import id.homebase.resources.settings_notifications_disabled_body
 import id.homebase.resources.settings_notifications_disabled_title
+import id.homebase.resources.settings_notifications_needs_install_body
 import id.homebase.resources.settings_open_settings
 import id.homebase.resources.settings_play_while_app_open
 import id.homebase.resources.settings_push_notification_status
@@ -164,26 +166,38 @@ fun NotificationSettingsUi(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (uiState.isPermissionPermanentlyDenied)
-                                stringResource(MR.string.settings_notifications_denied_body)
-                            else
-                                stringResource(MR.string.settings_notifications_disabled_body),
+                            text = when {
+                                uiState.needsHomeScreenInstall ->
+                                    stringResource(MR.string.settings_notifications_needs_install_body)
+
+                                uiState.isPermissionPermanentlyDenied ->
+                                    stringResource(MR.string.settings_notifications_denied_body)
+
+                                else -> stringResource(MR.string.settings_notifications_disabled_body)
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        if (uiState.isPermissionPermanentlyDenied) {
-                            Button(onClick = {
-                                onAction(NotificationSettingsUiAction.OpenSystemNotificationSettings)
-                            }) {
-                                Text(stringResource(MR.string.settings_open_settings))
+                        // Both suppressed cases are browser-only dead ends: a Home Screen install
+                        // is the user's own gesture, and a browser denial is undoable only from
+                        // the browser's site settings, which launchSettings() cannot reach.
+                        val hasAction = !uiState.needsHomeScreenInstall &&
+                                !(uiState.isPermissionPermanentlyDenied && isWeb())
+                        if (hasAction) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            if (uiState.isPermissionPermanentlyDenied) {
+                                Button(onClick = {
+                                    onAction(NotificationSettingsUiAction.OpenSystemNotificationSettings)
+                                }) {
+                                    Text(stringResource(MR.string.settings_open_settings))
+                                }
+                            } else {
+                                Button(
+                                    modifier = Modifier.testTag("enableNotificationsButton"),
+                                    onClick = {
+                                        onAction(NotificationSettingsUiAction.RequestPermission)
+                                    }) { Text(stringResource(MR.string.settings_enable_notifications)) }
                             }
-                        } else {
-                            Button(
-                                modifier = Modifier.testTag("enableNotificationsButton"),
-                                onClick = {
-                                    onAction(NotificationSettingsUiAction.RequestPermission)
-                                }) { Text(stringResource(MR.string.settings_enable_notifications)) }
                         }
                     }
                 }

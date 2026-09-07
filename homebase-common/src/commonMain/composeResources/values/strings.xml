@@ -333,6 +333,13 @@
     <string name="settings_enable_notifications">Enable Notifications</string>
     <string name="settings_notifications_denied_body">Notifications have been denied. Please enable them in your device settings.</string>
     <string name="settings_open_settings">Open Settings</string>
+    <string name="settings_notifications_needs_install_body">Add Homebase to your Home Screen to receive notifications on this device.</string>
+
+    <!-- Web push offer banner -->
+    <string name="web_push_offer_title">Turn on notifications</string>
+    <string name="web_push_offer_body">Get new messages even when this tab is closed.</string>
+    <string name="web_push_offer_enable">Enable</string>
+    <string name="web_push_offer_dismiss">Not now</string>
     <string name="settings_sounds">Sounds</string>
     <string name="settings_message_sound">Message Sound</string>
     <string name="settings_sound_system_default">System Default</string>

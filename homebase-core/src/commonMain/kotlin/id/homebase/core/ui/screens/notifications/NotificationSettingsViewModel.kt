@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.SubscriptionVerificationStatus
+import id.homebase.core.notifications.WebPushHealth
+import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +15,8 @@ import kotlinx.coroutines.launch
 
 class NotificationSettingsViewModel(
     private val userPreferences: UserPreferences,
-    private val notificationService: NotificationService
+    private val notificationService: NotificationService,
+    private val webPushService: WebPushService,
 ) : ViewModel() {
 
     private var debugTapCount = 0
@@ -38,6 +41,10 @@ class NotificationSettingsViewModel(
     }
 
     private fun loadNotificationStatus() {
+        if (webPushService.isSupported) {
+            loadWebPushStatus()
+            return
+        }
         viewModelScope.launch {
             try {
                 val token = notificationService.getToken()
@@ -52,6 +59,31 @@ class NotificationSettingsViewModel(
                 _uiState.update {
                     it.copy(registrationStatus = RegistrationStatus.ERROR)
                 }
+            }
+        }
+    }
+
+    /**
+     * The FCM device-token status is meaningless for a browser subscription — the server redacts
+     * the endpoint and keys, so it always reads back as a token mismatch.
+     */
+    private fun loadWebPushStatus() {
+        viewModelScope.launch {
+            val health = runCatching { webPushService.evaluate() }
+                .getOrDefault(WebPushHealth.UNSUPPORTED)
+            _uiState.update {
+                it.copy(
+                    deviceToken = null,
+                    needsHomeScreenInstall = health == WebPushHealth.NEEDS_INSTALL,
+                    registrationStatus = when (health) {
+                        WebPushHealth.SUBSCRIBED -> RegistrationStatus.REGISTERED
+                        WebPushHealth.NOT_SUBSCRIBED, WebPushHealth.NEEDS_INSTALL ->
+                            RegistrationStatus.NOT_REGISTERED
+
+                        WebPushHealth.BLOCKED, WebPushHealth.NEEDS_REPAIR,
+                        WebPushHealth.UNSUPPORTED -> RegistrationStatus.ERROR
+                    },
+                )
             }
         }
     }
@@ -181,5 +213,9 @@ class NotificationSettingsViewModel(
                 isPermissionPermanentlyDenied = !isGranted && isPermanentlyDenied
             )
         }
+        // A browser grant only opens the door; the subscription still has to be created and
+        // posted, which the FCM path gets for free from its token listener. evaluate() sees the
+        // now-granted-but-unsubscribed state as NEEDS_REPAIR and does exactly that.
+        if (isGranted && webPushService.isSupported) loadWebPushStatus()
     }
 }

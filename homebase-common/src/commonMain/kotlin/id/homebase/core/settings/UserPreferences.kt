@@ -93,6 +93,15 @@ class UserPreferences(private val settings: Settings) {
         set(value) = settings.putBoolean("notification_include_muted_badge", value)
 
     /**
+     * Web only: the user dismissed the push offer banner. Lives here rather than in the database
+     * because the wasmJs database is in-memory sql.js, while `createSettings()` there is
+     * localStorage-backed and survives a reload.
+     */
+    var webPushOfferSuppressed: Boolean
+        get() = settings.getBoolean("web_push_offer_suppressed", false)
+        set(value) = settings.putBoolean("web_push_offer_suppressed", value)
+
+    /**
      * Id of the conversation at the top of the chat list the last time the user was looking at it.
      * Persisted rather than held in memory because process death is the case index-based scroll
      * restore gets wrong.

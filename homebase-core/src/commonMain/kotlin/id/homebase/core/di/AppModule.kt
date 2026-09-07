@@ -163,6 +163,7 @@ import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
+import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.ShareConversationCacheWriter
@@ -851,6 +852,7 @@ val appModule = module {
     }
     single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
     singleOf(::NotificationEntry)
+    singleOf(::WebPushService)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(

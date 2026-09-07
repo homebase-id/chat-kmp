@@ -203,6 +203,7 @@ import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.resources.chat_archived_chats
@@ -214,6 +215,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.io.files.Path
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
+import id.homebase.core.widget.WebPushOfferBanner
 import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
@@ -453,7 +455,9 @@ fun AppNavHost(
                 Route.AppLoading::class
             )
         ) {
-            if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
+            // Not on web: a browser only shows the permission prompt from a user gesture, so the
+            // ask has to come from the offer banner's Enable button instead.
+            if (authState is YouAuthState.Authenticated && !hasNotificationPermission && !isWeb()) {
                 permissionManager.askPermission(PermissionType.NOTIFICATION)
             }
         }
@@ -2189,6 +2193,15 @@ fun AppNavHost(
                 onTap = { data ->
                     viewModel.onInAppBannerTapped(data.payloadData)
                 },
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+
+            // Overlay, not the inline slot above: the inline one only gets its status-bar
+            // padding while the update banner shows.
+            WebPushOfferBanner(
+                visible = uiState.showWebPushOffer && isOnTopLevelScreen,
+                onEnable = { viewModel.enableWebPush() },
+                onDismiss = { viewModel.dismissWebPushOffer() },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }
