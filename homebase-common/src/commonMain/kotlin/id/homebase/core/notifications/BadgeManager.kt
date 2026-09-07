@@ -4,11 +4,7 @@ package id.homebase.core.notifications
 expect object BadgeManager {
     fun increment()
 
-    /**
-     * Sets the badge to an absolute [count]. On iOS this also rewrites the App Group
-     * value the Notification Service Extension increments from, so the next push counts
-     * up from the app's truth instead of from a drifted running total.
-     */
+    /** Sets the badge to an absolute [count]. */
     fun setCount(count: Int)
 
     /**
@@ -22,9 +18,8 @@ expect object BadgeManager {
     fun cancelAll()
 
     /**
-     * Dismisses a single conversation's posted notification and its group
-     * summary, leaving all other conversations' notifications in place.
-     * [messageId] and [summaryId] come from [conversationNotificationIds].
+     * Dismisses a single conversation's posted notifications and its group summary,
+     * leaving all other conversations' notifications in place.
      */
-    fun cancelConversationNotifications(messageId: Int, summaryId: Int)
+    fun cancelConversationNotifications(conversationId: String)
 }

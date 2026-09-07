@@ -260,8 +260,7 @@ class NotificationService(
      */
     private fun clearConversationNotifications(conversationId: String) {
         counts.clear(conversationId)
-        val (messageId, summaryId) = conversationNotificationIds(conversationId)
-        BadgeManager.cancelConversationNotifications(messageId, summaryId)
+        BadgeManager.cancelConversationNotifications(conversationId)
     }
 
     /** Logout: clear all accumulated per-conversation counts and reset the chime cooldown. */
