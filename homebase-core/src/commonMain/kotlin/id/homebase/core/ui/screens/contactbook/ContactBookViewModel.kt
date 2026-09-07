@@ -491,6 +491,7 @@ class ContactBookViewModel(
         _circleMembers.value = CircleMembersUi(
             circleId = circle.circle.id,
             circleName = circle.circle.name,
+            circleEmoji = circle.circle.emoji,
             manageable = manageable,
             members = members,
             isLoading = false,

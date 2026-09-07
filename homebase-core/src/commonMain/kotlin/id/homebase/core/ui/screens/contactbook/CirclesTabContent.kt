@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.resources.MR
@@ -70,7 +71,19 @@ fun CirclesTabContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onAction(ContactBookUiAction.CircleClicked(circle)) },
-                        leadingContent = { Icon(Icons.Outlined.Groups, contentDescription = null) },
+                        leadingContent = {
+                            val emoji = circle.circle.emoji
+                            if (emoji.isNullOrBlank()) {
+                                Icon(Icons.Outlined.Groups, contentDescription = null)
+                            } else {
+                                // Decorative: the headline right beside it already names the circle.
+                                Text(
+                                    text = emoji,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    modifier = Modifier.clearAndSetSemantics { },
+                                )
+                            }
+                        },
                         headlineContent = { Text(displayName) },
                         supportingContent = if (!description.isNullOrBlank()) {
                             { Text(description) }

@@ -12,6 +12,7 @@ import id.homebase.core.ui.screens.contactbook.isAppDefaultCircle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -26,6 +27,7 @@ class AssignableCirclesTest {
         designation: CircleDesignation = CircleDesignation.Personal,
         appId: Uuid? = null,
         disabled: Boolean = false,
+        emoji: String? = null,
     ) = RedactedCircleDefinition(
         id = id,
         name = name,
@@ -33,6 +35,7 @@ class AssignableCirclesTest {
         grantOn = grantOn,
         designation = designation,
         appId = appId,
+        emoji = emoji,
     )
 
     private fun state(vararg defs: RedactedCircleDefinition) =
@@ -83,5 +86,23 @@ class AssignableCirclesTest {
         val keep = circle("ff", "Buddies")
 
         assertEquals(listOf("Buddies"), state(off, blank, keep).assignableCircles().map { it.name })
+    }
+
+    /**
+     * A ZWJ sequence is a single user-perceived glyph made of several codepoints. It has to reach
+     * the UI byte-identical — any truncation on the way splits it into unrelated people.
+     */
+    @Test
+    fun aZwjEmojiReachesTheUiIntact() {
+        val family = "\uD83E\uDDD1\u200D\uD83E\uDDD1\u200D\uD83E\uDDD2\u200D\uD83E\uDDD2"
+        val ui = state(circle("gg", "Family", emoji = family)).assignableCircles().single()
+
+        assertEquals(family, ui.emoji)
+        assertEquals("Family", ui.name)
+    }
+
+    @Test
+    fun aCircleWithoutAnEmojiCarriesNull() {
+        assertNull(state(circle("hh", "Buddies")).assignableCircles().single().emoji)
     }
 }

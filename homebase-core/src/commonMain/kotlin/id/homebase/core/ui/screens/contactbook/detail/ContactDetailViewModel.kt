@@ -277,8 +277,8 @@ class ContactDetailViewModel(
                     .mapNotNull { pid -> circ.circles.map { it.circle }.firstOrNull { it.id.equals(pid, ignoreCase = true) } }
                     .filter { it.isUserCircle() && it.id.lowercase() !in realIds }
                 val circleItems = (
-                    realCircles.map { ContactCircleUi(it.id, it.name, pending = false) } +
-                        pendingCircles.map { ContactCircleUi(it.id, it.name, pending = true) }
+                    realCircles.map { ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji) } +
+                        pendingCircles.map { ContactCircleUi(it.id, it.name, pending = true, emoji = it.emoji) }
                     )
                     .filter { it.name.isNotBlank() }
                     .distinctBy { it.id.lowercase() }
@@ -397,6 +397,7 @@ class ContactDetailViewModel(
                 circleDetail = CircleMembersUi(
                     circleId = match.circle.id,
                     circleName = match.circle.name,
+                    circleEmoji = match.circle.emoji,
                     manageable = false,
                     members = members,
                     isLoading = false,

@@ -23,7 +23,13 @@ enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
  *  circle is still a sealed deposit — live-read via [id.homebase.chat.services.convo.contact.ConnectionService.findPendingCircles],
  *  never cached across app restarts, since there's no bulk "list this contact's pending circles"
  *  endpoint either. */
-data class ContactCircleUi(val id: String, val name: String, val pending: Boolean)
+data class ContactCircleUi(
+    val id: String,
+    val name: String,
+    val pending: Boolean,
+    /** The owner's chosen emoji; often a ZWJ sequence, so it is carried and rendered whole. */
+    val emoji: String? = null,
+)
 
 @Immutable
 data class ContactDetailUiState(

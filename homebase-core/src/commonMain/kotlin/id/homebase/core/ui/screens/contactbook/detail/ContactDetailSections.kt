@@ -67,6 +67,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.screens.contactbook.components.CircleLabel
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.contacts.ContactExperience
 import id.homebase.api.client.contacts.ContactSocialNetwork
@@ -238,7 +239,11 @@ private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(text = circle.name, style = MaterialTheme.typography.labelLarge)
+            CircleLabel(
+                emoji = circle.emoji,
+                name = circle.name,
+                style = MaterialTheme.typography.labelLarge,
+            )
             if (circle.pending) {
                 Text(
                     text = stringResource(MR.string.circle_member_pending),

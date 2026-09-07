@@ -44,6 +44,6 @@ fun CircleMembershipState.assignableCircles(): List<ContactCircleUi> =
         .map { it.circle }
         .filter { it.isUserCircle() }
         .filter { it.name.isNotBlank() }
-        .map { ContactCircleUi(it.id, it.name, pending = false) }
+        .map { ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji) }
         .distinctBy { it.id.lowercase() }
         .sortedBy { it.name.lowercase() }
