@@ -63,6 +63,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
@@ -827,6 +829,20 @@ fun ConversationListUi(
         scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
     val showingOnlyDetail = isListPaneHidden && isDetailPaneVisible
 
+    // Record what the user last saw at the top, so the return can tell whether the list reordered
+    // while they were gone. ON_STOP runs inside the lifecycle callback; a coroutine would not be
+    // guaranteed to run before the OS kills a backgrounded process.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (!isListPaneHidden) onUiAction(ConversationListUiAction.SnapshotListTop)
+    }
+    var listPaneWasVisible by remember { mutableStateOf(!isListPaneHidden) }
+    LaunchedEffect(isListPaneHidden) {
+        if (listPaneWasVisible && isListPaneHidden) {
+            onUiAction(ConversationListUiAction.SnapshotListTop)
+        }
+        listPaneWasVisible = !isListPaneHidden
+    }
+
     LaunchedEffect(isExpanded) {
         if (!isExpanded && scaffoldNavigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail) {
             // Optional: If you want to force it back to list view when shrinking
@@ -907,6 +923,7 @@ fun ConversationListUi(
                         searchTextState = conversationSearchTextFieldState,
                         searchFocusRequester = conversationSearchFocusRequester,
                         archivedUiState = archivedConversationsUiState,
+                        listPaneVisible = !isListPaneHidden,
                         onProfileClick = onNavigateToSettingsScreen,
                         onUiAction = onUiAction,
                         onConversationSelected = {

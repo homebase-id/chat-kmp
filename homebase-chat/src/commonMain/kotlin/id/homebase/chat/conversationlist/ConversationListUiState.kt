@@ -67,6 +67,10 @@ data class ConversationListUiState(
      *  open conversation). The screen calls [closeDetailPaneRequestConsumed] when it
      *  has handled the request. */
     val closeDetailPaneRequest: Uuid? = null,
+    /** Id of the #1 conversation as of the last time the list was on screen, mirrored from
+     *  [id.homebase.core.settings.UserPreferences.conversationListTopId]. Compared against the
+     *  current #1 by [shouldScrollToTop] on every return to the list. */
+    val listTopSnapshotId: Uuid? = null,
 )
 
 @Immutable

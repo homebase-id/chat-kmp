@@ -76,9 +76,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import id.homebase.api.client.auth.initials
 import id.homebase.chat.conversationlist.ConversationListContentModel
 import id.homebase.chat.conversationlist.ConversationListContentState
+import id.homebase.chat.conversationlist.resolveTopConversationId
+import id.homebase.chat.conversationlist.shouldScrollToTop
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiState
@@ -117,6 +121,7 @@ fun ConversationListPane(
     searchTextState: TextFieldState,
     searchFocusRequester: FocusRequester? = null,
     archivedUiState: ArchivedConversationsUiState = ArchivedConversationsUiState(),
+    listPaneVisible: Boolean = true,
     onProfileClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
     onConversationSelected: (conversationId: Uuid) -> Unit,
@@ -133,6 +138,34 @@ fun ConversationListPane(
     val focusRequesterNone = remember { FocusRequester() }
     val focusRequesterSearch = remember { FocusRequester() }
     var showMenu by remember { mutableStateOf(false) }
+
+    // Null while the LazyColumn is showing something other than the conversation list — the
+    // archived thread list or search results, whose #1 row is not comparable to the list's.
+    val topConversationId = if (searchActive || uiState.showArchived) {
+        null
+    } else {
+        (uiState.conversationsContent as? ConversationListContentState.Items)
+            ?.let { resolveTopConversationId(it.list) }
+    }
+
+    // The saved scroll position is an index, so a list that reordered while the user was away
+    // restores them onto a different conversation. Land at the top instead, once per return,
+    // whenever the #1 conversation is no longer the one they last saw.
+    var checkTopOnReturn by remember { mutableStateOf(true) }
+    LaunchedEffect(listPaneVisible) { if (listPaneVisible) checkTopOnReturn = true }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { checkTopOnReturn = true }
+    LaunchedEffect(checkTopOnReturn, listPaneVisible, topConversationId) {
+        if (!checkTopOnReturn || !listPaneVisible || topConversationId == null) {
+            return@LaunchedEffect
+        }
+        checkTopOnReturn = false
+        val isAtTop = listState.firstVisibleItemIndex == 0 &&
+                listState.firstVisibleItemScrollOffset == 0
+        if (shouldScrollToTop(uiState.listTopSnapshotId, topConversationId, isAtTop)) {
+            listState.scrollToItem(0)
+        }
+        onUiAction(ConversationListUiAction.SnapshotListTop)
+    }
 
     // Request focus on box element to prevent soft keyboard popping up
     LaunchedEffect(Unit) { focusRequesterNone.requestFocus() }
