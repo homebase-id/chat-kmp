@@ -197,7 +197,9 @@ class ConversationListViewModel(
     private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
-    private val _uiState = MutableStateFlow(ConversationListUiState())
+    private val _uiState = MutableStateFlow(
+        ConversationListUiState(listTopSnapshotId = userPreferences.conversationListTopId)
+    )
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
     private val events = ConversationListEvents()
@@ -1271,6 +1273,8 @@ class ConversationListViewModel(
                 sendEvent(NavigateToNewConversation)
             }
 
+            is ConversationListUiAction.SnapshotListTop -> snapshotListTop()
+
             is ConversationListUiAction.ClearSelection -> {
                 ActiveConversation.selectConversation(null)
                 currentConversationJob?.cancel()
@@ -1640,6 +1644,20 @@ class ConversationListViewModel(
                 currentSearchResultIndex = startIndex,
             )
         }
+    }
+
+    /**
+     * Search results share [ConversationListUiState.conversationsContent] with the conversation
+     * list, and their #1 row has nothing to do with the list's — never snapshot one.
+     */
+    private fun snapshotListTop() {
+        if (conversationSearchTextState.text.isNotEmpty()) return
+        val items =
+            _uiState.value.conversationsContent as? ConversationListContentState.Items ?: return
+        val topId = resolveTopConversationId(items.list) ?: return
+        if (topId == _uiState.value.listTopSnapshotId) return
+        userPreferences.conversationListTopId = topId
+        _uiState.update { it.copy(listTopSnapshotId = topId) }
     }
 
     private fun updateListContent() {
