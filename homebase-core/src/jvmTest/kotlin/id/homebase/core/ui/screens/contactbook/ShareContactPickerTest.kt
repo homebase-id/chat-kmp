@@ -2,6 +2,8 @@
 
 package id.homebase.core.ui.screens.contactbook
 
+import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.util.codePointCount
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
@@ -29,6 +31,7 @@ class ShareContactPickerTest {
         email: String? = null,
         additionalEmails: List<String> = emptyList(),
         odinId: String? = null,
+        imagePayload: PayloadDescriptor? = null,
     ) = ContactBookEntry(
         uniqueId = Uuid.random(),
         fileId = Uuid.random(),
@@ -41,7 +44,14 @@ class ShareContactPickerTest {
         email = email,
         additionalPhones = additionalPhones,
         additionalEmails = additionalEmails,
+        imagePayload = imagePayload,
     )
+
+    private fun review(entry: ContactBookEntry): ContactCardReview =
+        ContactCardReview.from(entry, assertNotNull(ContactCardImport.toDescriptor(entry)))
+
+    private fun ContactCardReview.toggleValue(value: String): ContactCardReview =
+        toggle(fields.indexOfFirst { it.value == value })
 
     @Test
     fun `collapses the primary and additional slots into one list each`() {
@@ -227,5 +237,120 @@ class ShareContactPickerTest {
         assertEquals(1, shareContactCandidates(entries, "ada.example.com").size)
         assertEquals(2, shareContactCandidates(entries, "").size)
         assertEquals(0, shareContactCandidates(entries, "nobody").size)
+    }
+
+    @Test
+    fun `a review with everything checked sends exactly what the picker would have sent`() {
+        val entry = entry(
+            phone = "+14155550123",
+            email = "ada@example.com",
+            odinId = "ada.example.com",
+        ).withOverride(
+            ContactFieldOverlay(
+                organization = "Vance Labs",
+                additionalPhones = listOf("+14155550124"),
+            ),
+        )
+        val asPickedToday = assertNotNull(ContactCardImport.toDescriptor(entry))
+
+        assertEquals(asPickedToday, review(entry).toDescriptor())
+    }
+
+    @Test
+    fun `deselecting one phone drops only that value and keeps the rest in order`() {
+        val entry = entry(
+            phone = "+14155550123",
+            additionalPhones = listOf("+14155550124", "+14155550125"),
+        )
+
+        val descriptor = review(entry).toggleValue("+14155550124").toDescriptor()
+
+        assertEquals(listOf("+14155550123", "+14155550125"), descriptor.phones)
+    }
+
+    @Test
+    fun `deselecting the organization and one email clears just those`() {
+        val entry = entry(phone = "+14155550123", email = "ada@example.com").withOverride(
+            ContactFieldOverlay(
+                organization = "Vance Labs",
+                additionalEmails = listOf("ada.vance@work.example"),
+            ),
+        )
+
+        val descriptor = review(entry)
+            .toggleValue("Vance Labs")
+            .toggleValue("ada@example.com")
+            .toDescriptor()
+
+        assertEquals("", descriptor.organization)
+        assertEquals(listOf("ada.vance@work.example"), descriptor.emails)
+        assertEquals(listOf("+14155550123"), descriptor.phones)
+    }
+
+    @Test
+    fun `deselecting the identity drops it from the card`() {
+        val entry = entry(phone = "+14155550123", odinId = "ada.example.com")
+
+        val descriptor = review(entry).toggleValue("ada.example.com").toDescriptor()
+
+        assertEquals("", descriptor.odinId)
+        assertNull(descriptor.identity())
+    }
+
+    @Test
+    fun `nothing checked cannot be sent`() {
+        val entry = entry(phone = "+14155550123", email = "ada@example.com")
+        val nothing = review(entry).let { start ->
+            start.fields.indices.fold(start) { acc, index -> acc.toggle(index) }
+        }
+
+        assertEquals(0, nothing.selectedCount)
+        assertFalse(nothing.canSend, "A card with no values renders as bare initials on the receiver.")
+        assertTrue(review(entry).canSend)
+    }
+
+    @Test
+    fun `a name-only contact stays sendable because there is nothing to deselect`() {
+        val review = review(entry())
+
+        assertTrue(review.fields.isEmpty())
+        assertTrue(review.canSend)
+    }
+
+    @Test
+    fun `an edited name reaches the card and leaves the contact book row alone`() {
+        val entry = entry(phone = "+14155550123")
+        val descriptor = review(entry).copy(displayName = "Mum").toDescriptor()
+
+        assertEquals("Mum", descriptor.displayName)
+        // Otherwise the receiver saves "Ada Vance" from the structured name and the rename is lost.
+        assertEquals("", descriptor.givenName)
+        assertEquals("", descriptor.surname)
+        assertEquals("Ada Vance", entry.displayName)
+        assertEquals("Ada", entry.givenName)
+    }
+
+    @Test
+    fun `an emoji name over the cap truncates on a code point boundary`() {
+        val entry = entry(phone = "+14155550123")
+        val long = "\uD83D\uDE00".repeat(ContactCardDescriptor.MAX_NAME_CODEPOINTS + 20)
+
+        val descriptor = review(entry).copy(displayName = long).toDescriptor()
+
+        assertEquals(ContactCardDescriptor.MAX_NAME_CODEPOINTS, descriptor.displayName.codePointCount())
+        assertEquals("\uD83D\uDE00".repeat(ContactCardDescriptor.MAX_NAME_CODEPOINTS), descriptor.displayName)
+        assertFalse(descriptor.displayName.last().isSurrogate() && descriptor.displayName.last().isHighSurrogate())
+        assertTrue(descriptor.isValid())
+    }
+
+    @Test
+    fun `the photo rides along by default and can be left off`() {
+        val withPhoto = entry(phone = "+14155550123", imagePayload = PayloadDescriptor(key = "prfl_pic"))
+        val review = review(withPhoto)
+
+        assertTrue(review.hasPhoto)
+        assertTrue(review.includePhoto)
+        assertFalse(review.copy(includePhoto = false).includePhoto)
+        assertFalse(review(entry(phone = "+14155550123")).hasPhoto)
     }
 }
