@@ -14,7 +14,14 @@ import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
  * because they mean different things to the ladder.
  */
 data class ReviewCircleGroups(
-    /** Circles the user curates. The ordinary case. */
+    /**
+     * Circles the user curates. The ordinary case.
+     *
+     * Over-full until odin-core sets Designation truthfully: every app seeds its capability
+     * circles (Webdrop, Vault, Recovery, SocialSync) at the Personal default, so they land here
+     * beside Friends. Filtering them out client-side would need an app-id allowlist, which is the
+     * hardcoded knowledge #1688 removed — so this waits for the designations instead.
+     */
     val yours: List<ContactCircleUi> = emptyList(),
     /** Circles that grant more than visibility, so they get their own heading and caption. */
     val special: List<ContactCircleUi> = emptyList(),
@@ -59,6 +66,11 @@ private fun RedactedCircleDefinition.toUi(debugWhy: String? = null) =
 private fun RedactedCircleDefinition.debugWhyAppCircle(): String =
     "GrantOn=$grantOn · Designation=$designation · appId=${appId?.toString()?.take(8) ?: "none"}"
 
+// TODO(circles-visibility): debug annotation, remove before shipping. Same purpose as the app
+//  circle note -- names the owner so the ownership filter can be checked against a real server.
+private fun RedactedCircleDefinition.debugWhyYourCircle(): String =
+    "GrantOn=$grantOn · owner=${appId?.toString()?.take(8) ?: "you"}"
+
 /** Emergency Location Access is user-assigned like any personal circle, but grants location. */
 private fun RedactedCircleDefinition.isSpecialAccessCircle(): Boolean =
     id.equals(EMERGENCY_LOCATION_CIRCLE_ID, ignoreCase = true)
@@ -73,7 +85,7 @@ fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
     return ReviewCircleGroups(
         yours = personal
             .filter { !it.isSpecialAccessCircle() && it.grantOn == CircleGrantOn.None }
-            .map { it.toUi() },
+            .map { it.toUi(debugWhy = it.debugWhyYourCircle()) },
         special = personal.filter { it.isSpecialAccessCircle() }.map { it.toUi() },
         appDefaults = personal
             .filter { !it.isSpecialAccessCircle() && it.grantOn == CircleGrantOn.Review }

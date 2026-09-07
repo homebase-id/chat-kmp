@@ -120,6 +120,8 @@ fun ReviewConnectionSheet(
                     alreadyHeldCircleIds = alreadyHeldCircleIds,
                     enabled = !isSubmitting,
                     onToggle = toggle,
+                    // TODO(circles-visibility): debug only, remove before shipping.
+                    showDebugWhy = true,
                 )
             }
 
@@ -244,6 +246,8 @@ private fun CircleGroup(
     enabled: Boolean,
     onToggle: (String) -> Unit,
     caption: String? = null,
+    // TODO(circles-visibility): debug only, remove before shipping.
+    showDebugWhy: Boolean = false,
 ) {
     Spacer(modifier = Modifier.height(16.dp))
     Text(text = title, style = MaterialTheme.typography.labelLarge)
@@ -255,7 +259,7 @@ private fun CircleGroup(
         )
     }
     Spacer(modifier = Modifier.height(8.dp))
-    CircleChips(circles, selected, alreadyHeldCircleIds, enabled, onToggle)
+    CircleChips(circles, selected, alreadyHeldCircleIds, enabled, onToggle, showDebugWhy)
 }
 
 /**

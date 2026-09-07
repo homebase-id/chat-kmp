@@ -8,6 +8,8 @@ import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.common.OdinId
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.ui.screens.contactbook.blocksUnreview
+import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.contactStateOf
 import id.homebase.core.ui.screens.contactbook.isPersonalCircle
@@ -112,5 +114,54 @@ class ContactStateTest {
     fun audienceAndVendorCirclesNeverCount() {
         assertFalse(circle(designation = CircleDesignation.Audience).isPersonalCircle())
         assertFalse(circle(designation = CircleDesignation.Vendor).isPersonalCircle())
+    }
+}
+
+/**
+ * Pinned against `ClearReviewAsync` rather than against [isPersonalCircle]: the two differ on
+ * OwnFlowConnect, and a client that guesses wrong offers an un-review the server refuses.
+ */
+class UnreviewBlockingTest {
+
+    private fun circle(
+        id: String = "aa",
+        grantOn: CircleGrantOn = CircleGrantOn.None,
+        designation: CircleDesignation = CircleDesignation.Personal,
+    ) = RedactedCircleDefinition(id = id, name = "c", grantOn = grantOn, designation = designation)
+
+    @Test
+    fun aPersonalCircleBlocks() {
+        assertTrue(circle().blocksUnreview())
+    }
+
+    @Test
+    fun aReviewCircleBlocks() {
+        assertTrue(circle(grantOn = CircleGrantOn.Review).blocksUnreview())
+    }
+
+    /** The server's one carve-out: Connect, and only Connect. */
+    @Test
+    fun anAutoConnectCircleDoesNotBlock() {
+        assertFalse(circle(grantOn = CircleGrantOn.Connect).blocksUnreview())
+    }
+
+    /** Where this parts company with isPersonalCircle — the server has no such carve-out. */
+    @Test
+    fun anOwnFlowConnectCircleBlocksEvenThoughItIsNotAPersonalCircleHere() {
+        val vendor = circle(grantOn = CircleGrantOn.OwnFlowConnect)
+
+        assertTrue(vendor.blocksUnreview())
+        assertFalse(vendor.isPersonalCircle())
+    }
+
+    @Test
+    fun systemCirclesAreSkipped() {
+        assertFalse(circle(id = AUTO_CONNECTIONS_CIRCLE_ID).blocksUnreview())
+        assertFalse(circle(id = CONFIRMED_CONNECTIONS_CIRCLE_ID).blocksUnreview())
+    }
+
+    @Test
+    fun anAudienceCircleDoesNotBlock() {
+        assertFalse(circle(designation = CircleDesignation.Audience).blocksUnreview())
     }
 }
