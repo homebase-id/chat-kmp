@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
@@ -105,9 +106,16 @@ class ConversationStream(
         _shareableConversations.asStateFlow()
 
     // Archived / left / removed threads are counted, matching the per-row unread badge.
+    // Gated on hasUnreadCounts: before that pass every item reads 0, and emitting it would
+    // blank the app-icon badge on each cold start until the enrichment lands.
     val totalUnreadCount: Flow<Int> = conversations
-        .map { data -> data.items.sumOf { it.unreadCount } }
+        .filter { it.enrichment.hasUnreadCounts }
+        .map(::sumUnread)
         .distinctUntilChanged()
+
+    /** Latest unread total, or null before the unread enrichment pass has run. */
+    fun currentUnreadTotal(): Int? =
+        conversations.value.takeIf { it.enrichment.hasUnreadCounts }?.let(::sumUnread)
 
     // region Recovery: missing or deleted conversation file
     /** Hook for explicit (non-sync) conversation recovery.
@@ -1619,6 +1627,8 @@ class ConversationStream(
         }
     }
 }
+
+private fun sumUnread(data: ConversationsData): Int = data.items.sumOf { it.unreadCount }
 
 data class ConversationsData(
     val dataReady: Boolean = true,

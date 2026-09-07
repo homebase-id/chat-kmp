@@ -260,8 +260,7 @@ class NotificationService(
      */
     private fun clearConversationNotifications(conversationId: String) {
         counts.clear(conversationId)
-        val (messageId, summaryId) = conversationNotificationIds(conversationId)
-        BadgeManager.cancelConversationNotifications(messageId, summaryId)
+        BadgeManager.cancelConversationNotifications(conversationId)
     }
 
     /** Logout: clear all accumulated per-conversation counts and reset the chime cooldown. */
@@ -495,9 +494,9 @@ class NotificationService(
                 } else if (Platform.osName.contains("iOS", ignoreCase = true) ||
                     Platform.osName.contains("iPadOS", ignoreCase = true)
                 ) {
-                    // iOS: Notification Service Extension handles background display;
-                    // posting here would create a duplicate notification.
-                    BadgeManager.increment()
+                    // iOS: the Notification Service Extension owns both the visible
+                    // notification and the badge. It runs for every mutable-content push
+                    // whether or not this process is alive, so counting here double-counts.
                 } else {
                     // Android + Desktop (Windows/macOS/Linux): display rich notification
                     // from app code. On desktop this routes through Nucleus via
