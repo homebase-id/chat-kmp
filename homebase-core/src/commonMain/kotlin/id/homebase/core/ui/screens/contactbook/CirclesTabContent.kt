@@ -24,7 +24,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.resources.MR
-import id.homebase.resources.contactbook_circle_unvetted
+import id.homebase.resources.contactbook_circle_new
 import id.homebase.resources.contactbook_circles_empty
 import org.jetbrains.compose.resources.stringResource
 
@@ -54,8 +54,8 @@ fun CirclesTabContent(
 
         else -> {
             // Client-side display override only — the auto-connected system circle keeps its
-            // server-side name/id, we just relabel it "Unvetted" here.
-            val unvettedName = stringResource(MR.string.contactbook_circle_unvetted)
+            // server-side name/id, we just relabel it "New" here.
+            val newName = stringResource(MR.string.contactbook_circle_new)
             LazyColumn(
                 modifier = modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
@@ -63,7 +63,7 @@ fun CirclesTabContent(
                 items(circles, key = { it.circle.id }) { circle ->
                     val description = circle.circle.description
                     val displayName = if (circle.circle.id == AUTO_CONNECTIONS_CIRCLE_ID) {
-                        unvettedName
+                        newName
                     } else {
                         circle.circle.name
                     }

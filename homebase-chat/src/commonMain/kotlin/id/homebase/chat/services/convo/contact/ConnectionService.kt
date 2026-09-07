@@ -301,6 +301,33 @@ class ConnectionService(
     }
 
     /**
+     * Record the owner's review of [odinId] and enrol [circleIds], in one server call.
+     *
+     * Additive and idempotent — nothing is revoked and a circle already held is a no-op, so a
+     * failed call is safe to retry whole. An empty [circleIds] is the "chat only" outcome, not a
+     * skipped review.
+     *
+     * Refreshes after, so the stamp and the new memberships land together rather than the state
+     * flickering through a half-applied review while the debounced websocket refresh catches up.
+     */
+    suspend fun reviewConnection(odinId: OdinId, circleIds: List<Uuid> = emptyList()) {
+        provider.reviewConnection(odinId, circleIds)
+        refresh()
+    }
+
+    /**
+     * Clear [odinId]'s review stamp, dropping them back to New.
+     *
+     * Withdraws the vouching only — every circle and grant they hold survives. Rejected with
+     * [id.homebase.api.client.OdinClientErrorCode.CannotClearReviewWhilePersonalCircleMember]
+     * while they still hold a review-granted personal circle; remove them from it first.
+     */
+    suspend fun clearConnectionReview(odinId: OdinId) {
+        provider.clearConnectionReview(odinId)
+        refresh()
+    }
+
+    /**
      * Live per-contact fan-out to find who currently has [circleId] sealed as a pending deposit
      * (`accessGrant.pendingCircleIds`) rather than a real member — there is no bulk "list
      * pending members of a circle" endpoint, so this is the only way to learn it, for ANY

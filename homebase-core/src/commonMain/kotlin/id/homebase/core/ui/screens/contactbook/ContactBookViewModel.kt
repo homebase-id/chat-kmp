@@ -16,6 +16,7 @@ import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
@@ -225,14 +226,29 @@ class ContactBookViewModel(
             .filterValues { it.status == ConnectionStatus.Connected }
         val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
 
-        // Unvetted = connected but not reviewed. The stamp rides with the connection data itself,
-        // so this needs no circle load/fallback. It is a full complement over connected
-        // identities, not just auto-connected/introduced — a plain direct connection that was
-        // never reviewed is unvetted too.
-        val confirmedDomains = connectedRegs.filterValues { it.isReviewed() }
-            .keys.map { it.domainName.lowercase() }
-            .toSet()
-        val unvettedDomains = connectedDomains - confirmedDomains
+        // The three states need both halves — the review stamp AND personal-circle membership —
+        // so nothing is classified until the circles have loaded. Guessing from the stamp alone
+        // would show every circle member as Chat for a moment and then flip them, which reads as
+        // the app changing its mind about who the user trusts.
+        val personalCirclesByDomain = buildMap<String, MutableList<RedactedCircleDefinition>> {
+            circlesData.circles
+                .filter { it.circle.isPersonalCircle() }
+                .forEach { cwm ->
+                    cwm.members.forEach { member ->
+                        getOrPut(member.domainName.lowercase()) { mutableListOf() }.add(cwm.circle)
+                    }
+                }
+        }
+        val contactStates = if (circlesData.loading) {
+            emptyMap()
+        } else {
+            connectedRegs.entries.mapNotNull { (odinId, reg) ->
+                val domain = odinId.domainName.lowercase()
+                contactStateOf(reg, personalCirclesByDomain[domain].orEmpty())?.let { domain to it }
+            }.toMap()
+        }
+        fun domainsInState(state: ContactState) =
+            contactStates.filterValues { it == state }.keys
 
         // contact-domain (lowercase) → saved contact entry, for resolving requests/introducers.
         val contactsByOdin = overriddenContacts
@@ -258,13 +274,14 @@ class ContactBookViewModel(
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        val unvetted = entriesForDomains(unvettedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
+        fun entriesInState(state: ContactState) =
+            entriesForDomains(domainsInState(state), overriddenContacts)
+                .filter { it.matches(ui.query) }
+                .sortedBy { it.sortKey }
 
-        val vetted = entriesForDomains(confirmedDomains, overriddenContacts)
-            .filter { it.matches(ui.query) }
-            .sortedBy { it.sortKey }
+        val newContacts = entriesInState(ContactState.New)
+        val chatContacts = entriesInState(ContactState.Chat)
+        val circleContacts = entriesInState(ContactState.Circle)
 
         // Pending connection requests, projected onto contact entries the same way Unvetted is:
         // reuse the saved contact when we have one, else a synthetic display-only entry for the
@@ -294,10 +311,15 @@ class ContactBookViewModel(
             contacts = all,
             totalCount = all.size,
             connectedOdinIds = connectedDomains,
-            unvetted = unvetted,
-            vetted = vetted,
+            newContacts = newContacts,
+            chatContacts = chatContacts,
+            circleContacts = circleContacts,
+            contactStates = contactStates,
+            statesLoading = circlesData.loading,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
+            assignableCircles = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
+                .assignableCircles(),
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
             circleMembers = circlesData.members,
@@ -393,12 +415,53 @@ class ContactBookViewModel(
                 viewModelScope.launch { repo.sync(OdinId(odinId)) }
             }
             ContactBookUiAction.CloseOverlay -> _overlay.value = null
+            is ContactBookUiAction.ReviewClicked -> openReview(action.entry)
+            is ContactBookUiAction.ReviewSubmitted -> handleReview(action.entry, action.circleIds)
 
             ContactBookUiAction.OnboardingGetStarted ->
                 viewModelScope.launch { preferences.setOnboardingComplete(true) }
             ContactBookUiAction.OnboardingSkip -> viewModelScope.launch {
                 preferences.setOnboardingComplete(true)
                 _events.tryEmit(ContactBookUiEvent.CloseOnboarding)
+            }
+        }
+    }
+
+    private fun openReview(entry: ContactBookEntry) {
+        val domain = entry.odinId?.lowercase() ?: return
+        _overlay.value = ContactBookOverlay.Review(
+            entry = entry,
+            introducedBy = connectionService.connections.value.map
+                .entries.firstOrNull { it.key.domainName.lowercase() == domain }
+                ?.value?.introducerOdinId?.domainName,
+            alreadyHeldCircleIds = _circles.value
+                .filter { cwm -> cwm.members.any { it.domainName.lowercase() == domain } }
+                .map { it.circle.id }
+                .toSet(),
+        )
+    }
+
+    /**
+     * One call stamps the review and enrols the picked circles. Failure keeps the sheet open with
+     * the error rather than dropping the user's selection — the call is idempotent, so retrying
+     * the whole thing is safe.
+     */
+    private fun handleReview(entry: ContactBookEntry, circleIds: Set<String>) {
+        val odinId = entry.odinId ?: return
+        val current = _overlay.value as? ContactBookOverlay.Review ?: return
+        _overlay.value = current.copy(isSubmitting = true, failed = false)
+        viewModelScope.launch {
+            try {
+                connectionService.reviewConnection(
+                    OdinId(odinId),
+                    circleIds.map { Uuid.parseHex(it) },
+                )
+                _overlay.value = null
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Review of $odinId failed" }
+                _overlay.value = current.copy(isSubmitting = false, failed = true)
             }
         }
     }

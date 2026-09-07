@@ -75,6 +75,8 @@ import id.homebase.resources.contactbook_tab_contacts
 import id.homebase.resources.clear_input
 import id.homebase.resources.menu_back
 import id.homebase.resources.search
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
+import id.homebase.resources.contact_review_failed
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -305,6 +307,20 @@ fun ContactBookScreen(
             onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
             odinIdLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
         )
+
+        is ContactBookOverlay.Review -> ReviewConnectionSheet(
+            displayName = overlay.entry.displayName,
+            introducedBy = overlay.introducedBy,
+            circles = uiState.assignableCircles,
+            alreadyHeldCircleIds = overlay.alreadyHeldCircleIds,
+            isSubmitting = overlay.isSubmitting,
+            errorText = if (overlay.failed) stringResource(MR.string.contact_review_failed) else null,
+            onSubmit = { ids ->
+                viewModel.onAction(ContactBookUiAction.ReviewSubmitted(overlay.entry, ids))
+            },
+            onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
+        )
+
         null -> {}
     }
 

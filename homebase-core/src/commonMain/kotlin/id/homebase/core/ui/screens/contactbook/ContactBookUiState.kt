@@ -7,6 +7,7 @@ import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
+import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 
 /** The two sections of the unified Contacts screen. */
 enum class ContactTab { CONTACTS, CIRCLES }
@@ -18,7 +19,7 @@ enum class ContactTab { CONTACTS, CIRCLES }
  * Pending connection requests are no longer a pill — they surface as a section at the top of
  * the list instead (see [ContactBookUiState.requests]).
  */
-enum class ContactFilter { ALL, UNVETTED, VETTED }
+enum class ContactFilter { ALL, NEW, CHAT, CIRCLES }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -83,6 +84,18 @@ enum class CircleMemberStatus { Member, Pending }
 sealed interface ContactBookOverlay {
     /** Create ([entry] == null) or edit an existing contact. */
     data class Edit(val entry: ContactBookEntry?) : ContactBookOverlay
+
+    /**
+     * Review a New connection. [alreadyHeldCircleIds] renders as selected-and-locked: the review
+     * only ever grants, so a circle they already hold is not something this sheet can take away.
+     */
+    data class Review(
+        val entry: ContactBookEntry,
+        val introducedBy: String? = null,
+        val alreadyHeldCircleIds: Set<String> = emptySet(),
+        val isSubmitting: Boolean = false,
+        val failed: Boolean = false,
+    ) : ContactBookOverlay
 }
 
 /** Editable form fields for create/edit. */
@@ -144,15 +157,23 @@ data class ContactBookUiState(
     val totalCount: Int = 0,
     /** Domains (lowercased) that are connected — drives the "connected" badge. */
     val connectedOdinIds: Set<String> = emptySet(),
-    /** Unvetted filter: connected but not confirmed (server-computed `vetted` flag is false). */
-    val unvetted: List<ContactBookEntry> = emptyList(),
-    /** Vetted filter: connected AND confirmed (server-computed `vetted` flag is true). */
-    val vetted: List<ContactBookEntry> = emptyList(),
+    /** New filter: connected, never reviewed. */
+    val newContacts: List<ContactBookEntry> = emptyList(),
+    /** Chat filter: reviewed, holding no personal circle. */
+    val chatContacts: List<ContactBookEntry> = emptyList(),
+    /** Circles filter: in at least one personal circle, which implies reviewed. */
+    val circleContacts: List<ContactBookEntry> = emptyList(),
+    /** Per-domain (lowercased) contact state, for the row's trailing state icon. */
+    val contactStates: Map<String, ContactState> = emptyMap(),
+    /** True until the circle memberships the three states need have loaded. */
+    val statesLoading: Boolean = false,
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
     /** Count of incoming connection requests, unfiltered by search. */
     val incomingRequestCount: Int = 0,
+    /** Circles the review sheet offers — user circles only, A–Z. */
+    val assignableCircles: List<ContactCircleUi> = emptyList(),
     /** Circles tab. */
     val circles: List<CircleWithMembers> = emptyList(),
     val circlesLoading: Boolean = false,
@@ -187,6 +208,15 @@ sealed interface ContactBookUiAction {
     data class ContactClicked(val entry: ContactBookEntry) : ContactBookUiAction
     data object AddClicked : ContactBookUiAction
     data class EditClicked(val entry: ContactBookEntry) : ContactBookUiAction
+
+    /** Open the review sheet for a New connection. */
+    data class ReviewClicked(val entry: ContactBookEntry) : ContactBookUiAction
+
+    /** Complete the review: stamp it and enrol [circleIds]. Empty = the "chat only" outcome. */
+    data class ReviewSubmitted(
+        val entry: ContactBookEntry,
+        val circleIds: Set<String>,
+    ) : ContactBookUiAction
     data class DeleteClicked(val entry: ContactBookEntry) : ContactBookUiAction
     data class SaveContact(
         val draft: ContactDraft,
