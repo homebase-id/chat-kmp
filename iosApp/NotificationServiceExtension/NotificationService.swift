@@ -59,6 +59,11 @@ class NotificationService: UNNotificationServiceExtension {
             return
         }
 
+        // Before the avatar fetch forks, so all four terminal contentHandler paths carry it.
+        if let badge = incrementSharedBadgeCount() {
+            content.badge = badge
+        }
+
         let unEncryptedMessage = options["unEncryptedMessage"] as? String
         let appDisplayName = payload["appDisplayName"] as? String ?? "Homebase"
 
@@ -128,6 +133,29 @@ class NotificationService: UNNotificationServiceExtension {
         if let contentHandler = contentHandler, let content = bestAttemptContent {
             contentHandler(content)
         }
+    }
+
+    // MARK: - App Icon Badge
+
+    /// Keep in sync with BADGE_COUNT_KEY in BadgeManager.native.kt.
+    private static let badgeCountKey = "unread_badge_count"
+
+    /// Counted here rather than sent as `aps.badge`: the payload already transits the
+    /// Odin.PushNotification relay and Firebase, and the unread total must not join it.
+    ///
+    /// Ceiling: concurrent pushes run concurrent extension processes and this
+    /// read-modify-write is not atomic across them, so a burst can undercount. Survivable
+    /// only because the app rewrites the absolute total on foreground and on every read.
+    private func incrementSharedBadgeCount() -> NSNumber? {
+        // The group id differs between dev and release, so it comes from the
+        // build-setting-expanded Info.plist — a hardcoded literal no-ops on debug.
+        guard let groupId = Bundle.main.infoDictionary?["AppGroupIdentifier"] as? String,
+              let defaults = UserDefaults(suiteName: groupId)
+        else { return nil }
+
+        let next = defaults.integer(forKey: Self.badgeCountKey) + 1
+        defaults.set(next, forKey: Self.badgeCountKey)
+        return NSNumber(value: next)
     }
 
     // MARK: - Communication Notification Style

@@ -15,6 +15,10 @@ actual object BadgeManager {
         badgeCount++
     }
 
+    actual fun setCount(count: Int) {
+        badgeCount = count.coerceAtLeast(0)
+    }
+
     actual fun resetCount() {
         badgeCount = 0
     }

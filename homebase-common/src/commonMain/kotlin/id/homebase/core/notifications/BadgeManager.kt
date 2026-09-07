@@ -5,10 +5,16 @@ expect object BadgeManager {
     fun increment()
 
     /**
-     * Resets the in-memory badge counter to 0 without dismissing any posted
-     * notifications. Use on app resume so the icon-badge total stays accurate
-     * while leaving the tray intact (the user clears notifications per
-     * conversation by tapping or reading them).
+     * Sets the badge to an absolute [count]. On iOS this also rewrites the App Group
+     * value the Notification Service Extension increments from, so the next push counts
+     * up from the app's truth instead of from a drifted running total.
+     */
+    fun setCount(count: Int)
+
+    /**
+     * Clears the badge, leaving posted notifications in the tray. Not the app-resume
+     * path — resuming with messages still unread must keep showing them, so that path
+     * calls [setCount] with the real total.
      */
     fun resetCount()
 
