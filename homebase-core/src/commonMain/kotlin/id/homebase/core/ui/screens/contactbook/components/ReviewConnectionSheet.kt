@@ -8,6 +8,7 @@ import androidx.compose.ui.Alignment
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.resources.contact_review_group_apps
 import id.homebase.resources.contact_review_group_apps_collapse
+import id.homebase.resources.contact_review_group_apps_debug
 import id.homebase.resources.contact_review_group_apps_expand
 import id.homebase.resources.contact_review_group_apps_summary
 import id.homebase.resources.contact_review_group_special
@@ -79,7 +80,9 @@ fun ReviewConnectionSheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var selected by rememberSaveable(displayName) { mutableStateOf(emptySet<String>()) }
+    // App defaults arrive checked: the owning app nominated them, and the review button applies
+    // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
+    var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -107,9 +110,7 @@ fun ReviewConnectionSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            val toggle: (String) -> Unit = { id ->
-                selected = if (id in selected) selected - id else selected + id
-            }
+            val toggle: (String) -> Unit = { id -> selected = groups.toggleSelection(selected, id) }
 
             if (groups.yours.isNotEmpty()) {
                 CircleGroup(
@@ -167,6 +168,12 @@ fun ReviewConnectionSheet(
                         ),
                     )
                 }
+                // TODO(circles-visibility): debug block, remove before shipping.
+                Text(
+                    text = stringResource(MR.string.contact_review_group_apps_debug),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
                 if (expanded) {
                     Spacer(modifier = Modifier.height(8.dp))
                     CircleChips(
@@ -175,6 +182,7 @@ fun ReviewConnectionSheet(
                         alreadyHeldCircleIds = alreadyHeldCircleIds,
                         enabled = !isSubmitting,
                         onToggle = toggle,
+                        showDebugWhy = true,
                     )
                 }
             }
@@ -262,26 +270,38 @@ private fun CircleChips(
     alreadyHeldCircleIds: Set<String>,
     enabled: Boolean,
     onToggle: (String) -> Unit,
+    // TODO(circles-visibility): debug only, remove before shipping.
+    showDebugWhy: Boolean = false,
 ) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         circles.forEach { circle ->
             val held = circle.id in alreadyHeldCircleIds
             val isSelected = held || circle.id in selected
-            FilterChip(
-                selected = isSelected,
-                enabled = !held && enabled,
-                onClick = { onToggle(circle.id) },
-                label = { CircleLabel(emoji = circle.emoji, name = circle.name) },
-                leadingIcon = if (isSelected) {
-                    {
-                        Icon(
-                            Icons.Outlined.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    }
-                } else null,
-            )
+            Column {
+                FilterChip(
+                    selected = isSelected,
+                    enabled = !held && enabled,
+                    onClick = { onToggle(circle.id) },
+                    label = { CircleLabel(emoji = circle.emoji, name = circle.name) },
+                    leadingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                Icons.Outlined.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+                        }
+                    } else null,
+                )
+                val why = circle.debugWhy
+                if (showDebugWhy && why != null) {
+                    Text(
+                        text = why,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
         }
     }
 }

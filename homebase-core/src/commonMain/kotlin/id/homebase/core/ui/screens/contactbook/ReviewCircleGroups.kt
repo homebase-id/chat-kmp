@@ -28,10 +28,36 @@ data class ReviewCircleGroups(
     val isEmpty: Boolean get() = yours.isEmpty() && special.isEmpty() && appDefaults.isEmpty()
 
     fun idsIn(group: List<ContactCircleUi>): Set<String> = group.map { it.id }.toSet()
+
+    /**
+     * What the sheet opens with: the app defaults, checked. The owning app nominated them and the
+     * review button applies "the checked per-app defaults".
+     */
+    fun initialSelection(): Set<String> = idsIn(appDefaults)
+
+    /**
+     * Toggle [id], then hold the invariant that "Chat only" grants nothing: clearing the last
+     * circle the user chose also clears the app defaults riding along with it.
+     *
+     * Turning an app default off directly never cascades — that is the deliberate re-enable the
+     * spec keeps them visible for, in either direction.
+     */
+    fun toggleSelection(current: Set<String>, id: String): Set<String> {
+        val next = if (id in current) current - id else current + id
+        val appDefaultIds = idsIn(appDefaults)
+        return if (id !in appDefaultIds && (next - appDefaultIds).isEmpty()) next - appDefaultIds
+        else next
+    }
 }
 
-private fun RedactedCircleDefinition.toUi() =
-    ContactCircleUi(id = id, name = name, pending = false, emoji = emoji)
+private fun RedactedCircleDefinition.toUi(debugWhy: String? = null) =
+    ContactCircleUi(id = id, name = name, pending = false, emoji = emoji, debugWhy = debugWhy)
+
+// TODO(circles-visibility): debug annotation, remove before shipping. Spells out for each app
+//  circle why the filter put it there, so the classification can be checked against a real
+//  server instead of read off the source.
+private fun RedactedCircleDefinition.debugWhyAppCircle(): String =
+    "GrantOn=$grantOn · Designation=$designation · appId=${appId?.toString()?.take(8) ?: "none"}"
 
 /** Emergency Location Access is user-assigned like any personal circle, but grants location. */
 private fun RedactedCircleDefinition.isSpecialAccessCircle(): Boolean =
@@ -51,6 +77,6 @@ fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
         special = personal.filter { it.isSpecialAccessCircle() }.map { it.toUi() },
         appDefaults = personal
             .filter { !it.isSpecialAccessCircle() && it.grantOn == CircleGrantOn.Review }
-            .map { it.toUi() },
+            .map { it.toUi(debugWhy = it.debugWhyAppCircle()) },
     )
 }

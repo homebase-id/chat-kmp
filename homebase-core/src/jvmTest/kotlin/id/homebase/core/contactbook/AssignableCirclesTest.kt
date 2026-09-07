@@ -6,6 +6,8 @@ import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
+import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
@@ -157,5 +159,52 @@ class ReviewCircleGroupsTest {
         ).reviewCircleGroups()
 
         assertTrue(groups.isEmpty)
+    }
+}
+
+class ReviewSelectionTest {
+
+    private fun ui(id: String) = ContactCircleUi(id = id, name = id, pending = false)
+
+    private val groups = ReviewCircleGroups(
+        yours = listOf(ui("friends"), ui("family")),
+        special = listOf(ui("emergency")),
+        appDefaults = listOf(ui("moments"), ui("feed")),
+    )
+
+    /** The app nominated them, so the review opens with them checked. */
+    @Test
+    fun theSheetOpensWithTheAppDefaultsChecked() {
+        assertEquals(setOf("moments", "feed"), groups.initialSelection())
+    }
+
+    /** "Chat only" has to grant nothing, so the defaults cannot ride along on an empty review. */
+    @Test
+    fun clearingTheLastChosenCircleAlsoClearsTheAppDefaults() {
+        val picked = groups.toggleSelection(groups.initialSelection(), "friends")
+        assertEquals(setOf("moments", "feed", "friends"), picked)
+
+        assertEquals(emptySet(), groups.toggleSelection(picked, "friends"))
+    }
+
+    @Test
+    fun clearingOneOfSeveralChosenCirclesLeavesTheDefaultsAlone() {
+        val picked = setOf("moments", "feed", "friends", "family")
+
+        assertEquals(setOf("moments", "feed", "friends"), groups.toggleSelection(picked, "family"))
+    }
+
+    /** Special access is a chosen circle like any other, so it holds the defaults on its own. */
+    @Test
+    fun specialAccessCountsAsAChosenCircle() {
+        val picked = groups.toggleSelection(groups.initialSelection(), "emergency")
+
+        assertEquals(setOf("moments", "feed", "emergency"), picked)
+    }
+
+    /** Turning a default off directly is the deliberate opt-out, and cascades to nothing. */
+    @Test
+    fun turningAnAppDefaultOffNeverCascades() {
+        assertEquals(setOf("feed"), groups.toggleSelection(setOf("moments", "feed"), "moments"))
     }
 }

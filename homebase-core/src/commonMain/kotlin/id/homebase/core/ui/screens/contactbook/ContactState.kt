@@ -33,8 +33,8 @@ enum class ContactState {
  * circles are auto-connect carriers. A [CircleGrantOn.Review] circle does count — it is granted by
  * the owner's own review, which is exactly the act this state reports.
  *
- * Distinct from [isUserCircle], which is the narrower "can the user add someone to this by hand"
- * and additionally excludes review circles.
+ * Also the "can be assigned by hand" set: a review circle is chosen by the owner, so nothing
+ * stops it being chosen from a picker too.
  */
 fun RedactedCircleDefinition.isPersonalCircle(): Boolean =
     !disabled &&
@@ -42,6 +42,18 @@ fun RedactedCircleDefinition.isPersonalCircle(): Boolean =
         grantOn != CircleGrantOn.Connect &&
         grantOn != CircleGrantOn.OwnFlowConnect &&
         !isLegacySystemCircleId(id)
+
+/**
+ * True for a circle nobody chose to join: enrolment happens without the owner present. Not
+ * hand-assignable — adding or removing a member by hand means nothing when the app re-enrols them.
+ *
+ * The legacy pair are here because they are auto-connect carriers, and odin-core leaves them at
+ * [CircleGrantOn.None] owned by no app, so nothing derivable identifies them.
+ */
+fun RedactedCircleDefinition.isAmbientCircle(): Boolean =
+    grantOn == CircleGrantOn.Connect ||
+        grantOn == CircleGrantOn.OwnFlowConnect ||
+        isLegacySystemCircleId(id)
 
 /** The contact's personal-circle memberships — the list the circle pills render. */
 fun CircleMembershipState.personalCirclesFor(odinId: String): List<RedactedCircleDefinition> =

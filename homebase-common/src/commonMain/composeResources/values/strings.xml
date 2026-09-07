@@ -1814,6 +1814,8 @@
     <string name="contact_review_group_apps_summary">%1$s</string>
     <string name="contact_review_group_apps_expand">Show app defaults</string>
     <string name="contact_review_group_apps_collapse">Hide app defaults</string>
+    <!-- TODO(circles-visibility): debug strings, remove before shipping. -->
+    <string name="contact_review_group_apps_debug">TODO: a circle lands here when GrantOn = Review — the owning app nominated it and the review pre-checks it. Ambient circles (Connect, OwnFlowConnect), the legacy system circles, and anything not designated Personal are excluded.</string>
     <string name="contact_review_action">Review</string>
     <string name="contact_review_failed">Couldn't save the review. Please try again.</string>
 

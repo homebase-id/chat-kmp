@@ -23,19 +23,13 @@ fun isLegacySystemCircleId(id: String): Boolean =
         id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
 
 /**
- * True for a circle the user can add someone to by hand: a personal circle with no enrolment of
- * its own. Audience and vendor circles belong to the app that owns them and are invisible here —
- * a feed subscriber or a bank must never render as a contact's circle.
- *
- * Narrower than [isPersonalCircle], which also counts review-granted circles toward
- * [ContactState.Circle]; those are enrolled through the review, not picked from a list.
- */
-fun RedactedCircleDefinition.isUserCircle(): Boolean =
-    isPersonalCircle() && grantOn == CircleGrantOn.None
-
-/**
- * Every user circle the signed-in user could add a contact to — independent of any contact's
+ * Every circle the signed-in user could add a contact to — independent of any contact's
  * membership. Unnamed circles are excluded; the result is deduped by id and sorted A–Z.
+ *
+ * This is [isPersonalCircle], not the narrower "no enrolment of its own": a review circle is
+ * chosen by the owner, and accepting an incoming request *is* a review, so it belongs in the
+ * picker on that surface. Only ambient circles are withheld — hand-managing one means nothing
+ * when the app re-enrols the member anyway.
  *
  * Feeds the accept-with-circles picker on both incoming-request surfaces (contact detail's
  * [id.homebase.core.ui.screens.contactbook.detail.PendingRequestProfile] and the Add Contact
@@ -44,7 +38,7 @@ fun RedactedCircleDefinition.isUserCircle(): Boolean =
 fun CircleMembershipState.assignableCircles(): List<ContactCircleUi> =
     circles
         .map { it.circle }
-        .filter { it.isUserCircle() }
+        .filter { it.isPersonalCircle() }
         .filter { it.name.isNotBlank() }
         .map { ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji) }
         .distinctBy { it.id.lowercase() }

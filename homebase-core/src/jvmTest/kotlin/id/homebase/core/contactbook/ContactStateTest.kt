@@ -11,7 +11,7 @@ import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.contactStateOf
 import id.homebase.core.ui.screens.contactbook.isPersonalCircle
-import id.homebase.core.ui.screens.contactbook.isUserCircle
+import id.homebase.core.ui.screens.contactbook.isAmbientCircle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -89,13 +89,23 @@ class ContactStateTest {
         assertFalse(circle(id = AUTO_CONNECTIONS_CIRCLE_ID).isPersonalCircle())
     }
 
-    /** A review circle is granted by the owner's own review, which is exactly what ⭕ reports. */
+    /**
+     * A review circle is granted by the owner's own review, which is exactly what ⭕ reports — and
+     * being the owner's choice, it is assignable by hand too. Only ambient circles are withheld.
+     */
     @Test
-    fun aReviewCircleCountsTowardCircleStateButIsNotHandAssignable() {
+    fun aReviewCircleCountsTowardCircleStateAndIsHandAssignable() {
         val moments = circle(grantOn = CircleGrantOn.Review)
 
         assertTrue(moments.isPersonalCircle())
-        assertFalse(moments.isUserCircle())
+        assertFalse(moments.isAmbientCircle())
+    }
+
+    @Test
+    fun ambientCirclesAreNotHandAssignable() {
+        assertTrue(circle(grantOn = CircleGrantOn.Connect).isAmbientCircle())
+        assertTrue(circle(grantOn = CircleGrantOn.OwnFlowConnect).isAmbientCircle())
+        assertTrue(circle(id = AUTO_CONNECTIONS_CIRCLE_ID).isAmbientCircle())
     }
 
     @Test

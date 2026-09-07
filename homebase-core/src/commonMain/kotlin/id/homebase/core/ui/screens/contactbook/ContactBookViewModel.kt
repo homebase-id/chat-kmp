@@ -547,9 +547,10 @@ class ContactBookViewModel(
         // sheet stale, #1096).
         val domains = circle.members.map { it.domainName }.toSet()
         val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
-        // App default circles are enrolled by their owning app, not manually curated — hide the
-        // add/remove affordances for those, editable for the rest.
-        val manageable = !circle.circle.isAppDefaultCircle()
+        // Ambient circles are enrolled with no owner present, so hand-managing a member means
+        // nothing — the app re-enrols them. A review circle is the owner's own choice and stays
+        // editable.
+        val manageable = !circle.circle.isAmbientCircle()
         _circleMembers.value = CircleMembersUi(
             circleId = circle.circle.id,
             circleName = circle.circle.name,
