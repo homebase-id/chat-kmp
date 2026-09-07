@@ -6,6 +6,7 @@ import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.DriveOutboxUploader
 import id.homebase.api.client.drives.files.SendReadReceiptByFileIdsOutboxRequest
+import id.homebase.api.client.drives.files.reactions.SetReactionsOutboxRequest
 import id.homebase.api.client.drives.files.reactions.ToggleReactionOutboxRequest
 import id.homebase.api.client.notifications.CancelScheduledPushRequest
 import id.homebase.api.client.notifications.ScheduledPushOutboxUploader
@@ -47,6 +48,7 @@ private fun uploadTypeName(t: Long): String = when (t) {
     DriveOutboxUploader.SendReadReceiptByFileIds -> "SendReadReceiptByFileIds"
     DriveOutboxUploader.ToggleReaction -> "ToggleReaction"
     DriveOutboxUploader.DeleteFilesByGroupId -> "DeleteFilesByGroupId"
+    DriveOutboxUploader.SetReactions -> "SetReactions"
     else -> "Unknown"
 }
 
@@ -814,6 +816,29 @@ class OutboxSync(
         sendNow,
     )
 
+    /**
+     * One row per [uniqueId] (a per-scope key derived by the caller): a newer set-state for
+     * the same scope supersedes a pending one instead of queueing behind it, so rapid taps
+     * converge on the last state and a backed-off stale row can never replay over a fresh one.
+     */
+    public suspend fun replaceEnqueue(
+        request: SetReactionsOutboxRequest,
+        uniqueId: Uuid,
+        priority: Long = 100,
+        dependencyUniqueId: Uuid? = null,
+        sendNow: Boolean = true
+    ): EnqueueResult = kickIfEnqueued(
+        replaceEnqueue(
+            driveId = request.driveId,
+            uniqueId = uniqueId,
+            dependencyUniqueId = dependencyUniqueId,
+            priority = priority,
+            uploadType = DriveOutboxUploader.SetReactions,
+            json = OdinSystemSerializer.serialize(request)
+        ),
+        sendNow,
+    )
+
     public suspend fun tryEnqueue(
         request: SendReadReceiptByFileIdsOutboxRequest,
         priority: Long = 100,
@@ -859,6 +884,13 @@ class OutboxSync(
                     "for uniqueId=$uniqueId — would strand the un-sent create."
             )
             return EnqueueResult.WouldStrandCreate
+        }
+        if (existing != null) {
+            Logger.i(
+                "OutboxSync: replaceEnqueue superseding pending uniqueId=$uniqueId " +
+                    "${existing.uploadTypeLabel()} attempts=${existing.checkOutCount} " +
+                    "inFlight=${existing.checkOutStamp != null} with ${uploadTypeName(uploadType)}"
+            )
         }
         databaseManager.outbox.deleteBy(driveId, uniqueId)
         return tryEnqueue(driveId, uniqueId, dependencyUniqueId, priority, uploadType, json)
