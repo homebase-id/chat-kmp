@@ -225,12 +225,11 @@ class ContactBookViewModel(
             .filterValues { it.status == ConnectionStatus.Connected }
         val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
 
-        // Unvetted = connected but not confirmed. Confirmed is the server-computed `vetted` flag
-        // (connected AND a member of the Confirmed Connections system circle — see issue #919);
-        // it rides with the connection data itself, so this needs no circle load/fallback. This
-        // is a full complement over connected identities, not just auto-connected/introduced —
-        // a plain direct connection that hasn't been explicitly confirmed is unvetted too.
-        val confirmedDomains = connectedRegs.filterValues { it.vetted }
+        // Unvetted = connected but not reviewed. The stamp rides with the connection data itself,
+        // so this needs no circle load/fallback. It is a full complement over connected
+        // identities, not just auto-connected/introduced — a plain direct connection that was
+        // never reviewed is unvetted too.
+        val confirmedDomains = connectedRegs.filterValues { it.isReviewed() }
             .keys.map { it.domainName.lowercase() }
             .toSet()
         val unvettedDomains = connectedDomains - confirmedDomains

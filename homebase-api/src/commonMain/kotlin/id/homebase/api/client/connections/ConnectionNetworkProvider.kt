@@ -2,6 +2,7 @@ package id.homebase.api.client.connections
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
+import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -31,8 +32,37 @@ class ConnectionNetworkProvider(
         const val TAG = "ConnectionNetworkProvider"
     }
 
-    suspend fun confirmConnection(odinId: OdinId) {
-        postOdinId("/connections/confirm-connection", odinId)
+    /**
+     * Stamps the owner's review of [odinId] and enrols [circleIds], atomically.
+     *
+     * Additive and idempotent: circles the contact already holds are untouched, and re-sending one
+     * is a no-op. An empty [circleIds] is a real review — the "chat only" outcome — so it is sent
+     * as `[]`, never omitted.
+     *
+     * Accepting an incoming request already stamps the review server-side; this is for the New
+     * pile (introduction auto-accepts) and for enrolling more circles later.
+     *
+     * @throws id.homebase.api.client.OdinClientException [OdinClientErrorCode.IdentityMustBeConnected]
+     *   when [odinId] is not a connection.
+     */
+    suspend fun reviewConnection(odinId: OdinId, circleIds: List<Uuid> = emptyList()) {
+        Logger.i(tag = TAG) { "POST /connections/review odinId=$odinId circles=${circleIds.size}" }
+        post("/connections/review", ReviewConnectionRequest(odinId, circleIds))
+    }
+
+    /**
+     * Clears the review stamp, dropping [odinId] back to New.
+     *
+     * Withdraws the vouching only — the contact keeps every circle and every grant they had. To
+     * take capability away, revoke the circles separately.
+     *
+     * @throws id.homebase.api.client.OdinClientException
+     *   [OdinClientErrorCode.CannotClearReviewWhilePersonalCircleMember] while the contact still
+     *   holds a review-granted personal circle; the message names it. Ambient membership does not
+     *   trigger this.
+     */
+    suspend fun clearConnectionReview(odinId: OdinId) {
+        postOdinId("/connections/review/clear", odinId)
     }
 
     suspend fun verifyConnection(odinId: OdinId): IcrVerificationResult {

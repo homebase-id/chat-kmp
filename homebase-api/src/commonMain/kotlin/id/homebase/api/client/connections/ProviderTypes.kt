@@ -35,6 +35,20 @@ data class AcceptConnectionRequestV2(
     val circleIds: List<Uuid> = emptyList()
 )
 
+/**
+ * Body for `POST /connections/review`: stamps the owner's review and enrols [circleIds] in one
+ * atomic call.
+ *
+ * Additive — it grants the circles named and revokes nothing, and re-sending a circle the contact
+ * already holds is a no-op, so the whole call is safe to retry. An empty list is a real review
+ * ("chat only"), not a no-op, so it must serialize as `[]` rather than being omitted.
+ */
+@Serializable
+data class ReviewConnectionRequest(
+    val odinId: OdinId,
+    val circleIds: List<Uuid> = emptyList()
+)
+
 @Serializable
 data class RevokeCircleMembershipRequest(
     val odinId: OdinId,
@@ -166,12 +180,19 @@ data class RedactedIdentityConnectionRegistration(
     val hasVerificationHash: Boolean,
     val rku: Boolean,
     /**
-     * True when this identity is connected AND a member of the Confirmed Connections system
-     * circle — server-computed (see issue #919). False covers everyone else who's connected but
-     * unconfirmed: auto-connected/introduced identities, and any plain direct connection that
-     * hasn't been explicitly confirmed. Defaulted so deserialization stays safe against any
-     * response shape that hasn't rolled this field out yet.
+     * When the owner reviewed this contact, epoch-millis; null = never reviewed ("New").
+     *
+     * The owner's own private judgment — never sent to the peer, and a peer cannot read their own
+     * stamp on this identity. Set once: a second review may enrol more circles but leaves the
+     * original value, so this is "first vouched for", never "last reviewed".
      */
+    val reviewedAt: Long? = null,
+
+    /**
+     * Now a server-side alias for `reviewedAt != null`, kept only for V1 compatibility. It no
+     * longer means Confirmed Connections membership.
+     */
+    @Deprecated("Read reviewedAt instead", ReplaceWith("reviewedAt != null"))
     val vetted: Boolean = false
 )
 

@@ -63,6 +63,7 @@ import id.homebase.resources.location_emergency_add_title
 import id.homebase.resources.location_emergency_add_unvetted_reason
 import id.homebase.resources.menu_back
 import id.homebase.resources.remove
+import id.homebase.core.ui.screens.contactbook.isReviewed
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 
@@ -245,7 +246,7 @@ private fun EmergencyContactPickerUi(
                         }
                     }
                     items(group.contacts, key = { it.odinId.domainName }) { contact ->
-                        val eligible = contact.connection?.vetted == true
+                        val eligible = contact.connection?.isReviewed() == true
                         ContactItem(
                             name = contact.name,
                             subTitle = contact.odinId.domainName,

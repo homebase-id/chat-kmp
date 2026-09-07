@@ -14,6 +14,7 @@ import id.homebase.core.ui.screens.contactbook.toCircleAddFailureReason
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
+import id.homebase.core.ui.screens.contactbook.isReviewed
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -37,7 +38,7 @@ private const val TAG = "EmergencyContactPickerViewModel"
  * IdentityAlreadyMemberOfCircle response (handled in [addSelected]) rather than being
  * pre-filtered from a guess.
  *
- * A connected-but-unvetted (unconfirmed) contact is still shown — hiding it entirely made it
+ * A connected-but-unreviewed contact is still shown — hiding it entirely made it
  * look like the contact didn't exist, which was confusing — but it renders disabled with a
  * reason ([EmergencyContactPickerScreen]) and can't be selected ([onUiAction]), since the server
  * 400s circles/add for those identities (CannotGrantAutoConnectedMoreCircles).
@@ -76,7 +77,7 @@ class EmergencyContactPickerViewModel(
     fun onUiAction(action: EmergencyContactPickerUiAction) {
         when (action) {
             is EmergencyContactPickerUiAction.ContactClicked -> {
-                if (action.contact.connection?.vetted == true) {
+                if (action.contact.connection?.isReviewed() == true) {
                     val selected = uiState.value.selectedContacts.toMutableList()
                     if (!selected.remove(action.contact)) selected.add(action.contact)
                     _uiState.update { it.copy(selectedContacts = selected.toPersistentList()) }
