@@ -952,6 +952,9 @@
     <string name="chat_contact_share_title">Send a contact</string>
     <string name="chat_contact_share_no_contacts">No contacts to send.</string>
     <string name="chat_contact_share_unshareable">No phone number or email to share</string>
+    <string name="chat_contact_share_review_title">Send contact</string>
+    <string name="chat_contact_share_review_count">%1$d of %2$d details</string>
+    <string name="chat_contact_share_review_photo">Include the photo</string>
     <string name="contactbook_edit_organization">Organization</string>
     <string name="contact_share_prompt_title">Add to your contacts?</string>
     <string name="contact_share_prompt_body">%1$s was shared to your chat. Save them to your contacts too?</string>
