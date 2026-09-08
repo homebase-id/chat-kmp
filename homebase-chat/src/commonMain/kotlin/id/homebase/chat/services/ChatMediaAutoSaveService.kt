@@ -115,6 +115,7 @@ class ChatMediaAutoSaveService(
                         dbm.autoSavedMedia.isSaved(file.fileId.toString(), payload.key)
                     val save = shouldAutoSave(
                         payload = payload,
+                        messageDataType = file.fileMetadata.appData.dataType,
                         isIncoming = isIncoming,
                         isSoftDeleted = file.isSoftDeleted(),
                         autoSaveEnabled = enabled,
