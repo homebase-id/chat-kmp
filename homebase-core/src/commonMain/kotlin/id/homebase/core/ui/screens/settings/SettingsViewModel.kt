@@ -12,6 +12,7 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.SubscriptionVerificationStatus
+import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareCacheStorage
 import id.homebase.core.util.PlatformInfo
@@ -33,6 +34,7 @@ class SettingsViewModel(
     private val databaseSizeProbe: DatabaseSizeProbe,
     private val contactInfo: ContactInfoGateway,
     private val driveFileProviderCached: DriveFileProviderCached,
+    private val webPushService: WebPushService,
 ) : ViewModel() {
 
     private companion object {
@@ -173,6 +175,9 @@ class SettingsViewModel(
                 .onFailure { Logger.e(throwable = it, tag = TAG) { "purgeLogs failed" } }
             runCatching { notificationService.deleteToken() }
                 .onFailure { Logger.e(throwable = it, tag = TAG) { "deleteToken failed" } }
+            // deleteToken() drops the server side; the browser subscription is separate state.
+            runCatching { webPushService.disableLocally() }
+                .onFailure { Logger.e(throwable = it, tag = TAG) { "web push unsubscribe failed" } }
             runCatching { shareCacheStorage.clearConversationCache() }
                 .onFailure { Logger.e(throwable = it, tag = TAG) { "clearConversationCache failed" } }
 

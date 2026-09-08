@@ -204,6 +204,7 @@ import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.resources.chat_archived_chats
@@ -456,7 +457,9 @@ fun AppNavHost(
                 Route.AppLoading::class
             )
         ) {
-            if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
+            // Not on web: a browser only shows the permission prompt from a user gesture, so the
+            // ask has to come from the offer banner's Enable button instead.
+            if (authState is YouAuthState.Authenticated && !hasNotificationPermission && !isWeb()) {
                 permissionManager.askPermission(PermissionType.NOTIFICATION)
             }
         }

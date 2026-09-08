@@ -31,7 +31,7 @@ enum class RegistrationStatus {
 
 /** Result of a re-registration attempt. */
 sealed interface ReRegisterResult {
-    data class Success(val token: String) : ReRegisterResult
+    data object Success : ReRegisterResult
     data class Failure(val message: String) : ReRegisterResult
 }
 
@@ -44,6 +44,8 @@ data class NotificationSettingsUiState(
     val showContentLevelPicker: Boolean = false,
     val isPermissionGranted: Boolean = false,
     val isPermissionPermanentlyDenied: Boolean = false,
+    /** iOS Safari fires web push only for a Home Screen install, so Enable would be a dead button. */
+    val needsHomeScreenInstall: Boolean = false,
     val deviceToken: String? = null,
     val registrationStatus: RegistrationStatus = RegistrationStatus.UNKNOWN,
     val reRegisterResult: ReRegisterResult? = null,

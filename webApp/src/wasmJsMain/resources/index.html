@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json"/>
+    <link rel="apple-touch-icon" href="icon-192.png"/>
 
     <title>Homebase Chat</title>
 
@@ -256,6 +257,8 @@
     //   sql-wasm.js (sql.js) -> odin-sqljs.js (sync bridge) -> homebase-app bundle.
     // The ffmpeg scripts only DEFINE globals (FFmpegWASM, MP4Box, __odinFfmpeg) — they
     // download nothing until the first video compress/segment lazily loads the core.
+    // odin-push.js is the same shape: it defines __odinPush but registers no service
+    // worker until web push is actually used.
     // The bundle filename is substituted at build time by HtmlWebpackPlugin (see
     // webApp/webpack.config.d/html-plugin.js) — in production it's content-hashed for cache busting.
     (function () {
@@ -270,7 +273,7 @@
             window.close();
             return;
         }
-        var scripts = ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
+        var scripts = ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "odin-push.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
         var loaded = 0;
         scripts.forEach(function (src) {
             var s = document.createElement("script");
