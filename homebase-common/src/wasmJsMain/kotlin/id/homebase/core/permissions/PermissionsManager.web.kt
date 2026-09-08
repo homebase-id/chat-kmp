@@ -34,14 +34,10 @@ actual fun createPermissionsManager(
             }
 
             override suspend fun isPermissionGranted(permission: PermissionType): Boolean =
-                if (permission == PermissionType.NOTIFICATION) {
-                    bridge?.capability() == WebPushCapability.GRANTED
-                } else {
-                    // Camera / gallery / microphone reach the browser through file pickers and
-                    // getUserMedia, which prompt on their own; the blanket true keeps their
-                    // permission gates out of the way rather than claiming an answer we don't have.
-                    true
-                }
+                webPermissionGranted(
+                    permission,
+                    notificationGranted = bridge?.capability() == WebPushCapability.GRANTED,
+                )
 
             override fun launchSettings() {}
         }
