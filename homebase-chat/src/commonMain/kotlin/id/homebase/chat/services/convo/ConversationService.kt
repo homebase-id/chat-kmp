@@ -765,11 +765,12 @@ class ConversationService(
     suspend fun updateAdmins(
         conversationId: Uuid,
         add: List<OdinId> = emptyList(),
-        remove: List<OdinId> = emptyList()
+        remove: List<OdinId> = emptyList(),
+        sendStatusMessages: Boolean = true
     ) {
         // ---- DEBUG instrumentation ----
         val audit = MethodAudit("updateAdmins")
-        audit.start("conversationId=$conversationId add=${add.size} remove=${remove.size}")
+        audit.start("conversationId=$conversationId add=${add.size} remove=${remove.size} sendStatusMessages=$sendStatusMessages")
         // ---- end DEBUG ----
         val conversation = requireConversation(conversationId)
         val domain = credentialsManager.requireActiveDomain()
@@ -824,40 +825,74 @@ class ConversationService(
         // lands on each recipient first, then the "X is now admin" / "X is no longer
         // admin" status messages in their original order. Without this initial dep,
         // the first status message would race the admin-file update through Transit.
-        var previousMessageId: Uuid? = ChatProtocol.getAdminFileUniqueId(conversationId)
-        add.forEach { user ->
-            val messageId = Uuid.random()
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.ConversationAdminAdded,
-                    subject = user
-                ),
-                previousMessageUniqueId = previousMessageId
-            )
+        if (sendStatusMessages) {
+            var previousMessageId: Uuid? = ChatProtocol.getAdminFileUniqueId(conversationId)
+            add.forEach { user ->
+                val messageId = Uuid.random()
+                chatMessageSenderService.sendStatusMessage(
+                    messageUniqueId = messageId,
+                    conversationId = conversationId,
+                    statusMessage = StatusMessageData(
+                        statusMessage = StatusMessage.ConversationAdminAdded,
+                        subject = user
+                    ),
+                    previousMessageUniqueId = previousMessageId
+                )
 
-            previousMessageId = messageId
-        }
+                previousMessageId = messageId
+            }
 
-        remove.forEach { user ->
-            val messageId = Uuid.random()
-            chatMessageSenderService.sendStatusMessage(
-                messageUniqueId = messageId,
-                conversationId = conversationId,
-                statusMessage = StatusMessageData(
-                    statusMessage = StatusMessage.ConversationAdminRemoved,
-                    subject = user
-                ),
-                previousMessageUniqueId = previousMessageId
-            )
+            remove.forEach { user ->
+                val messageId = Uuid.random()
+                chatMessageSenderService.sendStatusMessage(
+                    messageUniqueId = messageId,
+                    conversationId = conversationId,
+                    statusMessage = StatusMessageData(
+                        statusMessage = StatusMessage.ConversationAdminRemoved,
+                        subject = user
+                    ),
+                    previousMessageUniqueId = previousMessageId
+                )
 
-            previousMessageId = messageId
+                previousMessageId = messageId
+            }
         }
         // ---- DEBUG instrumentation ----
-        audit.info("status messages sent: added=${add.size} removed=${remove.size}")
+        audit.info("status messages sent: added=${if (sendStatusMessages) add.size else 0} removed=${if (sendStatusMessages) remove.size else 0}")
         audit.finish()
         // ---- end DEBUG ----
+    }
+
+    /**
+     * Removes [member] from the group, demoting them first when they are an admin.
+     *
+     * The demote runs first so [updateAdmins]' last-admin guard rejects the whole
+     * operation before anything mutates. Its status message is suppressed — one user
+     * action should read as one system line ("X was removed"), not two.
+     */
+    suspend fun removeGroupMember(conversationId: Uuid, member: OdinId) {
+        if (!requireConversation(conversationId).admins.contains(member)) {
+            updateGroupMembers(conversationId, remove = listOf(member))
+            return
+        }
+
+        updateAdmins(conversationId, remove = listOf(member), sendStatusMessages = false)
+
+        try {
+            updateGroupMembers(conversationId, remove = listOf(member))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The demote already committed locally and to the outbox. Put the role back
+            // so a failed removal doesn't silently strip an admin the user never asked
+            // to demote; the original failure is what the caller sees either way.
+            try {
+                updateAdmins(conversationId, add = listOf(member), sendStatusMessages = false)
+            } catch (restoreError: Exception) {
+                Logger.e("Failed to restore admin role for $member after a failed removal", restoreError)
+            }
+            throw e
+        }
     }
 
     suspend fun updateGroupMembers(

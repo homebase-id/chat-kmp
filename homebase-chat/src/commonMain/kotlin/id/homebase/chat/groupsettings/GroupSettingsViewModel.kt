@@ -28,6 +28,7 @@ import id.homebase.chat.services.convo.GroupHealService
 import id.homebase.chat.services.convo.HealGroupResult
 import id.homebase.chat.services.convo.HealPhase
 import id.homebase.chat.services.convo.HealPlan
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -260,9 +261,9 @@ class GroupSettingsViewModel(
                 if (action.skipConfirmation) {
                     viewModelScope.launch {
                         val ok = runMemberOp(action.contact.odinId, "Failed to remove a member") { conversation ->
-                            conversationService.updateGroupMembers(
+                            conversationService.removeGroupMember(
                                 conversationId = conversation.id,
-                                remove = listOf(action.contact.odinId)
+                                member = action.contact.odinId
                             )
                         }
                         if (ok) {
@@ -399,8 +400,9 @@ class GroupSettingsViewModel(
      * Wraps a per-member service call with the in-flight tracking that drives the
      * spinner in the member-action sheet. Adds [odinId] to [GroupSettingsUiState.pendingMemberOps]
      * before invoking [block]; clears it in a finally block so the spinner always
-     * unwinds even on cancellation. On exception, surfaces an error event with
-     * [errorMessage] and returns false; otherwise returns true.
+     * unwinds even on cancellation. On exception, surfaces an error event with the
+     * service's own rejection reason — falling back to [errorMessage] — and returns
+     * false; otherwise returns true.
      *
      * If there is no current conversation in state, this is a no-op returning false.
      */
@@ -414,13 +416,22 @@ class GroupSettingsViewModel(
         return try {
             block(conversation)
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(errorMessage, e)
-            _uiState.update { it.copy(uiEvent = Error(errorMessage)) }
+            _uiState.update { it.copy(uiEvent = Error(memberOpFailureReason(e) ?: errorMessage)) }
             false
         } finally {
             _uiState.update { it.copy(pendingMemberOps = it.pendingMemberOps - odinId) }
         }
+    }
+
+    /** The service states its own refusals ("Conversation must have at least one admin");
+     *  anything else is transport noise the user can't act on. */
+    private fun memberOpFailureReason(e: Exception): String? = when (e) {
+        is IllegalStateException, is IllegalArgumentException -> e.message?.takeIf { it.isNotBlank() }
+        else -> null
     }
 
     private fun hasReachableNonAdmin(conversation: ConversationUiModel): Boolean {
