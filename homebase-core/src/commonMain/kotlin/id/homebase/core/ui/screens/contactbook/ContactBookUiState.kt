@@ -9,7 +9,16 @@ import io.github.vinceglb.filekit.PlatformFile
 import kotlin.uuid.Uuid
 
 /** The two sections of the unified Contacts screen. */
-enum class ContactTab { CONTACTS, CIRCLES }
+enum class ContactTab {
+    /** Contacts the owner has reviewed. */
+    KNOWN,
+
+    /** Connected but unreviewed, plus incoming requests — everything waiting on a decision. */
+    NEW,
+
+    /** The circles themselves, not people. */
+    CIRCLES,
+}
 
 /**
  * People-list pill: everyone, connections that haven't been explicitly confirmed yet
@@ -18,7 +27,11 @@ enum class ContactTab { CONTACTS, CIRCLES }
  * Pending connection requests are no longer a pill — they surface as a section at the top of
  * the list instead (see [ContactBookUiState.requests]).
  */
-enum class ContactFilter { ALL, NEW, CHAT, CIRCLES }
+/**
+ * Pills within [ContactTab.KNOWN]. New is no longer a pill — it is its own tab, so everything
+ * here is already reviewed and [ALL] means "reviewed, whether or not they hold a circle".
+ */
+enum class ContactFilter { ALL, CIRCLES }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -150,17 +163,17 @@ fun ContactBookEntry.toDraft(): ContactDraft = ContactDraft(
 
 @Immutable
 data class ContactBookUiState(
-    val selectedTab: ContactTab = ContactTab.CONTACTS,
+    val selectedTab: ContactTab = ContactTab.KNOWN,
     /** Contacts tab: already filtered + searched + A–Z sorted. */
     val contacts: List<ContactBookEntry> = emptyList(),
     val totalCount: Int = 0,
     /** Domains (lowercased) that are connected — drives the "connected" badge. */
     val connectedOdinIds: Set<String> = emptySet(),
-    /** New filter: connected, never reviewed. */
+    /** New tab: connected, never reviewed. */
     val newContacts: List<ContactBookEntry> = emptyList(),
-    /** Chat filter: reviewed, holding no personal circle. */
-    val chatContacts: List<ContactBookEntry> = emptyList(),
-    /** Circles filter: in at least one personal circle, which implies reviewed. */
+    /** Known tab, All pill: reviewed, circle or not. */
+    val knownContacts: List<ContactBookEntry> = emptyList(),
+    /** Known tab, Circles pill: in at least one personal circle. */
     val circleContacts: List<ContactBookEntry> = emptyList(),
     /** Per-domain (lowercased) contact state, for the row's trailing state icon. */
     val contactStates: Map<String, ContactState> = emptyMap(),

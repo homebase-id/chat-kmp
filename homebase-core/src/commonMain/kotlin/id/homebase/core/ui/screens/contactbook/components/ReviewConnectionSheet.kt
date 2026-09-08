@@ -9,12 +9,14 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.ui.Alignment
 import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.resources.contact_review_group_apps
+import id.homebase.resources.contact_review_group_apps_caption
 import id.homebase.resources.contact_review_group_apps_collapse
 import id.homebase.resources.contact_review_group_apps_expand
 import id.homebase.resources.contact_review_group_apps_summary
 import id.homebase.resources.contact_review_group_special
 import id.homebase.resources.contact_review_group_special_caption
 import id.homebase.resources.contact_review_group_yours
+import id.homebase.resources.contact_review_group_yours_caption
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -87,7 +89,7 @@ fun ReviewConnectionSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
-                .padding(top = 8.dp, bottom = 32.dp),
+                .padding(top = 12.dp, bottom = 32.dp),
         ) {
             Text(
                 text = stringResource(MR.string.contact_review_title, displayName),
@@ -101,7 +103,7 @@ fun ReviewConnectionSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = stringResource(MR.string.contact_review_body),
                 style = MaterialTheme.typography.bodyMedium,
@@ -113,6 +115,7 @@ fun ReviewConnectionSheet(
             if (groups.yours.isNotEmpty()) {
                 CircleGroup(
                     title = stringResource(MR.string.contact_review_group_yours),
+                    caption = stringResource(MR.string.contact_review_group_yours_caption),
                     circles = groups.yours,
                     selected = selected,
                     alreadyHeldCircleIds = alreadyHeldCircleIds,
@@ -135,7 +138,7 @@ fun ReviewConnectionSheet(
 
             if (groups.appDefaults.isNotEmpty()) {
                 var expanded by rememberSaveable { mutableStateOf(false) }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -147,16 +150,19 @@ fun ReviewConnectionSheet(
                             text = stringResource(MR.string.contact_review_group_apps),
                             style = MaterialTheme.typography.labelLarge,
                         )
-                        if (!expanded) {
-                            Text(
-                                text = stringResource(
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (expanded) {
+                                stringResource(MR.string.contact_review_group_apps_caption)
+                            } else {
+                                stringResource(
                                     MR.string.contact_review_group_apps_summary,
                                     groups.appDefaults.joinToString { it.name },
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                                )
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Icon(
                         imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
@@ -167,7 +173,7 @@ fun ReviewConnectionSheet(
                     )
                 }
                 if (expanded) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     CircleChips(
                         circles = groups.appDefaults,
                         selected = selected,
@@ -179,7 +185,7 @@ fun ReviewConnectionSheet(
             }
 
             if (selected.isEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = stringResource(MR.string.contact_review_chat_only_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -188,7 +194,7 @@ fun ReviewConnectionSheet(
             }
 
             if (errorText != null) {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = errorText,
                     style = MaterialTheme.typography.bodySmall,
@@ -196,7 +202,7 @@ fun ReviewConnectionSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(28.dp))
             Button(
                 onClick = { onSubmit(selected) },
                 enabled = !isSubmitting,
@@ -236,16 +242,17 @@ private fun CircleGroup(
     onToggle: (String) -> Unit,
     caption: String? = null,
 ) {
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(24.dp))
     Text(text = title, style = MaterialTheme.typography.labelLarge)
     if (caption != null) {
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = caption,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(10.dp))
     CircleChips(circles, selected, alreadyHeldCircleIds, enabled, onToggle)
 }
 
@@ -262,7 +269,10 @@ private fun CircleChips(
     enabled: Boolean,
     onToggle: (String) -> Unit,
 ) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         circles.forEach { circle ->
             val held = circle.id in alreadyHeldCircleIds
             val isSelected = held || circle.id in selected

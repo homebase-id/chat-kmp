@@ -1491,7 +1491,6 @@
     <string name="contactbook_onboarding_setup">Kom i gang</string>
     <string name="contactbook_onboarding_dismiss">Måske senere</string>
 
-    <string name="contactbook_tab_contacts">Kontakter</string>
     <string name="contactbook_tab_circles">Kredse</string>
     <string name="contactbook_connected">Forbundet</string>
     <string name="contactbook_vetted">Godkendt</string>

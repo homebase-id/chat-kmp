@@ -16,6 +16,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 
 /** A pending destructive action awaiting confirmation. */
 enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
@@ -48,6 +49,12 @@ data class ContactDetailUiState(
      * so nothing else on this screen would show it.
      */
     val isAccessRevoked: Boolean = false,
+    /** Connected but never reviewed — the one state with something for the owner to do. */
+    val needsReview: Boolean = false,
+    /** Circles the review sheet offers, in its three groups. */
+    val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
+    /** Non-null while the review sheet is open. */
+    val review: ReviewSheetState? = null,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
     val circles: List<ContactCircleUi> = emptyList(),
     /** All user-defined circles the signed-in user could add a contact to (system circles excluded),
@@ -122,6 +129,15 @@ data class ContactDetailUiState(
         } == true
 }
 
+/** Open state for the review sheet, mirroring the contact book's. */
+@Immutable
+data class ReviewSheetState(
+    val introducedBy: String? = null,
+    val alreadyHeldCircleIds: Set<String> = emptySet(),
+    val isSubmitting: Boolean = false,
+    val failed: Boolean = false,
+)
+
 sealed interface ContactDetailAction {
     data object MessageClicked : ContactDetailAction
     data object SyncClicked : ContactDetailAction
@@ -151,6 +167,11 @@ sealed interface ContactDetailAction {
     data object SeeAllMediaClicked : ContactDetailAction
     data class OpenGroup(val conversationId: Uuid) : ContactDetailAction
     data object BackClicked : ContactDetailAction
+    /** Open the review sheet for a New connection. */
+    data object ReviewClicked : ContactDetailAction
+    /** Complete the review: stamp it and enrol [circleIds]. Empty = the "chat only" outcome. */
+    data class ReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
+    data object ReviewDismissed : ContactDetailAction
     /** Tapped a circle chip — opens the circle-detail dialog for [circleId]. */
     data class CircleClicked(val circleId: String) : ContactDetailAction
     data object CircleDetailDismiss : ContactDetailAction

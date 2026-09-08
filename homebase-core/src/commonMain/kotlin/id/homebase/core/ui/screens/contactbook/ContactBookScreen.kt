@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -71,7 +73,8 @@ import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.contactbook_search_hint
 import id.homebase.resources.contactbook_tab_circles
-import id.homebase.resources.contactbook_tab_contacts
+import id.homebase.resources.contactbook_tab_known
+import id.homebase.resources.contactbook_tab_new
 import id.homebase.resources.clear_input
 import id.homebase.resources.menu_back
 import id.homebase.resources.search
@@ -140,7 +143,7 @@ fun ContactBookScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val onContacts = uiState.selectedTab == ContactTab.CONTACTS
+    val onContacts = uiState.selectedTab != ContactTab.CIRCLES
 
     // Search is hidden behind a top-bar icon; it expands into the app-bar title when tapped
     // and collapses (clearing the query) on back/close. Mirrors the conversation-list pattern.
@@ -272,19 +275,38 @@ fun ContactBookScreen(
             // Contacts and Circles tabs.
             PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
                 ContactTab.entries.forEach { tab ->
+                    val waiting = uiState.newContacts.size + uiState.incomingRequestCount
                     Tab(
                         selected = uiState.selectedTab == tab,
                         onClick = { viewModel.onAction(ContactBookUiAction.TabSelected(tab)) },
-                        text = { Text(stringResource(tab.labelRes())) },
+                        text = {
+                            // Beside the label, not over it: BadgedBox anchors to the top-end
+                            // corner and a three-letter tab loses its last character under it.
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(stringResource(tab.labelRes()))
+                                if (tab == ContactTab.NEW && waiting > 0) {
+                                    Badge { Text(waiting.toString()) }
+                                }
+                            }
+                        },
                     )
                 }
             }
 
             when (uiState.selectedTab) {
-                ContactTab.CONTACTS -> ContactBookContent(
+                ContactTab.KNOWN -> ContactBookContent(
                     uiState = uiState,
                     onAction = viewModel::onAction,
                     modifier = Modifier.weight(1f),
+                )
+                ContactTab.NEW -> ContactBookContent(
+                    uiState = uiState,
+                    onAction = viewModel::onAction,
+                    modifier = Modifier.weight(1f),
+                    showNew = true,
                 )
                 ContactTab.CIRCLES -> CirclesTabContent(
                     circles = uiState.circles,
@@ -347,6 +369,7 @@ fun ContactBookScreen(
 }
 
 private fun ContactTab.labelRes() = when (this) {
-    ContactTab.CONTACTS -> MR.string.contactbook_tab_contacts
+    ContactTab.KNOWN -> MR.string.contactbook_tab_known
+    ContactTab.NEW -> MR.string.contactbook_tab_new
     ContactTab.CIRCLES -> MR.string.contactbook_tab_circles
 }

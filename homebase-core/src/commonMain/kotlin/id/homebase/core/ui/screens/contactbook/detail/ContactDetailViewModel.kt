@@ -41,7 +41,11 @@ import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
+import id.homebase.core.ui.screens.contactbook.ContactState
 import id.homebase.core.ui.screens.contactbook.circleAccessState
+import id.homebase.core.ui.screens.contactbook.contactStateOf
+import id.homebase.core.ui.screens.contactbook.personalCirclesFor
+import id.homebase.core.ui.screens.contactbook.reviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.isAccessRevoked
 import id.homebase.core.ui.screens.contactbook.isPersonalCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
@@ -313,6 +317,12 @@ class ContactDetailViewModel(
                         entry = entry,
                         connectionStatus = status,
                         isAccessRevoked = registration?.isAccessRevoked() == true,
+                        needsReview = registration != null &&
+                            contactStateOf(
+                                registration,
+                                domain?.let { d -> circ.personalCirclesFor(d) }.orEmpty(),
+                            ) == ContactState.New,
+                        reviewCircleGroups = circ.reviewCircleGroups(),
                         circles = circleItems,
                         assignableCircles = assignableCircles,
                         isLoading = false,
@@ -577,6 +587,11 @@ class ContactDetailViewModel(
             is ContactDetailAction.OpenGroup ->
                 _events.tryEmit(ContactDetailEvent.OpenConversation(action.conversationId))
             ContactDetailAction.BackClicked -> _events.tryEmit(ContactDetailEvent.Back)
+
+            ContactDetailAction.ReviewClicked -> openReview()
+            ContactDetailAction.ReviewDismissed ->
+                _uiState.update { it.copy(review = null) }
+            is ContactDetailAction.ReviewSubmitted -> submitReview(action.circleIds)
             is ContactDetailAction.CircleClicked -> onCircleClicked(action.circleId)
             ContactDetailAction.CircleDetailDismiss -> onCircleDetailDismiss()
             is ContactDetailAction.CircleMemberClicked -> _events.tryEmit(
@@ -640,6 +655,50 @@ class ContactDetailViewModel(
             is LocateVerifyStatus.Broken -> _uiState.update { it.copy(locateNewestDataAt = null) }
 
             LocateVerifyStatus.Loading, is LocateVerifyStatus.Unreachable -> Unit
+        }
+    }
+
+    private fun openReview() {
+        val domain = _uiState.value.entry?.odinId?.lowercase() ?: return
+        val registration = connectionService.connections.value.map.entries
+            .firstOrNull { it.key.domainName.equals(domain, ignoreCase = true) }?.value
+        _uiState.update {
+            it.copy(
+                review = ReviewSheetState(
+                    introducedBy = registration?.introducerOdinId?.domainName,
+                    alreadyHeldCircleIds = connectionService.circles.value
+                        .circlesFor(domain)
+                        .map { c -> c.id }
+                        .toSet(),
+                ),
+            )
+        }
+    }
+
+    /**
+     * One call stamps the review and enrols the picked circles. Failure keeps the sheet open with
+     * the error rather than dropping the selection — the call is idempotent, so retrying the
+     * whole thing is safe.
+     */
+    private fun submitReview(circleIds: Set<String>) {
+        val odinId = _uiState.value.entry?.odinId ?: return
+        val open = _uiState.value.review ?: return
+        _uiState.update { it.copy(review = open.copy(isSubmitting = true, failed = false)) }
+        viewModelScope.launch {
+            try {
+                connectionService.reviewConnection(
+                    OdinId(odinId),
+                    circleIds.map { Uuid.parseHex(it) },
+                )
+                _uiState.update { it.copy(review = null) }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "Review of $odinId failed" }
+                _uiState.update {
+                    it.copy(review = open.copy(isSubmitting = false, failed = true))
+                }
+            }
         }
     }
 

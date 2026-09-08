@@ -139,6 +139,8 @@ import id.homebase.resources.contactbook_error_clear_unsupported
 import id.homebase.resources.contactbook_error_photo
 import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.menu_back
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
+import id.homebase.resources.contact_review_failed
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.time.Instant
@@ -295,6 +297,21 @@ fun ContactDetailScreen(
         )
     }
 
+    uiState.review?.let { review ->
+        ReviewConnectionSheet(
+            displayName = uiState.entry?.displayName.orEmpty(),
+            introducedBy = review.introducedBy,
+            groups = uiState.reviewCircleGroups,
+            alreadyHeldCircleIds = review.alreadyHeldCircleIds,
+            isSubmitting = review.isSubmitting,
+            errorText = if (review.failed) {
+                stringResource(MR.string.contact_review_failed)
+            } else null,
+            onSubmit = { ids -> viewModel.onAction(ContactDetailAction.ReviewSubmitted(ids)) },
+            onDismiss = { viewModel.onAction(ContactDetailAction.ReviewDismissed) },
+        )
+    }
+
     uiState.circleDetail?.let { detail ->
         CircleMembersSheet(
             state = detail,
@@ -441,6 +458,13 @@ private fun ContactDetailContent(
                             when (currentTab) {
                                 ContactDetailTab.DETAILS -> {
                                     if (uiState.isAccessRevoked) AccessRevokedBanner()
+                                    if (uiState.needsReview) {
+                                        NeedsReviewBanner(
+                                            onReview = {
+                                                onAction(ContactDetailAction.ReviewClicked)
+                                            },
+                                        )
+                                    }
                                     uiState.introducedByName?.let { IntroducedBySection(it) }
                                     ContactFieldsSection(
                                         entry = entry,

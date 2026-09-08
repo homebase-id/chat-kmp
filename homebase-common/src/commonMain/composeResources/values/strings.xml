@@ -1760,14 +1760,12 @@
     <string name="contactbook_onboarding_setup">Get started</string>
     <string name="contactbook_onboarding_dismiss">Maybe later</string>
 
-    <string name="contactbook_tab_contacts">Contacts</string>
+    <string name="contactbook_tab_known">Known Contacts</string>
+    <string name="contactbook_tab_new">New</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
-    <string name="contactbook_filter_new">New</string>
-    <string name="contactbook_filter_chat">Chat</string>
     <string name="contactbook_filter_circles">Circles</string>
-    <string name="contactbook_new_empty">No new connections to review.</string>
-    <string name="contactbook_chat_empty">No chat-only connections.</string>
+    <string name="contactbook_new_empty">Nothing waiting on you.</string>
     <string name="contactbook_circles_filter_empty">Nobody is in your circles yet.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
     <string name="contactbook_circle_new">New</string>
@@ -1814,12 +1812,16 @@
     <string name="contact_review_keep_new">Keep as new</string>
     <string name="contact_review_group_yours">Your circles</string>
     <string name="contact_review_group_special">Special access</string>
-    <string name="contact_review_group_special_caption">These grant more than profile visibility.</string>
+    <string name="contact_review_group_yours_caption">Circles you manage. Circles belonging to other apps are managed in those apps.</string>
+    <string name="contact_review_group_special_caption">Listed on its own because it grants more than profile visibility.</string>
+    <string name="contact_review_group_apps_caption">Suggested by the app that owns them, and on by default. Turn any off.</string>
     <string name="contact_review_group_apps">App defaults</string>
     <string name="contact_review_group_apps_summary">%1$s</string>
     <string name="contact_review_group_apps_expand">Show app defaults</string>
     <string name="contact_review_group_apps_collapse">Hide app defaults</string>
     <string name="contact_review_action">Review</string>
+    <string name="contact_review_prompt_title">Not reviewed yet</string>
+    <string name="contact_review_prompt_body">You are connected, but you have not decided what they can see. Reviewing records your decision and lets you add them to circles.</string>
     <string name="contact_review_failed">Couldn't save the review. Please try again.</string>
 
     <string name="contact_unreview_title">Mark as new?</string>

@@ -77,7 +77,7 @@ class ContactBookViewModel(
     eventBus: EventBus,
 ) : ViewModel() {
 
-    private val _selectedTab = MutableStateFlow(ContactTab.CONTACTS)
+    private val _selectedTab = MutableStateFlow(ContactTab.KNOWN)
     private val _searchQuery = MutableStateFlow("")
     private val _filter = MutableStateFlow(ContactFilter.ALL)
     private val _overlay = MutableStateFlow<ContactBookOverlay?>(null)
@@ -280,8 +280,12 @@ class ContactBookViewModel(
                 .sortedBy { it.sortKey }
 
         val newContacts = entriesInState(ContactState.New)
-        val chatContacts = entriesInState(ContactState.Chat)
         val circleContacts = entriesInState(ContactState.Circle)
+        // Known = everyone reviewed, Chat and Circle alike. The two were separate pills while
+        // New was one too; with New promoted to a tab, splitting the reviewed set again would
+        // ask the user to care about a distinction the tab already made for them.
+        val knownContacts = (entriesInState(ContactState.Chat) + circleContacts)
+            .sortedBy { it.sortKey }
 
         // Pending connection requests, projected onto contact entries the same way Unvetted is:
         // reuse the saved contact when we have one, else a synthetic display-only entry for the
@@ -312,7 +316,7 @@ class ContactBookViewModel(
             totalCount = all.size,
             connectedOdinIds = connectedDomains,
             newContacts = newContacts,
-            chatContacts = chatContacts,
+            knownContacts = knownContacts,
             circleContacts = circleContacts,
             contactStates = contactStates,
             statesLoading = circlesData.loading,

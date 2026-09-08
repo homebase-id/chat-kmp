@@ -29,10 +29,7 @@ import id.homebase.resources.contactbook_filter_all
 import id.homebase.resources.contactbook_no_results
 import id.homebase.resources.contactbook_requests_header
 import id.homebase.resources.contactbook_new_empty
-import id.homebase.resources.contactbook_filter_new
-import id.homebase.resources.contactbook_filter_chat
 import id.homebase.resources.contactbook_filter_circles
-import id.homebase.resources.contactbook_chat_empty
 import id.homebase.resources.contactbook_circles_filter_empty
 import id.homebase.core.ui.screens.contactbook.components.ContactStateIcon
 import id.homebase.resources.contact_review_action
@@ -43,26 +40,29 @@ fun ContactBookContent(
     uiState: ContactBookUiState,
     onAction: (ContactBookUiAction) -> Unit,
     modifier: Modifier = Modifier,
+    /** New tab: unreviewed connections and incoming requests, the set awaiting a decision. */
+    showNew: Boolean = false,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        FilterRow(uiState.filter, onAction)
+        if (!showNew) FilterRow(uiState.filter, onAction)
 
         // Incoming requests are the actionable set (outgoing has nothing to do here but Cancel,
-        // already reachable from the resolved identity itself) — surfaced as a normal section at
-        // the top of the list, not a separate pill, so it reads like part of the list rather than
-        // a toast that bounces you elsewhere.
-        val incomingRequests = uiState.requests.filter { it.direction == RequestDirection.INCOMING }
+        // already reachable from the resolved identity itself). They live with the unreviewed
+        // connections because they are the same job: someone is waiting on a decision.
+        val incomingRequests = if (showNew) {
+            uiState.requests.filter { it.direction == RequestDirection.INCOMING }
+        } else {
+            emptyList()
+        }
 
-        val list = when (uiState.filter) {
-            ContactFilter.ALL -> uiState.contacts
-            ContactFilter.NEW -> uiState.newContacts
-            ContactFilter.CHAT -> uiState.chatContacts
-            ContactFilter.CIRCLES -> uiState.circleContacts
+        val list = when {
+            showNew -> uiState.newContacts
+            uiState.filter == ContactFilter.CIRCLES -> uiState.circleContacts
+            else -> uiState.knownContacts
         }
 
         when {
-            uiState.isLoading ||
-                (uiState.statesLoading && uiState.filter != ContactFilter.ALL) -> Box(
+            uiState.isLoading || uiState.statesLoading -> Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) { CircularProgressIndicator() }
@@ -70,17 +70,13 @@ fun ContactBookContent(
             list.isEmpty() && incomingRequests.isEmpty() && uiState.searchQuery.isNotBlank() ->
                 CenterText(stringResource(MR.string.contactbook_no_results))
 
-            list.isEmpty() && incomingRequests.isEmpty() -> when (uiState.filter) {
-                ContactFilter.NEW ->
-                    CenterText(stringResource(MR.string.contactbook_new_empty))
+            list.isEmpty() && incomingRequests.isEmpty() -> when {
+                showNew -> CenterText(stringResource(MR.string.contactbook_new_empty))
 
-                ContactFilter.CHAT ->
-                    CenterText(stringResource(MR.string.contactbook_chat_empty))
-
-                ContactFilter.CIRCLES ->
+                uiState.filter == ContactFilter.CIRCLES ->
                     CenterText(stringResource(MR.string.contactbook_circles_filter_empty))
 
-                ContactFilter.ALL -> ContactBookEmptyState(
+                else -> ContactBookEmptyState(
                     onAddClick = { onAction(ContactBookUiAction.AddClicked) },
                 )
             }
@@ -191,16 +187,6 @@ private fun FilterRow(
             selected = filter == ContactFilter.ALL,
             onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.ALL)) },
             label = { Text(stringResource(MR.string.contactbook_filter_all)) },
-        )
-        FilterChip(
-            selected = filter == ContactFilter.NEW,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.NEW)) },
-            label = { Text(stringResource(MR.string.contactbook_filter_new)) },
-        )
-        FilterChip(
-            selected = filter == ContactFilter.CHAT,
-            onClick = { onAction(ContactBookUiAction.FilterChanged(ContactFilter.CHAT)) },
-            label = { Text(stringResource(MR.string.contactbook_filter_chat)) },
         )
         FilterChip(
             selected = filter == ContactFilter.CIRCLES,
