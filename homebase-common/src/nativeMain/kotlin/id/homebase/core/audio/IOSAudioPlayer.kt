@@ -17,6 +17,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioPlayer
 import platform.AVFAudio.AVAudioPlayerDelegateProtocol
+import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryPlayback
+import platform.AVFAudio.setActive
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
@@ -31,7 +34,22 @@ class IOSAudioPlayer : AudioPlayer {
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override fun play(filePath: String) {
-        if (!AudioSession.configureForPlayback()) return
+        // Configure audio session
+        val audioSession = AVAudioSession.sharedInstance()
+        memScoped {
+            val sessionError = alloc<ObjCObjectVar<NSError?>>()
+            audioSession.setCategory(AVAudioSessionCategoryPlayback, sessionError.ptr)
+            sessionError.value?.let { err ->
+                Logger.e { "Failed to set audio session category: ${err.localizedDescription}" }
+                return
+            }
+
+            audioSession.setActive(true, sessionError.ptr)
+            sessionError.value?.let { err ->
+                Logger.e { "Failed to activate audio session: ${err.localizedDescription}" }
+                return
+            }
+        }
 
         // Create and start player — AVAudioPlayer's ObjC init returns nil for
         // unplayable files, and K/N's interop bridge throws NPE for nil failable

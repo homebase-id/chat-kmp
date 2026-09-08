@@ -9,9 +9,12 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import platform.AVFAudio.AVAudioRecorder
+import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryRecord
 import platform.AVFAudio.AVFormatIDKey
 import platform.AVFAudio.AVNumberOfChannelsKey
 import platform.AVFAudio.AVSampleRateKey
+import platform.AVFAudio.setActive
 import platform.CoreAudioTypes.kAudioFormatMPEG4AAC
 import platform.Foundation.NSError
 import platform.Foundation.NSNumber
@@ -36,9 +39,22 @@ class IOSAudioRecorder: AudioRecorder {
         )
 
 
-        if (!AudioSession.configureForRecording()) return
-
+        // Configure audio session first
+        val audioSession = AVAudioSession.sharedInstance()
         memScoped {
+            val sessionError = alloc<ObjCObjectVar<NSError?>>()
+            audioSession.setCategory(AVAudioSessionCategoryRecord, sessionError.ptr)
+            sessionError.value?.let { err ->
+                Logger.e { "Failed to set audio session category: ${err.localizedDescription}" }
+                return
+            }
+
+            audioSession.setActive(true, sessionError.ptr)
+            sessionError.value?.let { err ->
+                Logger.e { "Failed to activate audio session: ${err.localizedDescription}" }
+                return
+            }
+
             val error = alloc<ObjCObjectVar<NSError?>>()
             recorder = AVAudioRecorder(url, settings, error.ptr)
 
@@ -53,9 +69,6 @@ class IOSAudioRecorder: AudioRecorder {
 
     override fun stopRecording(): String? {
         recorder?.stop()
-        // Record has no output route, so leaving the session there mutes every later
-        // AVPlayer in the process. See AudioSession.
-        AudioSession.releaseAfterRecording()
         return recorder?.url?.path
     }
 }
