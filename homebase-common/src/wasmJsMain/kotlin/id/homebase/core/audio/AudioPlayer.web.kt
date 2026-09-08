@@ -3,6 +3,7 @@
 package id.homebase.core.audio
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.file.readWebFileBytes
 import id.homebase.api.util.toBlobObjectUrl
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
@@ -33,13 +34,19 @@ private class WebAudioPlayer : AudioPlayer {
 
         val el = createAudioElement(url)
         addAudioProgressListener(el) { currentSec, durationSec ->
-            observer?.onProgressUpdate(currentSec.toWholeSeconds(), durationSec.toWholeSeconds())
+            guardJsCallback("audio.progress") {
+                observer?.onProgressUpdate(currentSec.toWholeSeconds(), durationSec.toWholeSeconds())
+            }
         }
-        addAudioEndedListener(el) { observer?.onComplete() }
-        addAudioErrorListener(el) { code -> Logger.e(tag = TAG) { "Audio element error $code" } }
+        addAudioEndedListener(el) { guardJsCallback("audio.ended") { observer?.onComplete() } }
+        addAudioErrorListener(el) { code ->
+            guardJsCallback("audio.error") { Logger.e(tag = TAG) { "Audio element error $code" } }
+        }
         element = el
 
-        playAudioElement(el) { reason -> Logger.w(tag = TAG) { "play() rejected: $reason" } }
+        playAudioElement(el) { reason ->
+            guardJsCallback("audio.play") { Logger.w(tag = TAG) { "play() rejected: $reason" } }
+        }
     }
 
     override fun jump(seconds: Int) {
@@ -49,7 +56,9 @@ private class WebAudioPlayer : AudioPlayer {
 
     override fun resume() {
         val el = element ?: return
-        playAudioElement(el) { reason -> Logger.w(tag = TAG) { "resume() rejected: $reason" } }
+        playAudioElement(el) { reason ->
+            guardJsCallback("audio.resume") { Logger.w(tag = TAG) { "resume() rejected: $reason" } }
+        }
     }
 
     override fun pause() {
