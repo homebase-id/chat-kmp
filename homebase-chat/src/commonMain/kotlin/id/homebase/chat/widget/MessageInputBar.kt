@@ -144,7 +144,6 @@ import id.homebase.resources.chat_message_emoji_options
 import id.homebase.resources.chat_message_hide_keyboard
 import id.homebase.resources.chat_message_microphone
 import id.homebase.resources.chat_message_paste_image
-import id.homebase.resources.chat_message_processing
 import id.homebase.resources.chat_message_record_video
 import id.homebase.resources.chat_markdown_blockquote
 import id.homebase.resources.chat_markdown_code_block
@@ -1023,7 +1022,6 @@ fun MessageTextFieldCompact(
                         recordingSeconds,
                         dragOffset,
                         cancelThresholdPx,
-                        recordingData?.isProcessing ?: false
                     )
                 }
             }
@@ -1116,7 +1114,6 @@ private fun BoxScope.RecordingInProgress(
     recordingSeconds: Int,
     dragOffset: Float,
     cancelThresholdPx: Float,
-    isProcessing: Boolean,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "recording")
     val dotAlpha by infiniteTransition.animateFloat(
@@ -1154,24 +1151,16 @@ private fun BoxScope.RecordingInProgress(
             style = MaterialTheme.typography.bodyMedium,
         )
         Spacer(modifier = Modifier.weight(1f))
-        if (isProcessing) {
-            Text(
-                text = stringResource(MR.string.chat_message_processing),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Text(
-                text = stringResource(MR.string.slide_to_cancel),
-                modifier = Modifier.offset {
-                    IntOffset((dragOffset / 2).roundToInt(), 0)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = (1f + dragOffset / cancelThresholdPx).coerceIn(0f, 1f)
-                ),
-            )
-        }
+        Text(
+            text = stringResource(MR.string.slide_to_cancel),
+            modifier = Modifier.offset {
+                IntOffset((dragOffset / 2).roundToInt(), 0)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                alpha = (1f + dragOffset / cancelThresholdPx).coerceIn(0f, 1f)
+            ),
+        )
     }
 }
 

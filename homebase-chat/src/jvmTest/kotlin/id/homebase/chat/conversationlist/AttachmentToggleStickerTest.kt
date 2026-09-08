@@ -183,7 +183,7 @@ private class NoopAudioRecorder : AudioRecorder {
 }
 
 private class NoopWaveformGenerator : AudioWaveFormGenerator {
-    override fun generateWaveForm(file: PlatformFile): AudioFileInfo = throw NotImplementedError()
-    override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
+    override suspend fun generateWaveForm(file: PlatformFile): AudioFileInfo = throw NotImplementedError()
+    override suspend fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
         throw NotImplementedError()
 }
