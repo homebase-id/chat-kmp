@@ -56,6 +56,20 @@ data class HomebaseFile(
     fun sqlUserDateMs(): Long =
         fileMetadata.appData.userDate ?: fileMetadata.created.milliseconds
 
+    /**
+     * Ordering / unread key, matching dotyoucore-js, which orders and counts
+     * unread on `transitCreated || created` (arrival) while labelling the
+     * bubble with `appData.userDate` (compose time). `max` rather than plain
+     * `created` so a row with no server stamp keeps its userDate.
+     *
+     * Mirrors `MAX(userDate, created)` in ChatReadCount.sq — un-clamped, like
+     * that column. `MessageUiModel.sortDate` is the display-safe twin: it maxes
+     * over the *clamped* userDate so a sender with a fast clock can't jump to
+     * the tail. Never under-counts relative to the old userDate-only filter.
+     */
+    fun orderingDateMs(): Long =
+        maxOf(sqlUserDateMs(), fileMetadata.created.milliseconds)
+
     fun assertOriginalAuthor(odinId: OdinId) {
         val originalAuthor = fileMetadata.originalAuthor
         if (originalAuthor == null) {

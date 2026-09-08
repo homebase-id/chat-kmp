@@ -38,6 +38,14 @@ data class MessageUiModel(
      * synthetic models that have no SQL row.
      */
     val sqlUserDate: Instant = userDate,
+    /**
+     * Where the message sits in the list: `max(userDate, arrival)`, the same
+     * key dotyoucore-js orders on (`fileMetadata.created`). A message that sat
+     * in the sender's outbox arrives stamped with its compose time; ordering
+     * on [userDate] would bury it that far up the scrollback while web shows
+     * it at the tail. [userDate] stays the *displayed* time.
+     */
+    val sortDate: Instant = userDate,
     val modified: Instant?, // When the message was last modified
     val created: Instant, // Server-side creation timestamp
     val originalAuthor: OdinId?,

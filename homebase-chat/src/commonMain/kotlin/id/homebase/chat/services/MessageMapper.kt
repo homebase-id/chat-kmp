@@ -174,6 +174,7 @@ suspend fun mapToMessageData(
                 conversationId = appData.groupId!!,
                 userDate = deletedUserDate.toInstant(),
                 sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
+                sortDate = maxOf(deletedUserDate, metadata.created).toInstant(),
                 modified = metadata.updated.toInstant(),
                 created = metadata.created.toInstant(),
                 originalAuthor = metadata.originalAuthor,
@@ -324,6 +325,9 @@ suspend fun mapToMessageData(
             content = messageAppData.getMessage(),
             userDate = userDate.toInstant(),
             sqlUserDate = Instant.fromEpochMilliseconds(header.sqlUserDateMs()),
+            // Built on the CLAMPED userDate, not header.orderingDateMs(): a sender with a
+            // fast clock must not jump to the tail, which the clamp already prevents.
+            sortDate = maxOf(userDate, metadata.created).toInstant(),
             modified = metadata.updated.toInstant(),
             created = metadata.created.toInstant(),
             originalAuthor = metadata.originalAuthor,

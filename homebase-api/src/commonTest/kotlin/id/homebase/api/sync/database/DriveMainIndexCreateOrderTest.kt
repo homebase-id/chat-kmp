@@ -69,8 +69,8 @@ class DriveMainIndexCreateOrderTest {
                 column = 0,
             )
             assertTrue(
-                indexes.contains("idx_unread_cover"),
-                "Opened schema should include idx_unread_cover, has: $indexes",
+                indexes.contains("idx_unread_cover_v2"),
+                "Opened schema should include idx_unread_cover_v2, has: $indexes",
             )
         }
     }
@@ -102,8 +102,8 @@ class DriveMainIndexCreateOrderTest {
             column = 0,
         )
         assertTrue(
-            indexes.contains("idx_unread_cover"),
-            "Recreated schema should include idx_unread_cover, has: $indexes",
+            indexes.contains("idx_unread_cover_v2"),
+            "Recreated schema should include idx_unread_cover_v2, has: $indexes",
         )
         val rowCount = queryStrings(raw, "SELECT COUNT(*) FROM DriveMainIndex", column = 0)
         assertEquals(listOf("0"), rowCount, "Recreated DriveMainIndex should be empty")

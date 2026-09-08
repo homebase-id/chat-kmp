@@ -18,11 +18,15 @@ CREATE INDEX IF NOT EXISTS idx_chatmessage_convid_userDate ON DriveMainIndex(gro
 -- correlated last-message subquery) all use this as a covering index.
 --
 -- This is the correct shape — it replaces the former fileType-leading
--- idx_messages_filetype_datatype_groupid_userDate. No migration code: it's just a schema
--- index, so new installs get it directly and existing installs that still carry the old index
--- simply shed it whenever the DB is next rebuilt on a major (version-bump) upgrade.
-CREATE INDEX IF NOT EXISTS idx_unread_cover
-  ON DriveMainIndex(identityId, fileType, dataType, groupId, userDate, originalAuthor, fileState, archivalStatus);
+-- idx_messages_filetype_datatype_groupid_userDate and, in turn, idx_unread_cover (which
+-- lacked `created`, so the MAX(userDate, created) unread predicate below fell back to a
+-- per-row table lookup). No migration code: it's just a schema index, so new installs get it
+-- directly, Schema.create() adds it to existing installs on next open, and the superseded
+-- index is shed whenever the DB is next rebuilt on a major (version-bump) upgrade.
+-- A NEW NAME is required for exactly that reason — CREATE INDEX IF NOT EXISTS would leave an
+-- existing install on the old shape.
+CREATE INDEX IF NOT EXISTS idx_unread_cover_v2
+  ON DriveMainIndex(identityId, fileType, dataType, groupId, userDate, created, originalAuthor, fileState, archivalStatus);
 
 -- Get full list of conversations (8888) from the DriveMainIndex table
 -- here to not contaminate it. Can also be easily fetched with QB()
@@ -44,7 +48,7 @@ selectAllConversationPlusLastMessage:
 SELECT
   d.jsonHeader AS convJsonHeader,
   m.jsonHeader AS msgJsonHeader,
-  m.userDate   AS msgUserDate
+  MAX(m.userDate, m.created) AS msgUserDate
 FROM DriveMainIndex AS d
 LEFT JOIN DriveMainIndex AS m
   ON m.rowId = (
@@ -70,7 +74,7 @@ LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.identityId = ?
   AND d.groupId = ?
   AND d.fileType = 7878 AND d.dataType = 0
-  AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
+  AND (c.lastReadTime IS NULL OR MAX(d.userDate, d.created) > c.lastReadTime)
   AND d.originalAuthor IS NOT NULL
   AND d.originalAuthor != ?
   -- Exclude soft-deleted messages. We check BOTH markers because
@@ -109,7 +113,7 @@ LEFT JOIN ChatReadCount c ON d.groupId = c.groupId
 WHERE d.identityId = ?
   AND d.fileType = 7878
   AND d.dataType = 0
-  AND (c.lastReadTime IS NULL OR d.userDate > c.lastReadTime)
+  AND (c.lastReadTime IS NULL OR MAX(d.userDate, d.created) > c.lastReadTime)
   AND d.groupId IS NOT NULL
   -- NULL originalAuthor is treated as self: drive-sync echoes of your own
   -- messages (and older self-authored rows) land with originalAuthor=NULL

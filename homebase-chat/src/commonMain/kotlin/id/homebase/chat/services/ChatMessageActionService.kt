@@ -107,15 +107,17 @@ class ChatMessageActionService(
         // Advance no further than the newest message the user actually saw.
         // `MessageUiModel.userDate` is the *clamped* display value
         // (`min(appData.userDate, transitCreated)`) while selectAllUnreadCount
-        // filters on the un-clamped DriveMainIndex.userDate — so read-bookkeeping
-        // runs on `sqlUserDate`, which is that same SQL column. Using the clamped
-        // value here is what stuck the badge at 1 for a message that had been read.
+        // filters on `MAX(DriveMainIndex.userDate, DriveMainIndex.created)` — so
+        // read-bookkeeping runs on `max(sqlUserDate, created)`, the same two SQL
+        // columns. Using the clamped value here is what stuck the badge at 1 for a
+        // message that had been read; using userDate alone is what left a
+        // late-arriving message permanently uncounted (#1199).
         //
         // The conversation's `latestMessageTimestamp` is deliberately NOT used as a
         // floor: it belongs to the newest message in the DB, which is not necessarily
         // one that ever reached the window. Marking that read (#1135) clears the badge
         // that is the only signal the tail is missing.
-        val newReadTime = viewedRecords.maxOf { it.sqlUserDate }
+        val newReadTime = viewedRecords.maxOf { maxOf(it.sqlUserDate, it.created) }
         val convoLatest =
             participantLookup.getConversationById(conversationId)?.latestMessageTimestamp
         Logger.d(tag = TAG) {
