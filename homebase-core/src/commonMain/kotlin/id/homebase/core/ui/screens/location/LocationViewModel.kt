@@ -128,17 +128,23 @@ class LocationViewModel(
                     .distinctBy { it.odinId }
                     .sortedBy { it.name.lowercase() }
                     .toList()
+                // Real and pending come out of the same snapshot, so they cannot disagree about
+                // who has converted — the exclusion below is a like-for-like filter, not a race.
+                val memberIds = members.map { it.odinId }.toSet()
+                val pending = circleState.pendingMembersOf(EMERGENCY_LOCATION_CIRCLE_ID)
+                    .asSequence()
+                    .map { it.odinId }
+                    .filterNot { it.domainName.lowercase() == self }
+                    .distinct()
+                    .map { contactService.resolveByOdinId(it) }
+                    .filterNot { it.odinId in memberIds }
+                    .sortedBy { it.name.lowercase() }
+                    .toList()
                 _uiState.update {
                     it.copy(
                         whoCanLocateMe = members,
                         whoCanLocateMeLoaded = circleState.isLoaded,
-                        // Drop anyone who just converted from pending to real — closes the
-                        // window where a stale pending snapshot and a freshly-updated real
-                        // membership list briefly disagree and render the same person twice
-                        // (#1096). checkWhoCanLocateMePending re-derives the full pending set
-                        // on its own cadence; this only prevents the transient overlap.
-                        whoCanLocateMePending = it.whoCanLocateMePending
-                            .filterNot { pending -> members.any { m -> m.odinId == pending.odinId } },
+                        whoCanLocateMePending = pending,
                     )
                 }
             }
@@ -473,50 +479,6 @@ class LocationViewModel(
         }
     }
 
-    private var whoCanLocateMePendingJob: Job? = null
-
-    /**
-     * Live read, never a periodic loop (a sealed deposit doesn't change moment to moment, and a
-     * conversion to real membership already flips whoCanLocateMe via ConnectionService's normal
-     * refresh). Runs on every [refresh] (screen entry/resume) so a contact just added from the
-     * picker — which lands as a pending deposit far more often than not — is visible at once
-     * (#1096). Delegates the fan-out to [ConnectionService.findPendingMembers] and applies the one
-     * Location-specific rule: you are never your own emergency contact.
-     */
-    private fun checkWhoCanLocateMePending() {
-        if (whoCanLocateMePendingJob?.isActive == true) return
-        whoCanLocateMePendingJob = viewModelScope.launch {
-            _uiState.update { it.copy(whoCanLocateMePendingChecking = true) }
-            try {
-                val self = runCatching { credentialsManager.getActiveDomain() }
-                    .getOrNull()?.domainName?.lowercase()
-                val circleId = Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID)
-                val pending = connectionService.findPendingMembers(circleId)
-                    .filterNot { it.domainName.lowercase() == self }
-
-                _uiState.update {
-                    it.copy(
-                        // Exclude against the CURRENT whoCanLocateMe, not the snapshot findPendingMembers
-                        // started from — someone can convert from pending to real while this fan-out is
-                        // still in flight, and rendering both lists un-deduped briefly shows them twice
-                        // (#1096).
-                        whoCanLocateMePending = pending
-                            .distinct()
-                            .map { odinId -> contactService.resolveByOdinId(odinId) }
-                            .filterNot { contact -> it.whoCanLocateMe.any { m -> m.odinId == contact.odinId } }
-                            .sortedBy { contact -> contact.name.lowercase() },
-                        whoCanLocateMePendingChecking = false,
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "checkWhoCanLocateMePending failed" }
-                _uiState.update { it.copy(whoCanLocateMePendingChecking = false) }
-            }
-        }
-    }
-
     /** Revoke [odinId]'s emergency-circle grant, real or still-pending — one API call covers
      *  both (revoke also silently drops a still-sealed deposit). */
     private fun removeEmergencyContact(odinId: String) {
@@ -525,12 +487,6 @@ class LocationViewModel(
         viewModelScope.launch {
             try {
                 connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
-                _uiState.update {
-                    it.copy(
-                        whoCanLocateMePending = it.whoCanLocateMePending
-                            .filterNot { contact -> contact.odinId.domainName == odinId },
-                    )
-                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -603,11 +559,6 @@ class LocationViewModel(
             refreshCounts()
         }
         loadDashboard()
-        // Re-derive "who can locate me" pending status on every resume (not just on manual
-        // section-expand) — otherwise returning here right after adding someone shows nothing
-        // for them until the section happens to be expanded, which reads as "the add failed"
-        // (#1096: a real add landed as a pending deposit and stayed invisible until expand).
-        checkWhoCanLocateMePending()
     }
 
     /** Dashboard data: today's traces (map preview), the device list, and the

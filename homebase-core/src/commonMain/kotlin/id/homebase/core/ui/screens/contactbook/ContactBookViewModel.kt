@@ -153,18 +153,21 @@ class ContactBookViewModel(
                 val open = _circleMembers.value ?: return@collect
                 val match = circles.firstOrNull { it.circle.id == open.circleId } ?: return@collect
                 val domains = match.members.map { it.domainName }.toSet()
+                val pendingDomains = match.pendingMembers
+                    .map { p -> p.odinId.domainName.lowercase() }
+                    .filterNot { d -> domains.any { it.equals(d, ignoreCase = true) } }
+                    .toSet()
+                // Pending is part of the circle value now, so a pending-only change alters this
+                // flow and lands here — the case #1096 said StateFlow would conflate, because
+                // pending used to live outside the value entirely.
                 _circleMembers.update {
                     it?.copy(
                         members = entriesForDomains(domains, entries.value).sortedBy { m -> m.sortKey },
+                        pendingMembers = entriesForDomains(pendingDomains, entries.value)
+                            .sortedBy { m -> m.sortKey },
                         drives = resolveCircleDrives(match.circle),
                     )
                 }
-                // Best-effort: a fresh emission here means someone's real membership actually
-                // changed, so re-derive the pending badge too. This does NOT catch a pending-only
-                // add — the real member list is unchanged, so StateFlow conflates the assignment
-                // and this block never runs for that case. refreshOpenCircle() is the reliable
-                // path (#1096); this just keeps things fresher between resumes when it does fire.
-                if (open.manageable) checkCirclePending(match)
             }
         }
     }
@@ -542,8 +545,6 @@ class ContactBookViewModel(
         }
     }
 
-    private var circlePendingJob: Job? = null
-
     private fun handleCircleClicked(circle: CircleWithMembers) {
         // Members are bundled with the circle list — resolve them to contact entries
         // synchronously, no second network call. The init collector on connectionService.circles
@@ -551,6 +552,12 @@ class ContactBookViewModel(
         // sheet stale, #1096).
         val domains = circle.members.map { it.domainName }.toSet()
         val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
+        // Pending deposits ride the same bundle as the members, so the sheet is complete on open.
+        val pendingDomains = circle.pendingMembers
+            .map { it.odinId.domainName.lowercase() }
+            .filterNot { it in domains.map { d -> d.lowercase() } }
+            .toSet()
+        val pending = entriesForDomains(pendingDomains, entries.value).sortedBy { it.sortKey }
         // Ambient circles are enrolled with no owner present, so hand-managing a member means
         // nothing — the app re-enrols them. A review circle is the owner's own choice and stays
         // editable.
@@ -561,71 +568,21 @@ class ContactBookViewModel(
             circleEmoji = circle.circle.emoji,
             manageable = manageable,
             members = members,
+            pendingMembers = pending,
             isLoading = false,
-            pendingChecking = manageable,
             drives = resolveCircleDrives(circle.circle),
         )
-        if (manageable) checkCirclePending(circle)
     }
 
     /**
-     * Re-derive the open circle sheet's pending badge and real-member list on screen resume
-     * (e.g. returning from the add picker). The `init` collector on connectionService.circles
-     * re-checks pending automatically whenever that flow actually emits, but a pending-only add
-     * doesn't change any circle's real member list — so the resulting CircleMembershipState is
-     * `equals()` to the prior one, and MutableStateFlow silently conflates the assignment,
-     * never notifying collectors at all (#1096). This resume-triggered call doesn't depend on
-     * the flow re-emitting; it always re-checks.
+     * Pull fresh circle data on screen resume, e.g. returning from the add picker.
+     *
+     * Still worth doing: pending membership now rides the circle bundle, so the collector picks
+     * up any change on its own — but only once something asks the server. This is that ask.
      */
     fun refreshOpenCircle() {
-        val open = _circleMembers.value ?: return
+        _circleMembers.value ?: return
         viewModelScope.launch { connectionService.refresh() }
-        val match = _circles.value.firstOrNull { it.circle.id == open.circleId } ?: return
-        if (open.manageable) checkCirclePending(match)
-    }
-
-    /** Live pending-status re-check for whichever circle's sheet is currently open — called on
-     *  first open, again whenever connectionService.circles happens to emit a structurally
-     *  different value, and explicitly on screen resume via [refreshOpenCircle] (#1096). */
-    private fun checkCirclePending(circle: CircleWithMembers) {
-        circlePendingJob?.cancel()
-        circlePendingJob = viewModelScope.launch {
-            val circleId = try {
-                Uuid.parseHex(circle.circle.id)
-            } catch (e: Exception) {
-                Logger.w(e, "ContactBookViewModel") { "bad circle id ${circle.circle.id}" }
-                _circleMembers.update { it?.copy(pendingChecking = false) }
-                return@launch
-            }
-            val pending = try {
-                connectionService.findPendingMembers(circleId)
-            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, "ContactBookViewModel") { "findPendingMembers failed for ${circle.circle.id}" }
-                emptyList()
-            }
-            val pendingEntries = entriesForDomains(
-                pending.map { it.domainName }.toSet(),
-                entries.value,
-            ).sortedBy { it.sortKey }
-            // Only apply if the sheet is still open on the same circle (the user may have
-            // dismissed or switched to another circle while this was in flight). Re-excludes
-            // against the CURRENT members at update time, not the snapshot this fan-out started
-            // from — cancel() on the superseded job is cooperative, so a stale fan-out that's
-            // already past its last suspension point can still land its update after a fresher
-            // one already promoted someone from pending to real, putting them in both lists at
-            // once and crashing CircleMembersSheet's keyed LazyColumn (real crash, not cosmetic:
-            // #1096 in the Location dashboard's plain Column was the same race, just invisible).
-            _circleMembers.update {
-                if (it?.circleId == circle.circle.id) {
-                    it.copy(
-                        pendingMembers = pendingEntries.filterNot { p -> it.members.any { m -> m.uniqueId == p.uniqueId } },
-                        pendingChecking = false,
-                    )
-                } else it
-            }
-        }
     }
 
     private fun handleCircleRemoveMember(circleIdRaw: String, member: ContactBookEntry) {

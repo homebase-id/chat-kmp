@@ -73,8 +73,6 @@ data class CircleMembersUi(
      * opens (there is no bulk "list pending" endpoint), never cached across app restarts.
      */
     val pendingMembers: List<ContactBookEntry> = emptyList(),
-    /** True while the open-triggered pending-status fan-out is in flight. */
-    val pendingChecking: Boolean = false,
     /** uniqueIds currently being removed — drives a per-row spinner in place of the remove "X"
      *  so a tap has visible feedback while the call is in flight. */
     val removingMemberIds: Set<Uuid> = emptySet(),

@@ -22,9 +22,7 @@ import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
 
 /** One circle chip on the contact-detail screen. [pending] means this contact's grant on that
- *  circle is still a sealed deposit — live-read via [id.homebase.chat.services.convo.contact.ConnectionService.findPendingCircles],
- *  never cached across app restarts, since there's no bulk "list this contact's pending circles"
- *  endpoint either. */
+ *  circle is still a sealed deposit, read from the connection's `accessGrant.pendingCircleIds`. */
 data class ContactCircleUi(
     val id: String,
     val name: String,

@@ -122,7 +122,7 @@ fun CircleMembersSheet(
                     contentAlignment = Alignment.Center,
                 ) { CircularProgressIndicator() }
 
-                allMembers.isEmpty() && !state.pendingChecking -> Text(
+                allMembers.isEmpty() -> Text(
                     text = stringResource(MR.string.contactbook_circle_members_empty),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -144,12 +144,6 @@ fun CircleMembersSheet(
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (state.pendingChecking) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.padding(start = 8.dp).heightIn(max = 12.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        }
                     }
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
                         items(allMembers, key = { it.uniqueId.toString() }) { entry ->

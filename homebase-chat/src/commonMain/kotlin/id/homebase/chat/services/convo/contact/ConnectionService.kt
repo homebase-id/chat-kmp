@@ -22,22 +22,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import co.touchlab.kermit.Logger
 import kotlin.uuid.Uuid
 
 /** Debounce window for push-driven refreshes — long enough to swallow a fan-out burst, short
  *  enough that the contact-detail / circles UI updates promptly after an external change. */
 private const val REFRESH_DEBOUNCE_MS = 300L
-
-/** How long [ConnectionService.findPendingMembers] waits for [ConnectionService.connections]/
- *  [ConnectionService.circles] to complete their first real load before reading them — bounds a
- *  cold-start caller against racing [ConnectionService.start]'s async hydrate+refresh. */
-private const val CONNECTIONS_LOAD_WAIT_MS = 15_000L
 
 /**
  * A review could not be cleared because the contact still holds circles that keep them reviewed.
@@ -354,53 +347,5 @@ class ConnectionService(
             throw e
         }
         refresh()
-    }
-
-    /**
-     * Who currently has [circleId] sealed as a pending deposit rather than a real membership.
-     *
-     * Read straight off the already-loaded [circles], which the server now returns with a
-     * `pendingMembers` sibling per circle. This used to fan out one `/connections/status` per
-     * connected identity because no bulk answer existed; on an identity with a few hundred
-     * connections that was a few hundred requests to populate one sheet.
-     *
-     * Waits (bounded) for [circles] to have completed one real load. A caller invoked right on
-     * cold start — the Location dashboard's resume check — otherwise reads the empty initial
-     * state and silently reports "nobody pending" for someone who has a pending grant. That is
-     * not an exception, so nothing above this would catch or log it; it just looks like an
-     * empty, correct answer.
-     */
-    suspend fun findPendingMembers(circleId: Uuid): List<OdinId> {
-        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) { circles.first { it.isLoaded } }
-
-        val id = circleId.toHexString()
-        return circles.value.circles
-            .firstOrNull { it.circle.id.equals(id, ignoreCase = true) }
-            ?.pendingMembers
-            ?.map { it.odinId }
-            .orEmpty()
-    }
-
-    /**
-     * Live read of which circles [odinId] currently has sealed as a pending deposit — the
-     * inverse of [findPendingMembers]: one identity, many circles, so this is a single
-     * `/connections/status` read rather than a fan-out. Filtered to circle ids that actually
-     * exist in the already-loaded bulk circle list, defending against a stale/removed id.
-     */
-    suspend fun findPendingCircles(odinId: OdinId): List<Uuid> {
-        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) { circles.first { it.isLoaded } }
-
-        val status = try {
-            getConnectionStatus(odinId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending circles" }
-            return emptyList()
-        }
-        val known = circles.value.circles
-            .mapNotNull { runCatching { Uuid.parseHex(it.circle.id) }.getOrNull() }
-            .toSet()
-        return status?.accessGrant?.pendingCircleIds.orEmpty().filter { it in known }
     }
 }
