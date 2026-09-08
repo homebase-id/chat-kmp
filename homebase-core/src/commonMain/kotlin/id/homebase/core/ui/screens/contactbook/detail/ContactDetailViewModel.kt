@@ -42,6 +42,7 @@ import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.assignableCircles
 import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.circleAccessState
+import id.homebase.core.ui.screens.contactbook.isAccessRevoked
 import id.homebase.core.ui.screens.contactbook.isPersonalCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
@@ -311,6 +312,7 @@ class ContactDetailViewModel(
                     it.copy(
                         entry = entry,
                         connectionStatus = status,
+                        isAccessRevoked = registration?.isAccessRevoked() == true,
                         circles = circleItems,
                         assignableCircles = assignableCircles,
                         isLoading = false,

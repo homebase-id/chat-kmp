@@ -45,6 +45,11 @@ data class ContactDetailUiState(
     val isLoading: Boolean = true,
     /** Connection status for this contact's odinId; null when not a connection / unknown. */
     val connectionStatus: ConnectionStatus? = null,
+    /**
+     * The contact's access has been switched off wholesale. Still connected and still in circles,
+     * so nothing else on this screen would show it.
+     */
+    val isAccessRevoked: Boolean = false,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
     val circles: List<ContactCircleUi> = emptyList(),
     /** All user-defined circles the signed-in user could add a contact to (system circles excluded),

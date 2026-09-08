@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Cake
@@ -77,6 +78,8 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.circle_access_incomplete
+import id.homebase.resources.contact_access_revoked_body
+import id.homebase.resources.contact_access_revoked_title
 import id.homebase.resources.circle_member_pending
 import id.homebase.resources.contactbook_detail_bio
 import id.homebase.resources.contactbook_detail_social
@@ -224,6 +227,39 @@ fun CirclesSection(circles: List<ContactCircleUi>, isConnected: Boolean, onCircl
 
         !isConnected -> SectionHint(stringResource(MR.string.contactbook_detail_circles_connect))
         else -> SectionHint(stringResource(MR.string.contactbook_detail_circles_empty))
+    }
+}
+
+/**
+ * Shown when the contact's access has been revoked wholesale. Nothing else on the screen reveals
+ * it — they are still connected, still listed in circles — so without this the screen states
+ * access the contact does not have.
+ */
+@Composable
+fun AccessRevokedBanner() {
+    Spacer(modifier = Modifier.height(12.dp))
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Outlined.Block, contentDescription = null)
+            Column {
+                Text(
+                    text = stringResource(MR.string.contact_access_revoked_title),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = stringResource(MR.string.contact_access_revoked_body),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
 

@@ -1785,6 +1785,8 @@
     <string name="circle_member_add_failed">Failed</string>
     <string name="circle_member_pending">Pending</string>
     <string name="circle_access_incomplete">No key yet</string>
+    <string name="contact_access_revoked_title">Access switched off</string>
+    <string name="contact_access_revoked_body">You are still connected and they are still in your circles, but nothing you have granted is reaching them.</string>
     <string name="circle_access_incomplete_detail">Granted, but they can't read it yet.</string>
     <string name="circle_access_pending_detail">Requested — takes effect when they next connect.</string>
     <string name="circle_member_status_member">Status in this circle: Member</string>

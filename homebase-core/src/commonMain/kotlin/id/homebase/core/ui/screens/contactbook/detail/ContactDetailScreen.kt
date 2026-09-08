@@ -440,6 +440,7 @@ private fun ContactDetailContent(
                             )
                             when (currentTab) {
                                 ContactDetailTab.DETAILS -> {
+                                    if (uiState.isAccessRevoked) AccessRevokedBanner()
                                     uiState.introducedByName?.let { IntroducedBySection(it) }
                                     ContactFieldsSection(
                                         entry = entry,
