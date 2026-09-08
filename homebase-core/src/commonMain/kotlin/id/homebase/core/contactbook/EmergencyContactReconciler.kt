@@ -5,11 +5,12 @@ package id.homebase.core.contactbook
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
-import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
-import id.homebase.core.config.locationLabeledDrive
+import id.homebase.core.auth.AuthConnectionCoordinator
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.uuid.ExperimentalUuidApi
 
 /**
@@ -17,9 +18,8 @@ import kotlin.uuid.ExperimentalUuidApi
  * best-effort status-message path ([EmergencyContactReceiveService]). The live status message
  * only fires on the WS-push path, so a designation that arrives during cold sync (offline →
  * login catch-up) or in a dropped event never sets the flag. Here we re-derive it by
- * preflighting the peer's location drive with
- * [TemporalDriveReadProvider.verifyTemporalAccess] (reads no data, fires no notification on the
- * peer).
+ * preflighting the peer's location drive through [EmergencyContactService] (reads no data,
+ * fires no notification on the peer).
  *
  * Deliberately SET-only (issue #961): a non-throwing `hasAccess = false` is NOT a trustworthy
  * revocation signal — it also fires on benign/ambiguous negatives (and has been observed after
@@ -28,34 +28,41 @@ import kotlin.uuid.ExperimentalUuidApi
  * peer's explicit revocation message ([EmergencyContactReceiveService.onRevoked]); a stale flag
  * surfaces non-destructively as a broken row via the per-entry freshness check instead.
  *
- * A network/parse failure is inconclusive — we leave the flag untouched rather than flip on a
- * guess.
- *
  * Limitation: only contacts we already hold can be reconciled (a peer who added us but isn't in
  * our contact book yet has no row to flag — the status message remains the discovery path for
  * those).
  */
 class EmergencyContactReconciler(
     private val contactRepository: ContactRepository,
-    private val temporalRead: TemporalDriveReadProvider,
+    private val emergencyContacts: EmergencyContactService,
+    private val authConnectionCoordinator: AuthConnectionCoordinator,
     private val scope: CoroutineScope,
 ) {
-    private val locationDrive = locationLabeledDrive.drive.alias
-
     /** Fire-and-forget the full set-only reconcile in the background (called once at login). */
     fun start() {
-        scope.launch { runCatching { reconcileAll() } }
+        scope.launch {
+            runCatching { reconcileAll() }
+                .onFailure { Logger.w(it, TAG) { "reconcileAll failed" } }
+        }
     }
 
     /**
-     * Set-only pass over identity-backed contacts: recovers a designation the live status-message
-     * path missed. One temporal-access preflight per unflagged identity contact.
+     * Flagged contacts first (their freshness feeds the stale-signal badge), then the set-only
+     * pass over unflagged identity contacts. One online wait up front; each verify then fails
+     * fast instead of waiting per contact.
      */
     suspend fun reconcileAll() {
         contactRepository.ensureLoaded()
-        for (contact in contactRepository.contacts.value) {
+        withTimeoutOrNull(LOCATE_VERIFY_ONLINE_WAIT_MS) {
+            authConnectionCoordinator.isOnline.first { it }
+        }
+        val contacts = contactRepository.contacts.value
+        Logger.i(TAG) { "reconcileAll: contacts=${contacts.size} flagged=${contacts.count { it.iCanLocate() }}" }
+        emergencyContacts.refreshAll()
+        for (contact in contacts) {
             reconcileContact(contact)
         }
+        Logger.i(TAG) { "reconcileAll: done" }
     }
 
     private suspend fun reconcileContact(contact: Contact) {
@@ -64,9 +71,12 @@ class EmergencyContactReconciler(
         // Set-only: an already-flagged contact has nothing to recover — skip the preflight entirely.
         if (contact.iCanLocate()) return
 
-        val status = runCatching { temporalRead.verifyTemporalAccess(odinId, locationDrive) }
-            .getOrNull()
-        if (reconcileAction(status?.hasAccess, flagged = false) == ReconcileAction.Set) {
+        val hasAccess = when (emergencyContacts.refresh(odinId, waitForOnline = false)) {
+            is LocateVerifyStatus.Active -> true
+            is LocateVerifyStatus.Broken -> false
+            else -> null
+        }
+        if (reconcileAction(hasAccess, flagged = false) == ReconcileAction.Set) {
             runCatching { contactRepository.setICanLocate(contact.uniqueId, versionTag) }
                 .onFailure { Logger.w(it) { "reconcile: setICanLocate failed for ${odinId.domainName}" } }
         }
@@ -92,3 +102,5 @@ enum class ReconcileAction { Set, None }
  */
 fun reconcileAction(hasAccess: Boolean?, flagged: Boolean): ReconcileAction =
     if (hasAccess == true && !flagged) ReconcileAction.Set else ReconcileAction.None
+
+private const val TAG = "EmergencyContactReconciler"

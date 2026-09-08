@@ -92,6 +92,25 @@ class UserPreferences(private val settings: Settings) {
         get() = settings.getBoolean("notification_include_muted_badge", false)
         set(value) = settings.putBoolean("notification_include_muted_badge", value)
 
+    /**
+     * Id of the conversation at the top of the chat list the last time the user was looking at it.
+     * Persisted rather than held in memory because process death is the case index-based scroll
+     * restore gets wrong.
+     */
+    var conversationListTopId: Uuid?
+        get() {
+            val raw = settings.getStringOrNull("conversationListTopId") ?: return null
+            return try {
+                Uuid.parse(raw)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
+        set(value) {
+            if (value == null) settings.remove("conversationListTopId")
+            else settings.putString("conversationListTopId", value.toString())
+        }
+
    
     /**
      * Per-conversation scroll anchor — the uniqueId of the message the user

@@ -4,11 +4,13 @@ package id.homebase.core.notifications
 expect object BadgeManager {
     fun increment()
 
+    /** Sets the badge to an absolute [count]. */
+    fun setCount(count: Int)
+
     /**
-     * Resets the in-memory badge counter to 0 without dismissing any posted
-     * notifications. Use on app resume so the icon-badge total stays accurate
-     * while leaving the tray intact (the user clears notifications per
-     * conversation by tapping or reading them).
+     * Clears the badge, leaving posted notifications in the tray. Not the app-resume
+     * path — resuming with messages still unread must keep showing them, so that path
+     * calls [setCount] with the real total.
      */
     fun resetCount()
 
@@ -16,9 +18,8 @@ expect object BadgeManager {
     fun cancelAll()
 
     /**
-     * Dismisses a single conversation's posted notification and its group
-     * summary, leaving all other conversations' notifications in place.
-     * [messageId] and [summaryId] come from [conversationNotificationIds].
+     * Dismisses a single conversation's posted notifications and its group summary,
+     * leaving all other conversations' notifications in place.
      */
-    fun cancelConversationNotifications(messageId: Int, summaryId: Int)
+    fun cancelConversationNotifications(conversationId: String)
 }

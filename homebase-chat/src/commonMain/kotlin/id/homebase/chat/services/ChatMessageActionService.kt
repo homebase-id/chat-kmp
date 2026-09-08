@@ -22,6 +22,8 @@ import id.homebase.api.sync.database.enqueued
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.api.crypto.Md5
+import id.homebase.chat.services.outbox.MutationOutcome
 import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -245,6 +247,36 @@ class ChatMessageActionService(
             getRecipients(conversationId)
         }
         return ToggleReactionResult(resultType = resultType)
+    }
+
+    /**
+     * Applies a vote-style reaction change (RSVP, Groodle slot, poll option) as one
+     * idempotent set-state row: removes first, then adds. The row is keyed per
+     * (message, scope) so a newer tap replaces a still-pending one.
+     */
+    suspend fun setReactions(
+        conversationId: Uuid,
+        messageId: Uuid,
+        change: ReactionSetChange,
+    ): MutationOutcome {
+        require(change.add.none { it in change.remove }) { "add and remove overlap" }
+        if ((change.add + change.remove).any { !isValidEmoji(it) }) {
+            return MutationOutcome.Refused(IllegalArgumentException("invalid reaction code"))
+        }
+        val toJson = { code: String -> OdinSystemSerializer.serialize(ReactionContent(emoji = code)) }
+        val rowKey = Md5.toGuidId("reaction-set:$messageId:${change.scope}")
+        val outcome = optimisticWriter.setReactions(
+            driveId = chatDrive,
+            uniqueId = messageId,
+            rowKey = rowKey,
+            add = change.add.map(toJson).toSet(),
+            remove = change.remove.map(toJson).toSet(),
+        ) { getRecipients(conversationId) }
+        Logger.i(tag = REACTIONS_TAG) {
+            "setReactions msg=$messageId scope=${change.scope} add=${change.add} remove=${change.remove} " +
+                "rowKey=$rowKey outcome=$outcome"
+        }
+        return outcome
     }
 
     // -------------------- DELETE --------------------
