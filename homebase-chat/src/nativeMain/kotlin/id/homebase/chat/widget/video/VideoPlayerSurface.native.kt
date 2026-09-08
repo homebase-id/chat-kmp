@@ -26,6 +26,7 @@ import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.core.audio.AudioSession
 import id.homebase.resources.MR
 import id.homebase.resources.video_error_generic
 import org.jetbrains.compose.resources.stringResource
@@ -165,7 +166,7 @@ actual fun VideoPlayerSurface(
                 playing.sessionId?.let { id ->
                     // Server itself stays alive for the app lifetime; just drop the session
                     // so the encrypted-bytes endpoint can't be hit on a stale id.
-                    scope.launch { LocalVideoServer.shared().unregister(id) }
+                    scope.launch { LocalVideoServer.existing()?.unregister(id) }
                 }
                 // Observers + sessionId must be torn down BEFORE returning
                 // the player to the pool — otherwise the recycled player
@@ -261,6 +262,10 @@ actual fun VideoPlayerSurface(
         onProgress(0f)
         withContext(Dispatchers.Main) {
             try {
+                // A finished voice memo leaves the process-wide session in Record, which has
+                // no output route — AVPlayer then decodes fine but never starts, posting
+                // FailedToPlayToEndTime(-66637) at t=0.
+                AudioSession.ensurePlaybackCapable()
                 val videoData = VideoPlayerData(
                     data.fileId, data.driveId, data.payloadKey, data.keyHeader,
                     data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId,
