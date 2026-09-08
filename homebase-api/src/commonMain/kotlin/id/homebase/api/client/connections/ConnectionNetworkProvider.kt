@@ -164,6 +164,15 @@ class ConnectionNetworkProvider(
      * circle list. [getCirclesWithMembers] already returns `pendingMembers` for every circle in
      * one round-trip; use that when showing more than one.
      */
+    /**
+     * Finish circle enrollments queued for this app — the HTTP equivalent of the socket's
+     * `processEnrollments`, for when there is no live connection to send it on.
+     *
+     * Idempotent, and a no-op without the permission.
+     */
+    suspend fun processEnrollments(): ProcessEnrollmentsResult =
+        postAndDeserialize("/connections/enrollments/process", EmptyRequest())
+
     suspend fun getPendingCircleMembers(circleId: Uuid): List<PendingCircleMember> {
         val creds = requireCreds()
 

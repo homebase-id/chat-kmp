@@ -590,6 +590,11 @@ class AuthConnectionCoordinator(
                             // auto-process behaviour is fixed.
                             wsClient?.processAllInboxes()
 
+                            // Claim any circle enrollments queued for this app while we were
+                            // away. Sent blind: the queue isn't visible from here, and the
+                            // command is a no-op when there's nothing owed.
+                            wsClient?.processEnrollments()
+
                             driveSyncManager.syncAll()
                             Logger.i(tag = "AuthLifecycle") { "AuthCC: onConnected post-sync done" }
                         } catch (e: Exception) {

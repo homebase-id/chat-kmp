@@ -13,6 +13,17 @@ import kotlinx.serialization.encoding.Encoder
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 
+/** No-body POST. Some endpoints still expect a JSON object rather than an empty payload. */
+@Serializable
+class EmptyRequest
+
+/** What `POST /connections/enrollments/process` drained. */
+@Serializable
+data class ProcessEnrollmentsResult(
+    val connectionsProcessed: Int = 0,
+    val enrollmentsCompleted: Int = 0,
+)
+
 @Serializable
 data class OdinIdRequest(
     val odinId: OdinId
@@ -229,7 +240,16 @@ data class RedactedAccessExchangeGrant(
      * but not yet actioned by the owner or the contact's server. Standard hyphenated GUIDs (this
      * field is backed by a plain Guid server-side, unlike [RedactedCircleGrant.circleId]).
      */
-    val pendingCircleIds: List<Uuid> = emptyList()
+    val pendingCircleIds: List<Uuid> = emptyList(),
+    /**
+     * Circles waiting on their owning app to come and finish the enrollment — it holds the drive
+     * keys nobody else can source.
+     *
+     * Deliberately not merged with [pendingCircleIds]: that one resolves on its own when the
+     * contact next calls, this one resolves only when an app acts. Processing usually moves an
+     * entry from here to there rather than straight to a grant, so it is two steps, not one.
+     */
+    val awaitingAppCircleIds: List<Uuid> = emptyList()
 )
 
 @Serializable

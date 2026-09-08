@@ -636,7 +636,17 @@ class OdinWebSocketClient(
                 Logger.e("Notification of type error was sent.")
             }
 
+            ClientNotificationType.pendingEnrollmentsAwaiting -> {
+                handlePendingEnrollments(notification)
+            }
+
             else -> {
+                // Named, not swallowed: an unknown type coerces to `unused` and used to vanish
+                // here, which is how pendingEnrollmentsAwaiting went unnoticed until someone
+                // read the server spec.
+                Logger.d(tag = "WebSocket") {
+                    "Unhandled notification type=${notification.notificationType}"
+                }
             }
         }
     }
@@ -656,6 +666,33 @@ class OdinWebSocketClient(
      * the inbox-arrived item never gets processed. Re-enabling closes that
      * gap. TODO: remove once the server auto-processes inbox arrivals.
      */
+    /**
+     * An enrollment is waiting on this app. Claim the whole queue rather than the one entry the
+     * notification names — the command drains everything owed to us, and is a no-op when there
+     * is nothing, so there is no reason to be surgical.
+     */
+    private suspend fun handlePendingEnrollments(notification: ClientNotificationPayload) {
+        val n = runCatching {
+            OdinSystemSerializer.deserialize<PendingEnrollmentNotification>(notification.data)
+        }.getOrNull()
+        Logger.i(tag = "WebSocket") {
+            "Pending enrollment awaiting: odinId=${n?.odinId} circle=${n?.circleId}"
+        }
+        processEnrollments()
+    }
+
+    /**
+     * Finish any circle enrollments queued for this app: another app's client recorded the
+     * owner's choice but could not mint grants for drives whose keys only we hold.
+     *
+     * Sent blind on every connect — the queue is not visible from here, the command is a no-op
+     * when empty, idempotent when repeated, and a silent no-op without the permission. Missing
+     * one costs latency, never the work; the queue is durable.
+     */
+    suspend fun processEnrollments() {
+        send(command = "processEnrollments", data = "")
+    }
+
     private suspend fun handleProcessInbox(notification: ClientNotificationPayload) {
         val n =
             OdinSystemSerializer.deserialize<InboxItemReceivedNotification>(
@@ -911,7 +948,15 @@ class OdinWebSocketClient(
     private suspend inline fun <reified T> notify(
         command: String,
         payload: T
-    ) {
+    ) = send(command, OdinSystemSerializer.serialize(payload))
+
+    /**
+     * Send [command] with [data] verbatim.
+     *
+     * [notify] always serializes a payload, which cannot express a command that carries none —
+     * `""` would go out as `"\"\""`, a quoted empty string, not an empty one.
+     */
+    private suspend fun send(command: String, data: String) {
         val currentSession = session
         if (currentSession == null) {
             Logger.w { "Cannot send $command: WebSocket not connected" }
@@ -919,10 +964,7 @@ class OdinWebSocketClient(
         }
 
         try {
-            val message = WebsocketCommand(
-                command = command,
-                data = OdinSystemSerializer.serialize(payload)
-            )
+            val message = WebsocketCommand(command = command, data = data)
 
             val encryptedMessage = encryptData(message)
             val jsonMessage = OdinSystemSerializer.serialize(encryptedMessage)

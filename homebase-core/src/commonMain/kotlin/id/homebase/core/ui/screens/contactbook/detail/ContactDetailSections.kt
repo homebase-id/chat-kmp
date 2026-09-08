@@ -79,6 +79,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.circle_access_awaiting_app
 import id.homebase.resources.circle_access_incomplete
 import id.homebase.resources.contact_access_revoked_body
 import id.homebase.resources.contact_review_action
@@ -334,6 +335,9 @@ private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
             val mark = when {
                 circle.pending || circle.accessState == CircleAccessState.Pending ->
                     stringResource(MR.string.circle_member_pending)
+
+                circle.accessState == CircleAccessState.AwaitingApp ->
+                    stringResource(MR.string.circle_access_awaiting_app)
 
                 circle.accessState == CircleAccessState.Incomplete ->
                     stringResource(MR.string.circle_access_incomplete)

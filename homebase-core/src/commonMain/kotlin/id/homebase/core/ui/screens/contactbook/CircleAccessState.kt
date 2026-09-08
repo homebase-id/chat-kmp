@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.contactbook
 import id.homebase.api.client.connections.RedactedCircleGrant
 import id.homebase.api.client.connections.RedactedIdentityConnectionRegistration
 import id.homebase.api.youauth.DrivePermission
+import kotlin.uuid.Uuid
 
 /**
  * Whether a circle membership is actually delivering the access it appears to.
@@ -20,6 +21,13 @@ enum class CircleAccessState {
 
     /** Requested by an app, not yet landed. Takes effect the next time they connect. */
     Pending,
+
+    /**
+     * Recorded, but waiting on the app that owns the circle to come and finish it — only that
+     * app can source the drive keys. Distinct from [Pending] because they clear by different
+     * means, and finishing this one usually produces a [Pending], not a grant.
+     */
+    AwaitingApp,
 }
 
 /**
@@ -45,9 +53,13 @@ fun RedactedIdentityConnectionRegistration.circleAccessState(circleId: String): 
     val grant = accessGrant ?: return null
     val id = circleId.lowercase()
 
-    if (grant.pendingCircleIds.any { it.toString().replace("-", "").lowercase() == id }) {
-        return CircleAccessState.Pending
-    }
+    fun List<Uuid>.holds(circleId: String) =
+        any { it.toString().replace("-", "").lowercase() == circleId }
+
+    // Awaiting first: an entry can be in both while an app's processing moves it along, and the
+    // earlier of the two stages is the honest answer during that window.
+    if (grant.awaitingAppCircleIds.holds(id)) return CircleAccessState.AwaitingApp
+    if (grant.pendingCircleIds.holds(id)) return CircleAccessState.Pending
 
     val circleGrant = grant.circleGrants
         .firstOrNull { it.circleId.toHexString().lowercase() == id }
