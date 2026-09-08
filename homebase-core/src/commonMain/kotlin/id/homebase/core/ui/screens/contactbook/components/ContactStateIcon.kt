@@ -3,7 +3,7 @@ package id.homebase.core.ui.screens.contactbook.components
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.WavingHand
-import androidx.compose.material.icons.outlined.Workspaces
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -29,7 +29,7 @@ fun ContactStateIcon(state: ContactState, modifier: Modifier = Modifier) {
     val (icon, label) = when (state) {
         ContactState.New -> Icons.Outlined.WavingHand to stringResource(MR.string.contact_state_new)
         ContactState.Chat -> Icons.Outlined.ChatBubbleOutline to stringResource(MR.string.contact_state_chat)
-        ContactState.Circle -> Icons.Outlined.Workspaces to stringResource(MR.string.contact_state_circle)
+        ContactState.Circle -> Icons.Outlined.Person to stringResource(MR.string.contact_state_circle)
     }
     Icon(
         imageVector = icon,

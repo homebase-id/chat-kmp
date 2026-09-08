@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.contactbook
 import id.homebase.api.client.connections.CircleGrantOn
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.chat.services.convo.contact.CircleMembershipState
+import id.homebase.core.config.CONTACTS_APP_ID
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 
@@ -17,10 +18,9 @@ data class ReviewCircleGroups(
     /**
      * Circles the user curates. The ordinary case.
      *
-     * Over-full until odin-core sets Designation truthfully: every app seeds its capability
-     * circles (Webdrop, Vault, Recovery, SocialSync) at the Personal default, so they land here
-     * beside Friends. Filtering them out client-side would need an app-id allowlist, which is the
-     * hardcoded knowledge #1688 removed — so this waits for the designations instead.
+     * Scoped to circles this app presents — the user's own, plus the contacts app's relationship
+     * circles. Every other app seeds personal circles at the Designation default, and until
+     * odin-core sets those truthfully nothing else separates Vault or Webdrop from Friends.
      */
     val yours: List<ContactCircleUi> = emptyList(),
     /** Circles that grant more than visibility, so they get their own heading and caption. */
@@ -71,6 +71,17 @@ private fun RedactedCircleDefinition.debugWhyAppCircle(): String =
 private fun RedactedCircleDefinition.debugWhyYourCircle(): String =
     "GrantOn=$grantOn · owner=${appId?.toString()?.take(8) ?: "you"}"
 
+/**
+ * True for a circle this app presents: one the user made themselves (no owning app) or one the
+ * contacts app owns.
+ *
+ * Every app seeds personal circles at GrantOn.None — Vault, Webdrop, Recovery, SocialSync and a
+ * dozen more — and until odin-core sets Designation truthfully nothing separates them from
+ * Friends. Their own apps present them; this one doesn't.
+ */
+private fun RedactedCircleDefinition.isOwnedByThisApp(): Boolean =
+    appId == null || appId.toString().equals(CONTACTS_APP_ID, ignoreCase = true)
+
 /** Emergency Location Access is user-assigned like any personal circle, but grants location. */
 private fun RedactedCircleDefinition.isSpecialAccessCircle(): Boolean =
     id.equals(EMERGENCY_LOCATION_CIRCLE_ID, ignoreCase = true)
@@ -84,7 +95,11 @@ fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
 
     return ReviewCircleGroups(
         yours = personal
-            .filter { !it.isSpecialAccessCircle() && it.grantOn == CircleGrantOn.None }
+            .filter {
+                !it.isSpecialAccessCircle() &&
+                    it.grantOn == CircleGrantOn.None &&
+                    it.isOwnedByThisApp()
+            }
             .map { it.toUi(debugWhy = it.debugWhyYourCircle()) },
         special = personal.filter { it.isSpecialAccessCircle() }.map { it.toUi() },
         appDefaults = personal

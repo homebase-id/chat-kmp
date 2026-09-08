@@ -1,6 +1,8 @@
 package id.homebase.core.ui.screens.contactbook.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -27,24 +29,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
+import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
 import id.homebase.resources.contact_review_body
 import id.homebase.resources.contact_review_chat_only_hint
@@ -67,7 +66,7 @@ import org.jetbrains.compose.resources.stringResource
  * Reviewing grants only; it never revokes, so circles the contact already holds are shown selected
  * and locked rather than offered as something to take away.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReviewConnectionSheet(
     displayName: String,
@@ -79,17 +78,17 @@ fun ReviewConnectionSheet(
     onSubmit: (Set<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // App defaults arrive checked: the owning app nominated them, and the review button applies
     // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
     var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+    AdaptiveSheet(onDismiss = onDismiss, expandFully = true, maxWidth = 680.dp) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(top = 8.dp, bottom = 32.dp),
         ) {
             Text(
                 text = stringResource(MR.string.contact_review_title, displayName),
