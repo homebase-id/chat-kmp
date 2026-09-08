@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -106,6 +107,8 @@ import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_desc
 import id.homebase.resources.settings_logout_in_progress
+import id.homebase.resources.settings_media
+import id.homebase.resources.settings_media_desc
 import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
@@ -323,6 +326,15 @@ fun SettingsUi(
                         uiState.theme.getStringResourceForTheme(),
                     ),
                     action = SettingsRowAction.Navigate(actions.onAppearance),
+                )
+            }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("mediaButton"),
+                    icon = Icons.Outlined.PermMedia,
+                    title = stringResource(MR.string.settings_media),
+                    supportingText = stringResource(MR.string.settings_media_desc),
+                    action = SettingsRowAction.Navigate(actions.onMedia),
                 )
             }
 
@@ -590,6 +602,7 @@ fun SettingsUiPreview() {
                 onBack = {},
                 onNotifications = {},
                 onAppearance = {},
+                onMedia = {},
                 onStorage = {},
                 onHelp = {},
                 onMomentsSettings = {},

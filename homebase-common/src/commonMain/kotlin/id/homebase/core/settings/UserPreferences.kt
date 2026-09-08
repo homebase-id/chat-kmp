@@ -4,6 +4,7 @@ import com.russhwolf.settings.Settings
 import id.homebase.api.image.MediaQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 class UserPreferences(private val settings: Settings) {
@@ -13,6 +14,8 @@ class UserPreferences(private val settings: Settings) {
             hapticsEnabled = hapticsEnabled,
             showDeveloperMenu = showDeveloperMenu,
             mediaQuality = mediaQuality,
+            autoSaveIncomingMedia = autoSaveIncomingMedia,
+            autoSaveOnUnmeteredOnly = autoSaveOnUnmeteredOnly,
         )
     )
     val preferenceState: StateFlow<PreferenceState> = _preferenceState
@@ -68,6 +71,34 @@ class UserPreferences(private val settings: Settings) {
         set(value) {
             settings.putString("media_quality", value.code)
             _preferenceState.value = _preferenceState.value.copy(mediaQuality = value)
+        }
+
+    /**
+     * Auto-save incoming chat photos and videos to the device album. Off by default — it writes
+     * to storage the user never asked us to fill.
+     */
+    var autoSaveIncomingMedia: Boolean
+        get() = settings.getBoolean("auto_save_incoming_media", false)
+        set(value) {
+            // Stamped on the way on so the first sync after enabling doesn't backfill the album
+            // with every photo still in the recent-message window.
+            if (value && !autoSaveIncomingMedia) {
+                settings.putLong("auto_save_incoming_media_since", Clock.System.now().toEpochMilliseconds())
+            }
+            settings.putBoolean("auto_save_incoming_media", value)
+            _preferenceState.value = _preferenceState.value.copy(autoSaveIncomingMedia = value)
+        }
+
+    /** Epoch ms at which [autoSaveIncomingMedia] was last switched on; 0 when it never was. */
+    val autoSaveIncomingMediaSince: Long
+        get() = settings.getLong("auto_save_incoming_media_since", 0L)
+
+    /** Guard on [autoSaveIncomingMedia]: skip the download while the network is metered. */
+    var autoSaveOnUnmeteredOnly: Boolean
+        get() = settings.getBoolean("auto_save_unmetered_only", true)
+        set(value) {
+            settings.putBoolean("auto_save_unmetered_only", value)
+            _preferenceState.value = _preferenceState.value.copy(autoSaveOnUnmeteredOnly = value)
         }
 
     var preferredUserReactions: List<String>
@@ -165,6 +196,8 @@ data class PreferenceState(
     val hapticsEnabled: Boolean,
     val showDeveloperMenu: Boolean = false,
     val mediaQuality: MediaQuality = MediaQuality.STANDARD,
+    val autoSaveIncomingMedia: Boolean = false,
+    val autoSaveOnUnmeteredOnly: Boolean = true,
 )
 
 enum class ThemeState {

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
@@ -35,6 +36,7 @@ import id.homebase.resources.settings_appearance
 import id.homebase.resources.settings_category_general
 import id.homebase.resources.settings_data_storage
 import id.homebase.resources.settings_help
+import id.homebase.resources.settings_media
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.vault_settings_section
 import org.jetbrains.compose.resources.StringResource
@@ -49,6 +51,7 @@ internal enum class SettingsCategory(
     General(MR.string.settings_category_general, Icons.Outlined.Tune),
     Notifications(MR.string.settings_notifications, Icons.Outlined.Notifications),
     Appearance(MR.string.settings_appearance, Icons.Outlined.Brightness6),
+    Media(MR.string.settings_media, Icons.Outlined.PermMedia),
     Moments(MR.string.moments_settings_section, Icons.Outlined.AutoAwesome),
     Vault(MR.string.vault_settings_section, Icons.Outlined.Lock),
     Email(MR.string.email_settings_section, Icons.Outlined.MailOutline),

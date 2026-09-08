@@ -104,6 +104,10 @@ sealed class Route {
     data object StorageSettings : Route()
 
     @Serializable
+    @SerialName("media-settings")
+    data object MediaSettings : Route()
+
+    @Serializable
     @SerialName("defragmenter")
     data object Defragmenter : Route()
 

@@ -29,6 +29,7 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
@@ -162,6 +163,7 @@ private fun CategoryPage(
                 onBack = onDismiss,
                 onNotifications = { onSelectCategory(SettingsCategory.Notifications) },
                 onAppearance = { onSelectCategory(SettingsCategory.Appearance) },
+                onMedia = { onSelectCategory(SettingsCategory.Media) },
                 onStorage = { onSelectCategory(SettingsCategory.Storage) },
                 onHelp = { onSelectCategory(SettingsCategory.Help) },
                 onMomentsSettings = { onSelectCategory(SettingsCategory.Moments) },
@@ -181,6 +183,11 @@ private fun CategoryPage(
         )
 
         SettingsCategory.Appearance -> AppearanceSettingsScreen(
+            viewModel = koinViewModel(),
+            onBackClick = onDismiss,
+        )
+
+        SettingsCategory.Media -> MediaSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
         )
