@@ -33,6 +33,32 @@ interface WebPushBridge {
 
     /** Delivers the raw notification JSON a service-worker click posted back to the page. */
     fun onNotificationClick(handler: (String) -> Unit)
+
+    /**
+     * Developer menu only — a server push is displayed by `sw.js` and never reaches Kotlin.
+     * Returns null when the browser accepted it, else a code for [describeWebNotificationFailure].
+     */
+    suspend fun showLocalNotification(title: String, body: String): String?
+}
+
+/**
+ * Turns a [WebPushBridge.showLocalNotification] failure into a message that says which of
+ * "notifications can't display here" and "delivery is broken" the developer is looking at.
+ */
+fun describeWebNotificationFailure(code: String): String = when (code) {
+    "NotAllowedError" ->
+        "Notifications are blocked for this site — re-allow them in the browser's site settings"
+    "PermissionNotGranted" ->
+        "Notification permission not granted yet — enable notifications in Settings first"
+    "NeedsInstall" ->
+        "iOS Safari shows notifications only once the app is added to the Home Screen"
+    "Unsupported" ->
+        "This browser can't show notifications (needs HTTPS plus service worker support)"
+    "NoServiceWorker" ->
+        "No service worker registered — sw.js failed to load"
+    "TimeoutError" ->
+        "The browser never answered the showNotification call"
+    else -> "The browser refused to show the notification: $code"
 }
 
 expect fun webPushBridge(): WebPushBridge?

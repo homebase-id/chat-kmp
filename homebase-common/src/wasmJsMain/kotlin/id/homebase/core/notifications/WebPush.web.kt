@@ -30,6 +30,9 @@ private fun pushUnsubscribe(): Promise<JsAny?> = js("globalThis.__odinPush.unsub
 
 private fun pushOnClick(cb: (String) -> Unit): Unit = js("globalThis.__odinPush.onClick(cb)")
 
+private fun pushShowLocalNotification(title: String, body: String): Promise<JsString> =
+    js("globalThis.__odinPush.showLocalNotification(title, body)")
+
 private fun hasPushBridge(): Boolean = js("typeof globalThis.__odinPush !== 'undefined'")
 
 actual fun webPushBridge(): WebPushBridge? = if (hasPushBridge()) BrowserPushBridge else null
@@ -56,6 +59,11 @@ private object BrowserPushBridge : WebPushBridge {
 
     override fun onNotificationClick(handler: (String) -> Unit) {
         pushOnClick(handler)
+    }
+
+    override suspend fun showLocalNotification(title: String, body: String): String? {
+        val raw = pushShowLocalNotification(title, body).await<JsString>().toString()
+        return if (raw == "ok") null else raw.split(";", limit = 2).getOrNull(1) ?: "Error"
     }
 }
 

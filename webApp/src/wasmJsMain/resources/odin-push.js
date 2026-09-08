@@ -16,6 +16,14 @@
   var registrationPromise = null;
   var clickHandler = null;
 
+  // capability() values that cannot show anything, as the code the Kotlin side maps to a message.
+  var NOT_GRANTED_CODE = {
+    denied: 'NotAllowedError',
+    'default': 'PermissionNotGranted',
+    'needs-install': 'NeedsInstall',
+    unsupported: 'Unsupported',
+  };
+
   function isIosLike() {
     var ua = navigator.userAgent || '';
     return /iPad|iPhone|iPod/.test(ua) ||
@@ -156,6 +164,23 @@
           return sub ? sub.unsubscribe() : null;
         });
       }).catch(function () { return null; });
+    },
+
+    // Developer menu only — never on the push path, which sw.js displays. showNotification() on
+    // the registration rather than `new Notification(...)`: the constructor is unsupported on
+    // Android Chrome and deprecated wherever a worker is registered.
+    showLocalNotification: function (title, body) {
+      var cap = capability();
+      if (cap !== 'granted') return Promise.resolve('err;' + (NOT_GRANTED_CODE[cap] || 'Unsupported'));
+      return withTimeout(registration().then(function (reg) {
+        if (!reg) return 'err;NoServiceWorker';
+        return reg.showNotification(title, {
+          body: body,
+          icon: new URL('icon-192.png', document.baseURI).href,
+          tag: 'odin-dev-test',
+          renotify: true,
+        }).then(function () { return 'ok'; });
+      }).catch(fail));
     },
 
     onClick: function (handler) {
