@@ -266,11 +266,13 @@ fun AppNavHost(
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
     // Gated on the identity scope being open as well as the auth state, because the two are
     // observed independently: AuthConnectionCoordinator collects the same authState flow, so
-    // this composition can see Authenticated a frame before the scope exists. Identity-scoped
-    // ViewModels (koinViewModel() below) cannot resolve until it does, and every authenticated
-    // route in this graph is gated on this one flag.
+    // this composition can see Authenticated a frame before the scope exists, and every
+    // authenticated route in this graph is gated on this one flag.
+    // `closed`, not `!= null`: the emitted reference outlives the scope it names, so the
+    // teardown direction reads open for as long as this collector lags. It is only a gate —
+    // what keeps the resolutions above it alive across a teardown is IdentityScope (#1373).
     val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
-    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope != null
+    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope?.closed == false
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
