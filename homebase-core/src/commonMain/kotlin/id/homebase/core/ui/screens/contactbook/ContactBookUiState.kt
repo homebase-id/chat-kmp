@@ -21,13 +21,6 @@ enum class ContactTab {
 }
 
 /**
- * People-list pill: everyone, connections that haven't been explicitly confirmed yet
- * (auto-connected, introduced-but-not-confirmed, or a plain direct connection never confirmed),
- * or connections that have been explicitly confirmed (server-computed `vetted` flag).
- * Pending connection requests are no longer a pill — they surface as a section at the top of
- * the list instead (see [ContactBookUiState.requests]).
- */
-/**
  * Pills within [ContactTab.KNOWN]. New is no longer a pill — it is its own tab, so everything
  * here is already reviewed and [ALL] means "reviewed, whether or not they hold a circle".
  */

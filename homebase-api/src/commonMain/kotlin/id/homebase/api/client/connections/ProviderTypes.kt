@@ -219,8 +219,8 @@ data class RedactedIdentityConnectionRegistration(
     val reviewedAt: Long? = null,
 
     /**
-     * Now a server-side alias for `reviewedAt != null`, kept only for V1 compatibility. It no
-     * longer means Confirmed Connections membership.
+     * Dead. A server-side alias for `reviewedAt != null`, retained only so a response carrying it
+     * still parses — nothing in this client reads it. Delete once no server sends it.
      */
     @Deprecated("Read reviewedAt instead", ReplaceWith("reviewedAt != null"))
     val vetted: Boolean = false

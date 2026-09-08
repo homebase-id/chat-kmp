@@ -221,7 +221,7 @@ class ContactBookViewModel(
             connectionRequestService.outgoingRequests,
         ) { incoming, outgoing -> RequestsBundle(incoming, outgoing) },
     ) { contactsData, ui, circlesData, header, requestsData ->
-        // Apply user overrides up front so every downstream list (All, Unvetted, Requests,
+        // Apply user overrides up front so every downstream list (Known, New, Requests,
         // introducer names) shows the user's renamed/edited values, not the synced ones.
         val overriddenContacts = contactsData.contacts
             .map { it.withOverride(contactsData.overrides[it.uniqueId]) }
@@ -261,7 +261,7 @@ class ContactBookViewModel(
         // ALL = saved contacts plus every other connection. A connection with no saved contact
         // entry would otherwise fall through both pills. Connections already in the book show via
         // their saved entry; the rest get a synthetic display-only entry, the same projection
-        // Unvetted uses.
+        // the New tab uses.
         val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
         val selfEntry = header.ownerSession?.let { selfContact(it) }
         val all = buildList {
@@ -290,7 +290,7 @@ class ContactBookViewModel(
         val knownContacts = (entriesInState(ContactState.Chat) + circleContacts)
             .sortedBy { it.sortKey }
 
-        // Pending connection requests, projected onto contact entries the same way Unvetted is:
+        // Pending connection requests, projected onto contact entries the same way New is:
         // reuse the saved contact when we have one, else a synthetic display-only entry for the
         // identity. The service's UI-model names are placeholders ("TODO …"), so we deliberately
         // resolve names through the contact book / domain, not those fields.
@@ -664,7 +664,7 @@ private fun CircleWithMembers.matchesQuery(query: String): Boolean {
 }
 
 /**
- * Sort bucket for the Circles tab: the auto-connected ("Unvetted") circle first, the user's own
+ * Sort bucket for the Circles tab: the auto-connected ("New") circle first, the user's own
  * circles (including Emergency Location Access — a user circle, not an app default) in the
  * middle, and every other app default circle last.
  */

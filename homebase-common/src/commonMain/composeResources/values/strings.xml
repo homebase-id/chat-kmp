@@ -2096,15 +2096,15 @@
     <string name="profile_edit_linkedin">LinkedIn</string>
 
     <string name="profile_edit_visibility_public">Public</string>
-    <string name="profile_edit_visibility_connected">Vetted</string>
+    <string name="profile_edit_visibility_connected">Circles</string>
     <string name="profile_edit_public_hint">Visible to everyone, including people you haven't connected with.</string>
-    <string name="profile_edit_connected_fallback_hint">Leave blank to show vetted contacts your Public value instead.</string>
+    <string name="profile_edit_connected_fallback_hint">Leave blank to show your circles your Public value instead.</string>
     <string name="profile_edit_preview_enter">Preview</string>
     <string name="profile_edit_preview_exit">Back to editing</string>
     <string name="profile_edit_preview_section_public">Public</string>
     <string name="profile_edit_preview_section_public_desc">Visible to everyone, including people you haven't connected with.</string>
-    <string name="profile_edit_preview_section_vetted">Vetted</string>
-    <string name="profile_edit_preview_section_vetted_desc">Additional Attributes visible to your vetted (confirmed) connections.</string>
+    <string name="profile_edit_preview_section_circles">Visible to my circles</string>
+    <string name="profile_edit_preview_section_circles_desc">Additional details shown to anyone you have added to your circles.</string>
     <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
     <string name="profile_edit_field_not_set">Not set</string>
     <string name="profile_edit_add_attribute">Add attribute</string>
@@ -2114,9 +2114,9 @@
     <string name="profile_avatar_edit_title">Change photo</string>
     <string name="cd_profile_avatar_change_photo">Change photo</string>
     <string name="profile_avatar_edit_acl_anonymous">Public photo</string>
-    <string name="profile_avatar_edit_acl_connected">Vetted photo</string>
+    <string name="profile_avatar_edit_acl_connected">Circles photo</string>
     <string name="profile_avatar_edit_anonymous_desc">Visible to anyone, even people you're not connected to.</string>
-    <string name="profile_avatar_edit_connected_desc">Visible only to vetted contacts — can be a different photo than your public one.</string>
+    <string name="profile_avatar_edit_connected_desc">Visible only to people in your circles — can be a different photo than your public one.</string>
     <string name="profile_avatar_edit_upload">Save</string>
     <string name="profile_avatar_edit_remove">Remove</string>
     <string name="profile_avatar_edit_error_upload">Couldn't upload your photo. Please try again.</string>

@@ -68,10 +68,13 @@ class ContactStateTest {
         assertEquals(ContactState.Circle, contactStateOf(connection(), listOf(circle())))
     }
 
-    /** A server below the review rollout sends vetted alone. */
+    /**
+     * `vetted` is the retired alias and nothing reads it any more: a contact carrying it without
+     * a stamp is New, because the stamp is the only record of a review.
+     */
     @Test
-    fun theVettedAliasStillReadsAsReviewed() {
-        assertEquals(ContactState.Chat, contactStateOf(connection(vetted = true), emptyList()))
+    fun theVettedAliasIsIgnored() {
+        assertEquals(ContactState.New, contactStateOf(connection(vetted = true), emptyList()))
     }
 
     @Test

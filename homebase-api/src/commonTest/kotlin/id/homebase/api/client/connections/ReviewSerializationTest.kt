@@ -12,8 +12,8 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * `reviewedAt` is the owner's private stamp and `vetted` is now the server's alias for it, so the
- * pair has to survive a server on either side of the review rollout.
+ * `reviewedAt` is the owner's private stamp. `vetted` is the retired alias — nothing reads it,
+ * but a response carrying it still has to parse.
  */
 class ReviewSerializationTest {
 

@@ -49,8 +49,8 @@ import id.homebase.resources.profile_edit_phone
 import id.homebase.resources.profile_edit_preview_empty
 import id.homebase.resources.profile_edit_preview_section_public
 import id.homebase.resources.profile_edit_preview_section_public_desc
-import id.homebase.resources.profile_edit_preview_section_vetted
-import id.homebase.resources.profile_edit_preview_section_vetted_desc
+import id.homebase.resources.profile_edit_preview_section_circles
+import id.homebase.resources.profile_edit_preview_section_circles_desc
 import id.homebase.resources.profile_edit_status
 import id.homebase.resources.profile_edit_tiktok
 import id.homebase.resources.profile_edit_twitter
@@ -79,7 +79,8 @@ internal fun profileAddressValue(values: Map<ProfileField, String>): String? = l
 
 /**
  * Read-only simulation of the owner's profile, rendered contact-detail style. Public — what
- * everyone sees — is listed first; Vetted below shows everything a vetted contact sees: their own
+ * everyone sees — is listed first; the circles section below shows what a contact in one of your
+ * circles sees: their own
  * Connected value where set, falling back to the Public value for any field left blank on the
  * Connected side.
  */
@@ -135,14 +136,14 @@ internal fun ProfilePreview(
 
     val publicRows = rowsFor(uiState.anonymousValues)
 
-    // What a vetted contact actually sees: their own Connected value where set, else the Public one.
+    // What a contact in a circle actually sees: their own Connected value where set, else Public.
     val resolved = (uiState.anonymousValues.keys + uiState.connectedValues.keys).associateWith { field ->
         uiState.connectedValues[field]?.takeIf { it.isNotBlank() } ?: uiState.anonymousValues[field].orEmpty()
     }
-    val vettedRows = rowsFor(resolved)
-    // Same fallback as every text field: no Connected-tier photo means a vetted contact just sees
+    val circlesRows = rowsFor(resolved)
+    // Same fallback as every text field: no Connected-tier photo means the contact just sees
     // the Public one.
-    val vettedPhoto = uiState.connectedPhoto ?: uiState.anonymousPhoto
+    val circlesPhoto = uiState.connectedPhoto ?: uiState.anonymousPhoto
 
     Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         PreviewSectionHeader(
@@ -159,14 +160,14 @@ internal fun ProfilePreview(
         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp))
 
         PreviewSectionHeader(
-            title = stringResource(MR.string.profile_edit_preview_section_vetted),
-            description = stringResource(MR.string.profile_edit_preview_section_vetted_desc),
+            title = stringResource(MR.string.profile_edit_preview_section_circles),
+            description = stringResource(MR.string.profile_edit_preview_section_circles_desc),
         )
-        PreviewPhoto(vettedPhoto)
-        if (vettedRows.isEmpty()) {
+        PreviewPhoto(circlesPhoto)
+        if (circlesRows.isEmpty()) {
             PreviewEmptyMessage(stringResource(MR.string.profile_edit_preview_empty))
         } else {
-            vettedRows.forEach { PreviewRowItem(it) }
+            circlesRows.forEach { PreviewRowItem(it) }
         }
     }
 }

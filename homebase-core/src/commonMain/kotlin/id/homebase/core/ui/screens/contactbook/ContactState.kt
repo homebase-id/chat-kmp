@@ -79,15 +79,8 @@ fun CircleMembershipState.circlesBlockingUnreview(odinId: String): List<Redacted
 fun CircleMembershipState.personalCirclesFor(odinId: String): List<RedactedCircleDefinition> =
     circlesFor(odinId).filter { it.isPersonalCircle() }
 
-/**
- * Whether the owner has reviewed this contact.
- *
- * `vetted` is the fallback: a server that predates the review endpoints serves it without a
- * `reviewedAt`, and above them it is a server-side alias for this same expression. Reading both
- * means one derivation works across the rollout.
- */
-@Suppress("DEPRECATION")
-fun RedactedIdentityConnectionRegistration.isReviewed(): Boolean = reviewedAt != null || vetted
+/** Whether the owner has reviewed this contact. */
+fun RedactedIdentityConnectionRegistration.isReviewed(): Boolean = reviewedAt != null
 
 /**
  * The contact's state, or null when this identity is not a connection — the ladder classifies
