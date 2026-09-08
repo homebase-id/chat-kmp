@@ -43,6 +43,9 @@ import kotlin.time.TimeSource
  * Both detectors report through one shared, throttled [StallReporter], so the same incident
  * can't produce two log lines.
  *
+ * Both also share one remaining blind spot: they report only once the stall *ends*, so a process
+ * killed while stalled writes nothing. [ProcessHeartbeat] closes that from the next launch.
+ *
  * Platform notes (see `captureMainThreadStackTrace` actuals):
  *  - Android: stack comes from the main `Looper` thread, ~1s before the OS ANR cutoff.
  *  - Desktop (JVM): stack comes from the AWT event-dispatch thread (Compose's Main dispatcher).
@@ -56,7 +59,9 @@ class MainThreadWatchdog(
     throttleMs: Long = 30_000,
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val workDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    log: (String) -> Unit = { Logger.w(tag = TAG) { it } },
+    private val log: (String) -> Unit = { Logger.w(tag = TAG) { it } },
+    private val heartbeat: ProcessHeartbeat? = null,
+    private val heartbeatIntervalMs: Long = 5_000,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + workDispatcher)
     private val timeOrigin = TimeSource.Monotonic.markNow()
@@ -66,6 +71,10 @@ class MainThreadWatchdog(
     private var livenessHandle: MainThreadLivenessProbe.Handle? = null
 
     fun start() {
+        heartbeat?.let { hb ->
+            hb.postMortem()?.let(log)
+            hb.beat()
+        }
         installMainThreadLivenessProbe()
         installMemoryDiagnostics()
         livenessHandle = MainThreadLivenessProbe.startIfAvailable(
@@ -87,6 +96,7 @@ class MainThreadWatchdog(
         }
 
         scope.launch {
+            var lastBeatMs = nowMs()
             while (isActive) {
                 val pong = CompletableDeferred<Unit>()
                 val postedAt = nowMs()
@@ -136,6 +146,11 @@ class MainThreadWatchdog(
                             stack = stack,
                         )
                     }
+                }
+
+                if (heartbeat != null && nowMs() - lastBeatMs >= heartbeatIntervalMs) {
+                    lastBeatMs = nowMs()
+                    heartbeat.beat()
                 }
             }
         }
