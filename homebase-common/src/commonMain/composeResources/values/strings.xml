@@ -1434,6 +1434,8 @@
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
     <!-- Media quality -->
+    <string name="settings_media">Media</string>
+    <string name="settings_media_desc">Quality and auto-saving</string>
     <string name="settings_media_quality">Media quality</string>
     <string name="settings_data_storage">Data and storage</string>
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
@@ -1446,6 +1448,13 @@
     <string name="cd_media_quality_high_on">High quality is on. Tap to send smaller photos and videos.</string>
     <string name="cd_media_quality_high_off">High quality is off. Tap to send photos and videos at full quality.</string>
     <string name="cd_media_quality_hd_badge">Sent in high quality</string>
+
+    <!-- Auto-save incoming media -->
+    <string name="settings_media_autosave_header">Saving what you receive</string>
+    <string name="settings_media_autosave">Save incoming media to my photo album</string>
+    <string name="settings_media_autosave_description">Photos and videos people send you are downloaded in the background and added to your album.</string>
+    <string name="settings_media_autosave_unmetered">Only on Wi-Fi</string>
+    <string name="settings_media_autosave_unmetered_description">Wait for an unmetered network instead of using mobile data.</string>
 
     <!-- Settings hub -->
     <string name="settings_category_general">General</string>

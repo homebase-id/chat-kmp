@@ -29,6 +29,7 @@ class SettingsUiTest {
             onBack = { fired += "back" },
             onNotifications = { fired += "notifications" },
             onAppearance = { fired += "appearance" },
+            onMedia = { fired += "media" },
             onStorage = { fired += "storage" },
             onHelp = { fired += "help" },
             onMomentsSettings = { fired += "moments" },
@@ -85,6 +86,7 @@ class SettingsUiTest {
         val expected = listOf(
             "notificationsButton" to "notifications",
             "appearanceButton" to "appearance",
+            "mediaButton" to "media",
             "momentsSettingsButton" to "moments",
             "vaultSettingsButton" to "vault",
             "locationSettingsButton" to "location",
