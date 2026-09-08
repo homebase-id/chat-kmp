@@ -62,6 +62,8 @@ class IdentitySessionScope(private val koin: Koin) {
     @Volatile
     private var currentIdentity: String? = null
 
+    private var scopeSeq = 0L
+
     /** The open scope, or null while logged out. */
     val scopeOrNull: Scope? get() = current?.takeIf { !it.closed }
 
@@ -77,25 +79,40 @@ class IdentitySessionScope(private val koin: Koin) {
      * authenticated transition can run more than once per session (headless bootstrap
      * followed by [foreground promotion][id.homebase.core.auth.AuthConnectionCoordinator.promoteToForeground]),
      * and tearing down live services on the second pass would be a regression, not a reset.
+     *
+     * [lock] guards only the two state transitions. Building the scope and destroying the
+     * previous one happen outside it, because dropping a Koin scope's instances fires every
+     * `onClose` in it — arbitrary app teardown that must never run while a process-wide lock
+     * is held. The cost is that a racing caller can publish between the two critical sections;
+     * the second one reconciles, so at most one scope stays live and the loser is destroyed.
      */
-    fun open(identity: String): Scope = synchronized(lock) {
-        val live = current?.takeIf { !it.closed }
-        if (live != null && currentIdentity == identity) return@synchronized live
-
-        if (live != null) {
-            Logger.i(tag = TAG) { "identity changed ($currentIdentity -> $identity) — closing previous session scope" }
-            closeLocked()
+    fun open(identity: String): Scope {
+        // Scope ids are unique per open, never reused, so a racing pair cannot collide on
+        // Koin's non-atomic contains-then-put and there is no orphan left to delete first.
+        val scopeId = synchronized(lock) {
+            val live = current?.takeIf { !it.closed }
+            if (live != null && currentIdentity == identity) return live
+            "$SCOPE_ID_PREFIX$identity#${++scopeSeq}"
         }
 
-        Logger.i(tag = TAG) { "opening session scope for $identity" }
-        // Defensive: createScope throws ScopeAlreadyCreatedException on a duplicate id. That
-        // needs an earlier open() to have half-failed, leaving a scope in the registry we no
-        // longer hold — rare, but the consequence would be an unrecoverable login.
-        koin.deleteScope(scopeId(identity))
-        return@synchronized koin.createScope(scopeId(identity), IdentitySessionQualifier).also {
-            current = it
-            currentIdentity = identity
+        Logger.i(tag = TAG) { "opening session scope for $identity ($scopeId)" }
+        val candidate = koin.createScope(scopeId, IdentitySessionQualifier)
+
+        var discarded: Scope? = null
+        val opened = synchronized(lock) {
+            val live = current?.takeIf { !it.closed }
+            if (live != null && currentIdentity == identity) {
+                discarded = candidate
+                live
+            } else {
+                discarded = current
+                current = candidate
+                currentIdentity = identity
+                candidate
+            }
         }
+        destroy(discarded)
+        return opened
     }
 
     /**
@@ -103,15 +120,20 @@ class IdentitySessionScope(private val koin: Koin) {
      * one path (explicit sign-out, token expiry, an identity switch) and must not throw on
      * the second.
      */
-    fun close() = synchronized(lock) { closeLocked() }
+    fun close() {
+        val doomed = synchronized(lock) {
+            val live = current
+            current = null
+            currentIdentity = null
+            live
+        }
+        destroy(doomed)
+    }
 
-    private fun closeLocked() {
-        val live = current
-        current = null
-        currentIdentity = null
-        if (live == null || live.closed) return
-        Logger.i(tag = TAG) { "closing session scope ${live.id}" }
-        live.close()
+    private fun destroy(scope: Scope?) {
+        if (scope == null || scope.closed) return
+        Logger.i(tag = TAG) { "closing session scope ${scope.id}" }
+        scope.close()
     }
 
     /**
@@ -121,8 +143,6 @@ class IdentitySessionScope(private val koin: Koin) {
      */
     fun requireScope(): Scope = scopeOrNull
         ?: error("No identity session is open — cannot resolve identity-scoped dependencies while logged out")
-
-    private fun scopeId(identity: String) = "$SCOPE_ID_PREFIX$identity"
 
     private companion object {
         const val TAG = "IdentitySession"

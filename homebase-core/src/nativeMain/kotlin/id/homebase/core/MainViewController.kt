@@ -23,6 +23,7 @@ import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.core.di.allModules
 import id.homebase.core.diagnostics.MainThreadWatchdog
+import id.homebase.core.diagnostics.ProcessHeartbeat
 import id.homebase.core.diagnostics.installGpuTextDiagnostics
 import id.homebase.core.diagnostics.installIosMemoryDiagnostics
 import id.homebase.core.crash.CrashMetadata
@@ -31,6 +32,7 @@ import id.homebase.core.logging.LoggerConfig
 import id.homebase.core.logging.StartupLogger
 import id.homebase.core.logging.setErrorCollectionEnabled
 import id.homebase.core.logging.setupIOSCrashHandler
+import id.homebase.core.location.tracking.observeAppForeground
 import id.homebase.core.settings.UserPreferencesHelper
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.runBlocking
@@ -134,7 +136,12 @@ fun initializeApp() {
 
     // Detect main-thread stalls and log them to homebase.log. On iOS the stack itself can't be
     // captured from a background thread, but the "stalled for Nms" breadcrumb is still recorded.
-    MainThreadWatchdog().start()
+    // The heartbeat is the cross-process half: a freeze the user force-quits out of can only be
+    // reported by the NEXT launch, and the foreground flag is what keeps a routine OS suspension
+    // from looking like one (#1491).
+    val heartbeat = ProcessHeartbeat(Path(getLogDirectory(), "heartbeat"))
+    observeAppForeground { heartbeat.setForeground(it) }
+    MainThreadWatchdog(heartbeat = heartbeat).start()
 
     // Memory context attached to a MainThreadWatchdog stall breadcrumb (see MemoryDiagnostics).
     installIosMemoryDiagnostics()
