@@ -125,6 +125,7 @@ import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
 import id.homebase.core.ui.screens.moments.MomentComposeScreen
@@ -203,6 +204,7 @@ import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.resources.chat_archived_chats
@@ -265,11 +267,13 @@ fun AppNavHost(
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
     // Gated on the identity scope being open as well as the auth state, because the two are
     // observed independently: AuthConnectionCoordinator collects the same authState flow, so
-    // this composition can see Authenticated a frame before the scope exists. Identity-scoped
-    // ViewModels (koinViewModel() below) cannot resolve until it does, and every authenticated
-    // route in this graph is gated on this one flag.
+    // this composition can see Authenticated a frame before the scope exists, and every
+    // authenticated route in this graph is gated on this one flag.
+    // `closed`, not `!= null`: the emitted reference outlives the scope it names, so the
+    // teardown direction reads open for as long as this collector lags. It is only a gate —
+    // what keeps the resolutions above it alive across a teardown is IdentityScope (#1373).
     val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
-    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope != null
+    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope?.closed == false
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
@@ -453,7 +457,9 @@ fun AppNavHost(
                 Route.AppLoading::class
             )
         ) {
-            if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
+            // Not on web: a browser only shows the permission prompt from a user gesture, so the
+            // ask has to come from the offer banner's Enable button instead.
+            if (authState is YouAuthState.Authenticated && !hasNotificationPermission && !isWeb()) {
                 permissionManager.askPermission(PermissionType.NOTIFICATION)
             }
         }
@@ -1568,6 +1574,9 @@ fun AppNavHost(
                                         onAppearance = {
                                             navController.navigate(Route.AppearanceSettings)
                                         },
+                                        onMedia = {
+                                            navController.navigate(Route.MediaSettings)
+                                        },
                                         onStorage = {
                                             navController.navigate(Route.StorageSettings)
                                         },
@@ -2153,6 +2162,14 @@ fun AppNavHost(
                         composable<Route.DevScheduledPushTest> {
                             if (isAuthenticated) {
                                 DeveloperScheduledPushTestScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.MediaSettings> {
+                            if (isAuthenticated) {
+                                MediaSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
                             }

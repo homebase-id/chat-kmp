@@ -150,7 +150,7 @@ fun SettingsRow(
             Text(text = title, maxLines = 2, overflow = TextOverflow.Ellipsis)
         },
         supportingContent = supportingText?.let { supporting ->
-            { Text(text = supporting, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            { Text(text = supporting) }
         },
         leadingContent = {
             Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(24.dp))

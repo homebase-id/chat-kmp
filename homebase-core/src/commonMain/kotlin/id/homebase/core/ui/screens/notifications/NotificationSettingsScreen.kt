@@ -49,6 +49,7 @@ import id.homebase.core.permissions.PermissionStatus
 import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.ui.theme.ExtendedColors
+import id.homebase.core.util.isWeb
 import id.homebase.core.widget.SettingsOptionRow
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
@@ -68,8 +69,10 @@ import id.homebase.resources.settings_notification_locked_screen_note
 import id.homebase.resources.settings_notification_show
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_denied_body
+import id.homebase.resources.settings_notifications_denied_browser_body
 import id.homebase.resources.settings_notifications_disabled_body
 import id.homebase.resources.settings_notifications_disabled_title
+import id.homebase.resources.settings_notifications_needs_install_body
 import id.homebase.resources.settings_open_settings
 import id.homebase.resources.settings_play_while_app_open
 import id.homebase.resources.settings_push_notification_status
@@ -164,26 +167,41 @@ fun NotificationSettingsUi(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (uiState.isPermissionPermanentlyDenied)
-                                stringResource(MR.string.settings_notifications_denied_body)
-                            else
-                                stringResource(MR.string.settings_notifications_disabled_body),
+                            text = when {
+                                uiState.needsHomeScreenInstall ->
+                                    stringResource(MR.string.settings_notifications_needs_install_body)
+
+                                uiState.isPermissionPermanentlyDenied && isWeb() ->
+                                    stringResource(MR.string.settings_notifications_denied_browser_body)
+
+                                uiState.isPermissionPermanentlyDenied ->
+                                    stringResource(MR.string.settings_notifications_denied_body)
+
+                                else -> stringResource(MR.string.settings_notifications_disabled_body)
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        if (uiState.isPermissionPermanentlyDenied) {
-                            Button(onClick = {
-                                onAction(NotificationSettingsUiAction.OpenSystemNotificationSettings)
-                            }) {
-                                Text(stringResource(MR.string.settings_open_settings))
+                        // Both suppressed cases are browser-only dead ends: a Home Screen install
+                        // is the user's own gesture, and a browser denial is undoable only from
+                        // the browser's site settings, which launchSettings() cannot reach.
+                        val hasAction = !uiState.needsHomeScreenInstall &&
+                                !(uiState.isPermissionPermanentlyDenied && isWeb())
+                        if (hasAction) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            if (uiState.isPermissionPermanentlyDenied) {
+                                Button(onClick = {
+                                    onAction(NotificationSettingsUiAction.OpenSystemNotificationSettings)
+                                }) {
+                                    Text(stringResource(MR.string.settings_open_settings))
+                                }
+                            } else {
+                                Button(
+                                    modifier = Modifier.testTag("enableNotificationsButton"),
+                                    onClick = {
+                                        onAction(NotificationSettingsUiAction.RequestPermission)
+                                    }) { Text(stringResource(MR.string.settings_enable_notifications)) }
                             }
-                        } else {
-                            Button(
-                                modifier = Modifier.testTag("enableNotificationsButton"),
-                                onClick = {
-                                    onAction(NotificationSettingsUiAction.RequestPermission)
-                                }) { Text(stringResource(MR.string.settings_enable_notifications)) }
                         }
                     }
                 }
@@ -320,7 +338,7 @@ fun NotificationSettingsUi(
                 }
             }
 
-            // ── Push Notification Status (Debug — tap header 5 times to reveal) ──
+            // ── Push Notification Status (always on web, else tap the header 5 times) ──
             NotificationSectionHeader(
                 title = stringResource(MR.string.settings_push_notification_status),
                 modifier = Modifier
@@ -328,14 +346,21 @@ fun NotificationSettingsUi(
                     .clickable { onAction(NotificationSettingsUiAction.DebugHeaderTapped) },
             )
 
-            if (uiState.showDebugInfo) {
+            // A browser subscription has no device token and the server redacts its keys, so the
+            // two FCM rows can only mislead there. The status row is a web user's only view of
+            // whether push actually works, so it is not hidden behind the debug gesture.
+            val fcmDebugRows = uiState.showDebugInfo && !isWeb()
+            if (uiState.showDebugInfo || isWeb()) {
                 val clipboardManager = LocalClipboard.current
                 val scope = rememberCoroutineScope()
 
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        .testTag("pushNotificationStatusCard")
+                ) {
                     Column {
                         // Token row
-                        Row(
+                        if (fcmDebugRows) Row(
                             modifier = Modifier.fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -370,7 +395,9 @@ fun NotificationSettingsUi(
                             }
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        if (fcmDebugRows) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
 
                         // Status row
                         Row(
@@ -400,10 +427,12 @@ fun NotificationSettingsUi(
                             )
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        if (fcmDebugRows) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
 
                         // Server verification section
-                        Column(
+                        if (fcmDebugRows) Column(
                             modifier = Modifier.fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {

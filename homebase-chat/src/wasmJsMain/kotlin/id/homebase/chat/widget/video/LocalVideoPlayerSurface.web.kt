@@ -1,4 +1,4 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 
 package id.homebase.chat.widget.video
 
@@ -19,7 +19,7 @@ import androidx.compose.ui.platform.LocalDensity
 import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.util.isBlobUrl
-import kotlin.io.encoding.Base64
+import id.homebase.api.util.toBlobObjectUrl
 import okio.Path.Companion.toPath
 
 /*
@@ -50,12 +50,12 @@ private class PlayerSrc(val url: String, val createdByUs: Boolean)
 /**
  * Resolve [filePath] to a `<video>`-playable URL. A `blob:` URL (the editor's fast path, minted
  * from the picked File) is used directly and NOT owned — its owner revokes it. An okio path is read
- * and wrapped in a fresh, owned blob URL (the only path that base64s; off the interactive hot path).
+ * and wrapped in a fresh, owned blob URL.
  */
 private fun resolvePlayerSrc(filePath: String): PlayerSrc? {
     if (filePath.isBlobUrl()) return PlayerSrc(filePath, createdByUs = false)
     val bytes = readOkioBytes(filePath) ?: return null
-    return PlayerSrc(bytesToObjectUrl(Base64.encode(bytes), mimeFromPath(filePath)), createdByUs = true)
+    return PlayerSrc(bytes.toBlobObjectUrl(mimeFromPath(filePath)), createdByUs = true)
 }
 
 @Composable
