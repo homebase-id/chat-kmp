@@ -13,6 +13,7 @@ import kotlinx.io.files.Path
 import java.io.File
 
 private const val TAG = "AndroidAlbumSaver"
+private const val ALBUM_FOLDER = "Homebase"
 
 class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
 
@@ -63,10 +64,11 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                                     Environment.DIRECTORY_DOWNLOADS
                     }
 
+                    val relativePath = "$directory/$ALBUM_FOLDER"
                     val values = ContentValues().apply {
                         put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
                         put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, directory)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
                         put(MediaStore.MediaColumns.IS_PENDING, 1)
                     }
 
@@ -88,7 +90,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                         throw e
                     }
 
-                    onSuccess(directory)
+                    onSuccess(relativePath)
                 } else {
                     // API 27-28 — legacy external storage
                     val hasPermission = ContextCompat.checkSelfPermission(
@@ -107,8 +109,11 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                         else -> Environment.DIRECTORY_DOWNLOADS
                     }
 
+                    val relativePath = "$directory/$ALBUM_FOLDER"
+
                     @Suppress("DEPRECATION")
-                    val destDir = Environment.getExternalStoragePublicDirectory(directory)
+                    val publicDir = Environment.getExternalStoragePublicDirectory(directory)
+                    val destDir = File(publicDir, ALBUM_FOLDER)
                     destDir.mkdirs()
                     val destFile = File(destDir, safeName)
                     destFile.outputStream().use { out ->
@@ -122,7 +127,7 @@ class AndroidAlbumSaver(private val context: Context) : AlbumSaver {
                         null,
                     )
 
-                    onSuccess(directory)
+                    onSuccess(relativePath)
                 }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = TAG) { "Failed to save file: ${e.message}" }
