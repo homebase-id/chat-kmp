@@ -35,8 +35,6 @@ data class ContactCircleUi(
     val accessState: CircleAccessState? = null,
     /** The owner's chosen emoji; often a ZWJ sequence, so it is carried and rendered whole. */
     val emoji: String? = null,
-    // TODO(circles-visibility): debug only, remove before shipping.
-    val debugWhy: String? = null,
 )
 
 @Immutable

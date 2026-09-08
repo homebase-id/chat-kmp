@@ -57,19 +57,8 @@ data class ReviewCircleGroups(
     }
 }
 
-private fun RedactedCircleDefinition.toUi(debugWhy: String? = null) =
-    ContactCircleUi(id = id, name = name, pending = false, emoji = emoji, debugWhy = debugWhy)
-
-// TODO(circles-visibility): debug annotation, remove before shipping. Spells out for each app
-//  circle why the filter put it there, so the classification can be checked against a real
-//  server instead of read off the source.
-private fun RedactedCircleDefinition.debugWhyAppCircle(): String =
-    "GrantOn=$grantOn · Designation=$designation · appId=${appId?.toString()?.take(8) ?: "none"}"
-
-// TODO(circles-visibility): debug annotation, remove before shipping. Same purpose as the app
-//  circle note -- names the owner so the ownership filter can be checked against a real server.
-private fun RedactedCircleDefinition.debugWhyYourCircle(): String =
-    "GrantOn=$grantOn · owner=${appId?.toString()?.take(8) ?: "you"}"
+private fun RedactedCircleDefinition.toUi() =
+    ContactCircleUi(id = id, name = name, pending = false, emoji = emoji)
 
 /**
  * True for a circle this app presents: one the user made themselves (no owning app) or one the
@@ -100,10 +89,10 @@ fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
                     it.grantOn == CircleGrantOn.None &&
                     it.isOwnedByThisApp()
             }
-            .map { it.toUi(debugWhy = it.debugWhyYourCircle()) },
+            .map { it.toUi() },
         special = personal.filter { it.isSpecialAccessCircle() }.map { it.toUi() },
         appDefaults = personal
             .filter { !it.isSpecialAccessCircle() && it.grantOn == CircleGrantOn.Review }
-            .map { it.toUi(debugWhy = it.debugWhyAppCircle()) },
+            .map { it.toUi() },
     )
 }
