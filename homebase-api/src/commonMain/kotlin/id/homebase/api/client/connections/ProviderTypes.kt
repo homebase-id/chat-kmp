@@ -69,6 +69,25 @@ data class CircleWithMembers(
     val circle: RedactedCircleDefinition,
     /** Member identities, as domain strings (e.g. "sam.dotyou.cloud"). */
     val members: List<OdinId> = emptyList(),
+    /**
+     * Identities an app asked to add, whose grant has not landed yet. A **sibling** of [members]
+     * and never merged into it — they hold nothing, so listing them as members would claim access
+     * that does not exist.
+     */
+    val pendingMembers: List<PendingCircleMember> = emptyList(),
+)
+
+/**
+ * A sealed deposit waiting to become a real membership: an app asked for the identity to be added
+ * and the grant takes effect the next time they connect.
+ */
+@Serializable
+data class PendingCircleMember(
+    val odinId: OdinId,
+    /** Epoch-millis the request was deposited. */
+    val deposited: Long = 0,
+    /** The app that asked. A plain Guid server-side, so hyphenated on the wire. */
+    val depositingAppId: Uuid? = null,
 )
 
 /**

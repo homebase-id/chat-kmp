@@ -1784,6 +1784,9 @@
     <string name="circle_member_add_generic_failed">Something went wrong. Please try again.</string>
     <string name="circle_member_add_failed">Failed</string>
     <string name="circle_member_pending">Pending</string>
+    <string name="circle_access_incomplete">No key yet</string>
+    <string name="circle_access_incomplete_detail">Granted, but they can't read it yet.</string>
+    <string name="circle_access_pending_detail">Requested — takes effect when they next connect.</string>
     <string name="circle_member_status_member">Status in this circle: Member</string>
     <string name="circle_member_status_pending">Status in this circle: Pending</string>
     <string name="circle_member_remove_cd">Remove member</string>

@@ -67,6 +67,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.screens.contactbook.CircleAccessState
 import id.homebase.core.ui.screens.contactbook.components.CircleLabel
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.contacts.ContactExperience
@@ -75,6 +76,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.circle_access_incomplete
 import id.homebase.resources.circle_member_pending
 import id.homebase.resources.contactbook_detail_bio
 import id.homebase.resources.contactbook_detail_social
@@ -244,9 +246,20 @@ private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
                 name = circle.name,
                 style = MaterialTheme.typography.labelLarge,
             )
-            if (circle.pending) {
+            // A bare name claims access the contact may not have. Active needs no mark; the two
+            // states that overstate the grant do.
+            val mark = when {
+                circle.pending || circle.accessState == CircleAccessState.Pending ->
+                    stringResource(MR.string.circle_member_pending)
+
+                circle.accessState == CircleAccessState.Incomplete ->
+                    stringResource(MR.string.circle_access_incomplete)
+
+                else -> null
+            }
+            if (mark != null) {
                 Text(
-                    text = stringResource(MR.string.circle_member_pending),
+                    text = mark,
                     style = MaterialTheme.typography.labelMedium,
                     color = HomebaseTheme.extendedColors.warning,
                 )

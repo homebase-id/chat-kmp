@@ -157,6 +157,27 @@ class ConnectionNetworkProvider(
         return deserialize(response.body)
     }
 
+    /**
+     * Identities with a sealed deposit on [circleId] that has not landed yet.
+     *
+     * Scans connections server-side, so it is for one circle on demand — never a loop over a
+     * circle list. [getCirclesWithMembers] already returns `pendingMembers` for every circle in
+     * one round-trip; use that when showing more than one.
+     */
+    suspend fun getPendingCircleMembers(circleId: Uuid): List<PendingCircleMember> {
+        val creds = requireCreds()
+
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/connections/circles/pending"),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = "circleId=$circleId",
+        )
+
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
     suspend fun getCircleMembers(circleId: Uuid): List<OdinId> {
         val creds = requireCreds()
 

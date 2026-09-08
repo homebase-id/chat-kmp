@@ -15,6 +15,7 @@ import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import id.homebase.core.ui.screens.contactbook.CircleAccessState
 
 /** A pending destructive action awaiting confirmation. */
 enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
@@ -27,6 +28,11 @@ data class ContactCircleUi(
     val id: String,
     val name: String,
     val pending: Boolean,
+    /**
+     * What the membership is actually delivering. Null where it isn't known — the review sheet
+     * offers circles the contact is not in yet, so there is nothing to report there.
+     */
+    val accessState: CircleAccessState? = null,
     /** The owner's chosen emoji; often a ZWJ sequence, so it is carried and rendered whole. */
     val emoji: String? = null,
     // TODO(circles-visibility): debug only, remove before shipping.

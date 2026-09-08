@@ -40,6 +40,8 @@ import id.homebase.core.contactbook.setICanLocate
 import id.homebase.core.ui.navigation.Route
 import id.homebase.core.ui.screens.contactbook.CircleMemberStatus
 import id.homebase.core.ui.screens.contactbook.assignableCircles
+import id.homebase.core.ui.screens.contactbook.CircleAccessState
+import id.homebase.core.ui.screens.contactbook.circleAccessState
 import id.homebase.core.ui.screens.contactbook.isPersonalCircle
 import id.homebase.core.ui.screens.contactbook.CircleMembersUi
 import id.homebase.core.ui.screens.contactbook.RequestDirection
@@ -277,8 +279,26 @@ class ContactDetailViewModel(
                     .mapNotNull { pid -> circ.circles.map { it.circle }.firstOrNull { it.id.equals(pid, ignoreCase = true) } }
                     .filter { it.isPersonalCircle() && it.id.lowercase() !in realIds }
                 val circleItems = (
-                    realCircles.map { ContactCircleUi(it.id, it.name, pending = false, emoji = it.emoji) } +
-                        pendingCircles.map { ContactCircleUi(it.id, it.name, pending = true, emoji = it.emoji) }
+                    realCircles.map {
+                        ContactCircleUi(
+                            it.id,
+                            it.name,
+                            pending = false,
+                            emoji = it.emoji,
+                            // Membership alone overstates it: a read grant without its storage
+                            // key reads as access the contact cannot actually exercise.
+                            accessState = registration?.circleAccessState(it.id),
+                        )
+                    } +
+                        pendingCircles.map {
+                            ContactCircleUi(
+                                it.id,
+                                it.name,
+                                pending = true,
+                                emoji = it.emoji,
+                                accessState = CircleAccessState.Pending,
+                            )
+                        }
                     )
                     .filter { it.name.isNotBlank() }
                     .distinctBy { it.id.lowercase() }
