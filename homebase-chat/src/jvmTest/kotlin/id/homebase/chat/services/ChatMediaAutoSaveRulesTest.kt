@@ -7,10 +7,13 @@ import kotlin.test.assertTrue
 
 class ChatMediaAutoSaveRulesTest {
 
-    private val photo = PayloadDescriptor(key = "chat_img0", contentType = "image/jpeg")
+    // Every user attachment is keyed chat_web<index> — the keys the send path actually emits,
+    // so a green suite means the feature works.
+    private val photo = PayloadDescriptor(key = "chat_web0", contentType = "image/jpeg")
 
     private fun decide(
         payload: PayloadDescriptor = photo,
+        messageDataType: Int? = 0,
         isIncoming: Boolean = true,
         isSoftDeleted: Boolean = false,
         autoSaveEnabled: Boolean = true,
@@ -21,6 +24,7 @@ class ChatMediaAutoSaveRulesTest {
         enabledSinceMs: Long = 1_000L,
     ) = shouldAutoSave(
         payload = payload,
+        messageDataType = messageDataType,
         isIncoming = isIncoming,
         isSoftDeleted = isSoftDeleted,
         autoSaveEnabled = autoSaveEnabled,
@@ -36,22 +40,42 @@ class ChatMediaAutoSaveRulesTest {
 
     @Test
     fun incomingVideoIsSaved() =
-        assertTrue(decide(payload = PayloadDescriptor(key = "chat_vid0", contentType = "video/mp4")))
+        assertTrue(decide(payload = PayloadDescriptor(key = "chat_web0", contentType = "video/mp4")))
+
+    @Test
+    fun secondAttachmentIsSaved() =
+        assertTrue(decide(payload = PayloadDescriptor(key = "chat_web3", contentType = "image/jpeg")))
+
+    @Test
+    fun aMessageWithNoDataTypeIsPlainAndIsSaved() = assertTrue(decide(messageDataType = null))
 
     @Test
     fun settingOffSavesNothing() = assertFalse(decide(autoSaveEnabled = false))
 
     @Test
     fun nonMediaContentTypeIsSkipped() =
-        assertFalse(decide(payload = PayloadDescriptor(key = "chat_doc0", contentType = "application/pdf")))
+        assertFalse(decide(payload = PayloadDescriptor(key = "chat_web0", contentType = "application/pdf")))
 
     @Test
     fun missingContentTypeIsSkipped() =
-        assertFalse(decide(payload = PayloadDescriptor(key = "chat_img0", contentType = null)))
+        assertFalse(decide(payload = PayloadDescriptor(key = "chat_web0", contentType = null)))
 
     @Test
-    fun messageBodyOverflowIsSkipped() =
-        assertFalse(decide(payload = PayloadDescriptor(key = "chat_web0", contentType = "image/jpeg")))
+    fun bareMessageWebKeyIsSkipped() =
+        assertFalse(decide(payload = PayloadDescriptor(key = "chat_web", contentType = "image/jpeg")))
+
+    @Test
+    fun eventCoverPhotoIsSkipped() = assertFalse(
+        decide(messageDataType = ChatProtocol.ChatEventMessageDataType)
+    )
+
+    @Test
+    fun contactCardPhotoIsSkipped() = assertFalse(
+        decide(messageDataType = ChatProtocol.ChatContactCardMessageDataType)
+    )
+
+    @Test
+    fun anUnrecognisedTypedKindIsSkipped() = assertFalse(decide(messageDataType = 9_999))
 
     @Test
     fun linkPreviewIsSkipped() =
@@ -73,7 +97,7 @@ class ChatMediaAutoSaveRulesTest {
     fun stickerIsSkipped() = assertFalse(
         decide(
             payload = PayloadDescriptor(
-                key = "chat_img0",
+                key = "chat_web0",
                 contentType = "image/png",
                 descriptorContent = """{"isSticker":true}""",
             )
@@ -91,14 +115,14 @@ class ChatMediaAutoSaveRulesTest {
 
     @Test
     fun hlsPlaylistIsSkipped() = assertFalse(
-        decide(payload = PayloadDescriptor(key = "chat_vid0", contentType = HLS_PLAYLIST_CONTENT_TYPE))
+        decide(payload = PayloadDescriptor(key = "chat_web0", contentType = HLS_PLAYLIST_CONTENT_TYPE))
     )
 
     @Test
     fun segmentedVideoIsSkipped() = assertFalse(
         decide(
             payload = PayloadDescriptor(
-                key = "chat_vid0",
+                key = "chat_web0",
                 contentType = "video/mp4",
                 descriptorContent = """{"mimeType":"video/mp4","isSegmented":true}""",
             )
