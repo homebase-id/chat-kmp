@@ -64,10 +64,3 @@ internal fun decideWebPushHealth(
         if (hasBrowserSubscription && hasServerSubscription) WebPushHealth.SUBSCRIBED
         else WebPushHealth.NEEDS_REPAIR
 }
-
-/**
- * Only [WebPushHealth.NOT_SUBSCRIBED] is offerable: a granted-but-missing subscription is repaired
- * silently, and a browser-level denial can't be undone from the page.
- */
-internal fun shouldOfferWebPush(health: WebPushHealth, offerSuppressed: Boolean): Boolean =
-    health == WebPushHealth.NOT_SUBSCRIBED && !offerSuppressed

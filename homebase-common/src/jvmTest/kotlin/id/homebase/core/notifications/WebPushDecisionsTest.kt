@@ -4,12 +4,10 @@ import id.homebase.api.client.notifications.WebPushSubscriptionRequest
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
- * Locks the two decisions web push cannot borrow from the FCM path: health (the server redacts
- * endpoint/auth/p256DH, so the token comparison always reads TOKEN_MISMATCH) and the offer gate.
+ * Locks the decision web push cannot borrow from the FCM path: health. The server redacts
+ * endpoint/auth/p256DH, so the token comparison always reads TOKEN_MISMATCH.
  */
 class WebPushDecisionsTest {
 
@@ -51,15 +49,6 @@ class WebPushDecisionsTest {
             WebPushHealth.UNSUPPORTED,
             decideWebPushHealth(WebPushCapability.UNSUPPORTED, hasBrowserSubscription = false, hasServerSubscription = false),
         )
-    }
-
-    @Test
-    fun `only an undecided permission is worth offering`() {
-        assertTrue(shouldOfferWebPush(WebPushHealth.NOT_SUBSCRIBED, offerSuppressed = false))
-        assertFalse(shouldOfferWebPush(WebPushHealth.NOT_SUBSCRIBED, offerSuppressed = true))
-        for (health in WebPushHealth.entries - WebPushHealth.NOT_SUBSCRIBED) {
-            assertFalse(shouldOfferWebPush(health, offerSuppressed = false), "offered on $health")
-        }
     }
 
     @Test

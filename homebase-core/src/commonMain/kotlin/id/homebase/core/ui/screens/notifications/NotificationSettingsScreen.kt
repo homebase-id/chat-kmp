@@ -69,6 +69,7 @@ import id.homebase.resources.settings_notification_locked_screen_note
 import id.homebase.resources.settings_notification_show
 import id.homebase.resources.settings_notifications
 import id.homebase.resources.settings_notifications_denied_body
+import id.homebase.resources.settings_notifications_denied_browser_body
 import id.homebase.resources.settings_notifications_disabled_body
 import id.homebase.resources.settings_notifications_disabled_title
 import id.homebase.resources.settings_notifications_needs_install_body
@@ -169,6 +170,9 @@ fun NotificationSettingsUi(
                             text = when {
                                 uiState.needsHomeScreenInstall ->
                                     stringResource(MR.string.settings_notifications_needs_install_body)
+
+                                uiState.isPermissionPermanentlyDenied && isWeb() ->
+                                    stringResource(MR.string.settings_notifications_denied_browser_body)
 
                                 uiState.isPermissionPermanentlyDenied ->
                                     stringResource(MR.string.settings_notifications_denied_body)
@@ -334,7 +338,7 @@ fun NotificationSettingsUi(
                 }
             }
 
-            // ── Push Notification Status (Debug — tap header 5 times to reveal) ──
+            // ── Push Notification Status (always on web, else tap the header 5 times) ──
             NotificationSectionHeader(
                 title = stringResource(MR.string.settings_push_notification_status),
                 modifier = Modifier
@@ -342,14 +346,21 @@ fun NotificationSettingsUi(
                     .clickable { onAction(NotificationSettingsUiAction.DebugHeaderTapped) },
             )
 
-            if (uiState.showDebugInfo) {
+            // A browser subscription has no device token and the server redacts its keys, so the
+            // two FCM rows can only mislead there. The status row is a web user's only view of
+            // whether push actually works, so it is not hidden behind the debug gesture.
+            val fcmDebugRows = uiState.showDebugInfo && !isWeb()
+            if (uiState.showDebugInfo || isWeb()) {
                 val clipboardManager = LocalClipboard.current
                 val scope = rememberCoroutineScope()
 
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        .testTag("pushNotificationStatusCard")
+                ) {
                     Column {
                         // Token row
-                        Row(
+                        if (fcmDebugRows) Row(
                             modifier = Modifier.fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -384,7 +395,9 @@ fun NotificationSettingsUi(
                             }
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        if (fcmDebugRows) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
 
                         // Status row
                         Row(
@@ -414,10 +427,12 @@ fun NotificationSettingsUi(
                             )
                         }
 
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        if (fcmDebugRows) {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
 
                         // Server verification section
-                        Column(
+                        if (fcmDebugRows) Column(
                             modifier = Modifier.fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {

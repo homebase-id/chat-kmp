@@ -14,7 +14,6 @@ import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.RichNotificationData
-import id.homebase.core.notifications.WebPushService
 import id.homebase.core.permission.registerPermissionCallbackHandler
 import id.homebase.core.permission.unregisterPermissionCallbackHandler
 import id.homebase.core.moments.services.MomentCreateFlowState
@@ -51,7 +50,6 @@ class AppViewModel(
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
     private val conversationStream: ConversationStream,
-    private val webPushService: WebPushService,
     // Not the MomentCreateFlowState itself: that is identity-scoped and this ViewModel is
     // app-lifetime (it exists before login), so holding a direct reference would pin one
     // identity's draft for the life of the process. Resolved on demand instead — the share
@@ -133,7 +131,6 @@ class AppViewModel(
                 if (credentials != null) {
                     _uiState.update { it.copy(currentOdinId = credentials.domain) }
                     checkPendingUpgrade()
-                    refreshWebPushOffer()
                 }
             }
         }
@@ -188,34 +185,6 @@ class AppViewModel(
         viewModelScope.launch {
             updateAppManager.downloadUpdate()
         }
-    }
-
-    /**
-     * Re-run on every launch, not just the first: Chrome auto-revokes notification permission on
-     * low-engagement sites, so a granted browser can silently fall back to "default" months later.
-     */
-    private fun refreshWebPushOffer() {
-        if (!webPushService.isSupported) return
-        viewModelScope.launch {
-            val offer = runCatching { webPushService.shouldOffer() }
-                .onFailure { Logger.w(tag = "AppViewModel") { "web push check failed: ${it.message}" } }
-                .getOrDefault(false)
-            _uiState.update { it.copy(showWebPushOffer = offer) }
-        }
-    }
-
-    fun enableWebPush() {
-        _uiState.update { it.copy(showWebPushOffer = false) }
-        viewModelScope.launch {
-            runCatching { webPushService.enable() }
-                .onSuccess { Logger.i(tag = "AppViewModel") { "web push enable: $it" } }
-                .onFailure { Logger.e(tag = "AppViewModel") { "web push enable failed: ${it.message}" } }
-        }
-    }
-
-    fun dismissWebPushOffer() {
-        webPushService.suppressOffer()
-        _uiState.update { it.copy(showWebPushOffer = false) }
     }
 
     private fun checkForUpdate() {
@@ -307,5 +276,4 @@ data class AppUiState(
     val updateAvailable: Boolean = false,
     val updateAvailableVersion: String = "",
     val pendingUpgrade: PendingUpgradeState = PendingUpgradeState.None,
-    val showWebPushOffer: Boolean = false,
 )

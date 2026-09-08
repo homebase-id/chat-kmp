@@ -31,7 +31,7 @@ enum class RegistrationStatus {
 
 /** Result of a re-registration attempt. */
 sealed interface ReRegisterResult {
-    data class Success(val token: String) : ReRegisterResult
+    data object Success : ReRegisterResult
     data class Failure(val message: String) : ReRegisterResult
 }
 

@@ -3,7 +3,6 @@ package id.homebase.core.notifications
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.notifications.PushNotificationApi
 import id.homebase.api.client.notifications.WebPushSubscriptionRequest
-import id.homebase.core.settings.UserPreferences
 import id.homebase.core.util.Platform
 
 private const val TAG = "WebPushService"
@@ -15,7 +14,6 @@ private const val TAG = "WebPushService"
  */
 class WebPushService(
     private val api: PushNotificationApi,
-    private val userPreferences: UserPreferences,
 ) {
     private val bridge = webPushBridge()
 
@@ -35,13 +33,6 @@ class WebPushService(
         )
         if (health != WebPushHealth.NEEDS_REPAIR) return health
         return if (subscribeAndRegister(bridge)) WebPushHealth.SUBSCRIBED else WebPushHealth.NEEDS_REPAIR
-    }
-
-    suspend fun shouldOffer(): Boolean =
-        shouldOfferWebPush(evaluate(), userPreferences.webPushOfferSuppressed)
-
-    fun suppressOffer() {
-        userPreferences.webPushOfferSuppressed = true
     }
 
     /** Must be called from a user gesture — every browser gates the permission prompt on one. */

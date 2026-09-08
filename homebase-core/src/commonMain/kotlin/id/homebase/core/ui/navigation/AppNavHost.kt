@@ -216,7 +216,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.io.files.Path
 import id.homebase.core.widget.InAppNotificationBanner
 import id.homebase.core.widget.UpdateAvailableBanner
-import id.homebase.core.widget.WebPushOfferBanner
 import id.homebase.imageeditor.ui.CropScreen
 import id.homebase.imageeditor.ui.DrawScreen
 import kotlinx.coroutines.awaitCancellation
@@ -2205,15 +2204,6 @@ fun AppNavHost(
                 onTap = { data ->
                     viewModel.onInAppBannerTapped(data.payloadData)
                 },
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
-
-            // Overlay, not the inline slot above: the inline one only gets its status-bar
-            // padding while the update banner shows.
-            WebPushOfferBanner(
-                visible = uiState.showWebPushOffer && isOnTopLevelScreen,
-                onEnable = { viewModel.enableWebPush() },
-                onDismiss = { viewModel.dismissWebPushOffer() },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }
