@@ -317,6 +317,9 @@ sealed class RecipientModel(val name: String) {
 @Immutable
 sealed interface FullScreenOverlay {
 
+    /** Read-only views of a message that already exists in the conversation. */
+    sealed interface MediaViewer : FullScreenOverlay
+
     data class ViewMessageData(
         val messageId: Uuid,
         val title: String,
@@ -332,7 +335,7 @@ sealed interface FullScreenOverlay {
         /** Set with [globalTransitId] to read the payloads over peer; both null for local media. */
         val remoteOdinId: OdinId? = null,
         val globalTransitId: Uuid? = null,
-    ) : FullScreenOverlay
+    ) : FullScreenOverlay.MediaViewer
 
     data class AttachmentData(
         val selected: Uuid,
@@ -364,7 +367,7 @@ sealed interface FullScreenOverlay {
         /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
         val remoteOdinId: OdinId? = null,
         val globalTransitId: Uuid? = null,
-    ) : FullScreenOverlay
+    ) : FullScreenOverlay.MediaViewer
 
     @Immutable
     data class PdfViewerData(
@@ -373,8 +376,16 @@ sealed interface FullScreenOverlay {
         val payloadKey: String,
         val title: String,
         val userDate: Instant,
-    ) : FullScreenOverlay
+    ) : FullScreenOverlay.MediaViewer
 }
+
+/**
+ * Leaving a conversation drops only the read-only viewers: [FullScreenOverlay.AttachmentData]
+ * is the composer editor, whose picked files and crop/draw/trim edits exist nowhere else and
+ * would be destroyed with no way to get them back.
+ */
+internal fun MessageListUiState.closeMediaViewer(): MessageListUiState =
+    if (fullScreenOverlay is FullScreenOverlay.MediaViewer) copy(fullScreenOverlay = null) else this
 
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     /**
