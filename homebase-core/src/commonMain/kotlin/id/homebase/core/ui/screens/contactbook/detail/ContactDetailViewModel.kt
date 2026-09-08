@@ -26,6 +26,7 @@ import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.services.convo.contact.UnreviewBlockedException
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
@@ -503,6 +504,12 @@ class ContactDetailViewModel(
             ContactDetailAction.ReviewDismissed ->
                 _uiState.update { it.copy(review = null) }
             is ContactDetailAction.ReviewSubmitted -> submitReview(action.circleIds)
+
+            ContactDetailAction.UnreviewClicked ->
+                _uiState.update { it.copy(unreview = UnreviewState()) }
+            ContactDetailAction.UnreviewDismissed ->
+                _uiState.update { it.copy(unreview = null) }
+            ContactDetailAction.UnreviewConfirmed -> submitUnreview()
             is ContactDetailAction.CircleClicked -> onCircleClicked(action.circleId)
             ContactDetailAction.CircleDetailDismiss -> onCircleDetailDismiss()
             is ContactDetailAction.CircleMemberClicked -> _events.tryEmit(
@@ -609,6 +616,38 @@ class ContactDetailViewModel(
                 _uiState.update {
                     it.copy(review = open.copy(isSubmitting = false, failed = true))
                 }
+            }
+        }
+    }
+
+    /**
+     * Clear the review stamp. Revokes nothing — the contact keeps every circle and every grant,
+     * and only the owner's record of having vouched for them goes away.
+     *
+     * The server refuses while they still hold a review-granted personal circle, and names all of
+     * them, so the dialog can list the set instead of the user discovering it one refusal at a
+     * time.
+     */
+    private fun submitUnreview() {
+        val odinId = _uiState.value.entry?.odinId ?: return
+        _uiState.update { it.copy(unreview = UnreviewState(isSubmitting = true)) }
+        viewModelScope.launch {
+            try {
+                connectionService.clearConnectionReview(OdinId(odinId))
+                _uiState.update { it.copy(unreview = null) }
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: UnreviewBlockedException) {
+                _uiState.update {
+                    it.copy(
+                        unreview = UnreviewState(
+                            blockingCircles = e.circles.mapNotNull { c -> c.name },
+                        ),
+                    )
+                }
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "Un-review of $odinId failed" }
+                _uiState.update { it.copy(unreview = UnreviewState(failed = true)) }
             }
         }
     }

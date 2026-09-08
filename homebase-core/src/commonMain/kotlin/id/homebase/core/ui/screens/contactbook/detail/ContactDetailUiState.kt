@@ -53,6 +53,8 @@ data class ContactDetailUiState(
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Non-null while the review sheet is open. */
     val review: ReviewSheetState? = null,
+    /** Non-null while the un-review confirmation is open. */
+    val unreview: UnreviewState? = null,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
     val circles: List<ContactCircleUi> = emptyList(),
     /** All user-defined circles the signed-in user could add a contact to (system circles excluded),
@@ -136,6 +138,20 @@ data class ReviewSheetState(
     val failed: Boolean = false,
 )
 
+/**
+ * Open state for the un-review confirmation.
+ *
+ * [blockingCircles] non-empty means the server refused: the contact still holds circles a review
+ * granted, and those have to go first. Named rather than counted, because "remove them from two
+ * circles" doesn't tell you which two.
+ */
+@Immutable
+data class UnreviewState(
+    val isSubmitting: Boolean = false,
+    val blockingCircles: List<String> = emptyList(),
+    val failed: Boolean = false,
+)
+
 sealed interface ContactDetailAction {
     data object MessageClicked : ContactDetailAction
     data object SyncClicked : ContactDetailAction
@@ -170,6 +186,10 @@ sealed interface ContactDetailAction {
     /** Complete the review: stamp it and enrol [circleIds]. Empty = the "chat only" outcome. */
     data class ReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
     data object ReviewDismissed : ContactDetailAction
+    /** Clear the review stamp, dropping the contact back to New. */
+    data object UnreviewClicked : ContactDetailAction
+    data object UnreviewConfirmed : ContactDetailAction
+    data object UnreviewDismissed : ContactDetailAction
     /** Tapped a circle chip — opens the circle-detail dialog for [circleId]. */
     data class CircleClicked(val circleId: String) : ContactDetailAction
     data object CircleDetailDismiss : ContactDetailAction

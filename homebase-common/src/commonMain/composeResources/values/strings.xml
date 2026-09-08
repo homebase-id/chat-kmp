@@ -1828,7 +1828,10 @@
     <string name="contact_unreview_title">Mark as new?</string>
     <string name="contact_unreview_body">%1$s keeps every circle and every bit of access they already have. This only clears your record of having reviewed them.</string>
     <string name="contact_unreview_confirm">Mark as new</string>
-    <string name="contact_unreview_blocked">Remove %1$s from %2$s first — a circle they hold from your review keeps them reviewed.</string>
+    <string name="contact_unreview_blocked_title">Remove them from these circles first</string>
+    <string name="contact_unreview_blocked">%1$s still holds circles your review granted, so the review can't be cleared yet: %2$s</string>
+    <string name="contact_unreview_action">Mark as new</string>
+    <string name="contact_unreview_failed">Couldn't clear the review. Please try again.</string>
     <string name="contactbook_no_results">No contacts match your search</string>
 
     <string name="contactbook_action_add">Add contact</string>
