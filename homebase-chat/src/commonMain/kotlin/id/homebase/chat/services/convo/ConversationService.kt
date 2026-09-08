@@ -2601,19 +2601,21 @@ class ConversationService(
      * so it is offline-safe. Also seeds the dedup guard so restoring this draft
      * into the composer can't immediately echo back out to the outbox. #1122.
      */
-    suspend fun readDraft(conversationId: Uuid): String? {
+    suspend fun readDraft(conversationId: Uuid): String? = draftMutex.withLock {
+        readPersistedDraft(conversationId).also { lastPersistedDraft = conversationId to it }
+    }
+
+    private suspend fun readPersistedDraft(conversationId: Uuid): String? {
         val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return null
         val file = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, chatDrive, conversationId)
             ?: return null
-        val draft = file.fileMetadata.localAppData?.content?.let {
+        return file.fileMetadata.localAppData?.content?.let {
             try {
                 OdinSystemSerializer.deserialize<ConversationLocalAppDataJson>(it).draft
             } catch (_: Throwable) {
                 null
             }
         }
-        draftMutex.withLock { lastPersistedDraft = conversationId to draft }
-        return draft
     }
 
     /**
@@ -2630,14 +2632,14 @@ class ConversationService(
      * the very next attempt (the leaving-the-thread save) a silent no-op and
      * losing the draft.
      */
-    suspend fun updateLocalDraft(conversationId: Uuid, draft: String?) {
+    suspend fun updateLocalDraft(conversationId: Uuid, draft: String?): Unit = draftMutex.withLock {
         val capped = draft?.truncateToCodePoints(draftMaxCodepoints)?.ifBlank { null }
-        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to capped)) return
+        if (lastPersistedDraft == (conversationId to capped)) return@withLock
         val request = optimisticWriter
             .stampConversationDraft(chatDrive, conversationId, capped, UnixTimeUtc())
-            ?: return
+            ?: return@withLock
         outboxSync.tryEnqueue(request)
-        draftMutex.withLock { lastPersistedDraft = conversationId to capped }
+        lastPersistedDraft = conversationId to capped
     }
 
     /**
@@ -2649,12 +2651,17 @@ class ConversationService(
      * Nothing stored means nothing to clear — and that's the common case, since
      * composing straight through and sending never trips the idle debounce. Without
      * this check every send would bill a stamp + outbox push to erase a draft that
-     * was never written. The guard is accurate by send time: [readDraft] seeds it
-     * (null included) when the conversation is opened.
+     * was never written.
+     *
+     * That "nothing stored" decision reads the PERSISTED draft, not the in-memory
+     * dedup guard: the guard misses anything written outside this device's
+     * composer (a peer draft the sync merged in) and, before the whole body took
+     * [draftMutex], could still read "cleared" while a flush was mid-write — both
+     * of which skipped the clear and left the sent text behind as a draft (#1492).
      */
-    suspend fun clearLocalDraft(conversationId: Uuid) {
-        if (draftMutex.withLock { lastPersistedDraft } == (conversationId to null)) return
-        draftMutex.withLock { lastPersistedDraft = conversationId to null }
+    suspend fun clearLocalDraft(conversationId: Uuid): Unit = draftMutex.withLock {
+        lastPersistedDraft = conversationId to null
+        if (readPersistedDraft(conversationId) == null) return@withLock
         optimisticWriter.stampConversationDraft(chatDrive, conversationId, null, UnixTimeUtc())
             ?.let { outboxSync.tryEnqueue(it) }
     }
