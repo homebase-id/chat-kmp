@@ -10,6 +10,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.delay
+import java.net.InetAddress
 import java.net.ServerSocket
 
 /**
@@ -62,7 +63,8 @@ object LocalCallbackServer {
         for (port in portsToTry) {
             try {
                 server =
-                    embeddedServer(CIO, port = port) {
+                    // Wildcard-bound would expose the callback to the LAN and trip the Windows firewall prompt.
+                    embeddedServer(CIO, host = "127.0.0.1", port = port) {
                         routing {
 
                             /** OAuth callback */
@@ -191,7 +193,7 @@ object LocalCallbackServer {
             val port =
                 START_PORT + (Math.random() * (END_PORT - START_PORT)).toInt()
             try {
-                ServerSocket(port).use { return port }
+                ServerSocket(port, 0, InetAddress.getLoopbackAddress()).use { return port }
             } catch (_: Exception) {
             }
         }
