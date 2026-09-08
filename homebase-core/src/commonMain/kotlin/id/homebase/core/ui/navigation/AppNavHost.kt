@@ -125,6 +125,7 @@ import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
 import id.homebase.core.ui.screens.moments.MomentComposeScreen
@@ -1568,6 +1569,9 @@ fun AppNavHost(
                                         onAppearance = {
                                             navController.navigate(Route.AppearanceSettings)
                                         },
+                                        onMedia = {
+                                            navController.navigate(Route.MediaSettings)
+                                        },
                                         onStorage = {
                                             navController.navigate(Route.StorageSettings)
                                         },
@@ -2153,6 +2157,14 @@ fun AppNavHost(
                         composable<Route.DevScheduledPushTest> {
                             if (isAuthenticated) {
                                 DeveloperScheduledPushTestScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.MediaSettings> {
+                            if (isAuthenticated) {
+                                MediaSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
                             }
