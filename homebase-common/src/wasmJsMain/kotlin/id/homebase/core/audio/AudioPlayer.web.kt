@@ -1,17 +1,18 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 
 package id.homebase.core.audio
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.file.readWebFileBytes
+import id.homebase.api.util.toBlobObjectUrl
 import id.homebase.core.util.detectContentTypeFromExtensionOrHint
-import kotlin.io.encoding.Base64
 
 /*
  * `filePath` here is a path into the in-memory FakeFileSystem the decrypt-on-demand flow wrote to
  * (MediaDownloadHandler.handleDecryptFile), not a real file the browser can fetch. Read it back,
  * wrap the bytes in a Blob object URL and drive a detached HTMLAudioElement — the same bridge the
- * web video surface uses. Bytes cross to JS as Base64, the idiom used by HtmlVideoOverlay.web.kt.
+ * web video surface uses.
  */
 
 private class WebAudioPlayer : AudioPlayer {
@@ -28,18 +29,24 @@ private class WebAudioPlayer : AudioPlayer {
             return
         }
 
-        val url = audioBytesToObjectUrl(Base64.encode(bytes), audioMimeForPath(filePath))
+        val url = bytes.toBlobObjectUrl(audioMimeForPath(filePath))
         objectUrl = url
 
         val el = createAudioElement(url)
         addAudioProgressListener(el) { currentSec, durationSec ->
-            observer?.onProgressUpdate(currentSec.toWholeSeconds(), durationSec.toWholeSeconds())
+            guardJsCallback("audio.progress") {
+                observer?.onProgressUpdate(currentSec.toWholeSeconds(), durationSec.toWholeSeconds())
+            }
         }
-        addAudioEndedListener(el) { observer?.onComplete() }
-        addAudioErrorListener(el) { code -> Logger.e(tag = TAG) { "Audio element error $code" } }
+        addAudioEndedListener(el) { guardJsCallback("audio.ended") { observer?.onComplete() } }
+        addAudioErrorListener(el) { code ->
+            guardJsCallback("audio.error") { Logger.e(tag = TAG) { "Audio element error $code" } }
+        }
         element = el
 
-        playAudioElement(el) { reason -> Logger.w(tag = TAG) { "play() rejected: $reason" } }
+        playAudioElement(el) { reason ->
+            guardJsCallback("audio.play") { Logger.w(tag = TAG) { "play() rejected: $reason" } }
+        }
     }
 
     override fun jump(seconds: Int) {
@@ -49,7 +56,9 @@ private class WebAudioPlayer : AudioPlayer {
 
     override fun resume() {
         val el = element ?: return
-        playAudioElement(el) { reason -> Logger.w(tag = TAG) { "resume() rejected: $reason" } }
+        playAudioElement(el) { reason ->
+            guardJsCallback("audio.resume") { Logger.w(tag = TAG) { "resume() rejected: $reason" } }
+        }
     }
 
     override fun pause() {
@@ -90,15 +99,6 @@ private fun Double.toWholeSeconds(): Int =
 
 private fun audioMimeForPath(path: String): String =
     detectContentTypeFromExtensionOrHint(path).takeIf { it.startsWith("audio/") } ?: "audio/mp4"
-
-private fun audioBytesToObjectUrl(base64: String, mimeType: String): String = js(
-    """{
-        var bin = atob(base64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return URL.createObjectURL(new Blob([arr], { type: mimeType }));
-    }"""
-)
 
 private fun revokeAudioObjectUrl(url: String): Unit = js("{ URL.revokeObjectURL(url); }")
 

@@ -104,6 +104,10 @@ sealed class Route {
     data object StorageSettings : Route()
 
     @Serializable
+    @SerialName("media-settings")
+    data object MediaSettings : Route()
+
+    @Serializable
     @SerialName("defragmenter")
     data object Defragmenter : Route()
 
@@ -112,8 +116,8 @@ sealed class Route {
     data object Email : Route()
 
     @Serializable
-    @SerialName("email-client")
-    data object EmailClientPicker : Route()
+    @SerialName("email-thunderbird")
+    data object EmailThunderbirdSetup : Route()
 
     @Serializable
     @SerialName("email-secrets")

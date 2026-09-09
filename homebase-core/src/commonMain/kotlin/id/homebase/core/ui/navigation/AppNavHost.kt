@@ -1,6 +1,6 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.core.ui.screens.email.clients.EmailClientPickerScreen
+import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
 import androidx.compose.runtime.derivedStateOf
@@ -125,6 +125,7 @@ import id.homebase.core.ui.screens.feed.FeedTimelineScreen
 import id.homebase.core.ui.screens.feed.PostDetailScreen
 import id.homebase.core.ui.screens.home.HomeScreen
 import id.homebase.core.ui.screens.loading.AppLoadingScreen
+import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.CreateMomentGroupScreen
 import id.homebase.core.ui.screens.moments.MomentAudienceScreen
 import id.homebase.core.ui.screens.moments.MomentComposeScreen
@@ -203,6 +204,7 @@ import org.koin.compose.koinInject
 import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
+import id.homebase.core.util.isWeb
 import id.homebase.core.util.isExpandedLayout
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.resources.chat_archived_chats
@@ -265,11 +267,13 @@ fun AppNavHost(
     val authState by youAuthFlowManager.authState.collectAsStateWithLifecycle()
     // Gated on the identity scope being open as well as the auth state, because the two are
     // observed independently: AuthConnectionCoordinator collects the same authState flow, so
-    // this composition can see Authenticated a frame before the scope exists. Identity-scoped
-    // ViewModels (koinViewModel() below) cannot resolve until it does, and every authenticated
-    // route in this graph is gated on this one flag.
+    // this composition can see Authenticated a frame before the scope exists, and every
+    // authenticated route in this graph is gated on this one flag.
+    // `closed`, not `!= null`: the emitted reference outlives the scope it names, so the
+    // teardown direction reads open for as long as this collector lags. It is only a gate —
+    // what keeps the resolutions above it alive across a teardown is IdentityScope (#1373).
     val identityScope by koinInject<IdentitySessionScope>().currentScope.collectAsStateWithLifecycle()
-    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope != null
+    val isAuthenticated = authState is YouAuthState.Authenticated && identityScope?.closed == false
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
     // A settings pane floats over the screen beneath it, which stays mounted. The rail and bottom
@@ -385,6 +389,28 @@ fun AppNavHost(
     // renders *under* this Scaffold's bottom bar unless the screen reports it up.
     var isFeedMediaOpen by remember { mutableStateOf(false) }
 
+    // Same contract for the chat's two-pane media viewer, which additionally has to displace the
+    // navigation rail to own the whole window.
+    var isChatMediaOpen by remember { mutableStateOf(false) }
+
+    // This Scaffold's SnackbarHost is anchored to the bottom of the window, where the chat
+    // composer is: a notice raised here would sit on top of the input field.
+    var isChatComposerOpen by remember { mutableStateOf(false) }
+
+    // Latched out of the composer gate below so the notice survives being suppressed on a chat
+    // screen, and is consumed only once it has actually run its course.
+    val dbUpgrade by DatabaseManager.databaseUpgradeState.collectAsStateWithLifecycle()
+    var pendingDbUpgradeNotice by remember { mutableStateOf(false) }
+    val dbUpgradeSnapshot = dbUpgrade
+    if (dbUpgradeSnapshot is DatabaseUpgradeState.JustUpgraded &&
+        dbUpgradeSnapshot.fromVersion > 0
+    ) {
+        LaunchedEffect(dbUpgradeSnapshot) {
+            pendingDbUpgradeNotice = true
+            DatabaseManager.markUpgradeConsumed()
+        }
+    }
+
     // Check if current destination is a top-level route. Uses the static route-type
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
@@ -409,7 +435,7 @@ fun AppNavHost(
     val isVaultEditorOpen = vaultUiState.pendingEditor != null
     val showBottomNavigationBar =
         isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen &&
-                !isFeedMediaOpen
+                !isFeedMediaOpen && !isChatMediaOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -453,7 +479,9 @@ fun AppNavHost(
                 Route.AppLoading::class
             )
         ) {
-            if (authState is YouAuthState.Authenticated && !hasNotificationPermission) {
+            // Not on web: a browser only shows the permission prompt from a user gesture, so the
+            // ask has to come from the offer banner's Enable button instead.
+            if (authState is YouAuthState.Authenticated && !hasNotificationPermission && !isWeb()) {
                 permissionManager.askPermission(PermissionType.NOTIFICATION)
             }
         }
@@ -779,7 +807,8 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
-                val railVisible = showNavigationRail && isAuthenticated && isOnTopLevelScreen
+                val railVisible =
+                    showNavigationRail && isAuthenticated && isOnTopLevelScreen && !isChatMediaOpen
                 if (railVisible) {
                     NavigationRail(
                         modifier = Modifier.width(NavigationRailWidth),
@@ -858,7 +887,7 @@ fun AppNavHost(
                             )
                         }
                         val pendingUpgrade = uiState.pendingUpgrade
-                        if (pendingUpgrade is PendingUpgradeState.ShowSnackbar) {
+                        if (pendingUpgrade is PendingUpgradeState.ShowSnackbar && !isChatComposerOpen) {
                             LaunchedEffect(pendingUpgrade) {
                                 val result = snackbarHostState.showSnackbar(
                                     message = snackbarMessage,
@@ -871,24 +900,17 @@ fun AppNavHost(
                             }
                         }
 
-                        // Snackbar fired once per process after DatabaseManager wipes the local
-                        // DB on a schema-version bump. Tells the user why their conversations /
-                        // vault / feed appear empty while DriveSync repopulates from the server.
-                        // Skipped on fresh installs (fromVersion == 0): no prior data, nothing
-                        // to "restore". markUpgradeConsumed() flips state back to Idle so
-                        // recomposition doesn't re-fire the effect.
-                        val dbUpgrade by DatabaseManager.databaseUpgradeState.collectAsStateWithLifecycle()
-                        val dbUpgradeSnapshot = dbUpgrade
-                        if (dbUpgradeSnapshot is DatabaseUpgradeState.JustUpgraded &&
-                            dbUpgradeSnapshot.fromVersion > 0
-                        ) {
+                        // Shown once per process after DatabaseManager wipes the local DB on a
+                        // schema-version bump. Tells the user why their conversations / vault /
+                        // feed appear empty while DriveSync repopulates from the server.
+                        if (pendingDbUpgradeNotice && !isChatComposerOpen) {
                             val dbUpgradeMsg = stringResource(MR.string.database_upgrade_snackbar)
-                            LaunchedEffect(dbUpgradeSnapshot) {
+                            LaunchedEffect(Unit) {
                                 snackbarHostState.showSnackbar(
                                     message = dbUpgradeMsg,
                                     duration = SnackbarDuration.Long,
                                 )
-                                DatabaseManager.markUpgradeConsumed()
+                                pendingDbUpgradeNotice = false
                             }
                         }
 
@@ -1126,7 +1148,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ContactBookDetail> {
+                        paneDestination<Route.ContactBookDetail>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 ContactDetailScreen(
                                     viewModel = koinViewModel(),
@@ -1149,7 +1171,15 @@ fun AppNavHost(
                                         navController.navigate(Route.ConversationMedia(conversationId))
                                     },
                                     onOpenContact = { uniqueId, odinId ->
-                                        navController.navigate(Route.ContactBookDetail(uniqueId, odinId))
+                                        navController.navigate(
+                                            Route.ContactBookDetail(uniqueId, odinId)
+                                        ) {
+                                            if (isDesktopOrWeb()) {
+                                                popUpTo<Route.ContactBookDetail> {
+                                                    inclusive = true
+                                                }
+                                            }
+                                        }
                                     },
                                 )
                             }
@@ -1308,7 +1338,35 @@ fun AppNavHost(
                                         @Suppress("AssignedValueIsNeverRead")
                                         showingOnlyDetailPane = it
                                     },
+                                    onMediaViewerVisibilityChanged = {
+                                        @Suppress("AssignedValueIsNeverRead")
+                                        isChatMediaOpen = it
+                                    },
+                                    onComposerVisibilityChanged = {
+                                        @Suppress("AssignedValueIsNeverRead")
+                                        isChatComposerOpen = it
+                                    },
                                     onSaveContactCard = { pendingContactCard = it },
+                                    newConversationPane = { onDismiss, onConversationOpened ->
+                                        NewConversationPaneHost(
+                                            onDismiss = onDismiss,
+                                            onShowConversation = onConversationOpened,
+                                            onCreateGroup = { ids ->
+                                                // Closed before the hand-off: naming the group is
+                                                // a destination, so returning from it lands on the
+                                                // list, not a half-finished picker behind it.
+                                                onDismiss()
+                                                navController.navigate(
+                                                    Route.CreateConversationGroup(ids)
+                                                )
+                                            },
+                                            onAddContact = {
+                                                navController.navigate(
+                                                    Route.AddContact(identityOnly = true)
+                                                )
+                                            },
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -1348,7 +1406,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.CreateConversationGroup> {
+                        paneDestination<Route.CreateConversationGroup>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 CreateConversationGroupScreen(
                                     viewModel = koinViewModel(),
@@ -1429,7 +1487,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ConversationSettings> {
+                        paneDestination<Route.ConversationSettings>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 ConversationSettingsScreen(
                                     viewModel = koinViewModel(),
@@ -1468,7 +1526,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.GroupSettings> {
+                        paneDestination<Route.GroupSettings>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 GroupSettingsScreen(
                                     viewModel = koinViewModel(),
@@ -1523,7 +1581,7 @@ fun AppNavHost(
                             }
                         }
 
-                        settingsDestination<Route.Settings>(
+                        paneDestination<Route.Settings>(
                             onDismiss = { navController.popBackStack() },
                             paneContent = {
                                 if (isAuthenticated) {
@@ -1567,6 +1625,9 @@ fun AppNavHost(
                                         },
                                         onAppearance = {
                                             navController.navigate(Route.AppearanceSettings)
+                                        },
+                                        onMedia = {
+                                            navController.navigate(Route.MediaSettings)
                                         },
                                         onStorage = {
                                             navController.navigate(Route.StorageSettings)
@@ -2031,14 +2092,14 @@ fun AppNavHost(
                                     setupViewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onNavigateToSecrets = { navController.navigate(Route.EmailSecrets) },
-                                    onNavigateToClientPicker = { navController.navigate(Route.EmailClientPicker) },
+                                    onNavigateToThunderbirdSetup = { navController.navigate(Route.EmailThunderbirdSetup) },
                                 )
                             }
                         }
 
-                        composable<Route.EmailClientPicker> {
+                        composable<Route.EmailThunderbirdSetup> {
                             if (isAuthenticated) {
-                                EmailClientPickerScreen(
+                                EmailThunderbirdSetupScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                 )
@@ -2153,6 +2214,14 @@ fun AppNavHost(
                         composable<Route.DevScheduledPushTest> {
                             if (isAuthenticated) {
                                 DeveloperScheduledPushTestScreen(
+                                    viewModel = koinViewModel(),
+                                    onBackClick = { navController.popBackStack() })
+                            }
+                        }
+
+                        composable<Route.MediaSettings> {
+                            if (isAuthenticated) {
+                                MediaSettingsScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() })
                             }

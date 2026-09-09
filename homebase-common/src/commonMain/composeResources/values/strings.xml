@@ -333,6 +333,9 @@
     <string name="settings_enable_notifications">Enable Notifications</string>
     <string name="settings_notifications_denied_body">Notifications have been denied. Please enable them in your device settings.</string>
     <string name="settings_open_settings">Open Settings</string>
+    <string name="settings_notifications_needs_install_body">Add Homebase to your Home Screen to receive notifications on this device.</string>
+    <string name="settings_notifications_denied_browser_body">Notifications are blocked for this site. Allow them in your browser's site settings for this page, then reload.</string>
+
     <string name="settings_sounds">Sounds</string>
     <string name="settings_message_sound">Message Sound</string>
     <string name="settings_sound_system_default">System Default</string>
@@ -1181,10 +1184,45 @@
     <string name="email_secrets_new_key_title">Generate a new key?</string>
     <string name="email_secrets_new_key_body">New mail will be encrypted to the new key. Your mail app cannot read it until you import the new key there. The old key is kept, so older mail still opens.</string>
     <string name="email_secrets_new_key_confirm">Generate</string>
-    <string name="email_client_title">Your mail app</string>
-    <string name="email_client_intro">Pick the app you read mail in. We keep its setup steps one tap away.</string>
-    <string name="email_client_none">Not chosen yet</string>
-    <string name="email_home_client">Mail app</string>
+    <string name="email_home_thunderbird">Set up Thunderbird Encrypted Email</string>
+    <string name="email_home_thunderbird_detail">Install it, add your address, import your key</string>
+
+    <!-- Thunderbird setup: the only mail app we give steps for, per platform. -->
+    <string name="email_tb_title">Set up Thunderbird</string>
+    <string name="email_tb_intro">Thunderbird collects your Homebase mail and decrypts it with your key. It is the one mail app these steps cover — the others we tried handled encrypted mail badly.</string>
+    <string name="email_tb_install_title">Install Thunderbird</string>
+    <string name="email_tb_install_android">From Google Play, or F-Droid if you prefer.</string>
+    <string name="email_tb_install_desktop">thunderbird.net offers the right installer for this computer automatically.</string>
+    <string name="email_tb_install_web">Thunderbird runs on your computer, not in a browser tab. Install it there, then come back here for your settings.</string>
+    <string name="email_tb_get_desktop">Download Thunderbird</string>
+    <string name="email_tb_get_play">Google Play</string>
+    <string name="email_tb_get_fdroid">F-Droid</string>
+    <string name="email_tb_get_store">Microsoft Store</string>
+    <string name="email_tb_get_flathub">Flathub</string>
+    <string name="email_tb_ios_title">Thunderbird is not on iPhone yet</string>
+    <string name="email_tb_ios_body">There is no Thunderbird for iPhone or iPad. The app is being built, with a first release aimed at later this year, so set your mail up in Thunderbird on Android, Windows, macOS or Linux for now.</string>
+    <string name="email_tb_ios_note">The iPhone Mail app can collect your mail with the settings below, but it cannot decrypt PGP: encrypted messages arrive as an attachment it cannot open.</string>
+    <string name="email_tb_ios_roadmap">Follow the iPhone app</string>
+    <string name="email_tb_keychain_title">Install OpenKeychain as well</string>
+    <string name="email_tb_keychain_body">Thunderbird for Android holds no keys of its own — it asks OpenKeychain for every decryption, and there is no way to paste a key into Thunderbird itself. You need both apps.</string>
+    <string name="email_tb_secrets_all">Your server settings</string>
+    <string name="email_tb_copy_address">Copy address</string>
+    <string name="email_tb_copy_password">Copy app password</string>
+    <string name="email_tb_copy_key">Copy private key</string>
+    <string name="email_tb_steps_title">Then, in Thunderbird</string>
+    <string name="email_tb_step_number">%1$d.</string>
+    <string name="email_tb_step_android_1">Save your key to a file — somewhere you can reach it from OpenKeychain — and keep your app password on the clipboard until Thunderbird asks for it.</string>
+    <string name="email_tb_step_android_2">Open OpenKeychain, import a key from a file, and pick the key file you just saved.</string>
+    <string name="email_tb_step_android_3">Open Thunderbird and add an account with your Homebase address and the app password. If it does not find the settings, choose manual setup and enter the server, port and security shown below.</string>
+    <string name="email_tb_step_android_4">In Thunderbird, go to Settings, Accounts, your address, End-to-end encryption. Turn on Enable OpenPGP support, tap Configure end-to-end key, choose I already have a key, and pick your key from OpenKeychain.</string>
+    <string name="email_tb_step_android_5">Delete the key file now that OpenKeychain holds it.</string>
+    <string name="email_tb_step_android_6">When you write a message, tap the lock to encrypt it.</string>
+    <string name="email_tb_step_desktop_1">Save your key to a file where Thunderbird can read it, and keep your app password on the clipboard until Thunderbird asks for it.</string>
+    <string name="email_tb_step_desktop_2">In Thunderbird, add an account with your Homebase address and the app password. If it does not find the settings, choose Configure manually and enter the server, port and security exactly as shown below.</string>
+    <string name="email_tb_step_desktop_3">Open Account Settings, End-To-End Encryption, then Add Key. Choose Import an existing OpenPGP Key and select the key file you saved.</string>
+    <string name="email_tb_step_desktop_4">Pick the imported key as your personal key. The same panel decides whether new messages are encrypted and signed by default.</string>
+    <string name="email_tb_step_desktop_5">Delete the key file now that Thunderbird holds it.</string>
+    <string name="email_tb_key_warning">Anyone who gets your key file can read all your encrypted mail. Delete it once your mail app has imported it.</string>
     <string name="email_secrets_no_delete_note">Old keys are never deleted: mail received under them is only readable while they exist.</string>
     <string name="email_secrets_password_warning">Anyone with this password can read and send your mail. Enter it only in your own mail app.</string>
 
@@ -1434,6 +1472,8 @@
     <string name="video_web_large_playback_unsupported">Large videos can't be played in the browser yet</string>
 
     <!-- Media quality -->
+    <string name="settings_media">Media</string>
+    <string name="settings_media_desc">Quality and auto-saving</string>
     <string name="settings_media_quality">Media quality</string>
     <string name="settings_data_storage">Data and storage</string>
     <string name="settings_media_quality_header">Quality for photos and videos you send</string>
@@ -1446,6 +1486,13 @@
     <string name="cd_media_quality_high_on">High quality is on. Tap to send smaller photos and videos.</string>
     <string name="cd_media_quality_high_off">High quality is off. Tap to send photos and videos at full quality.</string>
     <string name="cd_media_quality_hd_badge">Sent in high quality</string>
+
+    <!-- Auto-save incoming media -->
+    <string name="settings_media_autosave_header">Saving what you receive</string>
+    <string name="settings_media_autosave">Save incoming media to my photo album</string>
+    <string name="settings_media_autosave_description">Photos and videos people send you are downloaded in the background and added to your album.</string>
+    <string name="settings_media_autosave_unmetered">Only on Wi-Fi</string>
+    <string name="settings_media_autosave_unmetered_description">Wait for an unmetered network instead of using mobile data.</string>
 
     <!-- Settings hub -->
     <string name="settings_category_general">General</string>
@@ -2223,4 +2270,6 @@
     <string name="webdrop_error_create">Couldn't create the drop link</string>
     <string name="webdrop_error_source_unreadable">Couldn't read %1$s — please pick it again</string>
     <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
+    <string name="notification_reply_failed_title">Couldn't send your reply</string>
+    <string name="notification_reply_failed_hint">Tap to open Homebase and send it again</string>
 </resources>
