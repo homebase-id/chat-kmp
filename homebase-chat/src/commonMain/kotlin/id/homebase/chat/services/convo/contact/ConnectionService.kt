@@ -178,7 +178,36 @@ class ConnectionService(
         scope.launch {
             hydrateFromCache()
             launchRefresh()
+            processEnrollments()
         }
+    }
+
+    /**
+     * Drain any circle enrolments queued for this app, over HTTP.
+     *
+     * The socket carries the same command and is sent on every connect, but it answers nothing —
+     * so it cannot tell us whether an enrolment was actually claimed. This one returns counts.
+     * Idempotent and a no-op without the permission, so running both is harmless.
+     */
+    suspend fun processEnrollments() {
+        // Logged before the call as well as after: without this, silence is ambiguous — never
+        // reached, still in flight, and threw all look the same.
+        Logger.i { "ENROLL-DIAG calling POST /connections/enrollments/process" }
+        val result = try {
+            provider.processEnrollments()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 403 here is the answer, not an incident: it means this app token may not process
+            // enrolments at all, which no count could have told us.
+            Logger.w(e) { "ENROLL-DIAG failed (${e::class.simpleName})" }
+            return
+        }
+        Logger.i {
+            "ENROLL-DIAG processed connections=${result.connectionsProcessed} " +
+                "enrollments=${result.enrollmentsCompleted}"
+        }
+        if (result.enrollmentsCompleted > 0) refresh()
     }
 
     /**
