@@ -13,14 +13,14 @@ import id.homebase.resources.contact_review_group_apps_caption
 import id.homebase.resources.contact_review_group_apps_collapse
 import id.homebase.resources.contact_review_group_apps_expand
 import id.homebase.resources.contact_review_group_apps_summary
-import id.homebase.resources.contact_review_group_special
-import id.homebase.resources.contact_review_group_special_caption
 import id.homebase.resources.contact_review_group_yours
 import id.homebase.resources.contact_review_group_yours_caption
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +34,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,7 +48,8 @@ import androidx.compose.ui.unit.dp
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.resources.MR
-import id.homebase.resources.contact_review_body
+import id.homebase.resources.contact_review_emergency_desc
+import id.homebase.resources.contact_review_emergency_title
 import id.homebase.resources.contact_review_chat_only_hint
 import id.homebase.resources.contact_review_introduced_by
 import id.homebase.resources.contact_review_keep_new
@@ -103,12 +106,6 @@ fun ReviewConnectionSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = stringResource(MR.string.contact_review_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             val toggle: (String) -> Unit = { id -> selected = groups.toggleSelection(selected, id) }
 
@@ -124,15 +121,16 @@ fun ReviewConnectionSheet(
                 )
             }
 
-            if (groups.special.isNotEmpty()) {
-                CircleGroup(
-                    title = stringResource(MR.string.contact_review_group_special),
-                    caption = stringResource(MR.string.contact_review_group_special_caption),
-                    circles = groups.special,
-                    selected = selected,
-                    alreadyHeldCircleIds = alreadyHeldCircleIds,
-                    enabled = !isSubmitting,
-                    onToggle = toggle,
+            // A switch, not a chip: this is one fixed circle granting a capability rather than a
+            // pick from a set, and it is the only choice here that shares something other than
+            // profile detail. Saying so outright beats filing it under a category name.
+            groups.special.forEach { circle ->
+                val held = circle.id in alreadyHeldCircleIds
+                EmergencyAccessToggle(
+                    displayName = displayName,
+                    checked = held || circle.id in selected,
+                    enabled = !held && !isSubmitting,
+                    onCheckedChange = { toggle(circle.id) },
                 )
             }
 
@@ -291,6 +289,50 @@ private fun CircleChips(
                     }
                 } else null,
             )
+        }
+    }
+}
+
+
+/**
+ * Emergency location access, as its own switch.
+ *
+ * Named for what it does rather than grouped under a category, because it is the one grant in
+ * this sheet that is not about profile visibility — and the consequence of getting it wrong is
+ * not symmetric with the others.
+ */
+@Composable
+private fun EmergencyAccessToggle(
+    displayName: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Spacer(modifier = Modifier.height(24.dp))
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(MR.string.contact_review_emergency_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = stringResource(MR.string.contact_review_emergency_desc, displayName),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
         }
     }
 }

@@ -1807,7 +1807,7 @@
     <string name="contactbook_onboarding_setup">Get started</string>
     <string name="contactbook_onboarding_dismiss">Maybe later</string>
 
-    <string name="contactbook_tab_known">Known Contacts</string>
+    <string name="contactbook_tab_known">Contacts</string>
     <string name="contactbook_tab_new">New</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
@@ -1853,15 +1853,14 @@
 
     <string name="contact_review_title">Review connection with %1$s</string>
     <string name="contact_review_introduced_by">You were introduced by %1$s.</string>
-    <string name="contact_review_body">Add them to one or more circles if you want them to see more of your profile.</string>
     <string name="contact_review_submit_circles">Add to circles</string>
     <string name="contact_review_submit_chat_only">Chat only</string>
     <string name="contact_review_chat_only_hint">They will see your public profile only. You can add them to circles anytime.</string>
     <string name="contact_review_keep_new">Keep as new</string>
-    <string name="contact_review_group_yours">Your circles</string>
-    <string name="contact_review_group_special">Special access</string>
-    <string name="contact_review_group_yours_caption">Circles you manage. Circles belonging to other apps are managed in those apps.</string>
-    <string name="contact_review_group_special_caption">Listed on its own because it grants more than profile visibility.</string>
+    <string name="contact_review_group_yours">Add to a circle</string>
+    <string name="contact_review_emergency_title">Emergency location access</string>
+    <string name="contact_review_group_yours_caption">Anyone you add can see more of your profile.</string>
+    <string name="contact_review_emergency_desc">Enable this to let %1$s see your location in an emergency.</string>
     <string name="contact_review_group_apps_caption">Suggested by the app that owns them, and on by default. Turn any off.</string>
     <string name="contact_review_group_apps">App defaults</string>
     <string name="contact_review_group_apps_summary">%1$s</string>
