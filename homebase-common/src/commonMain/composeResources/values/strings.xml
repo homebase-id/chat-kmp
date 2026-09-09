@@ -110,6 +110,7 @@
     <string name="not_available">Not available</string>
     <string name="error">Error</string>
     <string name="audio_waveform">Audio waveform</string>
+    <string name="audio_waveform_seek">Audio waveform, drag to seek</string>
     <string name="update">Updates</string>
     <string name="update_not_supported">Update check not supported on this version</string>
     <string name="update_available">New version available</string>

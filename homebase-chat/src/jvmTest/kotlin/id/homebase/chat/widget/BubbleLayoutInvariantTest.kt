@@ -11,6 +11,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
@@ -63,6 +64,16 @@ class BubbleLayoutInvariantTest {
     // Bounded conversation column so a long caption has a width to fill and the bubble
     // stays deterministic (mirrors the real caller which hands the bubble a max width).
     private val columnWidth = 400.dp
+
+    // A maximised desktop conversation pane. The Skiko test surface is 1024dp, so the bubble
+    // actually gets 1024 here — still far past the cap, which is the point.
+    private val desktopWidth = 1400.dp
+
+    // A 360dp phone less the 48dp of chrome MessageBubble puts around the bubble
+    // (16dp row padding each side + the 16dp gutter Spacer); this harness renders
+    // MessageBubbleRaw directly, so the column IS the width the bubble gets.
+    private val phoneWidth = 312.dp
+
     private val tol = 1.0f // dp; text layout produces sub-pixel widths
 
     private val koin = koinConfiguration {
@@ -76,11 +87,11 @@ class BubbleLayoutInvariantTest {
     }
 
     @Composable
-    private fun Host(content: @Composable () -> Unit) {
+    private fun Host(width: Dp = columnWidth, content: @Composable () -> Unit) {
         KoinApplication(configuration = koin) {
             HomebaseTheme(darkTheme = false) {
                 CompositionLocalProvider(LocalCurrentOdinId provides "me.example.com") {
-                    Box(Modifier.width(columnWidth)) { content() }
+                    Box(Modifier.width(width)) { content() }
                 }
             }
         }
@@ -132,6 +143,9 @@ class BubbleLayoutInvariantTest {
         // previewThumbnail/aspect and a non-image contentType, so it renders as the
         // compact DocumentMediaItem file card — the #1103 regression dimension.
         val document: Boolean = false,
+        // A single voice-note payload instead of images. Renders via AudioPlayerWidget,
+        // which has no intrinsic width and fills whatever the bubble offers.
+        val audio: Boolean = false,
     )
 
     private fun imagePayload(i: Int, aspect: Aspect = Aspect.LANDSCAPE) = PayloadDescriptor(
@@ -151,6 +165,14 @@ class BubbleLayoutInvariantTest {
         iv = Base64.encode(ByteArray(16)),
         descriptorContent = "server.log",
         bytesWritten = 3_300_000,
+    )
+
+    // A voice note: no thumbnail (so no waveform image is subcomposed) and an audio/* type,
+    // which is how every audio branch in the layout identifies one.
+    private fun audioPayload() = PayloadDescriptor(
+        key = "chat_aud0",
+        contentType = "audio/mp4",
+        iv = Base64.encode(ByteArray(16)),
     )
 
     // Stable so a test can hand the bubble the quoted message itself (which is what makes the
@@ -178,10 +200,10 @@ class BubbleLayoutInvariantTest {
             messageAppData = MessageAppData(replyPreview = reply),
             reactionPreview = null,
             previewThumbnail = null,
-            payloads = if (document) {
-                listOf(documentPayload()).toPersistentList()
-            } else {
-                (0 until images).map { imagePayload(it, aspect) }.toPersistentList()
+            payloads = when {
+                document -> listOf(documentPayload()).toPersistentList()
+                audio -> listOf(audioPayload()).toPersistentList()
+                else -> (0 until images).map { imagePayload(it, aspect) }.toPersistentList()
             },
             keyHeader = KeyHeader(iv = ByteArray(16), aesKey = SecureByteArray(ByteArray(16))),
             versionTag = Uuid.random(),
@@ -195,8 +217,9 @@ class BubbleLayoutInvariantTest {
         authorName: String? = null,
         cluster: MessageClusterPosition = MessageClusterPosition.ALONE,
         quoted: MessageUiModel? = null,
+        width: Dp = columnWidth,
     ) = setContent {
-        Host {
+        Host(width) {
             MessageBubbleRaw(
                 message = case.message(),
                 replyMessages = quoted?.let { persistentMapOf(quotedId to it) } ?: persistentMapOf(),
@@ -612,6 +635,77 @@ class BubbleLayoutInvariantTest {
             failures += "media -> text gap is ${caption.top.value - media.bottom.value}dp, expected 12dp"
 
         assertTrue(failures.isEmpty(), "author gap failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * A voice note has no intrinsic width — AudioPlayerWidget's inner row fills whatever it is
+     * handed — and nothing between the bubble Row and the player lowered maxWidth, so on a
+     * maximised desktop pane the bubble stretched to nearly the full pane. It is now capped at
+     * [Dimens.MediaBubble.audioMaxWidth], the same 240..320dp band the location card uses, and
+     * the bubble background is capped with it.
+     */
+    @Test
+    fun voiceNote_cappedOnWideDesktopWindow() = runComposeUiTest {
+        val cap = Dimens.MediaBubble.audioMaxWidth.value
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false)) {
+            val who = if (sent) "sent" else "recv"
+            render(
+                Case("audio/$who", sent, images = 0, caption = Caption.NONE, audio = true),
+                width = desktopWidth,
+            )
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            val media = boundsOf(ChatBubbleTestTags.MEDIA)
+            val mediaWidth = media.right.value - media.left.value
+            val bubbleWidth = bubble.right.value - bubble.left.value
+
+            if (mediaWidth > cap + tol)
+                failures += "[$who] voice note is ${mediaWidth}dp wide in a " +
+                    "${desktopWidth.value}dp column, cap is ${cap}dp"
+            // The bubble background must be capped with the player, not left stretched behind it.
+            if (bubbleWidth > cap + tol)
+                failures += "[$who] bubble behind the voice note is ${bubbleWidth}dp wide, " +
+                    "cap is ${cap}dp"
+            // The cap is what binds here — a collapsed player would pass the checks above.
+            if (mediaWidth < cap - tol)
+                failures += "[$who] voice note collapsed to ${mediaWidth}dp, expected the ${cap}dp cap"
+        }
+        assertTrue(failures.isEmpty(), "voice-note desktop cap failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * Regression guard: at phone width the cap is inert. The bubble gets less than
+     * [Dimens.MediaBubble.audioMaxWidth] there, so the voice note still fills it edge-to-edge
+     * exactly as before — neither shrunk to the cap nor pushed past the column by the
+     * [Dimens.MediaBubble.audioMinWidth] floor.
+     */
+    @Test
+    fun voiceNote_unchangedAtPhoneWidth() = runComposeUiTest {
+        val failures = mutableListOf<String>()
+        for (sent in listOf(true, false)) {
+            val who = if (sent) "sent" else "recv"
+            render(
+                Case("audio/$who", sent, images = 0, caption = Caption.NONE, audio = true),
+                width = phoneWidth,
+            )
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            val media = boundsOf(ChatBubbleTestTags.MEDIA)
+            val mediaWidth = media.right.value - media.left.value
+
+            if (!approx(mediaWidth, phoneWidth.value))
+                failures += "[$who] voice note is ${mediaWidth}dp at a ${phoneWidth.value}dp " +
+                    "phone width; the cap must not bite here"
+            if (!approx(media.left.value, bubble.left.value) ||
+                !approx(media.right.value, bubble.right.value)
+            )
+                failures += "[$who] voice note no longer fills its bubble: " +
+                    "media=[${media.left.value},${media.right.value}] " +
+                    "bubble=[${bubble.left.value},${bubble.right.value}]"
+            if (bubble.right.value > phoneWidth.value + tol)
+                failures += "[$who] the min-width floor pushed the bubble past the column: " +
+                    "bubble.right=${bubble.right.value} > ${phoneWidth.value}"
+        }
+        assertTrue(failures.isEmpty(), "voice-note phone-width failures:\n" + failures.joinToString("\n"))
     }
 
     /**
