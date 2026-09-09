@@ -59,6 +59,7 @@ import id.homebase.core.ui.screens.contactbook.resolveCircleDrives
 import id.homebase.core.ui.screens.contactbook.saveContactDraft
 import id.homebase.core.ui.screens.contactbook.saveContactEdit
 import id.homebase.core.ui.screens.contactbook.withOverride
+import id.homebase.core.settings.DeveloperPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -86,6 +87,7 @@ class ContactDetailViewModel(
     private val conversationStream: ConversationStream,
     private val chatMessageStream: ChatMessageStream,
     private val connectionService: ConnectionService,
+    private val developerPreferences: DeveloperPreferences,
     private val connectionRequestService: ConnectionRequestService,
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
@@ -374,6 +376,7 @@ class ContactDetailViewModel(
                         entry = entry,
                         connectionStatus = status,
                         isAccessRevoked = registration?.isAccessRevoked() == true,
+                        reviewEnabled = developerPreferences.connectionReviewEnabled.value,
                         needsReview = registration != null &&
                             contactStateOf(
                                 registration,

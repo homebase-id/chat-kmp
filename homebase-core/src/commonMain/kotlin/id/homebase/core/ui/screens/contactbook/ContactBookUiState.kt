@@ -172,6 +172,8 @@ data class ContactBookUiState(
     val contactStates: Map<String, ContactState> = emptyMap(),
     /** True until the circle memberships the three states need have loaded. */
     val statesLoading: Boolean = false,
+    /** Dark launch: the review's entry points are hidden until the dev flag is on. */
+    val reviewEnabled: Boolean = false,
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),

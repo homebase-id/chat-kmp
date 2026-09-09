@@ -60,6 +60,8 @@ data class ContactDetailUiState(
     val isAccessRevoked: Boolean = false,
     /** Connected but never reviewed — the one state with something for the owner to do. */
     val needsReview: Boolean = false,
+    /** Dark launch: the review's entry points are hidden until the dev flag is on. */
+    val reviewEnabled: Boolean = false,
     /** Circles the review sheet offers, in its three groups. */
     val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
     /** Non-null while the review sheet is open. */

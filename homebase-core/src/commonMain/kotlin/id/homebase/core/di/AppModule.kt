@@ -208,6 +208,7 @@ import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
 import id.homebase.core.location.tracking.createDeviceSensors
@@ -304,6 +305,7 @@ val appModule = module {
 
     // region Location add-on
     single { LocationPreferences(get()) }
+    single { DeveloperPreferences(get()) }
     single { LocationDeviceId() }
     single<DeviceSensors> { createDeviceSensors() }
     single { LocationPointStore(databaseManager = get(), deviceSensors = get()) }

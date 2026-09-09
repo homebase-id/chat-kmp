@@ -460,7 +460,7 @@ private fun ContactDetailContent(
                             when (currentTab) {
                                 ContactDetailTab.DETAILS -> {
                                     if (uiState.isAccessRevoked) AccessRevokedBanner()
-                                    if (uiState.needsReview) {
+                                    if (uiState.needsReview && uiState.reviewEnabled) {
                                         NeedsReviewBanner(
                                             onReview = {
                                                 onAction(ContactDetailAction.ReviewClicked)
@@ -607,7 +607,7 @@ private fun ManagementMenu(
                 leadingIcon = { Icon(Icons.Outlined.Sync, contentDescription = null) },
                 onClick = { open = false; onAction(ContactDetailAction.SyncClicked) },
             )
-            if (uiState.isConnected && !uiState.needsReview) {
+            if (uiState.isConnected && !uiState.needsReview && uiState.reviewEnabled) {
                 DropdownMenuItem(
                     text = { Text(stringResource(MR.string.contact_unreview_action)) },
                     leadingIcon = { Icon(Icons.Outlined.WavingHand, contentDescription = null) },

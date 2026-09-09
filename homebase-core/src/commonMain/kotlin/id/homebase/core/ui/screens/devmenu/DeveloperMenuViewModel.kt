@@ -27,6 +27,7 @@ import id.homebase.core.ui.screens.location.model.LOCATION_POINTS_PAYLOAD_KEY
 import id.homebase.core.ui.screens.location.model.LOCATION_TRACK_FILE_TYPE
 import id.homebase.core.ui.screens.location.model.LocationTrackCodec
 import id.homebase.core.util.isWeb
+import id.homebase.core.settings.DeveloperPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +42,7 @@ class DeveloperMenuViewModel(
     private val temporalDriveReadProvider: TemporalDriveReadProvider,
     private val serverIpStore: ServerIpStore,
     private val youAuthFlowManager: YouAuthFlowManager,
+    private val developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
     companion object {
@@ -59,9 +61,18 @@ class DeveloperMenuViewModel(
         // Always surface the production-captured last-known-good IP when the panel opens, so it's
         // visible without running the probe (confirms ServerIpCapture is working).
         refreshLastKnownGoodIp()
+        viewModelScope.launch {
+            developerPreferences.connectionReviewEnabled.collect { enabled ->
+                _uiState.update { it.copy(connectionReviewEnabled = enabled) }
+            }
+        }
     }
 
     fun onUiAction(action: DeveloperMenuUiAction) {
+        if (action is DeveloperMenuUiAction.SetConnectionReviewEnabled) {
+            viewModelScope.launch { developerPreferences.setConnectionReviewEnabled(action.enabled) }
+            return
+        }
         when (action) {
             is DeveloperMenuUiAction.BackClicked -> {
                 sendEvent(DeveloperMenuUiEvent.Back)
@@ -325,6 +336,8 @@ class DeveloperMenuViewModel(
 
 @Immutable
 data class DeveloperMenuUiState(
+    /** Dark-launched: the connection review's entry points are hidden until this is on. */
+    val connectionReviewEnabled: Boolean = false,
     val isRunningNetworkDiagnostic: Boolean = false,
     val lastKnownGoodIp: LastKnownServerIp? = null,
     val networkDiagnostics: NetworkDiagnostics? = null,
@@ -339,6 +352,7 @@ sealed interface DeveloperMenuUiEvent {
 
 sealed interface DeveloperMenuUiAction {
     data object BackClicked : DeveloperMenuUiAction
+    data class SetConnectionReviewEnabled(val enabled: Boolean) : DeveloperMenuUiAction
     data object TestRichNotification : DeveloperMenuUiAction
     data object TestTemporalLocationRead : DeveloperMenuUiAction
     data object ForceSyncAll : DeveloperMenuUiAction

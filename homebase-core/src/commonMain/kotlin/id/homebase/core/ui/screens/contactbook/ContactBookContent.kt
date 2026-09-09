@@ -130,8 +130,12 @@ fun ContactBookContent(
                                 connected = entry.odinId?.lowercase() in uiState.connectedOdinIds,
                                 trailing = when (state) {
                                     // New is the one state with something to do, so it gets the
-                                    // action rather than the icon that merely reports the state.
-                                    ContactState.New -> {
+                                    // action rather than the icon that merely reports the state --
+                                    // unless the review is still dark, in which case there is
+                                    // nothing to do and the icon is the honest answer.
+                                    ContactState.New -> if (!uiState.reviewEnabled) {
+                                        { ContactStateIcon(state) }
+                                    } else {
                                         {
                                             TextButton(
                                                 onClick = {

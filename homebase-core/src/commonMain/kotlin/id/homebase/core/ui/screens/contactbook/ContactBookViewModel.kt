@@ -33,6 +33,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
+import id.homebase.core.settings.DeveloperPreferences
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -72,6 +73,7 @@ class ContactBookViewModel(
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
     private val overrideStore: ContactOverrideStore,
+    private val developerPreferences: DeveloperPreferences,
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
     eventBus: EventBus,
@@ -184,6 +186,7 @@ class ContactBookViewModel(
         val filter: ContactFilter,
         val tab: ContactTab,
         val overlay: ContactBookOverlay?,
+        val reviewEnabled: Boolean,
     )
 
     private data class CirclesBundle(
@@ -211,8 +214,16 @@ class ContactBookViewModel(
         ) { c, l, conn, overrides ->
             ContactsBundle(c, l, conn, overrides)
         },
-        combine(_searchQuery, _filter, _selectedTab, _overlay) { q, f, tab, o ->
-            UiBits(q, f, tab, o)
+        // A source, not a .value read: toggling the dev flag has to re-emit the list, or the
+        // Review buttons only appear after some unrelated change happens to wake the combine.
+        combine(
+            _searchQuery,
+            _filter,
+            _selectedTab,
+            _overlay,
+            developerPreferences.connectionReviewEnabled,
+        ) { q, f, tab, o, review ->
+            UiBits(q, f, tab, o, review)
         },
         combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
         _header,
@@ -323,6 +334,7 @@ class ContactBookViewModel(
             circleContacts = circleContacts,
             contactStates = contactStates,
             statesLoading = circlesData.loading,
+            reviewEnabled = ui.reviewEnabled,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
             reviewCircleGroups = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
