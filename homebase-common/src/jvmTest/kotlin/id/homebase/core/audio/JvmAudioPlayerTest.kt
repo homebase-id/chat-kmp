@@ -5,12 +5,12 @@ import java.io.File
 import java.io.InputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.SourceDataLine
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -48,17 +48,17 @@ private class FakeSourceDataLine(
  * Test subclass that bypasses FFmpeg and audio hardware.
  */
 private class TestableAudioPlayer(
-    private val fakeDuration: Int = 30,
+    private val fakeDurationMs: Long = 30_000,
     private val fakeAudioBytes: ByteArray = ByteArray(44100 * 2 * 2), // 1 second of stereo 16-bit
 ) : JvmAudioPlayer() {
 
-    var lastSeekSeconds: Int? = null
+    var lastSeekMs: Long? = null
     var decoderStartCount = 0
     var fakeLine: FakeSourceDataLine? = null
     var simulateRealtime = false
 
-    override fun startDecoder(filePath: String, seekSeconds: Int): InputStream {
-        lastSeekSeconds = seekSeconds
+    override fun startDecoder(filePath: String, seekMs: Long): InputStream {
+        lastSeekMs = seekMs
         decoderStartCount++
         return ByteArrayInputStream(fakeAudioBytes)
     }
@@ -69,69 +69,71 @@ private class TestableAudioPlayer(
         return line
     }
 
-    override fun probeDurationSeconds(filePath: String): Int = fakeDuration
+    override fun probeDurationMs(filePath: String): Long = fakeDurationMs
+
+    override fun ffmpegExecutable(): String = "/fake/bin/ffmpeg"
 }
 
 class JvmAudioPlayerTest {
 
     @Test
     fun playSetsDurationAndStartsDecoder() {
-        val player = TestableAudioPlayer(fakeDuration = 45)
+        val player = TestableAudioPlayer(fakeDurationMs = 45_000)
         player.play("/fake/audio.m4a")
         Thread.sleep(100) // let threads start
 
-        assertEquals(45, player.totalDurationSeconds)
-        assertEquals(0, player.seekOffsetSeconds)
+        assertEquals(45_000L, player.totalDurationMs)
+        assertEquals(0L, player.seekOffsetMs)
         assertEquals(1, player.decoderStartCount)
-        assertEquals(0, player.lastSeekSeconds)
+        assertEquals(0L, player.lastSeekMs)
 
         player.release()
     }
 
     @Test
     fun stopResetsSeekOffset() {
-        val player = TestableAudioPlayer(fakeDuration = 60)
+        val player = TestableAudioPlayer(fakeDurationMs = 60_000)
         player.play("/fake/audio.wav")
         Thread.sleep(50)
 
-        player.jump(20)
+        player.jumpTo(20_000)
         Thread.sleep(50)
-        assertEquals(20, player.seekOffsetSeconds)
+        assertEquals(20_000L, player.seekOffsetMs)
 
         player.stop()
-        assertEquals(0, player.seekOffsetSeconds)
+        assertEquals(0L, player.seekOffsetMs)
 
         player.release()
     }
 
     @Test
     fun jumpClampsToTotalDuration() {
-        val player = TestableAudioPlayer(fakeDuration = 30)
+        val player = TestableAudioPlayer(fakeDurationMs = 30_000)
         player.play("/fake/audio.wav")
         Thread.sleep(50)
 
-        player.jump(100)
+        player.jumpTo(100_000)
         Thread.sleep(50)
-        assertEquals(30, player.seekOffsetSeconds)
+        assertEquals(30_000L, player.seekOffsetMs)
 
-        player.jump(-5)
+        player.jumpTo(-5_000)
         Thread.sleep(50)
-        assertEquals(0, player.seekOffsetSeconds)
+        assertEquals(0L, player.seekOffsetMs)
 
         player.release()
     }
 
     @Test
     fun jumpRestartsDecoder() {
-        val player = TestableAudioPlayer(fakeDuration = 60)
+        val player = TestableAudioPlayer(fakeDurationMs = 60_000)
         player.play("/fake/audio.wav")
         Thread.sleep(50)
         assertEquals(1, player.decoderStartCount)
 
-        player.jump(15)
+        player.jumpTo(15_000)
         Thread.sleep(50)
         assertEquals(2, player.decoderStartCount)
-        assertEquals(15, player.lastSeekSeconds)
+        assertEquals(15_000L, player.lastSeekMs)
 
         player.release()
     }
@@ -139,9 +141,9 @@ class JvmAudioPlayerTest {
     @Test
     fun jumpDoesNothingWithoutPriorPlay() {
         val player = TestableAudioPlayer()
-        player.jump(10)
+        player.jumpTo(10_000)
         assertEquals(0, player.decoderStartCount)
-        assertNull(player.lastSeekSeconds)
+        assertNull(player.lastSeekMs)
     }
 
     @Test
@@ -149,25 +151,25 @@ class JvmAudioPlayerTest {
         val player = TestableAudioPlayer()
         val observer = object : AudioPlaybackObserver {
             override fun onComplete() {}
-            override fun onProgressUpdate(progressSeconds: Int, totalSeconds: Int) {}
+            override fun onProgressUpdate(positionMs: Long, durationMs: Long) {}
         }
         player.setPlaybackObserver(observer)
         player.play("/fake/audio.wav")
         Thread.sleep(50)
 
         player.release()
-        assertEquals(0, player.seekOffsetSeconds)
+        assertEquals(0L, player.seekOffsetMs)
     }
 
     @Test
     fun observerReceivesOnComplete() {
         val shortAudio = ByteArray(1764) // ~10ms of stereo 16-bit at 44100
         val completed = CountDownLatch(1)
-        val player = TestableAudioPlayer(fakeDuration = 1, fakeAudioBytes = shortAudio)
+        val player = TestableAudioPlayer(fakeDurationMs = 1_000, fakeAudioBytes = shortAudio)
 
         player.setPlaybackObserver(object : AudioPlaybackObserver {
             override fun onComplete() { completed.countDown() }
-            override fun onProgressUpdate(progressSeconds: Int, totalSeconds: Int) {}
+            override fun onProgressUpdate(positionMs: Long, durationMs: Long) {}
         })
 
         player.play("/fake/short.wav")
@@ -179,35 +181,57 @@ class JvmAudioPlayerTest {
     fun observerReceivesProgressUpdates() {
         val audio = ByteArray(44100 * 2 * 2 * 2) // ~2 seconds
         val progressLatch = CountDownLatch(1)
-        val lastTotal = AtomicInteger(0)
+        val lastTotal = AtomicLong(0)
 
-        val player = TestableAudioPlayer(fakeDuration = 2, fakeAudioBytes = audio)
+        val player = TestableAudioPlayer(fakeDurationMs = 2_000, fakeAudioBytes = audio)
         player.simulateRealtime = true
         player.setPlaybackObserver(object : AudioPlaybackObserver {
             override fun onComplete() {}
-            override fun onProgressUpdate(progressSeconds: Int, totalSeconds: Int) {
-                lastTotal.set(totalSeconds)
+            override fun onProgressUpdate(positionMs: Long, durationMs: Long) {
+                lastTotal.set(durationMs)
                 progressLatch.countDown()
             }
         })
 
         player.play("/fake/audio.wav")
         assertTrue(progressLatch.await(3, TimeUnit.SECONDS), "Observer should receive progress updates")
-        assertEquals(2, lastTotal.get())
+        assertEquals(2_000L, lastTotal.get())
+        player.release()
+    }
+
+    @Test
+    fun progressIsReportedInMilliseconds() {
+        val audio = ByteArray(44100 * 2 * 2 * 2) // ~2 seconds
+        val sawSubSecond = CountDownLatch(1)
+        val player = TestableAudioPlayer(fakeDurationMs = 2_000, fakeAudioBytes = audio)
+        player.simulateRealtime = true
+        player.setPlaybackObserver(object : AudioPlaybackObserver {
+            override fun onComplete() {}
+            override fun onProgressUpdate(positionMs: Long, durationMs: Long) {
+                // A whole-second reporter can only ever emit 0 or a multiple of 1000.
+                if (positionMs > 0 && positionMs % 1000L != 0L) sawSubSecond.countDown()
+            }
+        })
+
+        player.play("/fake/audio.wav")
+        assertTrue(
+            sawSubSecond.await(3, TimeUnit.SECONDS),
+            "Progress should carry millisecond resolution",
+        )
         player.release()
     }
 
     @Test
     fun progressClampsToTotalDuration() {
         val audio = ByteArray(44100 * 2 * 2 * 3) // ~3 seconds
-        val maxProgress = AtomicInteger(0)
+        val maxProgress = AtomicLong(0)
         val progressLatch = CountDownLatch(2)
-        val player = TestableAudioPlayer(fakeDuration = 1, fakeAudioBytes = audio)
+        val player = TestableAudioPlayer(fakeDurationMs = 1_000, fakeAudioBytes = audio)
         player.simulateRealtime = true
         player.setPlaybackObserver(object : AudioPlaybackObserver {
             override fun onComplete() {}
-            override fun onProgressUpdate(progressSeconds: Int, totalSeconds: Int) {
-                if (progressSeconds > maxProgress.get()) maxProgress.set(progressSeconds)
+            override fun onProgressUpdate(positionMs: Long, durationMs: Long) {
+                if (positionMs > maxProgress.get()) maxProgress.set(positionMs)
                 progressLatch.countDown()
             }
         })
@@ -215,13 +239,13 @@ class JvmAudioPlayerTest {
         player.play("/fake/audio.wav")
         progressLatch.await(3, TimeUnit.SECONDS)
 
-        assertTrue(maxProgress.get() <= 1, "Progress should not exceed total duration")
+        assertTrue(maxProgress.get() <= 1_000L, "Progress should not exceed total duration")
         player.release()
     }
 
     @Test
     fun multiplePlayCallsRestartCleanly() {
-        val player = TestableAudioPlayer(fakeDuration = 30)
+        val player = TestableAudioPlayer(fakeDurationMs = 30_000)
 
         player.play("/fake/first.wav")
         Thread.sleep(50)
@@ -230,7 +254,7 @@ class JvmAudioPlayerTest {
         player.play("/fake/second.wav")
         Thread.sleep(50)
         assertEquals(2, player.decoderStartCount)
-        assertEquals(0, player.lastSeekSeconds)
+        assertEquals(0L, player.lastSeekMs)
 
         player.release()
     }
@@ -271,7 +295,7 @@ class JvmAudioPlayerTest {
         try {
             temp.writeBytes(ByteArray(100))
             val duration = JvmAudioPlayer.estimateDurationFromFileSize(temp.absolutePath)
-            assertEquals(1, duration, "Very small files should return at least 1 second")
+            assertEquals(1L, duration, "Very small files should return at least 1 millisecond")
         } finally {
             temp.delete()
         }
@@ -284,10 +308,110 @@ class JvmAudioPlayerTest {
             // 5 seconds of 44100 Hz, stereo, 16-bit = 44100 * 2 * 2 * 5 = 882000 bytes
             temp.writeBytes(ByteArray(882000))
             val duration = JvmAudioPlayer.estimateDurationFromFileSize(temp.absolutePath)
-            assertEquals(5, duration)
+            assertEquals(5_000L, duration)
         } finally {
             temp.delete()
         }
+    }
+
+    @Test
+    fun backwardsProgressIsIgnoredUntilItPersists() {
+        val player = TestableAudioPlayer(fakeDurationMs = 60_000)
+
+        assertEquals(5_000L, player.monotonicPositionMs(5_000))
+
+        // Three isolated dips are jitter from the line restarting its own clock.
+        assertEquals(5_000L, player.monotonicPositionMs(400))
+        assertEquals(5_000L, player.monotonicPositionMs(400))
+        assertEquals(5_000L, player.monotonicPositionMs(400))
+        // The fourth in a row is a real rewind.
+        assertEquals(400L, player.monotonicPositionMs(400))
+    }
+
+    @Test
+    fun forwardProgressResetsTheBackwardsCounter() {
+        val player = TestableAudioPlayer(fakeDurationMs = 60_000)
+
+        player.monotonicPositionMs(5_000)
+        player.monotonicPositionMs(400)
+        player.monotonicPositionMs(400)
+        assertEquals(6_000L, player.monotonicPositionMs(6_000))
+
+        // Counter restarted, so three dips are absorbed again.
+        assertEquals(6_000L, player.monotonicPositionMs(400))
+        assertEquals(6_000L, player.monotonicPositionMs(400))
+        assertEquals(6_000L, player.monotonicPositionMs(400))
+    }
+
+    @Test
+    fun ffmpegCommandOmitsAtempoAtNormalSpeed() {
+        val player = TestableAudioPlayer()
+        val command = player.buildFfmpegCommand("/fake/audio.m4a", seekMs = 0, speed = 1f)
+        assertFalse(command.any { it.startsWith("atempo") }, "1x needs no filter graph")
+        assertFalse(command.contains("-filter:a"))
+    }
+
+    @Test
+    fun ffmpegCommandCarriesAtempoForFasterSpeeds() {
+        val player = TestableAudioPlayer()
+
+        val oneAndAHalf = player.buildFfmpegCommand("/fake/audio.m4a", seekMs = 0, speed = 1.5f)
+        assertEquals("atempo=1.5", oneAndAHalf[oneAndAHalf.indexOf("-filter:a") + 1])
+
+        val double = player.buildFfmpegCommand("/fake/audio.m4a", seekMs = 0, speed = 2f)
+        assertEquals("atempo=2.0", double[double.indexOf("-filter:a") + 1])
+    }
+
+    @Test
+    fun ffmpegCommandClampsSpeedToTheAtempoRange() {
+        val player = TestableAudioPlayer()
+
+        val tooFast = player.buildFfmpegCommand("/fake/audio.m4a", seekMs = 0, speed = 8f)
+        assertEquals("atempo=2.0", tooFast[tooFast.indexOf("-filter:a") + 1])
+
+        val tooSlow = player.buildFfmpegCommand("/fake/audio.m4a", seekMs = 0, speed = 0.1f)
+        assertEquals("atempo=0.5", tooSlow[tooSlow.indexOf("-filter:a") + 1])
+    }
+
+    @Test
+    fun ffmpegCommandSeeksWithSubSecondPrecision() {
+        val player = TestableAudioPlayer()
+        val command = player.buildFfmpegCommand("/fake/audio.m4a", seekMs = 1_500)
+        assertEquals("1.5", command[command.indexOf("-ss") + 1])
+    }
+
+    @Test
+    fun setSpeedRestartsTheDecoderAtTheCurrentPosition() {
+        val player = TestableAudioPlayer(fakeDurationMs = 60_000)
+        player.play("/fake/audio.wav")
+        Thread.sleep(50)
+        assertEquals(1, player.decoderStartCount)
+
+        player.monotonicPositionMs(12_000)
+        player.setSpeed(1.5f)
+        Thread.sleep(50)
+
+        assertEquals(2, player.decoderStartCount)
+        assertEquals(12_000L, player.lastSeekMs)
+        assertEquals(1.5f, player.speed)
+
+        player.release()
+    }
+
+    @Test
+    fun setSpeedBeforePlayIsRememberedForTheFirstDecoder() {
+        val player = TestableAudioPlayer(fakeDurationMs = 60_000)
+        player.setSpeed(2f)
+        assertEquals(0, player.decoderStartCount)
+        assertEquals(2f, player.speed)
+
+        player.play("/fake/audio.wav")
+        Thread.sleep(50)
+
+        val command = player.buildFfmpegCommand("/fake/audio.wav", seekMs = 0, speed = player.speed)
+        assertEquals("atempo=2.0", command[command.indexOf("-filter:a") + 1])
+
+        player.release()
     }
 }
 

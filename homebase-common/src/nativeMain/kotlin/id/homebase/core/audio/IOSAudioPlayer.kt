@@ -28,6 +28,7 @@ class IOSAudioPlayer : AudioPlayer {
 
     private var positionJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var speed = 1f
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override fun play(filePath: String) {
@@ -64,18 +65,28 @@ class IOSAudioPlayer : AudioPlayer {
         }
 
         newPlayer.delegate = delegate
+        newPlayer.enableRate = true
         newPlayer.prepareToPlay()
         newPlayer.play()
+        newPlayer.rate = speed
         player = newPlayer
         startPositionPolling()
     }
 
-    override fun jump(seconds: Int) {
-        player?.currentTime = seconds.toDouble()
+    override fun jumpTo(positionMs: Long) {
+        player?.currentTime = positionMs / 1000.0
     }
 
     override fun resume() {
         player?.play()
+        player?.rate = speed
+    }
+
+    // AVAudioPlayer resets rate to 1 on every play(), so it is reapplied there too.
+    override fun setSpeed(speed: Float) {
+        this.speed = speed.coerceToPlaybackSpeed()
+        val current = player ?: return
+        if (current.playing) current.rate = this.speed
     }
 
     override fun pause() {
@@ -100,12 +111,16 @@ class IOSAudioPlayer : AudioPlayer {
     private fun startPositionPolling() {
         positionJob = scope.launch {
             while (isActive) {
-                val position = player?.currentTime?.toInt() ?: 0
-                val duration = player?.duration?.toInt() ?: 0
+                val position = ((player?.currentTime ?: 0.0) * 1000).toLong()
+                val duration = ((player?.duration ?: 0.0) * 1000).toLong()
                 delegate.observer?.onProgressUpdate(position, duration)
-                delay(500)
+                delay(PROGRESS_INTERVAL_MS)
             }
         }
+    }
+
+    private companion object {
+        const val PROGRESS_INTERVAL_MS = 80L
     }
 
     private class AudioPlayerDelegate : NSObject(), AVAudioPlayerDelegateProtocol {

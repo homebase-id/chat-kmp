@@ -10,8 +10,11 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryPlayAndRecord
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionCategoryRecord
+import platform.AVFAudio.AVAudioSessionPortOverrideNone
+import platform.AVFAudio.AVAudioSessionPortOverrideSpeaker
 import platform.AVFAudio.AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
 import platform.AVFAudio.setActive
 import platform.Foundation.NSError
@@ -26,9 +29,74 @@ import platform.Foundation.NSError
  */
 object AudioSession {
 
-    fun configureForPlayback(): Boolean = activate(AVAudioSessionCategoryPlayback)
+    private var proximityRouting = false
+    private var savedCategory: String? = null
+    private var savedMode: String? = null
+
+    fun configureForPlayback(): Boolean = activate(
+        // Proximity routing owns the category while it is on — Playback has no receiver route.
+        if (proximityRouting) AVAudioSessionCategoryPlayAndRecord else AVAudioSessionCategoryPlayback
+    )
 
     fun configureForRecording(): Boolean = activate(AVAudioSessionCategoryRecord)
+
+    // PlayAndRecord is recording-capable, so this is called only once the phone is at the ear —
+    // entering it up front would prompt for the microphone just to play a voice note.
+    fun beginProximityRouting(): Boolean = memScoped {
+        if (proximityRouting) return@memScoped true
+
+        val session = AVAudioSession.sharedInstance()
+        val err = alloc<ObjCObjectVar<NSError?>>()
+        savedCategory = session.category
+        savedMode = session.mode
+
+        session.setCategory(AVAudioSessionCategoryPlayAndRecord, err.ptr)
+        err.value?.let {
+            Logger.e(tag = TAG) { "setCategory(PlayAndRecord) failed: ${it.localizedDescription}" }
+            savedCategory = null
+            savedMode = null
+            return@memScoped false
+        }
+
+        proximityRouting = true
+        true
+    }
+
+    fun routeOutput(toEarpiece: Boolean) = memScoped {
+        if (!proximityRouting) return@memScoped
+        val err = alloc<ObjCObjectVar<NSError?>>()
+        val port =
+            if (toEarpiece) AVAudioSessionPortOverrideNone else AVAudioSessionPortOverrideSpeaker
+        AVAudioSession.sharedInstance().overrideOutputAudioPort(port, err.ptr)
+        err.value?.let {
+            Logger.w(tag = TAG) { "overrideOutputAudioPort failed: ${it.localizedDescription}" }
+        }
+    }
+
+    fun endProximityRouting() = memScoped {
+        if (!proximityRouting) return@memScoped
+        proximityRouting = false
+
+        val session = AVAudioSession.sharedInstance()
+        val err = alloc<ObjCObjectVar<NSError?>>()
+        session.overrideOutputAudioPort(AVAudioSessionPortOverrideNone, err.ptr)
+        err.value = null
+
+        session.setCategory(savedCategory ?: AVAudioSessionCategoryPlayback, err.ptr)
+        err.value?.let {
+            Logger.e(tag = TAG) { "category restore failed: ${it.localizedDescription}" }
+        }
+        err.value = null
+
+        savedMode?.let { mode ->
+            session.setMode(mode, err.ptr)
+            err.value?.let {
+                Logger.w(tag = TAG) { "mode restore failed: ${it.localizedDescription}" }
+            }
+        }
+        savedCategory = null
+        savedMode = null
+    }
 
     /**
      * For callers that only need the route to be output-capable. Deliberately does

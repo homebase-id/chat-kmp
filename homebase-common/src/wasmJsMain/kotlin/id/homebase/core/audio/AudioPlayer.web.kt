@@ -19,6 +19,7 @@ private class WebAudioPlayer : AudioPlayer {
     private var element: JsAny? = null
     private var objectUrl: String? = null
     private var observer: AudioPlaybackObserver? = null
+    private var speed = 1f
 
     override fun play(filePath: String) {
         teardown()
@@ -33,9 +34,10 @@ private class WebAudioPlayer : AudioPlayer {
         objectUrl = url
 
         val el = createAudioElement(url)
+        setAudioPlaybackRate(el, speed.toDouble())
         addAudioProgressListener(el) { currentSec, durationSec ->
             guardJsCallback("audio.progress") {
-                observer?.onProgressUpdate(currentSec.toWholeSeconds(), durationSec.toWholeSeconds())
+                observer?.onProgressUpdate(currentSec.toMillis(), durationSec.toMillis())
             }
         }
         addAudioEndedListener(el) { guardJsCallback("audio.ended") { observer?.onComplete() } }
@@ -49,9 +51,14 @@ private class WebAudioPlayer : AudioPlayer {
         }
     }
 
-    override fun jump(seconds: Int) {
+    override fun jumpTo(positionMs: Long) {
         val el = element ?: return
-        setAudioCurrentTime(el, seconds.coerceAtLeast(0).toDouble())
+        setAudioCurrentTime(el, positionMs.coerceAtLeast(0) / 1000.0)
+    }
+
+    override fun setSpeed(speed: Float) {
+        this.speed = speed.coerceToPlaybackSpeed()
+        element?.let { setAudioPlaybackRate(it, this.speed.toDouble()) }
     }
 
     override fun resume() {
@@ -94,8 +101,8 @@ private class WebAudioPlayer : AudioPlayer {
 
 // A stream muxed without a duration box reports NaN/Infinity; 0 tells the widget to keep the
 // length it already read off the payload descriptor.
-private fun Double.toWholeSeconds(): Int =
-    if (isFinite() && this > 0.0) toInt() else 0
+private fun Double.toMillis(): Long =
+    if (isFinite() && this > 0.0) (this * 1000).toLong() else 0
 
 private fun audioMimeForPath(path: String): String =
     detectContentTypeFromExtensionOrHint(path).takeIf { it.startsWith("audio/") } ?: "audio/mp4"
@@ -123,6 +130,10 @@ private fun pauseAudioElement(el: JsAny): Unit = js("{ try { el.pause(); } catch
 
 private fun setAudioCurrentTime(el: JsAny, seconds: Double): Unit = js(
     "{ try { el.currentTime = seconds; } catch (e) {} }"
+)
+
+private fun setAudioPlaybackRate(el: JsAny, rate: Double): Unit = js(
+    "{ try { el.playbackRate = rate; } catch (e) {} }"
 )
 
 private fun addAudioProgressListener(el: JsAny, cb: (Double, Double) -> Unit): Unit = js(

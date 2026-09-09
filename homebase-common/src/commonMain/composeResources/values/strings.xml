@@ -1519,6 +1519,10 @@
 
     <!-- Audio player -->
     <string name="audio_pause">Pause</string>
+    <string name="audio_speed">Playback speed</string>
+    <string name="audio_speed_1x">1x</string>
+    <string name="audio_speed_1_5x">1.5x</string>
+    <string name="audio_speed_2x">2x</string>
     <string name="audio_play">Play</string>
 
     <!-- Bottom navigation -->
