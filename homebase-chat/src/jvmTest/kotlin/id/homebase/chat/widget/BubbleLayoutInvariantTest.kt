@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.runComposeUiTest
@@ -229,6 +230,7 @@ class BubbleLayoutInvariantTest {
         cluster: MessageClusterPosition = MessageClusterPosition.ALONE,
         quoted: MessageUiModel? = null,
         width: Dp = columnWidth,
+        showVoiceNoteSender: Boolean = false,
     ) = setContent {
         Host(width) {
             MessageBubbleRaw(
@@ -244,6 +246,7 @@ class BubbleLayoutInvariantTest {
                 downloadingFiles = emptySet(),
                 authorName = authorName,
                 clusterPosition = cluster,
+                showVoiceNoteSender = showVoiceNoteSender,
             )
         }
     }
@@ -255,6 +258,11 @@ class BubbleLayoutInvariantTest {
     private fun ComposeUiTest.quoteTextBounds(): DpRect =
         onNodeWithTag(ChatBubbleTestTags.REPLY_QUOTE_TEXT, useUnmergedTree = true)
             .getUnclippedBoundsInRoot()
+
+    // The label AudioPlayerWidget stamps on the sender avatar, so the geometry assertions
+    // below can't pass vacuously on a bubble that never drew one.
+    private fun ComposeUiTest.avatarExists(): Boolean =
+        onAllNodesWithContentDescription("Voice note from Alice").fetchSemanticsNodes().size == 1
 
     private fun ComposeUiTest.exists(tag: String): Boolean =
         onNodeWithTag(tag).let { runCatching { it.getUnclippedBoundsInRoot() }.isSuccess }
@@ -717,6 +725,65 @@ class BubbleLayoutInvariantTest {
                     "bubble.right=${bubble.right.value} > ${phoneWidth.value}"
         }
         assertTrue(failures.isEmpty(), "voice-note phone-width failures:\n" + failures.joinToString("\n"))
+    }
+
+    /**
+     * The group sender avatar rides inside the voice-note bubble ahead of the play button. It
+     * must buy its width out of the waveform, never out of the bubble: the desktop cap still
+     * binds and the row is no taller than without it (the 28dp avatar fits inside the 40dp
+     * waveform band the duration column already sits in).
+     */
+    @Test
+    fun voiceNote_senderAvatarKeepsCapAndHeight() = runComposeUiTest {
+        val cap = Dimens.MediaBubble.audioMaxWidth.value
+        val failures = mutableListOf<String>()
+        val case = Case("audio/recv", sent = false, images = 0, caption = Caption.NONE, audio = true)
+
+        for (width in listOf(desktopWidth, phoneWidth)) {
+            render(case, width = width)
+            val plain = boundsOf(ChatBubbleTestTags.MEDIA)
+            val plainWidth = plain.right.value - plain.left.value
+            val plainHeight = plain.bottom.value - plain.top.value
+            if (avatarExists()) failures += "[at ${width.value}dp] an avatar was drawn without the flag"
+
+            render(case, width = width, showVoiceNoteSender = true)
+            if (!avatarExists()) failures += "[at ${width.value}dp] the sender avatar was not drawn"
+            val withAvatar = boundsOf(ChatBubbleTestTags.MEDIA)
+            val bubble = boundsOf(ChatBubbleTestTags.BUBBLE)
+            val avatarWidth = withAvatar.right.value - withAvatar.left.value
+            val avatarHeight = withAvatar.bottom.value - withAvatar.top.value
+
+            val at = "at ${width.value}dp"
+            if (avatarWidth > cap + tol)
+                failures += "[$at] voice note with a sender avatar is ${avatarWidth}dp, cap is ${cap}dp"
+            if (bubble.right.value - bubble.left.value > cap + tol)
+                failures += "[$at] bubble behind the avatared voice note is " +
+                    "${bubble.right.value - bubble.left.value}dp, cap is ${cap}dp"
+            if (!approx(avatarWidth, plainWidth))
+                failures += "[$at] the avatar changed the bubble width: " +
+                    "${plainWidth}dp -> ${avatarWidth}dp"
+            if (!approx(avatarHeight, plainHeight))
+                failures += "[$at] the avatar changed the bubble height: " +
+                    "${plainHeight}dp -> ${avatarHeight}dp"
+        }
+
+        // A note you sent has no originalAuthor, so the flag alone must not draw anything.
+        val sentCase = Case("audio/sent", sent = true, images = 0, caption = Caption.NONE, audio = true)
+        render(sentCase, width = desktopWidth)
+        val sentPlain = boundsOf(ChatBubbleTestTags.MEDIA)
+        render(sentCase, width = desktopWidth, showVoiceNoteSender = true)
+        val sentFlagged = boundsOf(ChatBubbleTestTags.MEDIA)
+        if (!approx(
+                sentFlagged.bottom.value - sentFlagged.top.value,
+                sentPlain.bottom.value - sentPlain.top.value,
+            )
+        )
+            failures += "[sent] the flag altered an outgoing voice note"
+
+        assertTrue(
+            failures.isEmpty(),
+            "voice-note sender-avatar failures:\n" + failures.joinToString("\n"),
+        )
     }
 
     /**

@@ -40,6 +40,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.widget.VoiceNoteSender
 import id.homebase.resources.MR
 import id.homebase.resources.cd_upload_complete
 import id.homebase.resources.upload_compressing
@@ -123,6 +124,7 @@ fun MediaMessage(
      *  to Signal's 240dp width — the caption can't collapse to char-per-line and the image can't
      *  leave a gap. No effect on stickers, link-preview cards, or galleries. */
     hasCaption: Boolean = false,
+    audioSender: VoiceNoteSender? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -238,6 +240,7 @@ fun MediaMessage(
                     isUploading = uploadStatus != null,
                     liveControls = liveControls,
                     locationHeaderDescriptor = locationHeaderDescriptor,
+                    audioSender = audioSender,
                 )
             }
 

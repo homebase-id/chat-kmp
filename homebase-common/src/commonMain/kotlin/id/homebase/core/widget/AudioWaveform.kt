@@ -74,10 +74,15 @@ fun AudioWaveform(
     val grow = remember { Animatable(0f) }
     var dragProgress by remember { mutableStateOf<Float?>(null) }
 
+    // The bars grow in when the waveform first arrives, never when a bubble is recycled back
+    // into view: a LazyColumn disposes it on scroll, so without this the animation replays.
+    val hadBarsOnFirstFrame = remember { amplitudes != null }
+
     LaunchedEffect(amplitudes) {
-        grow.snapTo(0f)
-        if (amplitudes != null) {
-            grow.animateTo(
+        when {
+            amplitudes == null -> grow.snapTo(0f)
+            hadBarsOnFirstFrame -> grow.snapTo(1f)
+            else -> grow.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(WaveformGeometry.totalGrowMs, easing = LinearEasing),
             )
