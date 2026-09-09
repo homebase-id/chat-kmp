@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -69,7 +68,10 @@ private const val MIN_WAVEFORM_RASTER_WIDTH = 320
 
 private val PLAYBACK_SPEEDS = floatArrayOf(1f, 1.5f, 2f)
 
-private val SenderAvatarOptions = AvatarOptions(size = Dimens.Message.senderAvatarSize)
+// The avatar is the row's only filled circle: a solid primary play disc beside it made the
+// face read as subordinate, so the play control is a flat glyph and the avatar carries the mass.
+private val SENDER_AVATAR_SIZE = 36.dp
+private val SenderAvatarOptions = AvatarOptions(size = SENDER_AVATAR_SIZE)
 
 private val SENDER_AVATAR_GAP = 8.dp
 
@@ -206,15 +208,13 @@ fun AudioPlayerWidget(
                 }
             },
             enabled = (audioFile != null || !fileRequested) && onRequestDecryptedFile != null,
-            modifier = Modifier
-                .size(36.dp)
-                .background(MaterialTheme.colorScheme.primary, CircleShape),
+            modifier = Modifier.size(32.dp),
         ) {
             if (isLoading && audioFile == null) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             } else {
                 Icon(
@@ -224,13 +224,13 @@ fun AudioPlayerWidget(
                     } else {
                         stringResource(MR.string.audio_play)
                     },
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(26.dp),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
         AudioWaveform(
             amplitudes = amplitudes,
@@ -253,8 +253,14 @@ fun AudioPlayerWidget(
             modifier = Modifier.widthIn(min = 40.dp),
         ) {
             Text(
+                // Counts down while playing, like Signal: what is left to listen to is the
+                // useful number mid-note, and it lands back on the full length when it ends.
                 text = formatAudioTime(
-                    if (bubble.elapsedSeconds > 0) bubble.elapsedSeconds else totalSeconds
+                    if (bubble.isCurrent && bubble.elapsedSeconds > 0) {
+                        (totalSeconds - bubble.elapsedSeconds).coerceAtLeast(0)
+                    } else {
+                        totalSeconds
+                    }
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
