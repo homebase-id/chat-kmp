@@ -42,22 +42,26 @@ private const val PaneHeightFraction = 0.9f
  *
  * Gated on the platform, not the window width, because `NavHost` rebuilds its graph when the
  * builder lambda changes and that resets the back stack; width is decided inside
- * [SettingsPaneContainer], which falls back to [content] below the expanded breakpoint.
+ * [FloatingPaneContainer], which falls back to [content] below the expanded breakpoint.
  *
- * [paneContent] must host its own sub-pages rather than pushing routes: a second dialog layer
- * stacks a second platform scrim (`Color.Black` @ 0.6 each, not settable from commonMain) and the
- * app behind goes near-black, which is the thing this pane exists to avoid.
+ * [paneContent] defaults to [content]; pass it only when the floating form needs a different
+ * layout (as settings does, which turns its list of sub-pages into a sidebar).
+ *
+ * Every stacked pane adds a platform scrim (`Color.Black` @ 0.6, not settable from commonMain), so
+ * a pane that can reach itself must replace rather than push — otherwise repeated drill-down walks
+ * the backdrop to black. A pushed ordinary `composable` route costs nothing here: it hides the
+ * pane until it pops.
  */
-internal inline fun <reified T : Any> NavGraphBuilder.settingsDestination(
+internal inline fun <reified T : Any> NavGraphBuilder.paneDestination(
     noinline onDismiss: () -> Unit,
-    noinline paneContent: @Composable () -> Unit,
+    noinline paneContent: (@Composable () -> Unit)? = null,
     noinline content: @Composable () -> Unit,
 ) {
     if (isDesktopOrWeb()) {
         dialog<T>(dialogProperties = DialogProperties(usePlatformDefaultWidth = false)) {
-            SettingsPaneContainer(
+            FloatingPaneContainer(
                 onDismiss = onDismiss,
-                paneContent = paneContent,
+                paneContent = paneContent ?: content,
                 content = content,
             )
         }
@@ -67,7 +71,7 @@ internal inline fun <reified T : Any> NavGraphBuilder.settingsDestination(
 }
 
 @Composable
-internal fun SettingsPaneContainer(
+internal fun FloatingPaneContainer(
     onDismiss: () -> Unit,
     paneContent: @Composable () -> Unit,
     content: @Composable () -> Unit,
