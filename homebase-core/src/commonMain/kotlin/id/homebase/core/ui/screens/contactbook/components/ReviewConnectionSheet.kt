@@ -1,40 +1,26 @@
 package id.homebase.core.ui.screens.contactbook.components
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.ui.Alignment
-import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
-import id.homebase.resources.contact_review_group_apps
-import id.homebase.resources.contact_review_group_apps_caption
-import id.homebase.resources.contact_review_group_apps_collapse
-import id.homebase.resources.contact_review_group_apps_expand
-import id.homebase.resources.contact_review_group_apps_summary
-import id.homebase.resources.contact_review_group_yours
-import id.homebase.resources.contact_review_group_yours_caption
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,13 +30,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 import id.homebase.core.ui.screens.contactbook.detail.ContactCircleUi
 import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.core.widget.SettingsRow
+import id.homebase.core.widget.SettingsRowAction
+import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.resources.MR
+import id.homebase.resources.contact_review_already_added
+import id.homebase.resources.contact_review_chat_only_hint
 import id.homebase.resources.contact_review_emergency_desc
 import id.homebase.resources.contact_review_emergency_title
-import id.homebase.resources.contact_review_chat_only_hint
+import id.homebase.resources.contact_review_group_apps
+import id.homebase.resources.contact_review_group_apps_caption
+import id.homebase.resources.contact_review_group_apps_summary
+import id.homebase.resources.contact_review_group_yours
+import id.homebase.resources.contact_review_group_yours_caption
 import id.homebase.resources.contact_review_introduced_by
 import id.homebase.resources.contact_review_keep_new
 import id.homebase.resources.contact_review_submit_chat_only
@@ -62,15 +61,14 @@ import org.jetbrains.compose.resources.stringResource
  * The connection review: one sheet that records the owner's judgment and enrols whatever circles
  * they picked, in a single call.
  *
- * The submit button names the state the tap produces rather than passing judgment — it reads
- * "Add to circles" with a selection and "Chat only" without, so the relabel *is* the feedback that
- * deselecting the last circle changed the outcome. Dismissing leaves the contact New, which is why
- * the secondary action says so instead of "Cancel".
+ * Laid out as a settings screen — section header, card, switch rows — because that is what it is:
+ * a list of things to turn on for one person. The chips it replaced looked like a filter.
  *
- * Reviewing grants only; it never revokes, so circles the contact already holds are shown selected
- * and locked rather than offered as something to take away.
+ * The submit button names the state the tap produces rather than passing judgment — "Add to
+ * circles" with a selection, "Chat only" without — so the relabel *is* the feedback that
+ * deselecting the last circle changed the outcome. Dismissing leaves the contact New, which is
+ * why the secondary action says so instead of "Cancel".
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReviewConnectionSheet(
     displayName: String,
@@ -85,122 +83,125 @@ fun ReviewConnectionSheet(
     // App defaults arrive checked: the owning app nominated them, and the review button applies
     // "the checked per-app defaults". They stay visible so any can be turned off deliberately.
     var selected by rememberSaveable(displayName) { mutableStateOf(groups.initialSelection()) }
+    var appDefaultsExpanded by rememberSaveable { mutableStateOf(false) }
 
     AdaptiveSheet(onDismiss = onDismiss, expandFully = true, maxWidth = 680.dp) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(top = 12.dp, bottom = 32.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = 12.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
                 text = stringResource(MR.string.contact_review_title, displayName),
                 style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
             if (introducedBy != null) {
-                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = stringResource(MR.string.contact_review_introduced_by, introducedBy),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
 
             val toggle: (String) -> Unit = { id -> selected = groups.toggleSelection(selected, id) }
 
             if (groups.yours.isNotEmpty()) {
-                CircleGroup(
+                SectionCaption(
                     title = stringResource(MR.string.contact_review_group_yours),
                     caption = stringResource(MR.string.contact_review_group_yours_caption),
-                    circles = groups.yours,
-                    selected = selected,
-                    alreadyHeldCircleIds = alreadyHeldCircleIds,
-                    enabled = !isSubmitting,
-                    onToggle = toggle,
                 )
-            }
-
-            // A switch, not a chip: this is one fixed circle granting a capability rather than a
-            // pick from a set, and it is the only choice here that shares something other than
-            // profile detail. Saying so outright beats filing it under a category name.
-            groups.special.forEach { circle ->
-                val held = circle.id in alreadyHeldCircleIds
-                EmergencyAccessToggle(
-                    displayName = displayName,
-                    checked = held || circle.id in selected,
-                    enabled = !held && !isSubmitting,
-                    onCheckedChange = { toggle(circle.id) },
-                )
-            }
-
-            if (groups.appDefaults.isNotEmpty()) {
-                var expanded by rememberSaveable { mutableStateOf(false) }
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = !isSubmitting) { expanded = !expanded },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(MR.string.contact_review_group_apps),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = if (expanded) {
-                                stringResource(MR.string.contact_review_group_apps_caption)
-                            } else {
-                                stringResource(
-                                    MR.string.contact_review_group_apps_summary,
-                                    groups.appDefaults.joinToString { it.name },
-                                )
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    groups.yours.forEach { circle ->
+                        CircleToggleRow(
+                            circle = circle,
+                            held = circle.id in alreadyHeldCircleIds,
+                            checked = circle.id in alreadyHeldCircleIds || circle.id in selected,
+                            enabled = !isSubmitting,
+                            onToggle = { toggle(circle.id) },
                         )
                     }
-                    Icon(
-                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                        contentDescription = stringResource(
-                            if (expanded) MR.string.contact_review_group_apps_collapse
-                            else MR.string.contact_review_group_apps_expand
+                }
+            }
+
+            // Its own card and its own words: one fixed circle granting a capability, not a pick
+            // from a set, and the only choice here that shares something other than profile detail.
+            groups.special.forEach { circle ->
+                val held = circle.id in alreadyHeldCircleIds
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        icon = Icons.Outlined.MyLocation,
+                        title = stringResource(MR.string.contact_review_emergency_title),
+                        supportingText = stringResource(
+                            MR.string.contact_review_emergency_desc,
+                            displayName,
+                        ),
+                        action = SettingsRowAction.Toggle(
+                            checked = held || circle.id in selected,
+                            onCheckedChange = { if (!held && !isSubmitting) toggle(circle.id) },
                         ),
                     )
                 }
-                if (expanded) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    CircleChips(
-                        circles = groups.appDefaults,
-                        selected = selected,
-                        alreadyHeldCircleIds = alreadyHeldCircleIds,
-                        enabled = !isSubmitting,
-                        onToggle = toggle,
+            }
+
+            if (groups.appDefaults.isNotEmpty()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        icon = Icons.Outlined.Groups,
+                        title = stringResource(MR.string.contact_review_group_apps),
+                        supportingText = if (appDefaultsExpanded) {
+                            stringResource(MR.string.contact_review_group_apps_caption)
+                        } else {
+                            stringResource(
+                                MR.string.contact_review_group_apps_summary,
+                                groups.appDefaults.joinToString { it.name },
+                            )
+                        },
+                        action = SettingsRowAction.Expand(
+                            expanded = appDefaultsExpanded,
+                            onExpandedChange = { appDefaultsExpanded = it },
+                        ),
                     )
+                    AnimatedVisibility(visible = appDefaultsExpanded) {
+                        Column {
+                            groups.appDefaults.forEach { circle ->
+                                CircleToggleRow(
+                                    circle = circle,
+                                    held = circle.id in alreadyHeldCircleIds,
+                                    checked = circle.id in alreadyHeldCircleIds ||
+                                        circle.id in selected,
+                                    enabled = !isSubmitting,
+                                    onToggle = { toggle(circle.id) },
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
             if (selected.isEmpty()) {
-                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = stringResource(MR.string.contact_review_chat_only_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
 
             if (errorText != null) {
-                Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = errorText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 4.dp),
                 )
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Button(
                 onClick = { onSubmit(selected) },
                 enabled = !isSubmitting,
@@ -228,111 +229,66 @@ fun ReviewConnectionSheet(
     }
 }
 
-
-/** One labelled group of circle chips. */
+/** Settings' section header, plus the line of helper text this sheet needs under it. */
 @Composable
-private fun CircleGroup(
-    title: String,
-    circles: List<ContactCircleUi>,
-    selected: Set<String>,
-    alreadyHeldCircleIds: Set<String>,
-    enabled: Boolean,
-    onToggle: (String) -> Unit,
-    caption: String? = null,
-) {
-    Spacer(modifier = Modifier.height(24.dp))
-    Text(text = title, style = MaterialTheme.typography.labelLarge)
-    if (caption != null) {
-        Spacer(modifier = Modifier.height(6.dp))
+private fun SectionCaption(title: String, caption: String) {
+    Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+        SettingsSectionHeader(title = title)
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = caption,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    Spacer(modifier = Modifier.height(10.dp))
-    CircleChips(circles, selected, alreadyHeldCircleIds, enabled, onToggle)
 }
 
 /**
- * A circle the contact already holds renders selected and disabled: the review only ever grants,
- * so an unchecked box would offer a removal this call cannot perform.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CircleChips(
-    circles: List<ContactCircleUi>,
-    selected: Set<String>,
-    alreadyHeldCircleIds: Set<String>,
-    enabled: Boolean,
-    onToggle: (String) -> Unit,
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        circles.forEach { circle ->
-            val held = circle.id in alreadyHeldCircleIds
-            val isSelected = held || circle.id in selected
-            FilterChip(
-                selected = isSelected,
-                enabled = !held && enabled,
-                onClick = { onToggle(circle.id) },
-                label = { CircleLabel(emoji = circle.emoji, name = circle.name) },
-                leadingIcon = if (isSelected) {
-                    {
-                        Icon(
-                            Icons.Outlined.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    }
-                } else null,
-            )
-        }
-    }
-}
-
-
-/**
- * Emergency location access, as its own switch.
+ * One circle as a settings row.
  *
- * Named for what it does rather than grouped under a category, because it is the one grant in
- * this sheet that is not about profile visibility — and the consequence of getting it wrong is
- * not symmetric with the others.
+ * A circle the contact already holds is checked and inert: the review only ever grants, so an
+ * unchecked box would offer a removal this call cannot perform, and the supporting line says why
+ * rather than leaving a dead switch unexplained.
  */
 @Composable
-private fun EmergencyAccessToggle(
-    displayName: String,
+private fun CircleToggleRow(
+    circle: ContactCircleUi,
+    held: Boolean,
     checked: Boolean,
     enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+    onToggle: () -> Unit,
 ) {
-    Spacer(modifier = Modifier.height(24.dp))
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(MR.string.contact_review_emergency_title),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
+    val emoji = circle.emoji
+    ListItem(
+        modifier = Modifier.toggleable(
+            value = checked,
+            enabled = enabled && !held,
+            onValueChange = { onToggle() },
+            role = Role.Switch,
+        ),
+        headlineContent = { Text(circle.name) },
+        supportingContent = if (held) {
+            { Text(stringResource(MR.string.contact_review_already_added)) }
+        } else null,
+        leadingContent = {
+            if (emoji.isNullOrBlank()) {
+                Icon(
+                    imageVector = Icons.Outlined.Groups,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+            } else {
+                // Full colour and cleared from semantics: emoji ignore tint, and the circle name
+                // beside it is the accessible label.
                 Text(
-                    text = stringResource(MR.string.contact_review_emergency_desc, displayName),
-                    style = MaterialTheme.typography.bodySmall,
+                    text = emoji,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.Unspecified,
+                    modifier = Modifier.clearAndSetSemantics { },
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
-        }
-    }
+        },
+        trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = !held) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    )
 }
