@@ -1284,7 +1284,7 @@ class ConversationListViewModel(
                 _uiState.value.selectedConversationId?.let { frozenUnreadBoundary.remove(it) }
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
-                    it.copy(
+                    it.closeMediaViewer().copy(
                         messages = persistentListOf(),
                         isLoadingMessages = false,
                         pinnedMessages = persistentListOf(),
@@ -1840,15 +1840,16 @@ class ConversationListViewModel(
         // the Pane's remember only re-evaluates ONCE, with the resolved scroll.
         // The brief blank-screen window is the same one uncached switches
         // already have (a few ms of groupBy + clustering on Dispatchers.Default).
-        _messagesUiState.update {
-            it.copy(
+        _messagesUiState.update { state ->
+            val base = if (isNewSelection) state.closeMediaViewer() else state
+            base.copy(
                 scrollPosition = null,
                 isLoadingMessages = true,
                 replyToMessage = null,
                 // Drop the previous conversation's pinned bar on a real switch so it
                 // doesn't flash stale pins before the new conversation's collector emits.
-                pinnedMessages = if (isNewSelection) persistentListOf() else it.pinnedMessages,
-                currentPinIndex = if (isNewSelection) 0 else it.currentPinIndex,
+                pinnedMessages = if (isNewSelection) persistentListOf() else base.pinnedMessages,
+                currentPinIndex = if (isNewSelection) 0 else base.currentPinIndex,
                 awaitingJumpMessageId = null,
             )
         }
