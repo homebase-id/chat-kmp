@@ -460,10 +460,32 @@ class ContactBookViewModel(
         _overlay.value = current.copy(isSubmitting = true, failed = false)
         viewModelScope.launch {
             try {
+                // TODO(pending-diagnosis): remove once the pending chip is confirmed working.
+                // Names each id, because a circle that reaches neither circleGrants nor
+                // pendingCircleIds needs its send confirmed before blaming the server.
+                Logger.i(tag = "ContactBookViewModel") {
+                    val named = circleIds.map { id ->
+                        val name = _circles.value
+                            .firstOrNull { it.circle.id.equals(id, ignoreCase = true) }
+                            ?.circle?.name
+                        "$id(${name ?: "UNKNOWN"})"
+                    }
+                    "REVIEW-DIAG $odinId sending ${circleIds.size}: $named"
+                }
                 connectionService.reviewConnection(
                     OdinId(odinId),
                     circleIds.map { Uuid.parseHex(it) },
                 )
+                // reviewConnection refreshes before returning, so this is the server's answer.
+                val after = connectionService.connections.value.map.entries
+                    .firstOrNull { it.key.domainName.equals(odinId, ignoreCase = true) }?.value
+                Logger.i(tag = "ContactBookViewModel") {
+                    "REVIEW-DIAG $odinId after refresh" +
+                        " | reviewedAt=${after?.reviewedAt}" +
+                        " | grantIds=${after?.accessGrant?.circleGrants?.map { g -> g.circleId.toHexString() }}" +
+                        " | pending=${after?.accessGrant?.pendingCircleIds?.map { p -> p.toString() }}" +
+                        " | awaitingApp=${after?.accessGrant?.awaitingApps?.map { a -> "${a.circleName}<-${a.appName}" }}"
+                }
                 _overlay.value = null
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {
                 throw e

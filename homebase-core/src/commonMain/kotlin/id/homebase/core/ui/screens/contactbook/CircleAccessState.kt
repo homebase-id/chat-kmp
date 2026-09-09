@@ -58,7 +58,7 @@ fun RedactedIdentityConnectionRegistration.circleAccessState(circleId: String): 
 
     // Awaiting first: an entry can be in both while an app's processing moves it along, and the
     // earlier of the two stages is the honest answer during that window.
-    if (grant.awaitingAppCircleIds.holds(id)) return CircleAccessState.AwaitingApp
+    if (grant.awaitingApps.any { it.circleIdHex == id }) return CircleAccessState.AwaitingApp
     if (grant.pendingCircleIds.holds(id)) return CircleAccessState.Pending
 
     val circleGrant = grant.circleGrants

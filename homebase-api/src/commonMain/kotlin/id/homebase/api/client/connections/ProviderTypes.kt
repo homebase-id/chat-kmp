@@ -249,8 +249,33 @@ data class RedactedAccessExchangeGrant(
      * contact next calls, this one resolves only when an app acts. Processing usually moves an
      * entry from here to there rather than straight to a grant, so it is two steps, not one.
      */
-    val awaitingAppCircleIds: List<Uuid> = emptyList()
+    val awaitingApps: List<AwaitingAppEntry> = emptyList()
 )
+
+/**
+ * One enrollment waiting on an app to finish it.
+ *
+ * Names are resolved when the connection is read, not frozen at review time, so a renamed circle
+ * or app shows its current name. Every name is nullable and each null means something:
+ *
+ * - [appId] and [appName] null — an **owner circle**. No app owns it; it waits on the owner.
+ * - [circleName] null — the circle was deleted after the review. The entry is still reported so
+ *   the owner can see something is stuck rather than seeing nothing.
+ * - [appName] null with a non-null [appId] — the app was deleted. Same reasoning.
+ */
+@Serializable
+data class AwaitingAppEntry(
+    val circleId: String,
+    val circleName: String? = null,
+    val appId: String? = null,
+    val appName: String? = null,
+) {
+    /** Dashless, to compare against a circle definition's id. */
+    val circleIdHex: String get() = circleId.replace("-", "").lowercase()
+
+    /** True when no app owns this circle, so it is the owner who has to act. */
+    val awaitsOwner: Boolean get() = appId.isNullOrBlank()
+}
 
 @Serializable
 data class RedactedCircleGrant(

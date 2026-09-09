@@ -80,6 +80,9 @@ import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
 import id.homebase.resources.circle_access_awaiting_app
+import id.homebase.resources.circle_access_awaiting_named
+import id.homebase.resources.circle_access_awaiting_unknown_circle
+import id.homebase.resources.circle_access_awaiting_you
 import id.homebase.resources.circle_access_incomplete
 import id.homebase.resources.contact_access_revoked_body
 import id.homebase.resources.contact_review_action
@@ -322,12 +325,20 @@ private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
         modifier = Modifier.clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            // A fixed height, because an emoji glyph is taller than a line of text: without it
+            // the chips that have one stand proud of the ones that don't, and nothing in a row
+            // of pills lines up.
+            modifier = Modifier
+                .heightIn(min = 32.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             CircleLabel(
                 emoji = circle.emoji,
-                name = circle.name,
+                name = circle.name.ifBlank {
+                    stringResource(MR.string.circle_access_awaiting_unknown_circle)
+                },
                 style = MaterialTheme.typography.labelLarge,
             )
             // A bare name claims access the contact may not have. Active needs no mark; the two
@@ -336,8 +347,18 @@ private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
                 circle.pending || circle.accessState == CircleAccessState.Pending ->
                     stringResource(MR.string.circle_member_pending)
 
-                circle.accessState == CircleAccessState.AwaitingApp ->
-                    stringResource(MR.string.circle_access_awaiting_app)
+                // Name who has to act. "Waiting" alone was the best we could do before the
+                // server carried names, and it left the owner with nothing to chase.
+                circle.accessState == CircleAccessState.AwaitingApp -> when {
+                    circle.awaitsOwner -> stringResource(MR.string.circle_access_awaiting_you)
+                    // Not "Moments · Waiting on Moments" — when the app shares the circle's
+                    // name, repeating it says nothing.
+                    circle.awaitingAppName != null &&
+                        !circle.awaitingAppName.equals(circle.name, ignoreCase = true) ->
+                        stringResource(MR.string.circle_access_awaiting_named, circle.awaitingAppName)
+
+                    else -> stringResource(MR.string.circle_access_awaiting_app)
+                }
 
                 circle.accessState == CircleAccessState.Incomplete ->
                     stringResource(MR.string.circle_access_incomplete)

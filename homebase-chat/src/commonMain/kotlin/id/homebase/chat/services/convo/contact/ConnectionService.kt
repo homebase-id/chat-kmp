@@ -230,6 +230,17 @@ class ConnectionService(
                 val connected = connectedDeferred.await()
                 val blocked = blockedDeferred.await()
                 Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
+                // TODO(pending-diagnosis): remove once the pending chip is confirmed working.
+                // The list endpoint is the only source for accessGrant on this screen; if it
+                // arrives null here, every pending chip and key warning downstream is dead.
+                Logger.i {
+                    val withGrant = connected.results.count { it.accessGrant != null }
+                    val withPending = connected.results.count {
+                        it.accessGrant?.pendingCircleIds?.isNotEmpty() == true
+                    }
+                    "PENDING-DIAG list: ${connected.results.size} connected, " +
+                        "$withGrant with accessGrant, $withPending with pendingCircleIds"
+                }
                 _connections.value = ConnectionState(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
@@ -241,6 +252,14 @@ class ConnectionService(
                     Logger.d {
                         "ConnectionService circles: " +
                             circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
+                    }
+                    // TODO(pending-diagnosis): remove once the pending chip is confirmed working.
+                    Logger.i {
+                        "PENDING-DIAG circles: " + circles.joinToString {
+                            "${it.circle.name}[grantOn=${it.circle.grantOn}," +
+                                "designation=${it.circle.designation}," +
+                                "members=${it.members.size},pending=${it.pendingMembers.size}]"
+                        }
                     }
                 }
                 runCatching {

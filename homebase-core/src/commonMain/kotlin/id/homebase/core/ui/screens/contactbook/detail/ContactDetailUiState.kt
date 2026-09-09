@@ -38,6 +38,13 @@ data class ContactCircleUi(
     val description: String? = null,
     /** How many identities are already in it. Null where the caller didn't resolve membership. */
     val memberCount: Int? = null,
+    /**
+     * For [CircleAccessState.AwaitingApp]: the app that has to finish the enrolment, by name.
+     * Null when the app was deleted, or when [awaitsOwner] — nobody owns it but you.
+     */
+    val awaitingAppName: String? = null,
+    /** True when the awaiting circle has no owning app, so the owner is the one who must act. */
+    val awaitsOwner: Boolean = false,
 )
 
 @Immutable
