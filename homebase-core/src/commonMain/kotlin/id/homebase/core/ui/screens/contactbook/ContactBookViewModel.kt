@@ -436,11 +436,12 @@ class ContactBookViewModel(
 
     private fun openReview(entry: ContactBookEntry) {
         val domain = entry.odinId?.lowercase() ?: return
+        val registration = connectionService.connections.value.map
+            .entries.firstOrNull { it.key.domainName.lowercase() == domain }?.value
         _overlay.value = ContactBookOverlay.Review(
             entry = entry,
-            introducedBy = connectionService.connections.value.map
-                .entries.firstOrNull { it.key.domainName.lowercase() == domain }
-                ?.value?.introducerOdinId?.domainName,
+            introducedBy = registration?.introducerOdinId?.domainName,
+            connectedAtMs = registration?.created,
             alreadyHeldCircleIds = _circles.value
                 .filter { cwm -> cwm.members.any { it.domainName.lowercase() == domain } }
                 .map { it.circle.id }

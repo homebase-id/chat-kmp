@@ -95,6 +95,8 @@ sealed interface ContactBookOverlay {
     data class Review(
         val entry: ContactBookEntry,
         val introducedBy: String? = null,
+        /** When the connection was made, epoch-millis. */
+        val connectedAtMs: Long? = null,
         val alreadyHeldCircleIds: Set<String> = emptySet(),
         val isSubmitting: Boolean = false,
         val failed: Boolean = false,

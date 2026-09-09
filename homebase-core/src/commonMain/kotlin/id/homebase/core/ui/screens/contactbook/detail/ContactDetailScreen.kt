@@ -291,8 +291,9 @@ fun ContactDetailScreen(
 
     uiState.review?.let { review ->
         ReviewConnectionSheet(
-            displayName = uiState.entry?.displayName.orEmpty(),
+            entry = uiState.entry,
             introducedBy = review.introducedBy,
+            connectedAtMs = review.connectedAtMs,
             groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = review.alreadyHeldCircleIds,
             isSubmitting = review.isSubmitting,

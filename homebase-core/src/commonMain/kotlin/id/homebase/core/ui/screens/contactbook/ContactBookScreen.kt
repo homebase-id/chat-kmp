@@ -331,8 +331,9 @@ fun ContactBookScreen(
         )
 
         is ContactBookOverlay.Review -> ReviewConnectionSheet(
-            displayName = overlay.entry.displayName,
+            entry = overlay.entry,
             introducedBy = overlay.introducedBy,
+            connectedAtMs = overlay.connectedAtMs,
             groups = uiState.reviewCircleGroups,
             alreadyHeldCircleIds = overlay.alreadyHeldCircleIds,
             isSubmitting = overlay.isSubmitting,

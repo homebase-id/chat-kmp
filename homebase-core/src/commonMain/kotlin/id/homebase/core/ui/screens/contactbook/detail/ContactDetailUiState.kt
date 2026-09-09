@@ -34,6 +34,10 @@ data class ContactCircleUi(
     val accessState: CircleAccessState? = null,
     /** The owner's chosen emoji; often a ZWJ sequence, so it is carried and rendered whole. */
     val emoji: String? = null,
+    /** The circle's own description, where its owner wrote one. */
+    val description: String? = null,
+    /** How many identities are already in it. Null where the caller didn't resolve membership. */
+    val memberCount: Int? = null,
 )
 
 @Immutable
@@ -133,6 +137,8 @@ data class ContactDetailUiState(
 @Immutable
 data class ReviewSheetState(
     val introducedBy: String? = null,
+    /** When the connection was made, epoch-millis. */
+    val connectedAtMs: Long? = null,
     val alreadyHeldCircleIds: Set<String> = emptySet(),
     val isSubmitting: Boolean = false,
     val failed: Boolean = false,

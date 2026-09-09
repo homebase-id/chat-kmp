@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.contactbook
 
 import id.homebase.api.client.connections.CircleGrantOn
 import id.homebase.api.client.connections.RedactedCircleDefinition
+import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.core.config.CONTACTS_APP_ID
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
@@ -57,8 +58,14 @@ data class ReviewCircleGroups(
     }
 }
 
-private fun RedactedCircleDefinition.toUi() =
-    ContactCircleUi(id = id, name = name, pending = false, emoji = emoji)
+private fun CircleWithMembers.toUi() = ContactCircleUi(
+    id = circle.id,
+    name = circle.name,
+    pending = false,
+    emoji = circle.emoji,
+    description = circle.description,
+    memberCount = members.size,
+)
 
 /**
  * True for a circle this app presents: one the user made themselves (no owning app) or one the
@@ -76,23 +83,24 @@ private fun RedactedCircleDefinition.isSpecialAccessCircle(): Boolean =
     id.equals(EMERGENCY_LOCATION_CIRCLE_ID, ignoreCase = true)
 
 fun CircleMembershipState.reviewCircleGroups(): ReviewCircleGroups {
+    // Kept as CircleWithMembers rather than reduced to definitions: the row shows how many people
+    // are already in a circle, which is the cheapest answer to "what is this one for".
     val personal = circles
-        .map { it.circle }
-        .filter { it.isPersonalCircle() && it.name.isNotBlank() }
-        .distinctBy { it.id.lowercase() }
-        .sortedBy { it.name.lowercase() }
+        .filter { it.circle.isPersonalCircle() && it.circle.name.isNotBlank() }
+        .distinctBy { it.circle.id.lowercase() }
+        .sortedBy { it.circle.name.lowercase() }
 
     return ReviewCircleGroups(
         yours = personal
             .filter {
-                !it.isSpecialAccessCircle() &&
-                    it.grantOn == CircleGrantOn.None &&
-                    it.isOwnedByThisApp()
+                !it.circle.isSpecialAccessCircle() &&
+                    it.circle.grantOn == CircleGrantOn.None &&
+                    it.circle.isOwnedByThisApp()
             }
             .map { it.toUi() },
-        special = personal.filter { it.isSpecialAccessCircle() }.map { it.toUi() },
+        special = personal.filter { it.circle.isSpecialAccessCircle() }.map { it.toUi() },
         appDefaults = personal
-            .filter { !it.isSpecialAccessCircle() && it.grantOn == CircleGrantOn.Review }
+            .filter { !it.circle.isSpecialAccessCircle() && it.circle.grantOn == CircleGrantOn.Review }
             .map { it.toUi() },
     )
 }

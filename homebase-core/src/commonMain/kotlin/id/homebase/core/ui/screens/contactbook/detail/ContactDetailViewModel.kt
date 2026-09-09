@@ -584,6 +584,7 @@ class ContactDetailViewModel(
             it.copy(
                 review = ReviewSheetState(
                     introducedBy = registration?.introducerOdinId?.domainName,
+                    connectedAtMs = registration?.created,
                     alreadyHeldCircleIds = connectionService.circles.value
                         .circlesFor(domain)
                         .map { c -> c.id }
