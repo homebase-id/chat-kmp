@@ -51,6 +51,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.audio_pause
 import id.homebase.resources.audio_play
 import id.homebase.resources.audio_sender_avatar
+import id.homebase.resources.audio_sender_avatar_you
 import id.homebase.resources.audio_speed
 import id.homebase.resources.audio_speed_1_5x
 import id.homebase.resources.audio_speed_1x
@@ -73,7 +74,11 @@ private val SenderAvatarOptions = AvatarOptions(size = Dimens.Message.senderAvat
 private val SENDER_AVATAR_GAP = 8.dp
 
 @Immutable
-data class VoiceNoteSender(val odinId: OdinId, val displayName: String)
+data class VoiceNoteSender(
+    val odinId: OdinId,
+    val displayName: String,
+    val isYou: Boolean = false,
+)
 
 @Immutable
 private data class VoiceNoteBubbleState(
@@ -169,7 +174,11 @@ fun AudioPlayerWidget(
     ) {
         if (sender != null) {
             val senderInitials = remember(sender.displayName) { sender.displayName.initials() }
-            val senderLabel = stringResource(MR.string.audio_sender_avatar, sender.displayName)
+            val senderLabel = if (sender.isYou) {
+                stringResource(MR.string.audio_sender_avatar_you)
+            } else {
+                stringResource(MR.string.audio_sender_avatar, sender.displayName)
+            }
             // PublicAvatar hard-codes a generic description; clearAndSetSemantics replaces the
             // whole subtree's so a screen reader names the person instead.
             Box(modifier = Modifier.clearAndSetSemantics { contentDescription = senderLabel }) {

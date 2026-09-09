@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
@@ -179,11 +180,15 @@ fun MessageBubbleRaw(
     showVoiceNoteSender: Boolean = false,
 ) {
     val voiceNoteSender = remember(
-        showVoiceNoteSender, sentByYou, message.originalAuthor, message.displayName,
+        showVoiceNoteSender, sentByYou, message.originalAuthor, message.displayName, currentOdinId,
     ) {
-        message.originalAuthor
-            ?.takeIf { showVoiceNoteSender && !sentByYou }
-            ?.let { VoiceNoteSender(it, message.displayName) }
+        // An outgoing message carries no originalAuthor, so fall back to the signed-in identity.
+        // OdinId(String) validates the domain and throws, and currentOdinId defaults to blank.
+        val odinId = message.originalAuthor
+            ?: currentOdinId.takeIf { sentByYou && it.isNotBlank() }?.let { OdinId(it) }
+        odinId
+            ?.takeIf { showVoiceNoteSender }
+            ?.let { VoiceNoteSender(it, message.displayName, isYou = sentByYou) }
     }
 
     // #814: render the timestamp + delivery footer only on the last bubble of a

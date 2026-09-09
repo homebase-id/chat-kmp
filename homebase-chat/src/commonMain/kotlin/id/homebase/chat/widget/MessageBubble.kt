@@ -360,6 +360,7 @@ fun SentMessageBubble(
                         decryptedFiles = decryptedFiles,
                         liveControls = liveControls,
                         sentByYou = true,
+                        showVoiceNoteSender = true,
                         currentOdinId = currentOdinId,
                         clusterPosition = clusterPosition,
                         onLongClick = {

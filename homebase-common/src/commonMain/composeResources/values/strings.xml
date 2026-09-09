@@ -1525,6 +1525,7 @@
     <string name="audio_speed_2x">2x</string>
     <string name="audio_play">Play</string>
     <string name="audio_sender_avatar">Voice note from %1$s</string>
+    <string name="audio_sender_avatar_you">Voice note from you</string>
 
     <!-- Bottom navigation -->
     <string name="nav_chats">Chats</string>
