@@ -1,6 +1,6 @@
 package id.homebase.core.ui.navigation
 
-import id.homebase.core.ui.screens.email.clients.EmailClientPickerScreen
+import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
 import androidx.compose.runtime.derivedStateOf
@@ -2092,14 +2092,14 @@ fun AppNavHost(
                                     setupViewModel = koinViewModel(),
                                     onNavigateBack = { navController.popBackStack() },
                                     onNavigateToSecrets = { navController.navigate(Route.EmailSecrets) },
-                                    onNavigateToClientPicker = { navController.navigate(Route.EmailClientPicker) },
+                                    onNavigateToThunderbirdSetup = { navController.navigate(Route.EmailThunderbirdSetup) },
                                 )
                             }
                         }
 
-                        composable<Route.EmailClientPicker> {
+                        composable<Route.EmailThunderbirdSetup> {
                             if (isAuthenticated) {
-                                EmailClientPickerScreen(
+                                EmailThunderbirdSetupScreen(
                                     viewModel = koinViewModel(),
                                     onBackClick = { navController.popBackStack() },
                                 )

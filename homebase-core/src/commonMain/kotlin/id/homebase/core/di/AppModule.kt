@@ -2,7 +2,6 @@
 
 package id.homebase.core.di
 
-import id.homebase.core.ui.screens.email.clients.EmailClientPickerViewModel
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.core.ui.screens.email.EmailService
@@ -1264,7 +1263,6 @@ val appModule = module {
     singleOf(::EmailService)
     viewModelOf(::EmailSetupViewModel)
     viewModelOf(::EmailSecretsViewModel)
-    viewModelOf(::EmailClientPickerViewModel)
     viewModelOf(::EmailSettingsViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(
