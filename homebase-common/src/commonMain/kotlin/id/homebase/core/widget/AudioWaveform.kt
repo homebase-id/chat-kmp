@@ -57,7 +57,7 @@ private object WaveformGeometry {
 @Composable
 fun AudioWaveform(
     amplitudes: FloatArray?,
-    progress: Float,
+    progress: () -> Float,
     onSeek: ((Float) -> Unit)?,
     modifier: Modifier = Modifier,
     playedColor: Color = MaterialTheme.colorScheme.primary,
@@ -116,7 +116,7 @@ fun AudioWaveform(
             .then(seekModifier)
     ) {
         val dragging = dragProgress != null
-        val shown = (dragProgress ?: progress).coerceIn(0f, 1f)
+        val shown = (dragProgress ?: progress()).coerceIn(0f, 1f)
         if (isRtl) {
             scale(scaleX = -1f, scaleY = 1f) {
                 drawWaveformBars(amplitudes, shown, dragging, grow.value, playedColor, unplayedColor)

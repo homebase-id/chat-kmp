@@ -1,8 +1,5 @@
 package id.homebase.core.widget
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +60,7 @@ fun AudioPlayerWidget(
     var totalFileSeconds by remember { mutableStateOf(0) }
     var fileRequested by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
+    var completed by remember { mutableStateOf(false) }
 
     when (val info = payload.descriptorInfo()) {
         is DescriptorContent.AudioFile -> {
@@ -75,14 +73,13 @@ fun AudioPlayerWidget(
         audioPlayer.setPlaybackObserver(object : AudioPlaybackObserver {
             override fun onComplete() {
                 isPlaying = false
-                // Park at the end so the next press restarts instead of resuming a drained line;
-                // a late progress tick also clamps here, so there is no race to guard.
-                if (totalFileSeconds > 0) currentFileSeconds = totalFileSeconds
+                completed = true
+                currentFileSeconds = 0
             }
 
             override fun onProgressUpdate(progressSeconds: Int, totalSeconds: Int) {
-                Logger.i { "Progress: $progressSeconds / $totalSeconds" }
-                currentFileSeconds = progressSeconds
+                // A tick can land up to one interval after onComplete; it must not undo the reset.
+                if (!completed) currentFileSeconds = progressSeconds
                 // 0 means the player couldn't determine a duration (web: a stream muxed with no
                 // duration box) — keep the length the payload descriptor already gave us.
                 if (totalSeconds > 0) totalFileSeconds = totalSeconds
@@ -119,18 +116,15 @@ fun AudioPlayerWidget(
         null
     }
 
-    val progress = if (totalFileSeconds > 0) {
-        currentFileSeconds.toFloat() / totalFileSeconds.toFloat()
-    } else {
-        0f
+    // Whole seconds: AudioPlaybackObserver carries no finer resolution, so the head steps
+    // once a second. Smoothing needs millisecond progress, not interpolation on top of this.
+    val livePosition: () -> Float = {
+        if (totalFileSeconds > 0) {
+            (currentFileSeconds.toFloat() / totalFileSeconds).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
     }
-
-    // AudioPlaybackObserver reports whole seconds every 500ms, so the raw value steps
-    // visibly. Glide between samples until the observer carries millis.
-    val sweptProgress by animateFloatAsState(
-        targetValue = progress,
-        animationSpec = tween(durationMillis = 500, easing = LinearEasing),
-    )
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -153,8 +147,8 @@ fun AudioPlayerWidget(
                         audioPlayer.pause()
                         isPlaying = false
                     } else {
-                        val atEnd = totalFileSeconds > 0 && currentFileSeconds >= totalFileSeconds
-                        if (currentFileSeconds == 0 || atEnd) {
+                        if (completed || currentFileSeconds == 0) {
+                            completed = false
                             currentFileSeconds = 0
                             audioPlayer.play(audioFile)
                         } else {
@@ -189,9 +183,14 @@ fun AudioPlayerWidget(
 
         AudioWaveform(
             amplitudes = amplitudes,
-            progress = sweptProgress,
+            progress = livePosition,
             onSeek = if (audioFile != null && totalFileSeconds > 0) {
-                { fraction -> audioPlayer.jump((fraction * totalFileSeconds).toInt()) }
+                { fraction ->
+                    val target = (fraction * totalFileSeconds).toInt()
+                    completed = false
+                    currentFileSeconds = target
+                    audioPlayer.jump(target)
+                }
             } else {
                 null
             },
