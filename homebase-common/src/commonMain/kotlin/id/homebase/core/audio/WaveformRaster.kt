@@ -16,9 +16,9 @@ import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.HomebaseImageLoader
 import id.homebase.core.image.ImageSize
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.compose.koinInject
 import kotlin.io.encoding.Base64
@@ -69,13 +69,16 @@ fun ImageBitmap.toWaveformAmplitudes(
 }
 
 private val waveformCache = LinkedHashMap<String, FloatArray>()
-private val waveformCacheLock = Mutex()
 
-private suspend fun cachedWaveform(key: String): FloatArray? =
-    waveformCacheLock.withLock { waveformCache[key] }
+// Read during composition so a bubble scrolling back into view has its bars on the first
+// frame; a suspending read costs a frame of placeholder and restarts the grow-in animation.
+private val waveformCacheLock = SynchronizedObject()
 
-private suspend fun storeWaveform(key: String, value: FloatArray) {
-    waveformCacheLock.withLock {
+private fun cachedWaveform(key: String): FloatArray? =
+    synchronized(waveformCacheLock) { waveformCache[key] }
+
+private fun storeWaveform(key: String, value: FloatArray) {
+    synchronized(waveformCacheLock) {
         waveformCache.remove(key)
         waveformCache[key] = value
         while (waveformCache.size > MAX_CACHED_WAVEFORMS) {
@@ -95,15 +98,11 @@ fun rememberWaveformAmplitudes(
     keyHeader: KeyHeader,
 ): FloatArray? {
     val imageLoader: HomebaseImageLoader = koinInject()
-    var amplitudes by remember(fileId, payload.key) { mutableStateOf<FloatArray?>(null) }
+    val cacheKey = remember(fileId, payload.key) { "$fileId-${payload.key}" }
+    var amplitudes by remember(cacheKey) { mutableStateOf(cachedWaveform(cacheKey)) }
 
-    LaunchedEffect(fileId, payload.key, thumbnail.pixelWidth, thumbnail.pixelHeight) {
-        val cacheKey = "$fileId-${payload.key}"
-        val hit = cachedWaveform(cacheKey)
-        if (hit != null) {
-            amplitudes = hit
-            return@LaunchedEffect
-        }
+    LaunchedEffect(cacheKey, thumbnail.pixelWidth, thumbnail.pixelHeight) {
+        if (amplitudes != null) return@LaunchedEffect
 
         val decoded = withContext(Dispatchers.Default) {
             runCatching {
