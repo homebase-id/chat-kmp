@@ -967,26 +967,13 @@ class ConversationStream(
                     ui.copy(conversationState = ConversationState.Left)
                 } else ui
 
-                // Reconcile the disk row against the prior in-memory row so the
-                // reload doesn't throw away local state:
-                //  - lastRead = max, dirty kept only while our local read still
-                //    leads disk (same rule as the WS receive merge), so an
-                //    un-flushed local advance survives and still flushes.
-                //  - unreadCount carried forward to avoid a flicker-to-0 (the
-                //    disk row is always 0); when lastRead actually changed vs.
-                //    the prior (a peer advance pulled to disk), mark it
-                //    unread-dirty so the Stopped pipeline's recount corrects it.
-                val prior = priorById[withLeft.id]
-                val finalUi = if (prior != null) {
-                    val reconciled = prior.reconciledWithRemoteLastRead(withLeft.lastRead)
-                    if (reconciled.lastRead != prior.lastRead) markUnreadDirty(withLeft.id)
-                    withLeft.copy(
-                        lastRead = reconciled.lastRead,
-                        dirty = reconciled.dirty,
-                        unreadCount = prior.unreadCount,
-                    )
-                } else withLeft
-                finalUi to file
+                // Reconcile the disk row against the prior in-memory row so the reload
+                // doesn't throw away state the disk row cannot carry — the message
+                // preview, the computed unreadCount, an un-flushed lastRead advance.
+                // See [mergeReloadedConversationRow].
+                val reload = mergeReloadedConversationRow(withLeft, priorById[withLeft.id])
+                if (reload.remoteLastReadAdvanced) markUnreadDirty(withLeft.id)
+                reload.merged to file
             }
 
         val basic = basicWithSource.map { it.first }
