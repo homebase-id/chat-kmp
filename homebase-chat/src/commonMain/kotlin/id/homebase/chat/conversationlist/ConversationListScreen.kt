@@ -191,6 +191,7 @@ fun ConversationListScreen(
     onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
     onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
+    onComposerVisibilityChanged: (Boolean) -> Unit = {},
     onSaveContactCard: (ContactCardDescriptor) -> Unit = {},
     /** Hosts the new-conversation flow inside the list pane on an expanded window instead of
      *  pushing [onNavigateToNewConversation]. Null keeps the full-screen route on every width. */
@@ -568,6 +569,7 @@ fun ConversationListScreen(
             showNewConversationPane = newConversationInPane,
             onNewConversationPaneDismissed = { newConversationInPane = false },
             onMediaViewerVisibilityChanged = onMediaViewerVisibilityChanged,
+            onComposerVisibilityChanged = onComposerVisibilityChanged,
         )
 
         conversationsUiState.inFlightOperationLabel?.let { label ->
@@ -792,6 +794,7 @@ fun ConversationListUi(
     showNewConversationPane: Boolean = false,
     onNewConversationPaneDismissed: () -> Unit = {},
     onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
+    onComposerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
@@ -911,13 +914,24 @@ fun ConversationListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
+    // Unlike showingOnlyDetail this is also true on an expanded two-pane window, where the
+    // composer is on screen while the list still is.
+    val isComposerVisible =
+        isDetailPaneVisible && scaffoldNavigator.currentDestination?.contentKey != null
+    LaunchedEffect(isComposerVisible) { onComposerVisibilityChanged(isComposerVisible) }
+
     val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
     // The rail lives above this screen, so the viewer can only own the window if the rail is told
     // to stand down — same contract the feed and the Vault gallery already use.
     LaunchedEffect(hoistedMediaViewer != null) {
         onMediaViewerVisibilityChanged(hoistedMediaViewer != null)
     }
-    DisposableEffect(Unit) { onDispose { onMediaViewerVisibilityChanged(false) } }
+    DisposableEffect(Unit) {
+        onDispose {
+            onMediaViewerVisibilityChanged(false)
+            onComposerVisibilityChanged(false)
+        }
+    }
 
     // Installs the coupled cleanup + swap effects that drive notification-tap navigation.
     // See NotificationNavigationEffects.kt for why the two effects must be coordinated.
