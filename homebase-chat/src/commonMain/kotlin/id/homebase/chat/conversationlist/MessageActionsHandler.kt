@@ -205,7 +205,7 @@ internal class MessageActionsHandler(
                             replyToMessage = null
                         )
                     }
-                    messageInputTextState.setMarkdown(message.content)
+                    messageInputTextState.applyMarkDownContent(message.content)
                 }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {

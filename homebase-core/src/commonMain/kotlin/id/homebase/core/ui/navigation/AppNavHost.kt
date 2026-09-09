@@ -389,6 +389,10 @@ fun AppNavHost(
     // renders *under* this Scaffold's bottom bar unless the screen reports it up.
     var isFeedMediaOpen by remember { mutableStateOf(false) }
 
+    // Same contract for the chat's two-pane media viewer, which additionally has to displace the
+    // navigation rail to own the whole window.
+    var isChatMediaOpen by remember { mutableStateOf(false) }
+
     // Check if current destination is a top-level route. Uses the static route-type
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
@@ -413,7 +417,7 @@ fun AppNavHost(
     val isVaultEditorOpen = vaultUiState.pendingEditor != null
     val showBottomNavigationBar =
         isOnTopLevelScreen && !showNavigationRail && !isVaultGalleryOpen && !isVaultEditorOpen &&
-                !isFeedMediaOpen
+                !isFeedMediaOpen && !isChatMediaOpen
 
     // Get the lifecycle owner of the current composable
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -785,7 +789,8 @@ fun AppNavHost(
                 .padding(paddingValues)
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
-                val railVisible = showNavigationRail && isAuthenticated && isOnTopLevelScreen
+                val railVisible =
+                    showNavigationRail && isAuthenticated && isOnTopLevelScreen && !isChatMediaOpen
                 if (railVisible) {
                     NavigationRail(
                         modifier = Modifier.width(NavigationRailWidth),
@@ -1321,6 +1326,10 @@ fun AppNavHost(
                                         // THIS IS USED, THE WARNING IS WRONG, IT'S A KNOWN ISSUE
                                         @Suppress("AssignedValueIsNeverRead")
                                         showingOnlyDetailPane = it
+                                    },
+                                    onMediaViewerVisibilityChanged = {
+                                        @Suppress("AssignedValueIsNeverRead")
+                                        isChatMediaOpen = it
                                     },
                                     onSaveContactCard = { pendingContactCard = it },
                                     newConversationPane = { onDismiss, onConversationOpened ->

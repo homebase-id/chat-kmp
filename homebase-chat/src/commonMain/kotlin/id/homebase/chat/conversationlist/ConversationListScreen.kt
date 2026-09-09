@@ -1,5 +1,11 @@
 package id.homebase.chat.conversationlist
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +47,7 @@ import androidx.compose.material3.adaptive.layout.rememberPaneExpansionState
 import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -72,12 +79,14 @@ import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.widget.ChatMediaViewer
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.paneTrailingEdge
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
 import id.homebase.chat.widget.StickerCreatorSheet
+import id.homebase.core.HomebaseConstants
 import id.homebase.core.connections.ConnectRequestAction
 import id.homebase.core.connections.ConnectRequestBottomSheet
 import id.homebase.core.connections.ConnectRequestViewModel
@@ -181,6 +190,7 @@ fun ConversationListScreen(
     onNavigateToCropper: (requestId: Uuid) -> Unit = {},
     onNavigateToDrawer: (requestId: Uuid) -> Unit = {},
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
+    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onSaveContactCard: (ContactCardDescriptor) -> Unit = {},
     /** Hosts the new-conversation flow inside the list pane on an expanded window instead of
      *  pushing [onNavigateToNewConversation]. Null keeps the full-screen route on every width. */
@@ -557,6 +567,7 @@ fun ConversationListScreen(
             newConversationPane = newConversationPane,
             showNewConversationPane = newConversationInPane,
             onNewConversationPaneDismissed = { newConversationInPane = false },
+            onMediaViewerVisibilityChanged = onMediaViewerVisibilityChanged,
         )
 
         conversationsUiState.inFlightOperationLabel?.let { label ->
@@ -780,6 +791,7 @@ fun ConversationListUi(
     ) -> Unit)? = null,
     showNewConversationPane: Boolean = false,
     onNewConversationPaneDismissed: () -> Unit = {},
+    onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
     val defaultDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
@@ -899,6 +911,14 @@ fun ConversationListUi(
     // Notify parent about detail pane visibility in compact view
     LaunchedEffect(showingOnlyDetail) { onDetailPaneVisibilityChanged(showingOnlyDetail) }
 
+    val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
+    // The rail lives above this screen, so the viewer can only own the window if the rail is told
+    // to stand down — same contract the feed and the Vault gallery already use.
+    LaunchedEffect(hoistedMediaViewer != null) {
+        onMediaViewerVisibilityChanged(hoistedMediaViewer != null)
+    }
+    DisposableEffect(Unit) { onDispose { onMediaViewerVisibilityChanged(false) } }
+
     // Installs the coupled cleanup + swap effects that drive notification-tap navigation.
     // See NotificationNavigationEffects.kt for why the two effects must be coordinated.
     NotificationNavigationEffects(
@@ -919,145 +939,183 @@ fun ConversationListUi(
     }
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) {
-        ListDetailPaneScaffold(
-            modifier = Modifier.fillMaxSize().onGloballyPositioned {
-                scaffoldLeft = it.positionInRoot().x
-                scaffoldWidth = it.size.width.toFloat()
-            }.onPreviewKeyEvent { keyEvent ->
-                if (isDesktopOrWeb() &&
-                    keyEvent.type == KeyEventType.KeyDown &&
-                    keyEvent.key == Key.F &&
-                    (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
-                ) {
-                    // The field is absent in the archived and icon-only list modes.
-                    runCatching { conversationSearchFocusRequester.requestFocus() }
-                    true
-                } else {
-                    false
-                }
-            },
-            directive = scaffoldNavigator.scaffoldDirective,
-            scaffoldState = scaffoldNavigator.scaffoldState,
-            listPane = {
-                AnimatedPane(modifier = Modifier) {
-                    val pane = newConversationPane
-                    if (showNewConversationPane && pane != null) {
-                        Box(modifier = Modifier.fillMaxSize().paneTrailingEdge()) {
-                            pane(onNewConversationPaneDismissed) { conversationId ->
-                                onNewConversationPaneDismissed()
-                                onUiAction(
-                                    ConversationListUiAction.ConversationClicked(
-                                        conversationId,
-                                        null,
+        Box(modifier = Modifier.fillMaxSize()) {
+            ListDetailPaneScaffold(
+                modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                    scaffoldLeft = it.positionInRoot().x
+                    scaffoldWidth = it.size.width.toFloat()
+                }.onPreviewKeyEvent { keyEvent ->
+                    if (isDesktopOrWeb() &&
+                        keyEvent.type == KeyEventType.KeyDown &&
+                        keyEvent.key == Key.F &&
+                        (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)
+                    ) {
+                        // The field is absent in the archived and icon-only list modes.
+                        runCatching { conversationSearchFocusRequester.requestFocus() }
+                        true
+                    } else {
+                        false
+                    }
+                },
+                directive = scaffoldNavigator.scaffoldDirective,
+                scaffoldState = scaffoldNavigator.scaffoldState,
+                listPane = {
+                    AnimatedPane(modifier = Modifier) {
+                        val pane = newConversationPane
+                        if (showNewConversationPane && pane != null) {
+                            Box(modifier = Modifier.fillMaxSize().paneTrailingEdge()) {
+                                pane(onNewConversationPaneDismissed) { conversationId ->
+                                    onNewConversationPaneDismissed()
+                                    onUiAction(
+                                        ConversationListUiAction.ConversationClicked(
+                                            conversationId,
+                                            null,
+                                        )
                                     )
-                                )
+                                    scope.launch {
+                                        scaffoldNavigator.navigateTo(
+                                            ListDetailPaneScaffoldRole.Detail,
+                                            conversationId,
+                                        )
+                                    }
+                                }
+                            }
+                            return@AnimatedPane
+                        }
+                        ConversationListPane(
+                            uiState = uiState,
+                            selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
+                            searchTextState = conversationSearchTextFieldState,
+                            searchFocusRequester = conversationSearchFocusRequester,
+                            archivedUiState = archivedConversationsUiState,
+                            listPaneVisible = !isListPaneHidden,
+                            onProfileClick = onNavigateToSettingsScreen,
+                            onUiAction = onUiAction,
+                            onConversationSelected = {
+                                Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
                                 scope.launch {
                                     scaffoldNavigator.navigateTo(
                                         ListDetailPaneScaffoldRole.Detail,
-                                        conversationId,
+                                        it
                                     )
                                 }
                             }
-                        }
-                        return@AnimatedPane
-                    }
-                    ConversationListPane(
-                        uiState = uiState,
-                        selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
-                        searchTextState = conversationSearchTextFieldState,
-                        searchFocusRequester = conversationSearchFocusRequester,
-                        archivedUiState = archivedConversationsUiState,
-                        listPaneVisible = !isListPaneHidden,
-                        onProfileClick = onNavigateToSettingsScreen,
-                        onUiAction = onUiAction,
-                        onConversationSelected = {
-                            Logger.i(tag = "ConversationListUi") { "Navigating to detail for $it" }
-                            scope.launch {
-                                scaffoldNavigator.navigateTo(
-                                    ListDetailPaneScaffoldRole.Detail,
-                                    it
-                                )
-                            }
-                        }
-                    )
-                }
-            },
-            detailPane = {
-                AnimatedPane {
-                    val contentKey = scaffoldNavigator.currentDestination?.contentKey
-                    val conversation =
-                        uiState.activeConversations.find { it.conversation.id == contentKey }
-                    LaunchedEffect(contentKey, conversation != null) {
-                        Logger.i(tag = "ConversationListUi") {
-                            "detailPane render: contentKey=$contentKey, conversationFound=${conversation != null}, activeConversationsSize=${uiState.activeConversations.size}"
-                        }
-                    }
-                    if (conversation != null) {
-                        key(conversation.conversation.id) {
-                            ConversationMessagesPane(
-                                conversation = conversation,
-                                uiState = messagesUiState,
-                                textFieldState = messageInputTextFieldState,
-                                searchTextState = messagesSearchTextState,
-                                showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
-                                onBackClick = {
-                                    onUiAction(ConversationListUiAction.ClearSelection)
-                                    scope.launch {
-                                        scaffoldNavigator.navigateBack(
-                                            backNavigationBehavior
-                                        )
-                                    }
-                                },
-                                onUiAction = onUiAction,
-                            )
-                        }
-                    } else {
-                        EmptyDetailPane(
-                            title = stringResource(
-                                MR.string.chat_select_a_conversation
-                            ), subtitle = stringResource(
-                                MR.string.chat_select_a_conversation_hint
-                            )
                         )
                     }
-                }
-            },
-            paneExpansionState = rememberPaneExpansionState(
-                keyProvider = scaffoldNavigator.scaffoldValue,
-                anchors = paneAnchors,
-                consumeDragDelta = { delta ->
-                    if (scaffoldWidth <= 0f) delta else {
-                        val offset = splitterCenter - scaffoldLeft
-                        (offset + delta).coerceIn(
-                            scaffoldWidth * LIST_PANE_MIN_PERCENT / 100f,
-                            scaffoldWidth * LIST_PANE_MAX_PERCENT / 100f,
-                        ) - offset
+                },
+                detailPane = {
+                    AnimatedPane {
+                        val contentKey = scaffoldNavigator.currentDestination?.contentKey
+                        val conversation =
+                            uiState.activeConversations.find { it.conversation.id == contentKey }
+                        LaunchedEffect(contentKey, conversation != null) {
+                            Logger.i(tag = "ConversationListUi") {
+                                "detailPane render: contentKey=$contentKey, conversationFound=${conversation != null}, activeConversationsSize=${uiState.activeConversations.size}"
+                            }
+                        }
+                        if (conversation != null) {
+                            key(conversation.conversation.id) {
+                                ConversationMessagesPane(
+                                    conversation = conversation,
+                                    uiState = messagesUiState,
+                                    textFieldState = messageInputTextFieldState,
+                                    searchTextState = messagesSearchTextState,
+                                    showBackButton = scaffoldNavigator.scaffoldValue[ListDetailPaneScaffoldRole.List] == PaneAdaptedValue.Hidden,
+                                    onBackClick = {
+                                        onUiAction(ConversationListUiAction.ClearSelection)
+                                        scope.launch {
+                                            scaffoldNavigator.navigateBack(
+                                                backNavigationBehavior
+                                            )
+                                        }
+                                    },
+                                    onUiAction = onUiAction,
+                                    hoistMediaViewer = isExpanded,
+                                )
+                            }
+                        } else {
+                            EmptyDetailPane(
+                                title = stringResource(
+                                    MR.string.chat_select_a_conversation
+                                ), subtitle = stringResource(
+                                    MR.string.chat_select_a_conversation_hint
+                                )
+                            )
+                        }
                     }
                 },
-            ),
-            // M3's VerticalDragHandle animates itself off the hover interaction, which on Skiko
-            // never goes quiet: it pinned the desktop render loop at ~164 fps and ~15% GPU while
-            // idle. This handle is an invisible hit strip over the hairline ConversationListPane
-            // already draws, with nothing to animate.
-            paneExpansionDragHandle = if (!isDesktopOrWeb()) null else {
-                { state ->
-                    Box(
-                        Modifier
-                            .fillMaxHeight()
-                            .width(SPLITTER_HIT_WIDTH)
-                            .onGloballyPositioned {
-                                splitterCenter = it.positionInRoot().x + it.size.width / 2f
+                paneExpansionState = rememberPaneExpansionState(
+                    keyProvider = scaffoldNavigator.scaffoldValue,
+                    anchors = paneAnchors,
+                    consumeDragDelta = { delta ->
+                        if (scaffoldWidth <= 0f) delta else {
+                            val offset = splitterCenter - scaffoldLeft
+                            (offset + delta).coerceIn(
+                                scaffoldWidth * LIST_PANE_MIN_PERCENT / 100f,
+                                scaffoldWidth * LIST_PANE_MAX_PERCENT / 100f,
+                            ) - offset
+                        }
+                    },
+                ),
+                // M3's VerticalDragHandle animates itself off the hover interaction, which on Skiko
+                // never goes quiet: it pinned the desktop render loop at ~164 fps and ~15% GPU while
+                // idle. This handle is an invisible hit strip over the hairline ConversationListPane
+                // already draws, with nothing to animate.
+                paneExpansionDragHandle = if (!isDesktopOrWeb()) null else {
+                    { state ->
+                        Box(
+                            Modifier
+                                .fillMaxHeight()
+                                .width(SPLITTER_HIT_WIDTH)
+                                .onGloballyPositioned {
+                                    splitterCenter = it.positionInRoot().x + it.size.width / 2f
+                                }
+                                .horizontalResizeCursor()
+                                .paneExpansionDraggable(
+                                    state = state,
+                                    minTouchTargetSize = SPLITTER_HIT_WIDTH,
+                                    interactionSource = splitterInteractionSource,
+                                )
+                        )
+                    }
+                },
+                )
+
+            // Inside the Scaffold, so snackbars still draw above it. The bubble that opened it
+            // belongs to the pane's SharedTransitionLayout, out of reach of this one, so what is
+            // left here is a crossfade run in step with the pane's.
+            if (isExpanded) {
+                SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
+                    AnimatedContent(
+                        targetState = hoistedMediaViewer,
+                        modifier = Modifier.fillMaxSize(),
+                        contentKey = { overlay ->
+                            when (overlay) {
+                                null -> "none"
+                                is FullScreenOverlay.ViewMessageData -> "view"
+                                is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
+                                is FullScreenOverlay.PdfViewerData -> "pdf"
                             }
-                            .horizontalResizeCursor()
-                            .paneExpansionDraggable(
-                                state = state,
-                                minTouchTargetSize = SPLITTER_HIT_WIDTH,
-                                interactionSource = splitterInteractionSource,
+                        },
+                        transitionSpec = {
+                            val duration =
+                                HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION
+                            fadeIn(tween(duration)) togetherWith fadeOut(tween(duration))
+                        },
+                    ) { overlay ->
+                        if (overlay != null) {
+                            ChatMediaViewer(
+                                data = overlay,
+                                uiState = messagesUiState,
+                                onUiAction = onUiAction,
+                                sharedTransitionScope = this@SharedTransitionLayout,
+                                animatedVisibilityScope = this@AnimatedContent,
                             )
-                    )
+                        }
+                    }
                 }
-            },
-            )
+            }
+        }
     }
 }
 

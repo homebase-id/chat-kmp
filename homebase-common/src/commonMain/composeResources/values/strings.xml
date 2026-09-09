@@ -2195,4 +2195,6 @@
     <string name="webdrop_error_create">Couldn't create the drop link</string>
     <string name="webdrop_error_source_unreadable">Couldn't read %1$s — please pick it again</string>
     <string name="webdrop_error_too_many">A drop can hold at most %1$d files</string>
+    <string name="notification_reply_failed_title">Couldn't send your reply</string>
+    <string name="notification_reply_failed_hint">Tap to open Homebase and send it again</string>
 </resources>
