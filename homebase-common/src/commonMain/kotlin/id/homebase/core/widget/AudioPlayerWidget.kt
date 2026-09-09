@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -39,12 +40,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.common.OdinId
 import id.homebase.core.audio.VoiceNotePlayback
 import id.homebase.core.audio.rememberWaveformAmplitudes
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.PublicAvatar
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.util.initials
 import id.homebase.resources.MR
 import id.homebase.resources.audio_pause
 import id.homebase.resources.audio_play
+import id.homebase.resources.audio_sender_avatar
 import id.homebase.resources.audio_speed
 import id.homebase.resources.audio_speed_1_5x
 import id.homebase.resources.audio_speed_1x
@@ -61,6 +67,13 @@ import kotlin.uuid.Uuid
 private const val MIN_WAVEFORM_RASTER_WIDTH = 320
 
 private val PLAYBACK_SPEEDS = floatArrayOf(1f, 1.5f, 2f)
+
+private val SenderAvatarOptions = AvatarOptions(size = Dimens.Message.senderAvatarSize)
+
+private val SENDER_AVATAR_GAP = 8.dp
+
+@Immutable
+data class VoiceNoteSender(val odinId: OdinId, val displayName: String)
 
 @Immutable
 private data class VoiceNoteBubbleState(
@@ -81,6 +94,7 @@ fun AudioPlayerWidget(
     audioFile: String?,
     payload: PayloadDescriptor,
     onRequestDecryptedFile: (() -> Unit)? = null,
+    sender: VoiceNoteSender? = null,
 ) {
     val playback: VoiceNotePlayback = koinInject()
     val coroutineScope = rememberCoroutineScope()
@@ -153,6 +167,21 @@ fun AudioPlayerWidget(
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .padding(horizontal = 12.dp, vertical = 12.dp)
     ) {
+        if (sender != null) {
+            val senderInitials = remember(sender.displayName) { sender.displayName.initials() }
+            val senderLabel = stringResource(MR.string.audio_sender_avatar, sender.displayName)
+            // PublicAvatar hard-codes a generic description; clearAndSetSemantics replaces the
+            // whole subtree's so a screen reader names the person instead.
+            Box(modifier = Modifier.clearAndSetSemantics { contentDescription = senderLabel }) {
+                PublicAvatar(
+                    odinId = sender.odinId,
+                    initials = senderInitials,
+                    options = SenderAvatarOptions,
+                )
+            }
+            Spacer(modifier = Modifier.width(SENDER_AVATAR_GAP))
+        }
+
         IconButton(
             onClick = {
                 if (audioFile == null && !fileRequested) {

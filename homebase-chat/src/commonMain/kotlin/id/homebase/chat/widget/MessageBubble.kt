@@ -541,6 +541,8 @@ fun ReceivedMessageBubble(
     val mediaOnly = !message.content.hasContent() && hasMedia
     val emojiOnly = message.content.isEmojiContentOnly() && !hasMedia
     val hasVisibleBackground = !mediaOnly && !emojiOnly
+    val isVoiceNote = mediaOnly &&
+        filteredPayloads.singleOrNull()?.contentType?.startsWith("audio/") == true
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val haptics = rememberHaptics()
@@ -556,8 +558,11 @@ fun ReceivedMessageBubble(
             .padding(top = clusterPosition.topSpacing(), bottom = clusterPosition.bottomSpacing()),
     ) {
         if (isGroupConversation) {
-            val showAvatar = clusterPosition == MessageClusterPosition.ALONE ||
-                clusterPosition == MessageClusterPosition.END
+            // A voice note draws the sender inside its own bubble, so the gutter yields to it
+            // rather than showing the same face twice.
+            val showAvatar = !isVoiceNote &&
+                (clusterPosition == MessageClusterPosition.ALONE ||
+                    clusterPosition == MessageClusterPosition.END)
             Box(
                 modifier = Modifier
                     .align(Alignment.Bottom)
@@ -628,6 +633,7 @@ fun ReceivedMessageBubble(
                             decryptedFiles = decryptedFiles,
                         liveControls = liveControls,
                             sentByYou = false,
+                            showVoiceNoteSender = isGroupConversation,
                             currentOdinId = currentOdinId,
                             clusterPosition = clusterPosition,
                             authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
