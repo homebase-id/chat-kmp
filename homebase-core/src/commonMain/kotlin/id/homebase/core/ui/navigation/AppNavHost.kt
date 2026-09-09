@@ -393,6 +393,24 @@ fun AppNavHost(
     // navigation rail to own the whole window.
     var isChatMediaOpen by remember { mutableStateOf(false) }
 
+    // This Scaffold's SnackbarHost is anchored to the bottom of the window, where the chat
+    // composer is: a notice raised here would sit on top of the input field.
+    var isChatComposerOpen by remember { mutableStateOf(false) }
+
+    // Latched out of the composer gate below so the notice survives being suppressed on a chat
+    // screen, and is consumed only once it has actually run its course.
+    val dbUpgrade by DatabaseManager.databaseUpgradeState.collectAsStateWithLifecycle()
+    var pendingDbUpgradeNotice by remember { mutableStateOf(false) }
+    val dbUpgradeSnapshot = dbUpgrade
+    if (dbUpgradeSnapshot is DatabaseUpgradeState.JustUpgraded &&
+        dbUpgradeSnapshot.fromVersion > 0
+    ) {
+        LaunchedEffect(dbUpgradeSnapshot) {
+            pendingDbUpgradeNotice = true
+            DatabaseManager.markUpgradeConsumed()
+        }
+    }
+
     // Check if current destination is a top-level route. Uses the static route-type
     // check (not topLevelRoutes) so the bottom nav still shows on the Vault screen even
     // when the user has hidden the Vault icon from the nav bar.
@@ -869,7 +887,7 @@ fun AppNavHost(
                             )
                         }
                         val pendingUpgrade = uiState.pendingUpgrade
-                        if (pendingUpgrade is PendingUpgradeState.ShowSnackbar) {
+                        if (pendingUpgrade is PendingUpgradeState.ShowSnackbar && !isChatComposerOpen) {
                             LaunchedEffect(pendingUpgrade) {
                                 val result = snackbarHostState.showSnackbar(
                                     message = snackbarMessage,
@@ -882,24 +900,17 @@ fun AppNavHost(
                             }
                         }
 
-                        // Snackbar fired once per process after DatabaseManager wipes the local
-                        // DB on a schema-version bump. Tells the user why their conversations /
-                        // vault / feed appear empty while DriveSync repopulates from the server.
-                        // Skipped on fresh installs (fromVersion == 0): no prior data, nothing
-                        // to "restore". markUpgradeConsumed() flips state back to Idle so
-                        // recomposition doesn't re-fire the effect.
-                        val dbUpgrade by DatabaseManager.databaseUpgradeState.collectAsStateWithLifecycle()
-                        val dbUpgradeSnapshot = dbUpgrade
-                        if (dbUpgradeSnapshot is DatabaseUpgradeState.JustUpgraded &&
-                            dbUpgradeSnapshot.fromVersion > 0
-                        ) {
+                        // Shown once per process after DatabaseManager wipes the local DB on a
+                        // schema-version bump. Tells the user why their conversations / vault /
+                        // feed appear empty while DriveSync repopulates from the server.
+                        if (pendingDbUpgradeNotice && !isChatComposerOpen) {
                             val dbUpgradeMsg = stringResource(MR.string.database_upgrade_snackbar)
-                            LaunchedEffect(dbUpgradeSnapshot) {
+                            LaunchedEffect(Unit) {
                                 snackbarHostState.showSnackbar(
                                     message = dbUpgradeMsg,
                                     duration = SnackbarDuration.Long,
                                 )
-                                DatabaseManager.markUpgradeConsumed()
+                                pendingDbUpgradeNotice = false
                             }
                         }
 
@@ -1330,6 +1341,10 @@ fun AppNavHost(
                                     onMediaViewerVisibilityChanged = {
                                         @Suppress("AssignedValueIsNeverRead")
                                         isChatMediaOpen = it
+                                    },
+                                    onComposerVisibilityChanged = {
+                                        @Suppress("AssignedValueIsNeverRead")
+                                        isChatComposerOpen = it
                                     },
                                     onSaveContactCard = { pendingContactCard = it },
                                     newConversationPane = { onDismiss, onConversationOpened ->
