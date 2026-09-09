@@ -28,6 +28,10 @@ import id.homebase.chat.services.LocalAttachmentContextStore
 import id.homebase.chat.services.MessageAppData
 import id.homebase.chat.services.ReplyPreview
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.audio.DefaultVoiceNotePlayback
+import id.homebase.core.audio.JvmAudioPlayer
+import id.homebase.core.audio.VoiceNotePlayback
+import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.ui.theme.HomebaseTheme
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentList
@@ -78,11 +82,18 @@ class BubbleLayoutInvariantTest {
 
     private val koin = koinConfiguration {
         modules(module {
-            // The two Koin singletons any rendered MediaItem resolves. An empty Coil
+            // The Koin singletons any rendered MediaItem resolves. An empty Coil
             // ImageLoader is enough — the images never need to decode; the invariants
             // are about the media container's laid-out bounds, not pixel content.
             single { ImageLoader.Builder(PlatformContext.INSTANCE).build() }
             single { LocalAttachmentContextStore(EventBus(), CoroutineScope(SupervisorJob())) }
+            single<VoiceNotePlayback> {
+                DefaultVoiceNotePlayback(
+                    player = JvmAudioPlayer(),
+                    proximityRouter = getProximityAudioRouter(),
+                    scope = CoroutineScope(SupervisorJob()),
+                )
+            }
         })
     }
 
