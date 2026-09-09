@@ -1137,7 +1137,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ContactBookDetail> {
+                        paneDestination<Route.ContactBookDetail>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 ContactDetailScreen(
                                     viewModel = koinViewModel(),
@@ -1160,7 +1160,15 @@ fun AppNavHost(
                                         navController.navigate(Route.ConversationMedia(conversationId))
                                     },
                                     onOpenContact = { uniqueId, odinId ->
-                                        navController.navigate(Route.ContactBookDetail(uniqueId, odinId))
+                                        navController.navigate(
+                                            Route.ContactBookDetail(uniqueId, odinId)
+                                        ) {
+                                            if (isDesktopOrWeb()) {
+                                                popUpTo<Route.ContactBookDetail> {
+                                                    inclusive = true
+                                                }
+                                            }
+                                        }
                                     },
                                 )
                             }
@@ -1324,6 +1332,26 @@ fun AppNavHost(
                                         isChatMediaOpen = it
                                     },
                                     onSaveContactCard = { pendingContactCard = it },
+                                    newConversationPane = { onDismiss, onConversationOpened ->
+                                        NewConversationPaneHost(
+                                            onDismiss = onDismiss,
+                                            onShowConversation = onConversationOpened,
+                                            onCreateGroup = { ids ->
+                                                // Closed before the hand-off: naming the group is
+                                                // a destination, so returning from it lands on the
+                                                // list, not a half-finished picker behind it.
+                                                onDismiss()
+                                                navController.navigate(
+                                                    Route.CreateConversationGroup(ids)
+                                                )
+                                            },
+                                            onAddContact = {
+                                                navController.navigate(
+                                                    Route.AddContact(identityOnly = true)
+                                                )
+                                            },
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -1363,7 +1391,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.CreateConversationGroup> {
+                        paneDestination<Route.CreateConversationGroup>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 CreateConversationGroupScreen(
                                     viewModel = koinViewModel(),
@@ -1444,7 +1472,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.ConversationSettings> {
+                        paneDestination<Route.ConversationSettings>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 ConversationSettingsScreen(
                                     viewModel = koinViewModel(),
@@ -1483,7 +1511,7 @@ fun AppNavHost(
                             }
                         }
 
-                        composable<Route.GroupSettings> {
+                        paneDestination<Route.GroupSettings>(onDismiss = { navController.popBackStack() }) {
                             if (isAuthenticated) {
                                 GroupSettingsScreen(
                                     viewModel = koinViewModel(),
@@ -1538,7 +1566,7 @@ fun AppNavHost(
                             }
                         }
 
-                        settingsDestination<Route.Settings>(
+                        paneDestination<Route.Settings>(
                             onDismiss = { navController.popBackStack() },
                             paneContent = {
                                 if (isAuthenticated) {

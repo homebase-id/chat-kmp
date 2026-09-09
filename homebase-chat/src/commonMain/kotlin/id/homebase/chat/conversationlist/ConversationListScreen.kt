@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -80,6 +81,7 @@ import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.widget.ChatMediaViewer
 import id.homebase.chat.widget.ConversationListPane
+import id.homebase.chat.widget.paneTrailingEdge
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
@@ -190,6 +192,12 @@ fun ConversationListScreen(
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
     onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
     onSaveContactCard: (ContactCardDescriptor) -> Unit = {},
+    /** Hosts the new-conversation flow inside the list pane on an expanded window instead of
+     *  pushing [onNavigateToNewConversation]. Null keeps the full-screen route on every width. */
+    newConversationPane: (@Composable (
+        onDismiss: () -> Unit,
+        onConversationOpened: (Uuid) -> Unit,
+    ) -> Unit)? = null,
 ) {
     val conversationsUiState by viewModel.uiState.collectAsStateWithLifecycle()
     val messagesUiState by viewModel.messagesUiState.collectAsStateWithLifecycle()
@@ -197,6 +205,10 @@ fun ConversationListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val fileSystemHandler = getUriHandler()
+    var newConversationInPane by remember { mutableStateOf(false) }
+    // Read through rememberUpdatedState: the event collector below is keyed on Unit, so a plain
+    // capture would pin whatever width the first composition saw.
+    val paneCapable = rememberUpdatedState(newConversationPane != null && isExpandedLayout())
     // Check for missing permissions and show dialog if needed
     ExtendPermissionDialog(
         viewModel = extendPermissionViewModel,
@@ -251,7 +263,9 @@ fun ConversationListScreen(
                     }
                 }
 
-                is ConversationListUiEvent.NavigateToNewConversation -> onNavigateToNewConversation()
+                is ConversationListUiEvent.NavigateToNewConversation ->
+                    if (paneCapable.value) newConversationInPane = true
+                    else onNavigateToNewConversation()
 
                 is ConversationListUiEvent.NavigateToLiveLocationMap -> onNavigateToLiveLocationMap()
 
@@ -550,6 +564,9 @@ fun ConversationListScreen(
             onUiAction = viewModel::onAction,
             onNavigateToSettingsScreen = onNavigateToSettingsScreen,
             onDetailPaneVisibilityChanged = onDetailPaneVisibilityChanged,
+            newConversationPane = newConversationPane,
+            showNewConversationPane = newConversationInPane,
+            onNewConversationPaneDismissed = { newConversationInPane = false },
             onMediaViewerVisibilityChanged = onMediaViewerVisibilityChanged,
         )
 
@@ -768,6 +785,12 @@ fun ConversationListUi(
      *  caller that doesn't drive events still compiles. */
     onNavigateToSettingsScreen: () -> Unit,
     onDetailPaneVisibilityChanged: (Boolean) -> Unit = {},
+    newConversationPane: (@Composable (
+        onDismiss: () -> Unit,
+        onConversationOpened: (Uuid) -> Unit,
+    ) -> Unit)? = null,
+    showNewConversationPane: Boolean = false,
+    onNewConversationPaneDismissed: () -> Unit = {},
     onMediaViewerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
     val windowAdaptiveInfo = currentWindowAdaptiveInfo()
@@ -938,6 +961,27 @@ fun ConversationListUi(
                 scaffoldState = scaffoldNavigator.scaffoldState,
                 listPane = {
                     AnimatedPane(modifier = Modifier) {
+                        val pane = newConversationPane
+                        if (showNewConversationPane && pane != null) {
+                            Box(modifier = Modifier.fillMaxSize().paneTrailingEdge()) {
+                                pane(onNewConversationPaneDismissed) { conversationId ->
+                                    onNewConversationPaneDismissed()
+                                    onUiAction(
+                                        ConversationListUiAction.ConversationClicked(
+                                            conversationId,
+                                            null,
+                                        )
+                                    )
+                                    scope.launch {
+                                        scaffoldNavigator.navigateTo(
+                                            ListDetailPaneScaffoldRole.Detail,
+                                            conversationId,
+                                        )
+                                    }
+                                }
+                            }
+                            return@AnimatedPane
+                        }
                         ConversationListPane(
                             uiState = uiState,
                             selectedConversationId = scaffoldNavigator.currentDestination?.contentKey,
