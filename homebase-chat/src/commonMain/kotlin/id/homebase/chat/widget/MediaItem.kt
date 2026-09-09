@@ -64,6 +64,7 @@ import id.homebase.core.image.rememberFullScreenImagePrefetch
 import id.homebase.core.image.thumbSizesFrom
 import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.widget.AudioPlayerWidget
+import id.homebase.core.widget.VoiceNoteSender
 import id.homebase.resources.MR
 import id.homebase.resources.cd_play_video
 import id.homebase.resources.chat_message_image_attachment
@@ -124,6 +125,7 @@ fun MediaItem(
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
     isUploading: Boolean = false,
+    audioSender: VoiceNoteSender? = null,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio) ContentScale.Fit else ContentScale.Crop
@@ -552,6 +554,7 @@ fun MediaItem(
                 audioFile = decryptedFiles[DecryptedFileKey(fileId, payload.key)],
                 payload = payload,
                 onRequestDecryptedFile = onRequestDecryptedFile,
+                sender = audioSender,
             )
         }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -55,6 +56,7 @@ import id.homebase.chat.widget.MediaItem
 import id.homebase.chat.widget.rememberSharedMediaSaver
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.theme.Dimens
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.widget.AudioPlayerWidget
 import id.homebase.resources.MR
@@ -297,7 +299,10 @@ private fun AudioListTab(
                     JumpToMessageButton(onClick = { onNavigateToMessage(item.messageId) })
                 }
                 AudioPlayerWidget(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.widthIn(
+                        min = Dimens.MediaBubble.audioMinWidth,
+                        max = Dimens.MediaBubble.audioMaxWidth,
+                    ),
                     driveId = chatTargetDrive.alias,
                     fileId = item.fileId,
                     keyHeader = item.keyHeader,
