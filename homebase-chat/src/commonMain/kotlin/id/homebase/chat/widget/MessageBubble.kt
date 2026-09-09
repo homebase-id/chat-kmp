@@ -633,7 +633,7 @@ fun ReceivedMessageBubble(
                             decryptedFiles = decryptedFiles,
                         liveControls = liveControls,
                             sentByYou = false,
-                            showVoiceNoteSender = isGroupConversation,
+                            showVoiceNoteSender = true,
                             currentOdinId = currentOdinId,
                             clusterPosition = clusterPosition,
                             authorName = if (renderAuthorName && hasVisibleBackground) authorNameTxt
