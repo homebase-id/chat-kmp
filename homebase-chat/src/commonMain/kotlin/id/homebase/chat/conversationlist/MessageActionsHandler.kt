@@ -47,6 +47,7 @@ import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.hasSendableContent
 import id.homebase.core.share.resolveMessageBody
+import id.homebase.core.util.applyMarkDownContent
 import id.homebase.core.util.contentType
 import id.homebase.core.util.resolveContentType
 import id.homebase.core.util.toMessageMarkdown
@@ -190,7 +191,7 @@ internal class MessageActionsHandler(
                             replyToMessage = null
                         )
                     }
-                    messageInputTextState.setMarkdown(message.content)
+                    messageInputTextState.applyMarkDownContent(message.content)
                 }
             } catch (e: Exception) {
                 Logger.e(throwable = e, tag = "ConversationListViewModel") {
