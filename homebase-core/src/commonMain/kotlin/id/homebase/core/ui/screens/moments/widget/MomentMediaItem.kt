@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayCircle
@@ -492,15 +493,22 @@ fun MomentMediaItem(
         }
 
         contentType.startsWith("audio/") -> {
-            AudioPlayerWidget(
-                modifier = baseModifier,
-                driveId = driveId,
-                fileId = fileId,
-                keyHeader = keyHeader,
-                audioFile = decryptedFiles[DecryptedFileKey(fileId, payload.key)],
-                payload = payload,
-                onRequestDecryptedFile = onRequestDecryptedFile,
-            )
+            // The caller hands this a fillMaxSize modifier, which pins min == max width, so the
+            // cap only bites on a child inside it.
+            Box(modifier = baseModifier, contentAlignment = Alignment.Center) {
+                AudioPlayerWidget(
+                    modifier = Modifier.widthIn(
+                        min = Dimens.MediaBubble.audioMinWidth,
+                        max = Dimens.MediaBubble.audioMaxWidth,
+                    ),
+                    driveId = driveId,
+                    fileId = fileId,
+                    keyHeader = keyHeader,
+                    audioFile = decryptedFiles[DecryptedFileKey(fileId, payload.key)],
+                    payload = payload,
+                    onRequestDecryptedFile = onRequestDecryptedFile,
+                )
+            }
         }
 
         contentType == "application/zip" ||
