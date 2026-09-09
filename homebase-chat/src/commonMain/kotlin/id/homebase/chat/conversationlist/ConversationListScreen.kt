@@ -73,6 +73,7 @@ import id.homebase.chat.archivedconversations.ArchivedConversationsUiState
 import id.homebase.chat.archivedconversations.ArchivedConversationsViewModel
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.widget.ConversationListPane
+import id.homebase.chat.widget.paneTrailingEdge
 import id.homebase.chat.widget.ConversationMessagesPane
 import id.homebase.chat.widget.EmptyDetailPane
 import id.homebase.chat.widget.ExtendPermissionDialog
@@ -941,16 +942,21 @@ fun ConversationListUi(
                 AnimatedPane(modifier = Modifier) {
                     val pane = newConversationPane
                     if (showNewConversationPane && pane != null) {
-                        pane(onNewConversationPaneDismissed) { conversationId ->
-                            onNewConversationPaneDismissed()
-                            onUiAction(
-                                ConversationListUiAction.ConversationClicked(conversationId, null)
-                            )
-                            scope.launch {
-                                scaffoldNavigator.navigateTo(
-                                    ListDetailPaneScaffoldRole.Detail,
-                                    conversationId,
+                        Box(modifier = Modifier.fillMaxSize().paneTrailingEdge()) {
+                            pane(onNewConversationPaneDismissed) { conversationId ->
+                                onNewConversationPaneDismissed()
+                                onUiAction(
+                                    ConversationListUiAction.ConversationClicked(
+                                        conversationId,
+                                        null,
+                                    )
                                 )
+                                scope.launch {
+                                    scaffoldNavigator.navigateTo(
+                                        ListDetailPaneScaffoldRole.Detail,
+                                        conversationId,
+                                    )
+                                }
                             }
                         }
                         return@AnimatedPane
