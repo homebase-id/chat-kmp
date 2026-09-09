@@ -12,9 +12,6 @@ package id.homebase.chat.widget.video
  * `boundsInWindow()` is relative to `#ComposeApp`, so [setVideoOverlayBounds] adds `#ComposeApp`'s
  * viewport offset (the safe-area inset; zero on desktop) to convert to fixed/viewport coordinates.
  * A high z-index keeps it above the canvas; native `controls` give play/seek/volume for free.
- *
- * Byte payloads cross to JS as Base64, the same idiom as FFmpegBridge.web.kt / WebSqlDriver
- * (a direct Uint8Array bridge is a possible follow-up if large-clip playback proves slow).
  */
 
 /**
@@ -113,15 +110,5 @@ internal fun removeVideoOverlay(el: JsAny): Unit = js(
 )
 
 internal fun viewportHeightPx(): Double = js("window.innerHeight")
-
-/** Base64 -> Blob object URL with the given [mimeType] (for the <video> src). */
-internal fun bytesToObjectUrl(base64: String, mimeType: String): String = js(
-    """{
-        var bin = atob(base64);
-        var arr = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return URL.createObjectURL(new Blob([arr], { type: mimeType }));
-    }"""
-)
 
 internal fun revokeObjectUrlJs(url: String): Unit = js("{ URL.revokeObjectURL(url); }")

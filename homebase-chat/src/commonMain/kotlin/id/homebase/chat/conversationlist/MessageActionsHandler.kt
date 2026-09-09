@@ -103,6 +103,22 @@ internal fun shouldSendComposerMessage(
 }
 
 /**
+ * Blank the composer BEFORE awaiting [send] — [content] already holds the body — so the
+ * conversation's idle draft debounce can never observe the just-sent text and persist it as a
+ * synced draft while the send is still in flight (#1492). Puts it back if the send throws, unless
+ * the user has meanwhile typed something else, so a failed send still leaves the text to retry.
+ */
+internal suspend fun RichTextState.clearedForSend(content: String, send: suspend () -> Unit) {
+    clear()
+    try {
+        send()
+    } catch (e: Throwable) {
+        if (e !is CancellationException && annotatedString.isBlank()) applyMarkDownContent(content)
+        throw e
+    }
+}
+
+/**
  * Handles message-action arms (send / edit / delete / react / scroll-to /
  * mark-as-read / forward / reply / battle-dice / reaction-details) extracted
  * from `ConversationListViewModel.onAction`.
@@ -166,8 +182,6 @@ internal class MessageActionsHandler(
                     payloadRenderers = action.payloadRenderers,
                 )
             }
-            // Input is cleared inside addMessage/replyToMessage after
-            // the send is successfully queued.
         }
     }
 
@@ -230,9 +244,10 @@ internal class MessageActionsHandler(
     }
 
     /**
-     * Blank the composer after a successful send AND clear this conversation's
-     * persisted draft (#1122), so a sent message never leaves a stale synced
-     * draft behind on this or another device.
+     * Clear this conversation's persisted draft (#1122) so a sent message never leaves a stale
+     * synced draft behind on this or another device. The composer itself is already blank on the
+     * text paths — [clearedForSend] blanks it before the send is awaited (#1492) — but the
+     * attachment path still calls this to blank it.
      */
     private fun clearComposerDraft(conversationId: Uuid) {
         messageInputTextState.clear()
@@ -1112,45 +1127,47 @@ internal class MessageActionsHandler(
         payloadRenderers: List<PayloadRenderer> = emptyList(),
     ) {
         scope.launch {
+            val newMessageId = Uuid.random()
             try {
-                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
+                messageInputTextState.clearedForSend(content) {
+                    val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
-                registerLocalPreviewContexts(newMessageId, payloadBundle)
-                Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
+                    pendingMessageId = newMessageId
+                    registerLocalPreviewContexts(newMessageId, payloadBundle)
+                    Logger.d(tag = TAG) { "addMessage: message=$newMessageId conversation=$conversationId" }
 
-                // Arm the own-send follow before the send: this path adds no placeholder,
-                // so the consuming effect waits for this id to land in the list (#995).
-                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
+                    // Arm the own-send follow before the send: this path adds no placeholder,
+                    // so the consuming effect waits for this id to land in the list (#995).
+                    messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
 
-                // Location is a typed kind (= Event): the coordinate descriptor rides in the header
-                // (appData), the map PNG stays a chat_loc payload. Sending it through the typed path
-                // is what lets a live-share toggle edit the descriptor via updateMessage().
-                val locationPreview =
-                    payloadRenderers.filterIsInstance<LocationPreviewRenderer>().firstOrNull()?.preview
-                if (locationPreview != null && payloadRenderers.size == 1) {
-                    // Carry the user's typed caption in the descriptor (a typed message has no separate
-                    // text body); cap it so the header descriptor stays well under the 7 KB budget.
-                    val caption = content.trim().ifBlank { null }?.truncateToCodePoints(2000)
-                    chatMessageSenderService.sendNewTypedMessage(
-                        messageUniqueId = newMessageId,
-                        conversationId = conversationId,
-                        content = MessageContent.Location(
-                            LocationPreviewPayloadBuilder.descriptorFor(locationPreview).copy(caption = caption)
-                        ),
-                        previousMessageUniqueId = null,
-                        payloadBundle = payloadBundle,
-                    )
-                } else {
-                    chatMessageSenderService.sendNewMessage(
-                        messageUniqueId = newMessageId,
-                        conversationId = conversationId,
-                        messageText = content,
-                        previousMessageUniqueId = null,
-                        payloadBundle = payloadBundle,
-                        dataType = payloadRenderers.toMessageDataType(),
-                    )
+                    // Location is a typed kind (= Event): the coordinate descriptor rides in the header
+                    // (appData), the map PNG stays a chat_loc payload. Sending it through the typed path
+                    // is what lets a live-share toggle edit the descriptor via updateMessage().
+                    val locationPreview =
+                        payloadRenderers.filterIsInstance<LocationPreviewRenderer>().firstOrNull()?.preview
+                    if (locationPreview != null && payloadRenderers.size == 1) {
+                        // Carry the user's typed caption in the descriptor (a typed message has no separate
+                        // text body); cap it so the header descriptor stays well under the 7 KB budget.
+                        val caption = content.trim().ifBlank { null }?.truncateToCodePoints(2000)
+                        chatMessageSenderService.sendNewTypedMessage(
+                            messageUniqueId = newMessageId,
+                            conversationId = conversationId,
+                            content = MessageContent.Location(
+                                LocationPreviewPayloadBuilder.descriptorFor(locationPreview).copy(caption = caption)
+                            ),
+                            previousMessageUniqueId = null,
+                            payloadBundle = payloadBundle,
+                        )
+                    } else {
+                        chatMessageSenderService.sendNewMessage(
+                            messageUniqueId = newMessageId,
+                            conversationId = conversationId,
+                            messageText = content,
+                            previousMessageUniqueId = null,
+                            payloadBundle = payloadBundle,
+                            dataType = payloadRenderers.toMessageDataType(),
+                        )
+                    }
                 }
                 clearComposerDraft(conversationId)
                 jumpToLatestAfterOwnSend(conversationId)
@@ -1207,27 +1224,29 @@ internal class MessageActionsHandler(
         payloadRenderers: List<PayloadRenderer> = emptyList(),
     ) {
         scope.launch {
+            val newMessageId = Uuid.random()
             try {
-                val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
+                messageInputTextState.clearedForSend(content) {
+                    val payloadBundle = payloadRenderers.toCombinedPayloadBundle(fileOperationsProvider)
 
-                val newMessageId = Uuid.random()
-                pendingMessageId = newMessageId
-                registerLocalPreviewContexts(newMessageId, payloadBundle)
-                Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
+                    pendingMessageId = newMessageId
+                    registerLocalPreviewContexts(newMessageId, payloadBundle)
+                    Logger.d(tag = TAG) { "replyToMessage: message=$newMessageId conversation=$conversationId replyTo=${replyTo.id}" }
 
-                // Arm the own-send follow before the send: this path adds no placeholder,
-                // so the consuming effect waits for this id to land in the list (#995).
-                messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
+                    // Arm the own-send follow before the send: this path adds no placeholder,
+                    // so the consuming effect waits for this id to land in the list (#995).
+                    messagesUiState.update { it.copy(scrollToLatestRequest = newMessageId) }
 
-                chatMessageSenderService.replyToMessage(
-                    messageUniqueId = newMessageId,
-                    conversationId = conversationId,
-                    replyTo = replyTo.toReplyPreview(),
-                    messageText = content,
-                    previousMessageUniqueId = null,
-                    payloadBundle = payloadBundle,
-                    dataType = payloadRenderers.toMessageDataType(),
-                )
+                    chatMessageSenderService.replyToMessage(
+                        messageUniqueId = newMessageId,
+                        conversationId = conversationId,
+                        replyTo = replyTo.toReplyPreview(),
+                        messageText = content,
+                        previousMessageUniqueId = null,
+                        payloadBundle = payloadBundle,
+                        dataType = payloadRenderers.toMessageDataType(),
+                    )
+                }
                 clearComposerDraft(conversationId)
                 messagesUiState.update { it.copy(replyToMessage = null) }
                 jumpToLatestAfterOwnSend(conversationId)

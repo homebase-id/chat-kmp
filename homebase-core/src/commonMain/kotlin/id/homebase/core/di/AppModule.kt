@@ -61,6 +61,7 @@ import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
@@ -163,6 +164,7 @@ import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
+import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.ShareConversationCacheWriter
@@ -176,6 +178,7 @@ import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
+import id.homebase.core.ui.screens.media.MediaSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentAudienceViewModel
 import id.homebase.core.ui.screens.moments.MomentComposeViewModel
 import id.homebase.core.ui.screens.moments.MomentDetailViewModel
@@ -637,6 +640,11 @@ val appModule = module {
                 get<FeedPermissionService>().reset()
                 get<FeedTimelineService>().start()
 
+                // An event collector with no UI referent, so nothing else constructs it. Resolved
+                // here and NOT createdAtStart: iOS starts Koin before the database, so its DB edge
+                // would kill every launch.
+                get<ChatMediaAutoSaveService>()
+
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
                     conversationStream.getConversationById(conversationId)
@@ -818,6 +826,7 @@ val appModule = module {
         }
     }
     single<MessageLookup> { get<ChatMessageStream>() }
+    singleOf(::ChatMediaAutoSaveService)
     singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
@@ -851,6 +860,7 @@ val appModule = module {
     }
     single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
     singleOf(::NotificationEntry)
+    singleOf(::WebPushService)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(
@@ -1204,6 +1214,7 @@ val appModule = module {
     viewModelOf(::DeveloperMenuViewModel)
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
+    viewModelOf(::MediaSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)

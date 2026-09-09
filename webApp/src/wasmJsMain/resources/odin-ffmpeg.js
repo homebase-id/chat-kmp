@@ -21,23 +21,6 @@
   var progressCb = null;    // Kotlin (Float)->Unit, set before each exec
   var logLines = [];        // accumulates worker stdout/stderr for version parsing
 
-  function b64ToBytes(b64) {
-    var bin = atob(b64);
-    var len = bin.length;
-    var arr = new Uint8Array(len);
-    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
-    return arr;
-  }
-
-  function bytesToB64(u8) {
-    var bin = "";
-    var chunk = 0x8000;
-    for (var i = 0; i < u8.length; i += chunk) {
-      bin += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + chunk, u8.length)));
-    }
-    return btoa(bin);
-  }
-
   // Same as @ffmpeg/util's toBlobURL: fetch a same-origin asset and re-wrap it as a
   // Blob URL so the worker can import it without cross-origin / module-resolution snags.
   function toBlobURL(url, mimeType) {
@@ -159,8 +142,8 @@
     });
   }
 
-  function probe(b64) {
-    return probeBytes(b64ToBytes(b64), null);
+  function probe(u8) {
+    return probeBytes(u8, null);
   }
 
   // JS-native input read: fetch the (blob:) URL's bytes WITHOUT crossing into Kotlin and
@@ -187,14 +170,14 @@
 
     setProgress: function (cb) { progressCb = cb; },
 
-    writeFile: function (path, b64) {
+    writeFile: function (path, u8) {
       return ensureLoaded().then(function (f) {
-        return f.writeFile(path, b64ToBytes(b64)).then(function () { return true; });
+        return f.writeFile(path, u8).then(function () { return true; });
       });
     },
 
     // JS-native input: fetch the (blob:) URL's bytes and write them straight into ffmpeg's
-    // MEMFS — the original video never enters Kotlin/Wasm memory and is never base64'd.
+    // MEMFS — the original video never enters Kotlin/Wasm memory at all.
     // NOTE: do NOT revoke the blob: URL here — the same URL doubles as the sent message's
     // local-preview source (LocalAttachmentContext.Video.localFilePath); revoking it would
     // break the bubble preview/playback. It's released on logout (store reset) / page reload.
@@ -213,7 +196,7 @@
     },
     readFile: function (path) {
       return ensureLoaded().then(function (f) {
-        return f.readFile(path, "binary").then(function (d) { return bytesToB64(d); });
+        return f.readFile(path, "binary");
       });
     },
     deleteFile: function (path) {
