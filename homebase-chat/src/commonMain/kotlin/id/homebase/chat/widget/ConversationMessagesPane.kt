@@ -9,6 +9,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -39,15 +40,10 @@ import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
-import id.homebase.chat.conversationlist.ConversationListUiAction.DeleteMessage
-import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadMedia
-import id.homebase.chat.conversationlist.ConversationListUiAction.DownloadVideoMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveScrollPosition
 import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
-import id.homebase.chat.conversationlist.ConversationListUiAction.ShareMedia
 import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
-import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
 import id.homebase.chat.conversationlist.MessageListUiState
@@ -81,6 +77,9 @@ fun ConversationMessagesPane(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
+    /** Two-pane layouts draw the read-only viewers above the scaffold instead; the pane still
+     *  drops [ConversationContent] so the composer cannot hold focus behind one. */
+    hoistMediaViewer: Boolean = false,
 ) {
     var currentGalleryPage by remember { mutableStateOf(0) }
 
@@ -320,47 +319,18 @@ fun ConversationMessagesPane(
                 )
             } else {
                 when (data) {
-                    is FullScreenOverlay.ViewMessageData -> {
-                        FullScreenMediaViewer(
-                            data = data,
-                            isDownloading = "${data.messageId}_${data.selectedPayloadKey}" in uiState.downloadingFiles,
-                            onShare = { id, key -> onUiAction(ShareMedia(id, key)) },
-                            onSave = { message, key ->
-                                onUiAction(DownloadMedia(message, key))
-                            },
-                            onSaveSticker = { message, key ->
-                                onUiAction(
-                                    ConversationListUiAction.SaveStickerFromMessage(message, key)
-                                )
-                            },
-                            onDelete = { onUiAction(DeleteMessage(it)) },
-                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
-                            animatedVisibilityScope = this@AnimatedContent,
-                            sharedTransitionScope = this@SharedTransitionLayout,
-                        )
-                    }
-
-                    is FullScreenOverlay.VideoPlayerData -> {
-                        FullScreenVideoPlayer(
-                            data = data,
-                            isDownloading = "${data.fileId}_${data.payloadKey}" in uiState.downloadingFiles,
-                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
-                            onSave = { onUiAction(DownloadVideoMedia(data.fileId, data.payloadKey, data.keyHeader, data.payload)) },
-                            uploadStatus = data.uploadMessageId?.let { uiState.uploadProgress[it] },
-                        )
-                    }
-
-                    is FullScreenOverlay.PdfViewerData -> {
-                        ChatPdfViewer(
-                            title = data.title,
-                            userDate = data.userDate,
-                            filePath = uiState.decryptedFiles[
-                                DecryptedFileKey(data.fileId, data.payloadKey)
-                            ],
-                            isDownloading = "${data.messageId}_${data.payloadKey}" in uiState.downloadingFiles,
-                            onDownload = { onUiAction(DownloadMedia(data.messageId, data.payloadKey)) },
-                            onDismiss = { onUiAction(CloseFullScreenOverlay) },
-                        )
+                    is FullScreenOverlay.MediaViewer -> {
+                        if (hoistMediaViewer) {
+                            Spacer(modifier = Modifier.fillMaxSize())
+                        } else {
+                            ChatMediaViewer(
+                                data = data,
+                                uiState = uiState,
+                                onUiAction = onUiAction,
+                                animatedVisibilityScope = this@AnimatedContent,
+                                sharedTransitionScope = this@SharedTransitionLayout,
+                            )
+                        }
                     }
 
                     is FullScreenOverlay.AttachmentData -> {

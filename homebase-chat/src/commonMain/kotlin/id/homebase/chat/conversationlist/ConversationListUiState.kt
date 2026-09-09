@@ -387,6 +387,16 @@ sealed interface FullScreenOverlay {
 internal fun MessageListUiState.closeMediaViewer(): MessageListUiState =
     if (fullScreenOverlay is FullScreenOverlay.MediaViewer) copy(fullScreenOverlay = null) else this
 
+/**
+ * A viewer rendered inside the messages pane only covers that pane, so on a two-pane layout it
+ * has to be lifted above the scaffold to own the window. On a single-pane layout the pane already
+ * is the window, and staying there keeps the thumbnail→fullscreen shared-element transition.
+ */
+internal fun MessageListUiState.hoistedMediaViewer(
+    isExpandedLayout: Boolean,
+): FullScreenOverlay.MediaViewer? =
+    if (isExpandedLayout) fullScreenOverlay as? FullScreenOverlay.MediaViewer else null
+
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     /**
      * @param metadata EXIF / image-file metadata, populated asynchronously after
