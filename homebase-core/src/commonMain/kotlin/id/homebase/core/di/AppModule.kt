@@ -2,7 +2,6 @@
 
 package id.homebase.core.di
 
-import id.homebase.core.ui.screens.email.clients.EmailClientPickerViewModel
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.core.ui.screens.email.EmailService
@@ -94,6 +93,10 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
+import id.homebase.core.audio.DefaultVoiceNotePlayback
+import id.homebase.core.audio.ProximityAudioRouter
+import id.homebase.core.audio.VoiceNotePlayback
+import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
@@ -243,6 +246,11 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+
+    single<ProximityAudioRouter> { getProximityAudioRouter() }
+    single<VoiceNotePlayback> {
+        DefaultVoiceNotePlayback(player = get(), proximityRouter = get(), scope = get())
+    }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
@@ -1264,7 +1272,6 @@ val appModule = module {
     singleOf(::EmailService)
     viewModelOf(::EmailSetupViewModel)
     viewModelOf(::EmailSecretsViewModel)
-    viewModelOf(::EmailClientPickerViewModel)
     viewModelOf(::EmailSettingsViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(

@@ -31,10 +31,6 @@ class EmailPreferences(
     private val _biometricsEnabled = MutableStateFlow(readBoolean(BIOMETRICS_KEY, default = true))
     val biometricsEnabled: StateFlow<Boolean> = _biometricsEnabled.asStateFlow()
 
-    /** The mail client the user picked, so their setup steps stay one tap away. */
-    private val _selectedMailClientId = MutableStateFlow(readString(SELECTED_CLIENT_KEY))
-    val selectedMailClientId: StateFlow<String?> = _selectedMailClientId.asStateFlow()
-
     // In-memory biometric session tracking — not persisted, resets on app restart.
     private var lastAuthTimeMs: Long = 0L
     private var lastBackgroundTimeMs: Long = 0L
@@ -50,7 +46,6 @@ class EmailPreferences(
     fun reset() {
         _iconVisible.value = readBoolean(ICON_VISIBLE_KEY, default = true)
         _biometricsEnabled.value = readBoolean(BIOMETRICS_KEY, default = true)
-        _selectedMailClientId.value = readString(SELECTED_CLIENT_KEY)
         lastAuthTimeMs = 0L
         lastBackgroundTimeMs = 0L
         lastActionTimeMs = 0L
@@ -97,12 +92,6 @@ class EmailPreferences(
         _biometricsEnabled.value = value
     }
 
-    suspend fun setSelectedMailClientId(value: String?) {
-        if (_selectedMailClientId.value == value) return
-        keyValue.upsertValue(SELECTED_CLIENT_KEY, value?.encodeToByteArray() ?: ByteArray(0))
-        _selectedMailClientId.value = value
-    }
-
     private fun readBoolean(key: Uuid, default: Boolean): Boolean {
         // Bootstrap-only sync read — seeds the StateFlow at construction. See
         // KeyValueWrapper.selectByKeyBootstrapSync (commonMain has no runBlocking on wasmJs).
@@ -112,22 +101,15 @@ class EmailPreferences(
         return if (bytes.isEmpty()) default else bytes[0].toInt() != 0
     }
 
-    private fun readString(key: Uuid): String? {
-        val bytes: ByteArray = runCatching {
-            keyValue.selectByKeyBootstrapSync(key) { _, data -> data }
-        }.getOrNull() ?: return null
-        return if (bytes.isEmpty()) null else bytes.decodeToString()
-    }
-
     private fun encode(value: Boolean): ByteArray = byteArrayOf(if (value) 1 else 0)
 
     companion object {
         // Namespace 0a07xx. 0a01 Vault, 0a02 Moments, 0a03 Location, 0a04 Contact Book,
         // 0a05 ServerIpStore, 0a06 EventReminder. 0a0701 is the retired ACTIVATED slot —
-        // activation is the drive's mount state — so it stays unused.
+        // activation is the drive's mount state — and 0a0704 the retired mail-client choice —
+        // Thunderbird is the only client we support — so both stay unused.
         val ICON_VISIBLE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0702")
         val BIOMETRICS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0703")
-        val SELECTED_CLIENT_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0704")
 
         private const val AUTH_SESSION_DURATION_MS = 5 * 60 * 1000L  // 5 minutes
         private const val BACKGROUND_THRESHOLD_MS = 30 * 1000L       // 30 seconds

@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.Card
@@ -31,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.FilledTonalButton
 import id.homebase.api.client.mail.MailAppStatus
 import id.homebase.api.client.mail.MailboxStatusResult
-import id.homebase.core.email.MailClientDescriptor
+import id.homebase.core.email.Thunderbird
 import id.homebase.core.email.canLaunchMailClient
 import id.homebase.resources.MR
 import id.homebase.resources.email_health_attention
@@ -43,8 +44,8 @@ import id.homebase.resources.email_health_ok
 import id.homebase.resources.email_health_unavailable
 import id.homebase.resources.email_home_address_label
 import id.homebase.resources.email_home_secrets
-import id.homebase.resources.email_client_none
-import id.homebase.resources.email_home_client
+import id.homebase.resources.email_home_thunderbird
+import id.homebase.resources.email_home_thunderbird_detail
 import id.homebase.resources.email_home_secrets_detail
 import id.homebase.resources.email_home_status_ok
 import id.homebase.resources.email_mailbox_junk
@@ -66,9 +67,8 @@ import org.jetbrains.compose.resources.stringResource
 fun EmailHomeContent(
     status: MailAppStatus?,
     mailbox: MailboxStatusResult?,
-    selectedClient: MailClientDescriptor?,
     onOpenSecrets: () -> Unit,
-    onOpenClientPicker: () -> Unit,
+    onOpenThunderbirdSetup: () -> Unit,
     onRefresh: () -> Unit,
     onOpenMailClient: () -> Unit,
     isRefreshing: Boolean,
@@ -173,10 +173,15 @@ fun EmailHomeContent(
                         )
                     }
 
-                    if (selectedClient != null && canLaunchMailClient(selectedClient)) {
+                    if (canLaunchMailClient(Thunderbird.client)) {
                         Spacer(modifier = Modifier.height(8.dp))
                         FilledTonalButton(onClick = onOpenMailClient) {
-                            Text(stringResource(MR.string.email_mailbox_open_client, selectedClient.displayName))
+                            Text(
+                                stringResource(
+                                    MR.string.email_mailbox_open_client,
+                                    Thunderbird.client.displayName,
+                                )
+                            )
                         }
                     }
                 }
@@ -266,23 +271,23 @@ fun EmailHomeContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onOpenClientPicker)
+                .clickable(onClick = onOpenThunderbirdSetup)
                 .padding(vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = Icons.Outlined.MailOutline,
+                imageVector = Icons.Outlined.Lock,
                 contentDescription = null,
                 modifier = Modifier.size(24.dp),
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(MR.string.email_home_client),
+                    text = stringResource(MR.string.email_home_thunderbird),
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    text = selectedClient?.displayName ?: stringResource(MR.string.email_client_none),
+                    text = stringResource(MR.string.email_home_thunderbird_detail),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

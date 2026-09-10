@@ -38,6 +38,13 @@ data class RichNotificationData(
     val showsRealContent: Boolean = false,
 )
 
+/**
+ * Whether a notification may offer the direct-reply action. Replying blind to a redacted or
+ * placeholder push has nothing to reply to, so reply rides on the level that shows real text.
+ */
+val RichNotificationData.allowsReplyAction: Boolean
+    get() = showsRealContent && hasContent
+
 /** Extension to generate a stable notification ID from the conversation ID or a random one. */
 internal val PushNotificationPayloadOptions.conversationNotificationId: Int
     get() = typeId.hashCode().let { if (it == 0) kotlin.random.Random.nextInt() else it }

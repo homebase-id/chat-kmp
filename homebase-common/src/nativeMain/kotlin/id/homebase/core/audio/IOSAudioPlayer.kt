@@ -17,9 +17,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioPlayer
 import platform.AVFAudio.AVAudioPlayerDelegateProtocol
-import platform.AVFAudio.AVAudioSession
-import platform.AVFAudio.AVAudioSessionCategoryPlayback
-import platform.AVFAudio.setActive
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
@@ -31,25 +28,11 @@ class IOSAudioPlayer : AudioPlayer {
 
     private var positionJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var speed = 1f
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override fun play(filePath: String) {
-        // Configure audio session
-        val audioSession = AVAudioSession.sharedInstance()
-        memScoped {
-            val sessionError = alloc<ObjCObjectVar<NSError?>>()
-            audioSession.setCategory(AVAudioSessionCategoryPlayback, sessionError.ptr)
-            sessionError.value?.let { err ->
-                Logger.e { "Failed to set audio session category: ${err.localizedDescription}" }
-                return
-            }
-
-            audioSession.setActive(true, sessionError.ptr)
-            sessionError.value?.let { err ->
-                Logger.e { "Failed to activate audio session: ${err.localizedDescription}" }
-                return
-            }
-        }
+        if (!AudioSession.configureForPlayback()) return
 
         // Create and start player — AVAudioPlayer's ObjC init returns nil for
         // unplayable files, and K/N's interop bridge throws NPE for nil failable
@@ -82,18 +65,28 @@ class IOSAudioPlayer : AudioPlayer {
         }
 
         newPlayer.delegate = delegate
+        newPlayer.enableRate = true
         newPlayer.prepareToPlay()
         newPlayer.play()
+        newPlayer.rate = speed
         player = newPlayer
         startPositionPolling()
     }
 
-    override fun jump(seconds: Int) {
-        player?.currentTime = seconds.toDouble()
+    override fun jumpTo(positionMs: Long) {
+        player?.currentTime = positionMs / 1000.0
     }
 
     override fun resume() {
         player?.play()
+        player?.rate = speed
+    }
+
+    // AVAudioPlayer resets rate to 1 on every play(), so it is reapplied there too.
+    override fun setSpeed(speed: Float) {
+        this.speed = speed.coerceToPlaybackSpeed()
+        val current = player ?: return
+        if (current.playing) current.rate = this.speed
     }
 
     override fun pause() {
@@ -118,12 +111,16 @@ class IOSAudioPlayer : AudioPlayer {
     private fun startPositionPolling() {
         positionJob = scope.launch {
             while (isActive) {
-                val position = player?.currentTime?.toInt() ?: 0
-                val duration = player?.duration?.toInt() ?: 0
+                val position = ((player?.currentTime ?: 0.0) * 1000).toLong()
+                val duration = ((player?.duration ?: 0.0) * 1000).toLong()
                 delegate.observer?.onProgressUpdate(position, duration)
-                delay(500)
+                delay(PROGRESS_INTERVAL_MS)
             }
         }
+    }
+
+    private companion object {
+        const val PROGRESS_INTERVAL_MS = 80L
     }
 
     private class AudioPlayerDelegate : NSObject(), AVAudioPlayerDelegateProtocol {

@@ -113,6 +113,25 @@ import id.homebase.resources.search
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
+@Composable
+internal fun Modifier.paneTrailingEdge(): Modifier {
+    val twoPaneWindow = isExpandedLayout()
+    val paneEdgeColor = MaterialTheme.colorScheme.outlineVariant
+    return drawWithContent {
+        drawContent()
+        if (!twoPaneWindow) return@drawWithContent
+        val stroke = 1.dp.toPx()
+        val x = if (layoutDirection == LayoutDirection.Rtl) stroke / 2f
+        else size.width - stroke / 2f
+        drawLine(
+            color = paneEdgeColor,
+            start = Offset(x, 0f),
+            end = Offset(x, size.height),
+            strokeWidth = stroke,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ConversationListPane(
@@ -131,7 +150,6 @@ fun ConversationListPane(
     val searchTyping by remember(searchTextState) { derivedStateOf { searchTextState.text.isNotEmpty() } }
     val searchActive = uiState.isSearchActive || (persistentSearch && searchTyping)
     val paneContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
-    val paneEdgeColor = MaterialTheme.colorScheme.outlineVariant
     val topBarState = rememberTopAppBarState()
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState)
     val listState = rememberLazyListState()
@@ -185,19 +203,7 @@ fun ConversationListPane(
         Scaffold(
             modifier = Modifier
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .drawWithContent {
-                    drawContent()
-                    if (!twoPaneWindow) return@drawWithContent
-                    val stroke = 1.dp.toPx()
-                    val x = if (layoutDirection == LayoutDirection.Rtl) stroke / 2f
-                    else size.width - stroke / 2f
-                    drawLine(
-                        color = paneEdgeColor,
-                        start = Offset(x, 0f),
-                        end = Offset(x, size.height),
-                        strokeWidth = stroke,
-                    )
-                },
+                .paneTrailingEdge(),
             topBar = {
                 if (uiState.showArchived) {
                     TopAppBar(

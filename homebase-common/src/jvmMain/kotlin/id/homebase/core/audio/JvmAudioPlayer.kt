@@ -19,12 +19,22 @@ open class JvmAudioPlayer : AudioPlayer {
     private var currentFilePath: String? = null
 
     @Volatile
-    internal var totalDurationSeconds: Int = 0
+    internal var totalDurationMs: Long = 0
         private set
 
     @Volatile
-    internal var seekOffsetSeconds: Int = 0
+    internal var seekOffsetMs: Long = 0
         private set
+
+    @Volatile
+    internal var speed: Float = 1f
+        private set
+
+    @Volatile
+    private var lastReportedMs: Long = 0
+
+    @Volatile
+    private var backwardsCount = 0
 
     @Volatile
     private var isPaused = false
@@ -35,11 +45,11 @@ open class JvmAudioPlayer : AudioPlayer {
     override fun play(filePath: String) {
         stopPlayback()
         currentFilePath = filePath
-        seekOffsetSeconds = 0
+        seekOffsetMs = 0
         isStopped = false
         isPaused = false
-        totalDurationSeconds = probeDurationSeconds(filePath)
-        startPlayback(filePath, seekSeconds = 0)
+        totalDurationMs = probeDurationMs(filePath)
+        startPlayback(filePath, seekMs = 0)
     }
 
     override fun pause() {
@@ -52,20 +62,35 @@ open class JvmAudioPlayer : AudioPlayer {
         isPaused = false
     }
 
-    override fun jump(seconds: Int) {
+    override fun jumpTo(positionMs: Long) {
         val path = currentFilePath ?: return
-        val clamped = seconds.coerceIn(0, totalDurationSeconds)
+        val clamped = positionMs.coerceIn(0, totalDurationMs)
         stopPlayback()
-        seekOffsetSeconds = clamped
+        seekOffsetMs = clamped
         isStopped = false
         isPaused = false
-        startPlayback(path, seekSeconds = clamped)
+        startPlayback(path, seekMs = clamped)
     }
 
     override fun stop() {
         isStopped = true
         stopPlayback()
-        seekOffsetSeconds = 0
+        seekOffsetMs = 0
+    }
+
+    // ffmpeg resamples the whole stream, so a speed change has to restart the decoder from
+    // wherever the line had reached.
+    override fun setSpeed(speed: Float) {
+        val clamped = speed.coerceToPlaybackSpeed()
+        if (clamped == this.speed) return
+        val path = currentFilePath
+        val resumeAt = lastReportedMs
+        this.speed = clamped
+        if (path == null || isStopped) return
+        stopPlayback()
+        seekOffsetMs = resumeAt.coerceIn(0, totalDurationMs)
+        isStopped = false
+        startPlayback(path, seekMs = seekOffsetMs)
     }
 
     override fun release() {
@@ -78,13 +103,22 @@ open class JvmAudioPlayer : AudioPlayer {
         this.observer = observer
     }
 
-    internal fun buildFfmpegCommand(filePath: String, seekSeconds: Int): List<String> = buildList {
-        add(FFmpegBinaryManager.ffmpegPath())
+    internal fun buildFfmpegCommand(
+        filePath: String,
+        seekMs: Long,
+        speed: Float = 1f,
+    ): List<String> = buildList {
+        add(ffmpegExecutable())
         add("-v"); add("error")
-        if (seekSeconds > 0) {
-            add("-ss"); add(seekSeconds.toString())
+        if (seekMs > 0) {
+            add("-ss"); add((seekMs / 1000.0).toString())
         }
         add("-i"); add(filePath)
+        // A single atempo stage covers the clamped 0.5-2.0 range; beyond it ffmpeg needs a chain.
+        val tempo = speed.coerceToPlaybackSpeed()
+        if (tempo != 1f) {
+            add("-filter:a"); add("atempo=$tempo")
+        }
         add("-f"); add("s16le")
         add("-acodec"); add("pcm_s16le")
         add("-ar"); add(SAMPLE_RATE.toString())
@@ -92,12 +126,14 @@ open class JvmAudioPlayer : AudioPlayer {
         add("pipe:1")
     }
 
-    protected open fun startDecoder(filePath: String, seekSeconds: Int): InputStream? {
+    protected open fun ffmpegExecutable(): String = FFmpegBinaryManager.ffmpegPath()
+
+    protected open fun startDecoder(filePath: String, seekMs: Long): InputStream? {
         if (!FFmpegBinaryManager.isAvailable()) {
             Logger.e(tag = TAG) { "FFmpeg binaries not available — cannot decode audio" }
             return null
         }
-        val command = buildFfmpegCommand(filePath, seekSeconds)
+        val command = buildFfmpegCommand(filePath, seekMs, speed)
         process = ProcessBuilder(command)
             .redirectError(ProcessBuilder.Redirect.PIPE)
             .start()
@@ -112,13 +148,15 @@ open class JvmAudioPlayer : AudioPlayer {
         return line
     }
 
-    private fun startPlayback(filePath: String, seekSeconds: Int) {
+    private fun startPlayback(filePath: String, seekMs: Long) {
         val pcmFormat = AudioFormat(
             SAMPLE_RATE.toFloat(), SAMPLE_SIZE_BITS, CHANNELS, true, false
         )
+        lastReportedMs = seekMs
+        backwardsCount = 0
 
         try {
-            val input = startDecoder(filePath, seekSeconds) ?: return
+            val input = startDecoder(filePath, seekMs) ?: return
 
             val line = openAudioLine(pcmFormat)
             sourceLine = line
@@ -152,12 +190,12 @@ open class JvmAudioPlayer : AudioPlayer {
                 try {
                     while (!isStopped && playbackThread?.isAlive == true) {
                         if (!isPaused) {
-                            val linePositionSeconds =
-                                (line.microsecondPosition / 1_000_000).toInt()
-                            val currentSeconds = seekOffsetSeconds + linePositionSeconds
+                            // The line advances in output time, so atempo-stretched media moves
+                            // `speed` times faster than the bytes it has played.
+                            val playedMs = (line.microsecondPosition / 1000.0 * speed).toLong()
                             observer?.onProgressUpdate(
-                                currentSeconds.coerceAtMost(totalDurationSeconds),
-                                totalDurationSeconds
+                                monotonicPositionMs(seekOffsetMs + playedMs),
+                                totalDurationMs
                             )
                         }
                         Thread.sleep(PROGRESS_INTERVAL_MS)
@@ -204,7 +242,25 @@ open class JvmAudioPlayer : AudioPlayer {
         }
     }
 
-    protected open fun probeDurationSeconds(filePath: String): Int {
+    // `line.microsecondPosition` restarts at zero across a pause or a seek, so a single
+    // backwards sample is jitter; only a sustained run of them is a real rewind.
+    internal fun monotonicPositionMs(rawMs: Long): Long {
+        val capped = if (totalDurationMs > 0) rawMs.coerceAtMost(totalDurationMs) else rawMs
+        if (capped >= lastReportedMs) {
+            backwardsCount = 0
+            lastReportedMs = capped
+            return capped
+        }
+        backwardsCount++
+        if (backwardsCount > BACKWARDS_TOLERANCE) {
+            backwardsCount = 0
+            lastReportedMs = capped
+            return capped
+        }
+        return lastReportedMs
+    }
+
+    protected open fun probeDurationMs(filePath: String): Long {
         if (!FFmpegBinaryManager.isAvailable()) {
             Logger.w(tag = TAG) { "FFmpeg not available, falling back to file-size estimate" }
             return estimateDurationFromFileSize(filePath)
@@ -224,7 +280,7 @@ open class JvmAudioPlayer : AudioPlayer {
                 proc.destroy()
                 Logger.w(tag = TAG) { "ffprobe timed out" }
             }
-            output.toDoubleOrNull()?.toInt() ?: 0
+            output.toDoubleOrNull()?.let { (it * 1000).toLong() } ?: 0
         } catch (e: Exception) {
             Logger.e(e, tag = TAG) { "ffprobe failed" }
             0
@@ -237,12 +293,13 @@ open class JvmAudioPlayer : AudioPlayer {
         internal const val SAMPLE_SIZE_BITS = 16
         internal const val CHANNELS = 2
         internal const val BUFFER_SIZE = 8192
-        internal const val PROGRESS_INTERVAL_MS = 500L
+        internal const val PROGRESS_INTERVAL_MS = 80L
+        internal const val BACKWARDS_TOLERANCE = 3
 
-        internal fun estimateDurationFromFileSize(filePath: String): Int {
+        internal fun estimateDurationFromFileSize(filePath: String): Long {
             val sizeBytes = File(filePath).length()
             val bytesPerSecond = SAMPLE_RATE * CHANNELS * (SAMPLE_SIZE_BITS / 8)
-            return (sizeBytes / bytesPerSecond).toInt().coerceAtLeast(1)
+            return (sizeBytes * 1000 / bytesPerSecond).coerceAtLeast(1)
         }
     }
 }

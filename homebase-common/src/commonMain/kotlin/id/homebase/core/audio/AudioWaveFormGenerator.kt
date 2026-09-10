@@ -29,7 +29,7 @@ fun DrawScope.drawWaveform(amplitudes: List<Float>) {
     val availableHeight = size.height - (verticalPadding * 2)
 
     amplitudes.forEachIndexed { index, amplitude ->
-        val x = index * barWidth
+        val x = (index + 0.5f) * barWidth
 
         // Apply minimum height constraint
         val adjustedAmplitude = amplitude.coerceAtLeast(AudioWaveFormGenerator.MIN_BAR_HEIGHT_PERCENT)

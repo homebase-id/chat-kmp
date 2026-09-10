@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -39,6 +40,7 @@ import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.ImageSize
 import id.homebase.core.ui.theme.Dimens
+import id.homebase.core.widget.VoiceNoteSender
 import id.homebase.resources.MR
 import id.homebase.resources.cd_upload_complete
 import id.homebase.resources.upload_compressing
@@ -122,6 +124,7 @@ fun MediaMessage(
      *  to Signal's 240dp width — the caption can't collapse to char-per-line and the image can't
      *  leave a gap. No effect on stickers, link-preview cards, or galleries. */
     hasCaption: Boolean = false,
+    audioSender: VoiceNoteSender? = null,
 ) {
     if (payloads.isEmpty()) return
 
@@ -179,11 +182,25 @@ fun MediaMessage(
                 // content — no media height (neither the maxHeight fill nor the minHeight floor),
                 // or the card floats atop a grey void (#1103).
                 val isDocument = remember(payloads) { payloads[0].rendersAsDocumentCard() }
+                // Capped here, not inside AudioPlayerWidget, so the bubble background is capped too.
+                val isAudio = remember(payloads) {
+                    payloads[0].contentType?.startsWith("audio/") == true
+                }
                 val sizedModifier = when {
                     isDocument ->
                         widthModifier
                     fillsBubble ->
                         widthModifier.fillMaxWidth().height(Dimens.MediaBubble.maxHeight)
+                    isAudio ->
+                        widthModifier
+                            .widthIn(
+                                min = Dimens.MediaBubble.audioMinWidth,
+                                max = Dimens.MediaBubble.audioMaxWidth,
+                            )
+                            .heightIn(
+                                min = Dimens.MediaBubble.minHeight,
+                                max = Dimens.MediaBubble.maxHeight,
+                            )
                     narrowCaptioned ->
                         widthModifier.size(
                             width = Dimens.MediaBubble.minWidthWithContent,
@@ -223,6 +240,7 @@ fun MediaMessage(
                     isUploading = uploadStatus != null,
                     liveControls = liveControls,
                     locationHeaderDescriptor = locationHeaderDescriptor,
+                    audioSender = audioSender,
                 )
             }
 
