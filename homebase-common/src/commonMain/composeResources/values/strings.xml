@@ -1213,7 +1213,7 @@
     <string name="email_tb_steps_title">Then, in Thunderbird</string>
     <string name="email_tb_step_number">%1$d.</string>
     <string name="email_tb_step_android_1">Save your key to a file — somewhere you can reach it from OpenKeychain — and keep your app password on the clipboard until Thunderbird asks for it.</string>
-    <string name="email_tb_step_android_2">Open OpenKeychain, import a key from a file, and pick the key file you just saved.</string>
+    <string name="email_tb_step_android_2">In OpenKeychain, choose Import key from file and pick the key file you just saved. Its Read from clipboard option will not work — it accepts public keys only.</string>
     <string name="email_tb_step_android_3">Open Thunderbird and add an account with your Homebase address and the app password. If it does not find the settings, choose manual setup and enter the server, port and security shown below.</string>
     <string name="email_tb_step_android_4">In Thunderbird, go to Settings, Accounts, your address, End-to-end encryption. Turn on Enable OpenPGP support, tap Configure end-to-end key, choose I already have a key, and pick your key from OpenKeychain.</string>
     <string name="email_tb_step_android_5">Delete the key file now that OpenKeychain holds it.</string>
