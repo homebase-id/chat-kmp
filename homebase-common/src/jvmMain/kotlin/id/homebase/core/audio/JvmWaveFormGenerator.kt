@@ -7,6 +7,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import co.touchlab.kermit.Logger
 import io.github.vinceglb.filekit.PlatformFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Surface
 import java.io.File
@@ -16,7 +18,13 @@ import javax.sound.sampled.AudioSystem
 import kotlin.math.abs
 
 class JvmWaveFormGenerator: AudioWaveFormGenerator {
-    override fun generateWaveForm(file: PlatformFile): AudioFileInfo {
+    override suspend fun generateWaveForm(file: PlatformFile): AudioFileInfo =
+        withContext(Dispatchers.Default) { generateWaveFormBlocking(file) }
+
+    override suspend fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
+        withContext(Dispatchers.Default) { saveWaveformToPngBlocking(amplitudes, width, height) }
+
+    private fun generateWaveFormBlocking(file: PlatformFile): AudioFileInfo {
         val wave = LongArray(AudioWaveFormGenerator.BAR_COUNT)
         val waveSamples = IntArray(AudioWaveFormGenerator.BAR_COUNT)
 
@@ -155,7 +163,7 @@ class JvmWaveFormGenerator: AudioWaveFormGenerator {
         return AudioFileInfo(durationUs, bytes)
     }
 
-    override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray {
+    private fun saveWaveformToPngBlocking(amplitudes: FloatArray, width: Int, height: Int): ByteArray {
         // 1. Create a Skia Surface
         val surface = Surface.makeRasterN32Premul(width, height)
         val skiaCanvas = surface.canvas

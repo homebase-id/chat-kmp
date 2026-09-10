@@ -471,5 +471,4 @@ sealed class AttachmentPendingFile(val attachmentId: Uuid) {
 data class RecordingData(
     val file: PlatformFile,
     val conversationId: Uuid,
-    val isProcessing: Boolean = false,
 )

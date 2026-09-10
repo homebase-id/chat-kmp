@@ -46,10 +46,10 @@ internal class WebAudioRecorder : AudioRecorder {
 }
 
 internal class WebAudioWaveFormGenerator : AudioWaveFormGenerator {
-    override fun generateWaveForm(file: PlatformFile): AudioFileInfo =
+    override suspend fun generateWaveForm(file: PlatformFile): AudioFileInfo =
         AudioFileInfo(durationUs = 0L, waveFormBytes = ByteArray(0))
 
-    override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
+    override suspend fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
         ByteArray(0)
 }
 

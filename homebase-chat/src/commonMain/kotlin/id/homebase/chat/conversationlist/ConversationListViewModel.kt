@@ -278,6 +278,7 @@ class ConversationListViewModel(
         sendEvent = ::sendEvent,
         dispatch = ::onAction,
         ensureThumbnail = { f -> attachmentHandler.ensureThumbnail(f) },
+        ensureWaveform = { f -> attachmentHandler.ensureWaveform(f) },
     )
 
     private val attachmentHandler: AttachmentHandler = AttachmentHandler(

@@ -7,8 +7,10 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import io.github.vinceglb.filekit.PlatformFile
 
 interface AudioWaveFormGenerator {
-    fun generateWaveForm(file: PlatformFile): AudioFileInfo
-    fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray
+    // Decoding and rasterising are blocking work; implementations must keep them off the
+    // caller's dispatcher, which is the UI thread for every current call site.
+    suspend fun generateWaveForm(file: PlatformFile): AudioFileInfo
+    suspend fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray
 
     companion object {
         const val BAR_COUNT = 46
