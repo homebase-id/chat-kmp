@@ -258,8 +258,15 @@ fun EmailThunderbirdSetupUi(
                                         StepAction(stringResource(MR.string.email_secrets_save_private_key)) {
                                             confirmSaveKey = key
                                         }
-                                        StepAction(stringResource(MR.string.email_tb_copy_key)) {
-                                            confirmCopyKey = key
+                                        // Not on Android: OpenKeychain's clipboard import runs the
+                                        // text through a PUBLIC-key-only matcher, so a pasted
+                                        // secret key is rejected as unreadable
+                                        // (open-keychain#2306). Offering the button there would
+                                        // send people down a path that cannot work.
+                                        if (platform != MailSetupPlatform.ANDROID) {
+                                            StepAction(stringResource(MR.string.email_tb_copy_key)) {
+                                                confirmCopyKey = key
+                                            }
                                         }
                                     }
                                 }
