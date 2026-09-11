@@ -111,6 +111,7 @@ fun ContactBookScreen(
                 is ContactBookUiEvent.OpenDetail -> { /* navigation handled in AppNavHost */ }
                 ContactBookUiEvent.OpenAddContact -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.OpenCircleMemberAdd -> { /* navigation handled in AppNavHost */ }
+                ContactBookUiEvent.OpenEnrollmentCandidates -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
@@ -290,6 +291,13 @@ fun ContactBookScreen(
                                 if (tab == ContactTab.NEW && waiting > 0) {
                                     Badge { Text(waiting.toString()) }
                                 }
+                                // A dot, not a count: the number of people who could join a
+                                // circle is not a backlog to work through, only a reason to look.
+                                if (tab == ContactTab.CIRCLES &&
+                                    uiState.enrollmentCandidateCount > 0
+                                ) {
+                                    Badge()
+                                }
                             }
                         },
                     )
@@ -313,6 +321,7 @@ fun ContactBookScreen(
                     loading = uiState.circlesLoading,
                     onAction = viewModel::onAction,
                     modifier = Modifier.weight(1f),
+                    candidateCount = uiState.enrollmentCandidateCount,
                 )
             }
         }

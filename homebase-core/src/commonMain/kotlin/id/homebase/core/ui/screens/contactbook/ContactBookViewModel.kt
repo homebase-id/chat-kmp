@@ -15,6 +15,7 @@ import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
@@ -87,6 +88,15 @@ class ContactBookViewModel(
     private val _circlesLoading = MutableStateFlow(false)
     private val _circleMembers = MutableStateFlow<CircleMembersUi?>(null)
 
+    /**
+     * How many contacts qualify for one of this app's circles and are not in it.
+     *
+     * Refreshed when the Circles tab is opened rather than polled: there is no notification for a
+     * new candidate, and a count that is a screen-open old is accurate enough to decide whether to
+     * say anything at all.
+     */
+    private val _enrollmentCandidateCount = MutableStateFlow(0)
+
     /** Owner avatar + connection/sync status for the header (mirrors the Moments header). */
     private data class HeaderBundle(
         val ownerSession: OwnerSession? = null,
@@ -103,6 +113,14 @@ class ContactBookViewModel(
         // skipped by the headless/foreground promotion race and leave the list spinning.
         // Idempotent once loaded.
         viewModelScope.launch { repo.ensureLoaded() }
+        // Counted on open, not only when the Circles tab is entered: the badge exists to say
+        // "there is something in there", which it cannot do if entering the tab is what finds out.
+        // Re-runs when the flag flips so switching it on does not need a restart.
+        viewModelScope.launch {
+            developerPreferences.connectionReviewEnabled.collect { enabled ->
+                if (enabled) refreshEnrollmentCandidates() else _enrollmentCandidateCount.value = 0
+            }
+        }
         // Idempotent — already started by the conversation list / app bootstrap; calling it here
         // makes the Requests pill self-sufficient if the Contact Book is the first screen shown.
         viewModelScope.launch { connectionRequestService.start() }
@@ -187,6 +205,7 @@ class ContactBookViewModel(
         val tab: ContactTab,
         val overlay: ContactBookOverlay?,
         val reviewEnabled: Boolean,
+        val enrollmentCandidates: Int,
     )
 
     private data class CirclesBundle(
@@ -216,14 +235,19 @@ class ContactBookViewModel(
         },
         // A source, not a .value read: toggling the dev flag has to re-emit the list, or the
         // Review buttons only appear after some unrelated change happens to wake the combine.
+        // The flag and the candidate count ride together as one source: combine takes five
+        // typed flows, and both belong to the same "what may this screen offer" question.
         combine(
             _searchQuery,
             _filter,
             _selectedTab,
             _overlay,
-            developerPreferences.connectionReviewEnabled,
-        ) { q, f, tab, o, review ->
-            UiBits(q, f, tab, o, review)
+            combine(
+                developerPreferences.connectionReviewEnabled,
+                _enrollmentCandidateCount,
+            ) { review, candidates -> review to candidates },
+        ) { q, f, tab, o, (review, candidates) ->
+            UiBits(q, f, tab, o, review, candidates)
         },
         combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
         _header,
@@ -335,6 +359,7 @@ class ContactBookViewModel(
             contactStates = contactStates,
             statesLoading = circlesData.loading,
             reviewEnabled = ui.reviewEnabled,
+            enrollmentCandidateCount = if (ui.reviewEnabled) ui.enrollmentCandidates else 0,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
             reviewCircleGroups = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
@@ -398,9 +423,10 @@ class ContactBookViewModel(
         when (action) {
             is ContactBookUiAction.TabSelected -> {
                 _selectedTab.value = action.tab
-                if (action.tab == ContactTab.CIRCLES &&
-                    _circles.value.isEmpty() && !_circlesLoading.value
-                ) loadCircles()
+                if (action.tab == ContactTab.CIRCLES) {
+                    if (_circles.value.isEmpty() && !_circlesLoading.value) loadCircles()
+                    refreshEnrollmentCandidates()
+                }
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
@@ -433,6 +459,8 @@ class ContactBookViewModel(
                 val odinId = action.entry.odinId ?: return
                 viewModelScope.launch { repo.sync(OdinId(odinId)) }
             }
+            ContactBookUiAction.EnrollmentCandidatesClicked ->
+                _events.tryEmit(ContactBookUiEvent.OpenEnrollmentCandidates)
             ContactBookUiAction.CloseOverlay -> _overlay.value = null
             is ContactBookUiAction.ReviewClicked -> openReview(action.entry)
             is ContactBookUiAction.ReviewSubmitted -> handleReview(action.entry, action.circleIds)
@@ -443,6 +471,24 @@ class ContactBookViewModel(
                 preferences.setOnboardingComplete(true)
                 _events.tryEmit(ContactBookUiEvent.CloseOnboarding)
             }
+        }
+    }
+
+    /**
+     * Count the backlog. Silent on failure — a missing count means the banner does not appear,
+     * which is the same as having nothing to offer and is not worth interrupting anyone over.
+     */
+    private fun refreshEnrollmentCandidates() {
+        if (!developerPreferences.connectionReviewEnabled.value) return
+        viewModelScope.launch {
+            val count = runCatching {
+                connectionService.getEnrollmentCandidates(ChatProtocol.ChatAppId.toString())
+                    .sumOf { it.candidates.size }
+            }.getOrElse { e ->
+                Logger.w(e, "ContactBookViewModel") { "getEnrollmentCandidates failed" }
+                0
+            }
+            _enrollmentCandidateCount.value = count
         }
     }
 

@@ -175,6 +175,7 @@ import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
+import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
@@ -1222,6 +1223,7 @@ val appModule = module {
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
+    viewModelOf(::EnrollmentCandidatesViewModel)
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::MediaSettingsViewModel)

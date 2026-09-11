@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +25,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
 import id.homebase.resources.MR
+import id.homebase.resources.enroll_banner
+import id.homebase.resources.enroll_banner_action
 import id.homebase.resources.contactbook_circle_new
 import id.homebase.resources.contactbook_circles_empty
 import org.jetbrains.compose.resources.stringResource
@@ -34,6 +37,8 @@ fun CirclesTabContent(
     loading: Boolean,
     onAction: (ContactBookUiAction) -> Unit,
     modifier: Modifier = Modifier,
+    /** Contacts who qualify for one of this app's circles and are not in it yet; 0 hides the row. */
+    candidateCount: Int = 0,
 ) {
     when {
         loading && circles.isEmpty() -> Box(
@@ -60,6 +65,33 @@ fun CirclesTabContent(
                 modifier = modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
+                // Only when there is something to offer: the server omits circles with no
+                // backlog, so a zero here means nothing to say rather than nothing loaded.
+                if (candidateCount > 0) {
+                    item(key = "enrollment-candidates") {
+                        ListItem(
+                            modifier = Modifier.clickable {
+                                onAction(ContactBookUiAction.EnrollmentCandidatesClicked)
+                            },
+                            leadingContent = {
+                                Icon(Icons.Outlined.PersonAdd, contentDescription = null)
+                            },
+                            headlineContent = {
+                                Text(stringResource(MR.string.enroll_banner, candidateCount))
+                            },
+                            supportingContent = {
+                                Text(stringResource(MR.string.enroll_banner_action))
+                            },
+                            trailingContent = {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                        )
+                    }
+                }
                 items(circles, key = { it.circle.id }) { circle ->
                     val description = circle.circle.description
                     val displayName = if (circle.circle.id == AUTO_CONNECTIONS_CIRCLE_ID) {

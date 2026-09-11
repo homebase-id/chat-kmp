@@ -173,6 +173,45 @@ class ConnectionNetworkProvider(
     suspend fun processEnrollments(): ProcessEnrollmentsResult =
         postAndDeserialize("/connections/enrollments/process", EmptyRequest())
 
+    /**
+     * Connections that qualify for one of [appId]'s circles but are not in it yet.
+     *
+     * An app may ask only about itself — the list is computed across every connection on the
+     * identity, so asking about another app would read more than the caller owns. Circles with
+     * nothing to offer are omitted, so an empty list means there is nothing to show.
+     *
+     * Requires the ReadConnections permission key.
+     */
+    suspend fun getEnrollmentCandidates(appId: String): List<CircleEnrollmentCandidates> {
+        val creds = requireCreds()
+
+        val response = encryptedGet(
+            url = apiUrl(creds.domain, "/connections/circles/enrollment-candidates"),
+            token = creds.accessToken,
+            secret = creds.secret,
+            queryString = "appId=$appId",
+        )
+
+        throwForFailure(response)
+        return deserialize(response.body)
+    }
+
+    /**
+     * Add several identities to one circle at once.
+     *
+     * Reports per identity rather than failing the batch. A circle granting Read yields
+     * **deposits**, not memberships: completing one escrows each drive's storage key for the
+     * member, which needs the connection's peer key, and an app cannot reach it. That is success —
+     * the grant is sealed and becomes real the next time that connection's key is in scope.
+     *
+     * An app may only enrol into a circle it owns; an owner circle is refused outright.
+     */
+    suspend fun addManyToCircle(circleId: String, odinIds: List<String>): EnrollmentResult =
+        postAndDeserialize(
+            "/connections/circles/add-many",
+            AddManyCircleMembershipRequest(circleId, odinIds),
+        )
+
     suspend fun getPendingCircleMembers(circleId: Uuid): List<PendingCircleMember> {
         val creds = requireCreds()
 

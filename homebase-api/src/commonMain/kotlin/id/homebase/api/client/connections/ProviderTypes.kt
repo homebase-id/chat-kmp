@@ -9,6 +9,9 @@ import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.encoding.Encoder
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
@@ -59,6 +62,81 @@ data class ReviewConnectionRequest(
     val odinId: OdinId,
     val circleIds: List<Uuid> = emptyList()
 )
+
+/**
+ * Connections that qualify for one of an app's circles but are not in it yet.
+ *
+ * The backlog exists because assigning a circle to an app does not reach back over contacts the
+ * owner already reviewed: a review is a moment, not a standing rule, and at that moment the circle
+ * either did not exist or was not the app's.
+ *
+ * A circle with nothing to offer is omitted, so an empty list means "nothing to do" — no counting.
+ */
+@Serializable
+data class CircleEnrollmentCandidates(
+    val circleId: String,
+    val circleName: String = "",
+    /** Why they qualify, so the UI can say "your reviewed contacts" rather than "some contacts". */
+    val grantOn: CircleGrantOn = CircleGrantOn.None,
+    val candidates: List<EnrollmentCandidate> = emptyList(),
+)
+
+/**
+ * One identity that could be added, and the fact that qualifies them.
+ *
+ * [reviewedAt] rides along because it is the basis of the offer — a list of bare names asks the
+ * owner to approve access on trust. Null on a Connect circle, where connecting rather than
+ * reviewing is what qualifies.
+ */
+@Serializable
+data class EnrollmentCandidate(
+    val odinId: OdinId,
+    val reviewedAt: Long? = null,
+)
+
+/** Body for `POST /connections/circles/add-many`. */
+@Serializable
+data class AddManyCircleMembershipRequest(
+    val circleId: String,
+    val odinIds: List<String> = emptyList(),
+)
+
+/**
+ * What a bulk enrolment did.
+ *
+ * Three outcomes rather than one count, because they mean different things: a grant is membership
+ * now, a deposit is membership once the connection's peer key is next in scope, and a skip is
+ * someone who stopped qualifying between the screen being drawn and the button being pressed.
+ */
+@Serializable
+data class EnrollmentResult(
+    val enrolled: Int = 0,
+    val deposited: Int = 0,
+    val skipped: Int = 0,
+    /** Named, because "which three were skipped" is the question an owner actually asks. */
+    val outcomes: List<EnrollmentOutcome> = emptyList(),
+)
+
+@Serializable
+data class EnrollmentOutcome(
+    val odinId: OdinId,
+    val kind: EnrollmentOutcomeKind = EnrollmentOutcomeKind.Skipped,
+)
+
+@Serializable(with = EnrollmentOutcomeKindSerializer::class)
+enum class EnrollmentOutcomeKind {
+    /** A real circle grant; they are a member now. */
+    @SerialName("enrolled")
+    Enrolled,
+
+    /** Sealed and recorded; in effect once the connection's peer key is next in scope. */
+    @SerialName("deposited")
+    Deposited,
+
+    /** Not eligible at the moment of the write. */
+    @SerialName("skipped")
+    Skipped,
+}
 
 @Serializable
 data class RevokeCircleMembershipRequest(
@@ -132,7 +210,7 @@ data class RedactedCircleDefinition(
  * already served, and it is what lets a client tell an app default circle from a user circle
  * without knowing any GUIDs.
  */
-@Serializable
+@Serializable(with = CircleGrantOnSerializer::class)
 enum class CircleGrantOn {
     /** Manual membership only. Every circle predating the enrollment model is this. */
     @SerialName("none")
@@ -298,6 +376,60 @@ data class RedactedAppCircleGrant(
  * "550e8400e29b41d4a716446655440000") — unlike a plain Guid, which is always hyphenated. The
  * standard [kotlin.uuid.Uuid] parser only accepts the hyphenated form and throws on this shape.
  */
+/**
+ * The circle endpoints serve this as a camelCase string; the enrolment endpoints serve the
+ * underlying integer. Accept either rather than betting on one and failing the whole response.
+ */
+object CircleGrantOnSerializer : KSerializer<CircleGrantOn> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("CircleGrantOn", PrimitiveKind.STRING)
+
+    private val byOrdinal = listOf(
+        CircleGrantOn.None,
+        CircleGrantOn.Connect,
+        CircleGrantOn.OwnFlowConnect,
+        CircleGrantOn.Review,
+    )
+
+    override fun serialize(encoder: Encoder, value: CircleGrantOn) {
+        encoder.encodeString(value.name.replaceFirstChar { it.lowercase() })
+    }
+
+    override fun deserialize(decoder: Decoder): CircleGrantOn {
+        // The element, not decodeString(): the serializer runs strict, so a bare number would
+        // throw before we ever saw it.
+        val raw = (decoder as? JsonDecoder)?.decodeJsonElement()?.jsonPrimitive?.contentOrNull
+            ?: return CircleGrantOn.None
+        raw.toIntOrNull()?.let { return byOrdinal.getOrNull(it) ?: CircleGrantOn.None }
+        return CircleGrantOn.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
+            ?: CircleGrantOn.None
+    }
+}
+
+/** Same either-shape tolerance as [CircleGrantOnSerializer]; the kinds are 1-based, not 0-based. */
+object EnrollmentOutcomeKindSerializer : KSerializer<EnrollmentOutcomeKind> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("EnrollmentOutcomeKind", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: EnrollmentOutcomeKind) {
+        encoder.encodeString(value.name.replaceFirstChar { it.lowercase() })
+    }
+
+    override fun deserialize(decoder: Decoder): EnrollmentOutcomeKind {
+        val raw = (decoder as? JsonDecoder)?.decodeJsonElement()?.jsonPrimitive?.contentOrNull
+            ?: return EnrollmentOutcomeKind.Skipped
+        raw.toIntOrNull()?.let {
+            return when (it) {
+                1 -> EnrollmentOutcomeKind.Enrolled
+                2 -> EnrollmentOutcomeKind.Deposited
+                else -> EnrollmentOutcomeKind.Skipped
+            }
+        }
+        return EnrollmentOutcomeKind.entries.firstOrNull { k -> k.name.equals(raw, ignoreCase = true) }
+            ?: EnrollmentOutcomeKind.Skipped
+    }
+}
+
 object GuidIdUuidSerializer : KSerializer<Uuid> {
     override val descriptor: SerialDescriptor =
         PrimitiveSerialDescriptor("GuidIdUuid", PrimitiveKind.STRING)

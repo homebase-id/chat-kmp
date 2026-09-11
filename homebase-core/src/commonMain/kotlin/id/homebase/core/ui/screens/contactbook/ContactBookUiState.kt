@@ -174,6 +174,8 @@ data class ContactBookUiState(
     val statesLoading: Boolean = false,
     /** Dark launch: the review's entry points are hidden until the dev flag is on. */
     val reviewEnabled: Boolean = false,
+    /** How many contacts qualify for one of this app's circles but are not in it. */
+    val enrollmentCandidateCount: Int = 0,
     /** Pending connection requests (incoming + outgoing), newest first. Rendered as a section at
      *  the top of the list (incoming only) rather than a separate pill. */
     val requests: List<PendingRequestEntry> = emptyList(),
@@ -205,6 +207,7 @@ sealed interface ContactBookUiAction {
     data object CircleMembersDismiss : ContactBookUiAction
     /** "Add member" tapped in the circle-members sheet — opens the picker for this circle. */
     data class CircleAddMemberClicked(val circleId: String, val circleName: String) : ContactBookUiAction
+    data object EnrollmentCandidatesClicked : ContactBookUiAction
     /** Revoke [member]'s membership (real or still-pending) in the circle [circleId]. */
     data class CircleRemoveMemberClicked(
         val circleId: String,
@@ -250,6 +253,9 @@ sealed interface ContactBookUiEvent {
     data object OpenAddContact : ContactBookUiEvent
     /** Open the generic circle-member picker for [circleId]/[circleName]. */
     data class OpenCircleMemberAdd(val circleId: String, val circleName: String) : ContactBookUiEvent
+
+    /** Open the enrollment-candidates screen from the Circles tab banner. */
+    data object OpenEnrollmentCandidates : ContactBookUiEvent
     data class Error(val error: ContactBookError) : ContactBookUiEvent
     /** User skipped onboarding — pop back out of the contacts tab. */
     data object CloseOnboarding : ContactBookUiEvent

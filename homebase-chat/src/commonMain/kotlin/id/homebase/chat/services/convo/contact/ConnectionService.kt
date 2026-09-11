@@ -4,7 +4,9 @@ import id.homebase.api.client.BlockingCircle
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.blockingCircles
+import id.homebase.api.client.connections.CircleEnrollmentCandidates
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.api.client.connections.EnrollmentResult
 import id.homebase.api.client.connections.PendingCircleMember
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
@@ -353,6 +355,22 @@ class ConnectionService(
     suspend fun addToCircle(circleId: Uuid, odinId: OdinId) {
         provider.addToCircle(circleId, odinId)
         refresh()
+    }
+
+    /**
+     * Connections that qualify for one of [appId]'s circles but are not in it yet.
+     *
+     * Not cached: a candidate stops being one the moment they are enrolled, and a stale list would
+     * offer people who are already members.
+     */
+    suspend fun getEnrollmentCandidates(appId: String): List<CircleEnrollmentCandidates> =
+        provider.getEnrollmentCandidates(appId)
+
+    /** Add several identities to [circleId] at once, refreshing so the new members land. */
+    suspend fun addManyToCircle(circleId: String, odinIds: List<String>): EnrollmentResult {
+        val result = provider.addManyToCircle(circleId, odinIds)
+        refresh()
+        return result
     }
 
     /** Revoke [odinId]'s membership in [circleId] — also drops any still-pending deposit. */
