@@ -48,7 +48,6 @@ import id.homebase.resources.enroll_outcome_deposited
 import id.homebase.resources.enroll_outcome_enrolled
 import id.homebase.resources.enroll_outcome_skipped
 import id.homebase.resources.enroll_read_warning
-import id.homebase.resources.enroll_reviewed_never
 import id.homebase.resources.enroll_reviewed_on
 import id.homebase.resources.enroll_select_all
 import id.homebase.resources.enroll_subtitle_multi
@@ -247,15 +246,19 @@ private fun CircleSection(
                 },
             ),
             headlineContent = { Text(candidate.displayName) },
-            supportingContent = {
-                Text(
-                    text = candidate.reviewedAt?.let {
+            // No line at all when there is no date. Null means the circle grants on Connect, so
+            // reviewing is not what qualifies them -- saying "not reviewed" would be a claim
+            // about the contact rather than about the circle, and would be wrong for anyone the
+            // owner has in fact reviewed. The card's own "why" line already covers it.
+            supportingContent = candidate.reviewedAt?.let { reviewed ->
+                {
+                    Text(
                         stringResource(
                             MR.string.enroll_reviewed_on,
-                            formatMomentDate(Instant.fromEpochMilliseconds(it)),
+                            formatMomentDate(Instant.fromEpochMilliseconds(reviewed)),
                         )
-                    } ?: stringResource(MR.string.enroll_reviewed_never),
-                )
+                    )
+                }
             },
             leadingContent = { Checkbox(checked = checked, onCheckedChange = null) },
         )

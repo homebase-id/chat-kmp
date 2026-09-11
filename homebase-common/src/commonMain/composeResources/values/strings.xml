@@ -1888,7 +1888,6 @@
     <string name="enroll_grants">Joining grants:</string>
     <string name="enroll_read_warning">This circle grants read access. Removing someone later stops further reads, but does not recall what they already read.</string>
     <string name="enroll_reviewed_on">Reviewed %1$s</string>
-    <string name="enroll_reviewed_never">Not reviewed</string>
     <string name="enroll_select_all">Select all</string>
     <string name="enroll_clear">Clear</string>
     <string name="enroll_confirm">Add %1$d to %2$s</string>
