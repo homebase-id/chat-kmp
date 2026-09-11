@@ -1,13 +1,17 @@
 package id.homebase.core.ui.screens.email.thunderbird
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -24,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.ui.screens.email.components.MailSettingsCard
@@ -62,9 +67,23 @@ import id.homebase.resources.email_tb_sb_savekey_title
 import id.homebase.resources.email_tb_sb_send_body
 import id.homebase.resources.email_tb_sb_send_title
 import id.homebase.resources.menu_back
+import id.homebase.resources.tb_sb_account
+import id.homebase.resources.tb_sb_address
+import id.homebase.resources.tb_sb_allow
+import id.homebase.resources.tb_sb_config
+import id.homebase.resources.tb_sb_delete
+import id.homebase.resources.tb_sb_encrypted
+import id.homebase.resources.tb_sb_folders
+import id.homebase.resources.tb_sb_import
+import id.homebase.resources.tb_sb_install
+import id.homebase.resources.tb_sb_okc
+import id.homebase.resources.tb_sb_savekey
+import id.homebase.resources.tb_sb_send
 import id.homebase.resources.next
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -78,6 +97,11 @@ import org.jetbrains.compose.resources.stringResource
  * Two pages exist purely to stop people concluding it is broken: mail arriving as *Encrypted*
  * before OpenKeychain is installed, and OpenKeychain showing the imported key in red as a secret
  * key with no name.
+ *
+ * Each page carries the screenshot of the screen it describes, taken on a real run-through. They
+ * are the point of the storyboard rather than decoration: someone who cannot find "End-to-end
+ * encryption" in Thunderbird's settings recognises the picture long before they parse the
+ * sentence. All twelve together are ~210 KB as 540px WebP.
  */
 @Composable
 internal fun EmailThunderbirdStoryboard(
@@ -113,6 +137,7 @@ internal fun EmailThunderbirdStoryboard(
             ) {
                 SetupCard(title = stringResource(page.title)) {
                     Body(stringResource(page.body))
+                    PageShot(image = page.image, label = stringResource(page.title))
                     PageExtras(extras = page.extras, actions = actions)
                 }
             }
@@ -141,6 +166,31 @@ internal fun EmailThunderbirdStoryboard(
             }
         }
     }
+}
+
+/**
+ * The screen this page is about. Bounded by height, not width: these are portrait phone captures,
+ * so a width-driven fit would make them taller than the page.
+ */
+@Composable
+private fun PageShot(image: DrawableResource, label: String) {
+    Spacer(modifier = Modifier.height(12.dp))
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Image(
+            painter = painterResource(image),
+            contentDescription = label,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .heightIn(max = 360.dp)
+                .clip(MaterialTheme.shapes.medium)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    shape = MaterialTheme.shapes.medium,
+                ),
+        )
+    }
+    Spacer(modifier = Modifier.height(4.dp))
 }
 
 @Composable
@@ -251,6 +301,7 @@ private enum class PageExtras {
 private data class StoryboardPage(
     val title: StringResource,
     val body: StringResource,
+    val image: DrawableResource,
     val extras: PageExtras,
 )
 
@@ -258,61 +309,73 @@ private val storyboardPages: List<StoryboardPage> = listOf(
     StoryboardPage(
         MR.string.email_tb_sb_install_title,
         MR.string.email_tb_sb_install_body,
+        MR.drawable.tb_sb_install,
         PageExtras.INSTALL_THUNDERBIRD,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_account_title,
         MR.string.email_tb_sb_account_body,
+        MR.drawable.tb_sb_account,
         PageExtras.NONE,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_address_title,
         MR.string.email_tb_sb_address_body,
+        MR.drawable.tb_sb_address,
         PageExtras.ADDRESS,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_config_title,
         MR.string.email_tb_sb_config_body,
+        MR.drawable.tb_sb_config,
         PageExtras.PASSWORD,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_folders_title,
         MR.string.email_tb_sb_folders_body,
+        MR.drawable.tb_sb_folders,
         PageExtras.NONE,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_encrypted_title,
         MR.string.email_tb_sb_encrypted_body,
+        MR.drawable.tb_sb_encrypted,
         PageExtras.NONE,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_okc_title,
         MR.string.email_tb_sb_okc_body,
+        MR.drawable.tb_sb_okc,
         PageExtras.INSTALL_OPENKEYCHAIN,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_savekey_title,
         MR.string.email_tb_sb_savekey_body,
+        MR.drawable.tb_sb_savekey,
         PageExtras.SAVE_KEY,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_import_title,
         MR.string.email_tb_sb_import_body,
+        MR.drawable.tb_sb_import,
         PageExtras.NONE,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_allow_title,
         MR.string.email_tb_sb_allow_body,
+        MR.drawable.tb_sb_allow,
         PageExtras.NONE,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_send_title,
         MR.string.email_tb_sb_send_body,
+        MR.drawable.tb_sb_send,
         PageExtras.NONE,
     ),
     StoryboardPage(
         MR.string.email_tb_sb_delete_title,
         MR.string.email_tb_sb_delete_body,
+        MR.drawable.tb_sb_delete,
         PageExtras.NONE,
     ),
 )
