@@ -3,7 +3,6 @@ package id.homebase.core.ui.navigation
 import id.homebase.core.ui.screens.email.thunderbird.EmailThunderbirdSetupScreen
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsScreen
 import id.homebase.resources.email_label
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.material.icons.outlined.MailOutline
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.email.EmailViewModel
@@ -309,17 +308,12 @@ fun AppNavHost(
     val emailUnreadCount = emailUiState.mailboxStatus
         ?.takeIf { it.available }
         ?.inboxUnread ?: 0
-    // Reactive so flipping the developer menu shows/hides the entry without an app restart.
-    val showDeveloperMenu by koinInject<UserPreferences>().preferenceState
-        .collectAsStateWithLifecycle()
-        .let { state -> remember { derivedStateOf { state.value.showDeveloperMenu } } }
     val topLevelRoutes = remember(
         momentsIconVisible,
         vaultIconVisible,
         locationIconVisible,
         contactBookIconVisible,
         emailIconVisible,
-        showDeveloperMenu,
     ) {
         buildList {
             add(TopLevelRoute.Chat)
@@ -328,9 +322,7 @@ fun AppNavHost(
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             if (locationIconVisible) add(TopLevelRoute.Location)
             if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
-            // Email setup rides the developer menu until the feature flag can be turned on
-            // anywhere — today every host answers "no email here".
-            if (showDeveloperMenu && emailIconVisible) add(TopLevelRoute.Email)
+            if (emailIconVisible) add(TopLevelRoute.Email)
             add(TopLevelRoute.Home)
         }
     }
@@ -1586,7 +1578,6 @@ fun AppNavHost(
                             paneContent = {
                                 if (isAuthenticated) {
                                     SettingsPaneHost(
-                                        showDeveloperMenu = showDeveloperMenu,
                                         onDismiss = { navController.popBackStack() },
                                         actions = SettingsPaneActions(
                                             onOpenWebDrop = openWebDrop,
@@ -1617,7 +1608,6 @@ fun AppNavHost(
                             if (isAuthenticated) {
                                 SettingsScreen(
                                     viewModel = koinViewModel(),
-                                    showDeveloperMenu = showDeveloperMenu,
                                     actions = SettingsActions(
                                         onBack = { navController.popBackStack() },
                                         onNotifications = {
