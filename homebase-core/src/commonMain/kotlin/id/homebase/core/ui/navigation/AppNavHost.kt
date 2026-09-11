@@ -303,6 +303,9 @@ fun AppNavHost(
     val contactBookViewModel: ContactBookViewModel = koinViewModel()
     val emailPreferences = koinInject<EmailPreferences>()
     val emailIconVisible by emailPreferences.iconVisible.collectAsStateWithLifecycle()
+    // Null until this host has answered once: no icon rather than one that leads to "no email
+    // here". Hosts that do run mail cache a yes and get the icon on the first frame after that.
+    val serverSupportsMail by emailPreferences.serverSupportsMail.collectAsStateWithLifecycle()
     val emailViewModel: EmailViewModel = koinViewModel()
     val emailUiState by emailViewModel.uiState.collectAsStateWithLifecycle()
     val emailUnreadCount = emailUiState.mailboxStatus
@@ -314,6 +317,7 @@ fun AppNavHost(
         locationIconVisible,
         contactBookIconVisible,
         emailIconVisible,
+        serverSupportsMail,
     ) {
         buildList {
             add(TopLevelRoute.Chat)
@@ -322,7 +326,7 @@ fun AppNavHost(
             if (vaultIconVisible) add(TopLevelRoute.Vault)
             if (locationIconVisible) add(TopLevelRoute.Location)
             if (contactBookIconVisible) add(TopLevelRoute.ContactBook)
-            if (emailIconVisible) add(TopLevelRoute.Email)
+            if (emailIconVisible && serverSupportsMail == true) add(TopLevelRoute.Email)
             add(TopLevelRoute.Home)
         }
     }
