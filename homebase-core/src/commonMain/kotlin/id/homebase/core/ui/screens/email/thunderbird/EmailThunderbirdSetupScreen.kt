@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -15,6 +16,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -59,6 +63,7 @@ import id.homebase.resources.email_tb_get_desktop
 import id.homebase.resources.email_tb_get_flathub
 import id.homebase.resources.email_tb_get_store
 import id.homebase.resources.email_tb_install_desktop
+import id.homebase.resources.email_tb_install_other_device
 import id.homebase.resources.email_tb_install_title
 import id.homebase.resources.email_tb_install_web
 import id.homebase.resources.email_tb_intro
@@ -67,7 +72,7 @@ import id.homebase.resources.email_tb_ios_note
 import id.homebase.resources.email_tb_ios_roadmap
 import id.homebase.resources.email_tb_ios_title
 import id.homebase.resources.email_tb_key_warning
-import id.homebase.resources.email_tb_secrets_all
+import id.homebase.resources.email_tb_phone_ios_note
 import id.homebase.resources.email_tb_step_desktop_1
 import id.homebase.resources.email_tb_step_desktop_2
 import id.homebase.resources.email_tb_step_desktop_3
@@ -76,6 +81,8 @@ import id.homebase.resources.email_tb_step_desktop_5
 import id.homebase.resources.email_tb_step_number
 import id.homebase.resources.email_tb_steps_title
 import id.homebase.resources.email_tb_title
+import id.homebase.resources.email_tb_view_generic
+import id.homebase.resources.email_tb_view_phone
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -87,8 +94,11 @@ import org.jetbrains.compose.resources.stringResource
  * verified against this server's encrypt-on-delivery, so the screen commits to it and spends its
  * space on the steps instead of on a list of half-working alternatives.
  *
- * Android gets a paged storyboard because its flow crosses three apps and doubles back on itself;
- * desktop gets a list, because Thunderbird there does the whole job in one place.
+ * Two sets of instructions, switchable from any device: phones get a paged storyboard because
+ * their flow crosses three apps and doubles back on itself, the generic set a list, because
+ * Thunderbird on a computer does the whole job in one place. The selector defaults to the device
+ * in hand and never restricts it — whoever is talking someone else through this is usually holding
+ * the other kind of device.
  *
  * Every value a step asks the user to type sits next to that step as a copy button, and the key as
  * a save button — the alternative is transcribing a hostname and a generated password into another
@@ -135,6 +145,7 @@ fun EmailThunderbirdSetupUi(
 
     var confirmCopyKey by remember { mutableStateOf<EmailKeyRef?>(null) }
     var confirmSaveKey by remember { mutableStateOf<EmailKeyRef?>(null) }
+    var helpView by remember(platform) { mutableStateOf(defaultHelpView(platform)) }
 
     val actions = ThunderbirdActions(
         address = uiState.clientSettings?.username?.takeIf { it.isNotBlank() }
@@ -167,10 +178,20 @@ fun EmailThunderbirdSetupUi(
                 .consumeWindowInsets(innerPadding)
                 .padding(innerPadding),
         ) {
-            if (platform == MailSetupPlatform.ANDROID) {
-                EmailThunderbirdStoryboard(actions = actions)
-            } else {
-                ThunderbirdStepList(platform = platform, actions = actions)
+            HelpViewSelector(selected = helpView, onSelect = { helpView = it })
+
+            when (helpView) {
+                ThunderbirdHelpView.GENERIC -> ThunderbirdStepList(
+                    platform = platform,
+                    actions = actions,
+                    modifier = Modifier.weight(1f),
+                )
+
+                ThunderbirdHelpView.PHONE -> PhoneHelp(
+                    platform = platform,
+                    actions = actions,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -220,18 +241,91 @@ fun EmailThunderbirdSetupUi(
     }
 }
 
+/** Which set of instructions is on screen. Defaults to the device, switchable to the other. */
+private enum class ThunderbirdHelpView(val label: StringResource) {
+    GENERIC(MR.string.email_tb_view_generic),
+    PHONE(MR.string.email_tb_view_phone),
+}
+
+private fun defaultHelpView(platform: MailSetupPlatform): ThunderbirdHelpView = when (platform) {
+    MailSetupPlatform.ANDROID, MailSetupPlatform.IOS -> ThunderbirdHelpView.PHONE
+    else -> ThunderbirdHelpView.GENERIC
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HelpViewSelector(
+    selected: ThunderbirdHelpView,
+    onSelect: (ThunderbirdHelpView) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        ThunderbirdHelpView.entries.forEachIndexed { index, view ->
+            SegmentedButton(
+                selected = view == selected,
+                onClick = { onSelect(view) },
+                shape = SegmentedButtonDefaults.itemShape(
+                    index = index,
+                    count = ThunderbirdHelpView.entries.size,
+                ),
+            ) {
+                Text(stringResource(view.label))
+            }
+        }
+    }
+}
+
 /**
- * Desktop, web and iOS. Thunderbird on a computer imports the key itself, so the whole job fits on
- * one screen and a list reads faster than pages; iOS has no app to walk through at all.
+ * The phone flow: Android's screens, page by page. iOS shares nothing but the shape of the
+ * problem — there is no Thunderbird for iPhone yet — so it gets that said plainly, in full on an
+ * iPhone and as a footnote anywhere else, and the pages stay readable either way.
+ */
+@Composable
+private fun PhoneHelp(
+    platform: MailSetupPlatform,
+    actions: ThunderbirdActions,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (platform == MailSetupPlatform.IOS) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                SetupCard(title = stringResource(MR.string.email_tb_ios_title)) {
+                    Body(stringResource(MR.string.email_tb_ios_body))
+                    Body(stringResource(MR.string.email_tb_ios_note))
+                    TextButton(onClick = { actions.onOpenUrl(Thunderbird.IOS_ROADMAP_URL) }) {
+                        Text(stringResource(MR.string.email_tb_ios_roadmap))
+                    }
+                }
+            }
+        } else {
+            Text(
+                text = stringResource(MR.string.email_tb_phone_ios_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
+
+        EmailThunderbirdStoryboard(actions = actions, modifier = Modifier.weight(1f))
+    }
+}
+
+/**
+ * Thunderbird on a computer, which imports the key itself — so the whole job fits on one screen
+ * and a list reads faster than pages.
  */
 @Composable
 private fun ThunderbirdStepList(
     platform: MailSetupPlatform,
     actions: ThunderbirdActions,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
+            .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
     ) {
@@ -243,107 +337,85 @@ private fun ThunderbirdStepList(
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (platform == MailSetupPlatform.IOS) {
-            SetupCard(title = stringResource(MR.string.email_tb_ios_title)) {
-                Body(stringResource(MR.string.email_tb_ios_body))
-                Body(stringResource(MR.string.email_tb_ios_note))
-                TextButton(onClick = { actions.onOpenUrl(Thunderbird.IOS_ROADMAP_URL) }) {
-                    Text(stringResource(MR.string.email_tb_ios_roadmap))
-                }
-            }
-        } else {
-            SetupCard(title = stringResource(MR.string.email_tb_install_title)) {
-                Body(
-                    if (platform == MailSetupPlatform.WEB) {
-                        stringResource(MR.string.email_tb_install_web)
-                    } else {
-                        stringResource(MR.string.email_tb_install_desktop)
-                    }
-                )
-                Button(onClick = { actions.onOpenUrl(Thunderbird.DESKTOP_DOWNLOAD_URL) }) {
-                    Text(stringResource(MR.string.email_tb_get_desktop))
-                }
+        SetupCard(title = stringResource(MR.string.email_tb_install_title)) {
+            Body(
                 when (platform) {
-                    MailSetupPlatform.WINDOWS -> TextButton(
-                        onClick = { actions.onOpenUrl(Thunderbird.WINDOWS_STORE_URL) },
-                    ) {
-                        Text(stringResource(MR.string.email_tb_get_store))
-                    }
+                    MailSetupPlatform.WEB -> stringResource(MR.string.email_tb_install_web)
+                    // Reading the computer steps on a phone: the install belongs on the computer,
+                    // so naming this device's store would be the wrong advice.
+                    MailSetupPlatform.ANDROID, MailSetupPlatform.IOS ->
+                        stringResource(MR.string.email_tb_install_other_device)
 
-                    MailSetupPlatform.LINUX -> TextButton(
-                        onClick = { actions.onOpenUrl(Thunderbird.FLATHUB_URL) },
-                    ) {
-                        Text(stringResource(MR.string.email_tb_get_flathub))
-                    }
-
-                    else -> Unit
+                    else -> stringResource(MR.string.email_tb_install_desktop)
                 }
+            )
+            Button(onClick = { actions.onOpenUrl(Thunderbird.DESKTOP_DOWNLOAD_URL) }) {
+                Text(stringResource(MR.string.email_tb_get_desktop))
+            }
+            when (platform) {
+                MailSetupPlatform.WINDOWS -> TextButton(
+                    onClick = { actions.onOpenUrl(Thunderbird.WINDOWS_STORE_URL) },
+                ) {
+                    Text(stringResource(MR.string.email_tb_get_store))
+                }
+
+                MailSetupPlatform.LINUX -> TextButton(
+                    onClick = { actions.onOpenUrl(Thunderbird.FLATHUB_URL) },
+                ) {
+                    Text(stringResource(MR.string.email_tb_get_flathub))
+                }
+
+                else -> Unit
             }
         }
 
-        if (platform != MailSetupPlatform.IOS) {
-            Spacer(modifier = Modifier.height(12.dp))
-            SetupCard(title = stringResource(MR.string.email_tb_steps_title)) {
-                desktopSteps.forEachIndexed { index, step ->
-                    StepRow(number = index + 1, text = stringResource(step.text)) {
-                        when (step.extras) {
-                            StepExtras.NONE -> Unit
+        Spacer(modifier = Modifier.height(12.dp))
+        SetupCard(title = stringResource(MR.string.email_tb_steps_title)) {
+            desktopSteps.forEachIndexed { index, step ->
+                StepRow(number = index + 1, text = stringResource(step.text)) {
+                    when (step.extras) {
+                        StepExtras.NONE -> Unit
 
-                            StepExtras.KEY -> ActionRow {
+                        StepExtras.KEY -> ActionRow {
+                            actions.password?.let { password ->
+                                StepAction(stringResource(MR.string.email_tb_copy_password)) {
+                                    actions.onCopy(password)
+                                }
+                            }
+                            actions.onSaveKey?.let { save ->
+                                StepAction(stringResource(MR.string.email_secrets_save_private_key), save)
+                            }
+                            actions.onCopyKey?.let { copyKey ->
+                                StepAction(stringResource(MR.string.email_tb_copy_key), copyKey)
+                            }
+                        }
+
+                        StepExtras.ACCOUNT -> {
+                            ActionRow {
+                                actions.address?.let { address ->
+                                    StepAction(stringResource(MR.string.email_tb_copy_address)) {
+                                        actions.onCopy(address)
+                                    }
+                                }
                                 actions.password?.let { password ->
                                     StepAction(stringResource(MR.string.email_tb_copy_password)) {
                                         actions.onCopy(password)
                                     }
                                 }
-                                actions.onSaveKey?.let { save ->
-                                    StepAction(stringResource(MR.string.email_secrets_save_private_key), save)
-                                }
-                                actions.onCopyKey?.let { copyKey ->
-                                    StepAction(stringResource(MR.string.email_tb_copy_key), copyKey)
-                                }
                             }
-
-                            StepExtras.ACCOUNT -> {
-                                ActionRow {
-                                    actions.address?.let { address ->
-                                        StepAction(stringResource(MR.string.email_tb_copy_address)) {
-                                            actions.onCopy(address)
-                                        }
-                                    }
-                                    actions.password?.let { password ->
-                                        StepAction(stringResource(MR.string.email_tb_copy_password)) {
-                                            actions.onCopy(password)
-                                        }
-                                    }
-                                }
-                                MailSettings(actions)
-                            }
+                            MailSettings(actions)
                         }
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = stringResource(MR.string.email_tb_key_warning),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else if (actions.settings != null) {
-            // iOS: no Thunderbird to walk through, but the settings are still what another mail
-            // app would need, so they stay reachable rather than hidden behind a link.
-            Spacer(modifier = Modifier.height(12.dp))
-            SetupCard(title = stringResource(MR.string.email_tb_secrets_all)) {
-                ActionRow {
-                    actions.address?.let { address ->
-                        StepAction(stringResource(MR.string.email_tb_copy_address)) { actions.onCopy(address) }
-                    }
-                    actions.password?.let { password ->
-                        StepAction(stringResource(MR.string.email_tb_copy_password)) { actions.onCopy(password) }
-                    }
-                }
-                MailSettings(actions)
-            }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = stringResource(MR.string.email_tb_key_warning),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
     }

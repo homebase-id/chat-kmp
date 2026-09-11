@@ -1205,7 +1205,10 @@
     <string name="email_tb_ios_roadmap">Follow the iPhone app</string>
     <string name="email_tb_keychain_title">Install OpenKeychain as well</string>
     <string name="email_tb_keychain_body">Thunderbird for Android holds no keys of its own — it asks OpenKeychain for every decryption, and there is no way to paste a key into Thunderbird itself. You need both apps.</string>
-    <string name="email_tb_secrets_all">Your server settings</string>
+    <string name="email_tb_view_generic">Generic</string>
+    <string name="email_tb_view_phone">Phones</string>
+    <string name="email_tb_install_other_device">These steps are for Thunderbird on a computer. Install it there from thunderbird.net.</string>
+    <string name="email_tb_phone_ios_note">These are Thunderbird for Android's screens. There is no Thunderbird for iPhone or iPad yet.</string>
     <string name="email_tb_copy_address">Copy address</string>
     <string name="email_tb_copy_password">Copy app password</string>
     <string name="email_tb_copy_key">Copy private key</string>
