@@ -3,6 +3,7 @@ package id.homebase.core.ui.screens.email.thunderbird
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,14 +25,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import id.homebase.core.email.Thunderbird
 import id.homebase.core.ui.screens.email.components.MailSettingsCard
+import id.homebase.core.util.isExpandedLayout
 import id.homebase.resources.MR
 import id.homebase.resources.email_secrets_save_private_key
 import id.homebase.resources.email_settings_incoming
@@ -42,6 +51,7 @@ import id.homebase.resources.email_tb_get_fdroid
 import id.homebase.resources.email_tb_get_play
 import id.homebase.resources.email_tb_manual_note
 import id.homebase.resources.email_tb_page_of
+import id.homebase.resources.email_tb_shot_zoom
 import id.homebase.resources.email_tb_sb_account_body
 import id.homebase.resources.email_tb_sb_account_title
 import id.homebase.resources.email_tb_sb_address_body
@@ -52,6 +62,9 @@ import id.homebase.resources.email_tb_sb_config_body
 import id.homebase.resources.email_tb_sb_config_title
 import id.homebase.resources.email_tb_sb_delete_body
 import id.homebase.resources.email_tb_sb_delete_title
+import id.homebase.resources.email_tb_sb_done_body
+import id.homebase.resources.email_tb_sb_done_note
+import id.homebase.resources.email_tb_sb_done_title
 import id.homebase.resources.email_tb_sb_encrypted_body
 import id.homebase.resources.email_tb_sb_encrypted_title
 import id.homebase.resources.email_tb_sb_folders_body
@@ -64,8 +77,8 @@ import id.homebase.resources.email_tb_sb_okc_body
 import id.homebase.resources.email_tb_sb_okc_title
 import id.homebase.resources.email_tb_sb_savekey_body
 import id.homebase.resources.email_tb_sb_savekey_title
-import id.homebase.resources.email_tb_sb_send_body
-import id.homebase.resources.email_tb_sb_send_title
+import id.homebase.resources.email_tb_sb_test_body
+import id.homebase.resources.email_tb_sb_test_title
 import id.homebase.resources.menu_back
 import id.homebase.resources.tb_sb_account
 import id.homebase.resources.tb_sb_address
@@ -78,7 +91,8 @@ import id.homebase.resources.tb_sb_import
 import id.homebase.resources.tb_sb_install
 import id.homebase.resources.tb_sb_okc
 import id.homebase.resources.tb_sb_savekey
-import id.homebase.resources.tb_sb_send
+import id.homebase.resources.tb_sb_test
+import id.homebase.resources.tb_sb_done
 import id.homebase.resources.next
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.DrawableResource
@@ -137,6 +151,9 @@ internal fun EmailThunderbirdStoryboard(
             ) {
                 SetupCard(title = stringResource(page.title)) {
                     Body(stringResource(page.body))
+                    // Anything the user does not have to read to finish the step goes last, after
+                    // the picture, so the instruction and the screen it names stay together.
+                    page.note?.let { note -> Body(stringResource(note)) }
                     PageShot(image = page.image, label = stringResource(page.title))
                     PageExtras(extras = page.extras, actions = actions)
                 }
@@ -171,26 +188,58 @@ internal fun EmailThunderbirdStoryboard(
 /**
  * The screen this page is about. Bounded by height, not width: these are portrait phone captures,
  * so a width-driven fit would make them taller than the page.
+ *
+ * Inline it is a reminder, not a document — phone UI shrunk to a card is not readable, least of
+ * all on a desktop pane where the card is wide and the picture ends up small in the middle of it.
+ * So it opens full-screen on tap, and the assets stay at capture resolution to survive that.
  */
 @Composable
 private fun PageShot(image: DrawableResource, label: String) {
+    var zoomed by remember(image) { mutableStateOf(false) }
+    val painter = painterResource(image)
+
     Spacer(modifier = Modifier.height(12.dp))
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         Image(
-            painter = painterResource(image),
+            painter = painter,
             contentDescription = label,
             contentScale = ContentScale.Fit,
             modifier = Modifier
-                .heightIn(max = 360.dp)
+                .heightIn(max = if (isExpandedLayout()) 560.dp else 380.dp)
                 .clip(MaterialTheme.shapes.medium)
                 .border(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant,
                     shape = MaterialTheme.shapes.medium,
-                ),
+                )
+                .clickable { zoomed = true },
         )
     }
-    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = stringResource(MR.string.email_tb_shot_zoom),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        textAlign = TextAlign.Center,
+    )
+
+    if (zoomed) {
+        Dialog(
+            onDismissRequest = { zoomed = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Image(
+                painter = painter,
+                contentDescription = label,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim)
+                    .clickable { zoomed = false }
+                    .padding(16.dp),
+            )
+        }
+    }
 }
 
 @Composable
@@ -225,12 +274,11 @@ private fun PageExtras(extras: PageExtras, actions: ThunderbirdActions) {
         // The password page doubles as the manual-settings fallback: autoconfig answers for this
         // server, so the hosts and ports are only needed when it does not.
         PageExtras.PASSWORD -> {
+            // Password only: the address went in on the page before, and two copy buttons side by
+            // side left people guessing which one the Password field wanted.
             ActionRow {
                 actions.password?.let { password ->
                     StepAction(stringResource(MR.string.email_tb_copy_password)) { actions.onCopy(password) }
-                }
-                actions.address?.let { address ->
-                    StepAction(stringResource(MR.string.email_tb_copy_address)) { actions.onCopy(address) }
                 }
             }
             actions.settings?.let { settings ->
@@ -303,6 +351,8 @@ private data class StoryboardPage(
     val body: StringResource,
     val image: DrawableResource,
     val extras: PageExtras,
+    /** Background the user can skip and still finish the step. Rendered after [body]. */
+    val note: StringResource? = null,
 )
 
 private val storyboardPages: List<StoryboardPage> = listOf(
@@ -336,6 +386,14 @@ private val storyboardPages: List<StoryboardPage> = listOf(
         MR.drawable.tb_sb_folders,
         PageExtras.NONE,
     ),
+    // The test message is the whole point of the three pages that follow: without one sent
+    // before OpenPGP exists, "your mail arrives but stays locked" has nothing to show.
+    StoryboardPage(
+        MR.string.email_tb_sb_test_title,
+        MR.string.email_tb_sb_test_body,
+        MR.drawable.tb_sb_test,
+        PageExtras.ADDRESS,
+    ),
     StoryboardPage(
         MR.string.email_tb_sb_encrypted_title,
         MR.string.email_tb_sb_encrypted_body,
@@ -367,15 +425,16 @@ private val storyboardPages: List<StoryboardPage> = listOf(
         PageExtras.NONE,
     ),
     StoryboardPage(
-        MR.string.email_tb_sb_send_title,
-        MR.string.email_tb_sb_send_body,
-        MR.drawable.tb_sb_send,
-        PageExtras.NONE,
-    ),
-    StoryboardPage(
         MR.string.email_tb_sb_delete_title,
         MR.string.email_tb_sb_delete_body,
         MR.drawable.tb_sb_delete,
         PageExtras.NONE,
+    ),
+    StoryboardPage(
+        MR.string.email_tb_sb_done_title,
+        MR.string.email_tb_sb_done_body,
+        MR.drawable.tb_sb_done,
+        PageExtras.NONE,
+        note = MR.string.email_tb_sb_done_note,
     ),
 )
