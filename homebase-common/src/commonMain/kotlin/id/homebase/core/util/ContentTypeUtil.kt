@@ -204,6 +204,9 @@ private val commonExtToMime: Map<String, String> = mapOf(
     "plist" to "application/x-plist",
 
     // Other
+    // An armored OpenPGP key or message. Without this the saved mail key file goes out as
+    // octet-stream, and the apps that import keys do not offer to open it.
+    "asc" to "application/pgp-keys",
     "ics" to "text/calendar",
     "vcf" to "text/vcard",
     "eml" to "message/rfc822",
