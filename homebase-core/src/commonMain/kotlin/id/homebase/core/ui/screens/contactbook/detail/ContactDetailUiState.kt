@@ -15,15 +15,37 @@ import id.homebase.core.ui.screens.contactbook.RequestDirection
 import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import id.homebase.core.ui.screens.contactbook.CircleAccessState
+import id.homebase.core.ui.screens.contactbook.ReviewCircleGroups
 
 /** A pending destructive action awaiting confirmation. */
 enum class ContactDetailConfirm { BLOCK, DISCONNECT, DELETE }
 
 /** One circle chip on the contact-detail screen. [pending] means this contact's grant on that
- *  circle is still a sealed deposit — live-read via [id.homebase.chat.services.convo.contact.ConnectionService.findPendingCircles],
- *  never cached across app restarts, since there's no bulk "list this contact's pending circles"
- *  endpoint either. */
-data class ContactCircleUi(val id: String, val name: String, val pending: Boolean)
+ *  circle is still a sealed deposit, read from the connection's `accessGrant.pendingCircleIds`. */
+data class ContactCircleUi(
+    val id: String,
+    val name: String,
+    val pending: Boolean,
+    /**
+     * What the membership is actually delivering. Null where it isn't known — the review sheet
+     * offers circles the contact is not in yet, so there is nothing to report there.
+     */
+    val accessState: CircleAccessState? = null,
+    /** The owner's chosen emoji; often a ZWJ sequence, so it is carried and rendered whole. */
+    val emoji: String? = null,
+    /** The circle's own description, where its owner wrote one. */
+    val description: String? = null,
+    /** How many identities are already in it. Null where the caller didn't resolve membership. */
+    val memberCount: Int? = null,
+    /**
+     * For [CircleAccessState.AwaitingApp]: the app that has to finish the enrolment, by name.
+     * Null when the app was deleted, or when [awaitsOwner] — nobody owns it but you.
+     */
+    val awaitingAppName: String? = null,
+    /** True when the awaiting circle has no owning app, so the owner is the one who must act. */
+    val awaitsOwner: Boolean = false,
+)
 
 @Immutable
 data class ContactDetailUiState(
@@ -31,6 +53,21 @@ data class ContactDetailUiState(
     val isLoading: Boolean = true,
     /** Connection status for this contact's odinId; null when not a connection / unknown. */
     val connectionStatus: ConnectionStatus? = null,
+    /**
+     * The contact's access has been switched off wholesale. Still connected and still in circles,
+     * so nothing else on this screen would show it.
+     */
+    val isAccessRevoked: Boolean = false,
+    /** Connected but never reviewed — the one state with something for the owner to do. */
+    val needsReview: Boolean = false,
+    /** Dark launch: the review's entry points are hidden until the dev flag is on. */
+    val reviewEnabled: Boolean = false,
+    /** Circles the review sheet offers, in its three groups. */
+    val reviewCircleGroups: ReviewCircleGroups = ReviewCircleGroups(),
+    /** Non-null while the review sheet is open. */
+    val review: ReviewSheetState? = null,
+    /** Non-null while the un-review confirmation is open. */
+    val unreview: UnreviewState? = null,
     /** User-defined circles this contact belongs to, real or pending (system circles excluded), A–Z. */
     val circles: List<ContactCircleUi> = emptyList(),
     /** All user-defined circles the signed-in user could add a contact to (system circles excluded),
@@ -105,6 +142,31 @@ data class ContactDetailUiState(
         } == true
 }
 
+/** Open state for the review sheet, mirroring the contact book's. */
+@Immutable
+data class ReviewSheetState(
+    val introducedBy: String? = null,
+    /** When the connection was made, epoch-millis. */
+    val connectedAtMs: Long? = null,
+    val alreadyHeldCircleIds: Set<String> = emptySet(),
+    val isSubmitting: Boolean = false,
+    val failed: Boolean = false,
+)
+
+/**
+ * Open state for the un-review confirmation.
+ *
+ * [blockingCircles] non-empty means the server refused: the contact still holds circles a review
+ * granted, and those have to go first. Named rather than counted, because "remove them from two
+ * circles" doesn't tell you which two.
+ */
+@Immutable
+data class UnreviewState(
+    val isSubmitting: Boolean = false,
+    val blockingCircles: List<String> = emptyList(),
+    val failed: Boolean = false,
+)
+
 sealed interface ContactDetailAction {
     data object MessageClicked : ContactDetailAction
     data object SyncClicked : ContactDetailAction
@@ -134,6 +196,15 @@ sealed interface ContactDetailAction {
     data object SeeAllMediaClicked : ContactDetailAction
     data class OpenGroup(val conversationId: Uuid) : ContactDetailAction
     data object BackClicked : ContactDetailAction
+    /** Open the review sheet for a New connection. */
+    data object ReviewClicked : ContactDetailAction
+    /** Complete the review: stamp it and enrol [circleIds]. Empty = the "chat only" outcome. */
+    data class ReviewSubmitted(val circleIds: Set<String>) : ContactDetailAction
+    data object ReviewDismissed : ContactDetailAction
+    /** Clear the review stamp, dropping the contact back to New. */
+    data object UnreviewClicked : ContactDetailAction
+    data object UnreviewConfirmed : ContactDetailAction
+    data object UnreviewDismissed : ContactDetailAction
     /** Tapped a circle chip — opens the circle-detail dialog for [circleId]. */
     data class CircleClicked(val circleId: String) : ContactDetailAction
     data object CircleDetailDismiss : ContactDetailAction

@@ -1,6 +1,13 @@
 package id.homebase.chat.services.convo.contact
 
+import id.homebase.api.client.BlockingCircle
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.OdinClientErrorCode
+import id.homebase.api.client.blockingCircles
+import id.homebase.api.client.connections.CircleEnrollmentCandidates
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.api.client.connections.EnrollmentResult
+import id.homebase.api.client.connections.PendingCircleMember
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.RedactedCircleDefinition
@@ -17,11 +24,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import co.touchlab.kermit.Logger
 import kotlin.uuid.Uuid
 
@@ -29,10 +34,14 @@ import kotlin.uuid.Uuid
  *  enough that the contact-detail / circles UI updates promptly after an external change. */
 private const val REFRESH_DEBOUNCE_MS = 300L
 
-/** How long [ConnectionService.findPendingMembers] waits for [ConnectionService.connections]/
- *  [ConnectionService.circles] to complete their first real load before reading them — bounds a
- *  cold-start caller against racing [ConnectionService.start]'s async hydrate+refresh. */
-private const val CONNECTIONS_LOAD_WAIT_MS = 15_000L
+/**
+ * A review could not be cleared because the contact still holds circles that keep them reviewed.
+ * [circles] is the complete set the server named, never just the first one.
+ */
+class UnreviewBlockedException(
+    val circles: List<BlockingCircle>,
+    cause: Throwable? = null,
+) : RuntimeException("Un-review blocked by ${circles.size} circle(s)", cause)
 
 data class ConnectionState(
     val isLoaded: Boolean,
@@ -50,6 +59,12 @@ data class CircleMembershipState(
     val isLoaded: Boolean = false,
     val circles: List<CircleWithMembers> = emptyList(),
 ) {
+    /** Pending deposits on the circle whose id matches [circleId], never merged into members. */
+    fun pendingMembersOf(circleId: String): List<PendingCircleMember> =
+        circles.firstOrNull { it.circle.id.equals(circleId, ignoreCase = true) }
+            ?.pendingMembers
+            .orEmpty()
+
     /** Lowercased member domains of the circle whose id matches [circleId] (32-char N-format). */
     fun membersOf(circleId: String): Set<String> =
         circles.firstOrNull { it.circle.id.equals(circleId, ignoreCase = true) }
@@ -165,7 +180,36 @@ class ConnectionService(
         scope.launch {
             hydrateFromCache()
             launchRefresh()
+            processEnrollments()
         }
+    }
+
+    /**
+     * Drain any circle enrolments queued for this app, over HTTP.
+     *
+     * The socket carries the same command and is sent on every connect, but it answers nothing —
+     * so it cannot tell us whether an enrolment was actually claimed. This one returns counts.
+     * Idempotent and a no-op without the permission, so running both is harmless.
+     */
+    suspend fun processEnrollments() {
+        // Logged before the call as well as after: without this, silence is ambiguous — never
+        // reached, still in flight, and threw all look the same.
+        Logger.i { "ENROLL-DIAG calling POST /connections/enrollments/process" }
+        val result = try {
+            provider.processEnrollments()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 403 here is the answer, not an incident: it means this app token may not process
+            // enrolments at all, which no count could have told us.
+            Logger.w(e) { "ENROLL-DIAG failed (${e::class.simpleName})" }
+            return
+        }
+        Logger.i {
+            "ENROLL-DIAG processed connections=${result.connectionsProcessed} " +
+                "enrollments=${result.enrollmentsCompleted}"
+        }
+        if (result.enrollmentsCompleted > 0) refresh()
     }
 
     /**
@@ -217,6 +261,17 @@ class ConnectionService(
                 val connected = connectedDeferred.await()
                 val blocked = blockedDeferred.await()
                 Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
+                // TODO(pending-diagnosis): remove once the pending chip is confirmed working.
+                // The list endpoint is the only source for accessGrant on this screen; if it
+                // arrives null here, every pending chip and key warning downstream is dead.
+                Logger.i {
+                    val withGrant = connected.results.count { it.accessGrant != null }
+                    val withPending = connected.results.count {
+                        it.accessGrant?.pendingCircleIds?.isNotEmpty() == true
+                    }
+                    "PENDING-DIAG list: ${connected.results.size} connected, " +
+                        "$withGrant with accessGrant, $withPending with pendingCircleIds"
+                }
                 _connections.value = ConnectionState(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
@@ -228,6 +283,14 @@ class ConnectionService(
                     Logger.d {
                         "ConnectionService circles: " +
                             circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
+                    }
+                    // TODO(pending-diagnosis): remove once the pending chip is confirmed working.
+                    Logger.i {
+                        "PENDING-DIAG circles: " + circles.joinToString {
+                            "${it.circle.name}[grantOn=${it.circle.grantOn}," +
+                                "designation=${it.circle.designation}," +
+                                "members=${it.members.size},pending=${it.pendingMembers.size}]"
+                        }
                     }
                 }
                 runCatching {
@@ -294,6 +357,22 @@ class ConnectionService(
         refresh()
     }
 
+    /**
+     * Connections that qualify for one of [appId]'s circles but are not in it yet.
+     *
+     * Not cached: a candidate stops being one the moment they are enrolled, and a stale list would
+     * offer people who are already members.
+     */
+    suspend fun getEnrollmentCandidates(appId: String): List<CircleEnrollmentCandidates> =
+        provider.getEnrollmentCandidates(appId)
+
+    /** Add several identities to [circleId] at once, refreshing so the new members land. */
+    suspend fun addManyToCircle(circleId: String, odinIds: List<String>): EnrollmentResult {
+        val result = provider.addManyToCircle(circleId, odinIds)
+        refresh()
+        return result
+    }
+
     /** Revoke [odinId]'s membership in [circleId] — also drops any still-pending deposit. */
     suspend fun removeFromCircle(circleId: Uuid, odinId: OdinId) {
         provider.removeFromCircle(circleId, odinId)
@@ -301,70 +380,38 @@ class ConnectionService(
     }
 
     /**
-     * Live per-contact fan-out to find who currently has [circleId] sealed as a pending deposit
-     * (`accessGrant.pendingCircleIds`) rather than a real member — there is no bulk "list
-     * pending members of a circle" endpoint, so this is the only way to learn it, for ANY
-     * circle. Never cached: every call re-derives the answer from the server. Scoped to
-     * current, Connected identities that aren't already a real member of [circleId] (real
-     * membership is cheap and authoritative from the already-loaded [circles] bulk read, so
-     * there's no need to re-verify it here).
+     * Record the owner's review of [odinId] and enrol [circleIds], in one server call.
      *
-     * Waits (bounded) for [connections]/[circles] to have completed at least one real load
-     * before reading them. A caller invoked right on cold start — e.g. the Location dashboard's
-     * resume-triggered check — otherwise races [start]'s async hydrate+refresh: [connections]
-     * and [circles] still hold their empty initial `isLoaded = false` state, so every candidate
-     * list comes back empty and this silently reports "nobody pending" for someone who
-     * genuinely has a pending grant. That's not an exception, so nothing above this catches or
-     * logs it — it just looks like an empty, correct answer. If the wait times out (e.g.
-     * offline), proceeds best-effort against whatever's loaded rather than blocking forever.
+     * Additive and idempotent — nothing is revoked and a circle already held is a no-op, so a
+     * failed call is safe to retry whole. An empty [circleIds] is the "chat only" outcome, not a
+     * skipped review.
+     *
+     * Refreshes after, so the stamp and the new memberships land together rather than the state
+     * flickering through a half-applied review while the debounced websocket refresh catches up.
      */
-    suspend fun findPendingMembers(circleId: Uuid): List<OdinId> = coroutineScope {
-        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) {
-            connections.first { it.isLoaded }
-            circles.first { it.isLoaded }
-        }
-
-        val realMembers = circles.value.membersOf(circleId.toHexString())
-        val candidates = connections.value.map.values
-            .filter { it.status == ConnectionStatus.Connected }
-            .map { it.odinId }
-            .filterNot { realMembers.contains(it.domainName.lowercase()) }
-
-        candidates.map { odinId ->
-            async {
-                val status = try {
-                    getConnectionStatus(odinId)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending members of $circleId" }
-                    null
-                }
-                odinId.takeIf { status?.accessGrant?.pendingCircleIds?.contains(circleId) == true }
-            }
-        }.awaitAll().filterNotNull()
+    suspend fun reviewConnection(odinId: OdinId, circleIds: List<Uuid> = emptyList()) {
+        provider.reviewConnection(odinId, circleIds)
+        refresh()
     }
 
     /**
-     * Live read of which circles [odinId] currently has sealed as a pending deposit — the
-     * inverse of [findPendingMembers]: one identity, many circles, so this is a single
-     * `/connections/status` read rather than a fan-out. Filtered to circle ids that actually
-     * exist in the already-loaded bulk circle list, defending against a stale/removed id.
+     * Clear [odinId]'s review stamp, dropping them back to New.
+     *
+     * Withdraws the vouching only — every circle and grant they hold survives.
+     *
+     * @throws UnreviewBlockedException naming every circle standing in the way. The server returns
+     *   the whole set in one response, so the caller can list them rather than have the user
+     *   discover them one rejection at a time.
      */
-    suspend fun findPendingCircles(odinId: OdinId): List<Uuid> {
-        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) { circles.first { it.isLoaded } }
-
-        val status = try {
-            getConnectionStatus(odinId)
-        } catch (e: CancellationException) {
+    suspend fun clearConnectionReview(odinId: OdinId) {
+        try {
+            provider.clearConnectionReview(odinId)
+        } catch (e: ClientException) {
+            if (e.errorCode == OdinClientErrorCode.CannotClearReviewWhilePersonalCircleMember) {
+                throw UnreviewBlockedException(e.problem?.blockingCircles().orEmpty(), e)
+            }
             throw e
-        } catch (e: Exception) {
-            Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending circles" }
-            return emptyList()
         }
-        val known = circles.value.circles
-            .mapNotNull { runCatching { Uuid.parseHex(it.circle.id) }.getOrNull() }
-            .toSet()
-        return status?.accessGrant?.pendingCircleIds.orEmpty().filter { it in known }
+        refresh()
     }
 }

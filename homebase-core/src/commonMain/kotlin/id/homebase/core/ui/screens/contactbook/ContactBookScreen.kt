@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Badge
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -71,10 +73,13 @@ import id.homebase.resources.contactbook_error_save
 import id.homebase.resources.contactbook_label
 import id.homebase.resources.contactbook_search_hint
 import id.homebase.resources.contactbook_tab_circles
-import id.homebase.resources.contactbook_tab_contacts
+import id.homebase.resources.contactbook_tab_known
+import id.homebase.resources.contactbook_tab_new
 import id.homebase.resources.clear_input
 import id.homebase.resources.menu_back
 import id.homebase.resources.search
+import id.homebase.core.ui.screens.contactbook.components.ReviewConnectionSheet
+import id.homebase.resources.contact_review_failed
 import org.jetbrains.compose.resources.stringResource
 import kotlin.uuid.Uuid
 
@@ -106,6 +111,7 @@ fun ContactBookScreen(
                 is ContactBookUiEvent.OpenDetail -> { /* navigation handled in AppNavHost */ }
                 ContactBookUiEvent.OpenAddContact -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.OpenCircleMemberAdd -> { /* navigation handled in AppNavHost */ }
+                ContactBookUiEvent.OpenEnrollmentCandidates -> { /* navigation handled in AppNavHost */ }
                 is ContactBookUiEvent.Error -> {
                     val msg = when (event.error) {
                         ContactBookError.SaveFailed -> errSave
@@ -138,7 +144,7 @@ fun ContactBookScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val onContacts = uiState.selectedTab == ContactTab.CONTACTS
+    val onContacts = uiState.selectedTab != ContactTab.CIRCLES
 
     // Search is hidden behind a top-bar icon; it expands into the app-bar title when tapped
     // and collapses (clearing the query) on back/close. Mirrors the conversation-list pattern.
@@ -270,25 +276,52 @@ fun ContactBookScreen(
             // Contacts and Circles tabs.
             PrimaryTabRow(selectedTabIndex = uiState.selectedTab.ordinal) {
                 ContactTab.entries.forEach { tab ->
+                    val waiting = uiState.newContacts.size + uiState.incomingRequestCount
                     Tab(
                         selected = uiState.selectedTab == tab,
                         onClick = { viewModel.onAction(ContactBookUiAction.TabSelected(tab)) },
-                        text = { Text(stringResource(tab.labelRes())) },
+                        text = {
+                            // Beside the label, not over it: BadgedBox anchors to the top-end
+                            // corner and a three-letter tab loses its last character under it.
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(stringResource(tab.labelRes()))
+                                if (tab == ContactTab.NEW && waiting > 0) {
+                                    Badge { Text(waiting.toString()) }
+                                }
+                                // A dot, not a count: the number of people who could join a
+                                // circle is not a backlog to work through, only a reason to look.
+                                if (tab == ContactTab.CIRCLES &&
+                                    uiState.enrollmentCandidateCount > 0
+                                ) {
+                                    Badge()
+                                }
+                            }
+                        },
                     )
                 }
             }
 
             when (uiState.selectedTab) {
-                ContactTab.CONTACTS -> ContactBookContent(
+                ContactTab.KNOWN -> ContactBookContent(
                     uiState = uiState,
                     onAction = viewModel::onAction,
                     modifier = Modifier.weight(1f),
+                )
+                ContactTab.NEW -> ContactBookContent(
+                    uiState = uiState,
+                    onAction = viewModel::onAction,
+                    modifier = Modifier.weight(1f),
+                    showNew = true,
                 )
                 ContactTab.CIRCLES -> CirclesTabContent(
                     circles = uiState.circles,
                     loading = uiState.circlesLoading,
                     onAction = viewModel::onAction,
                     modifier = Modifier.weight(1f),
+                    candidateCount = uiState.enrollmentCandidateCount,
                 )
             }
         }
@@ -305,6 +338,21 @@ fun ContactBookScreen(
             onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
             odinIdLocked = overlay.entry?.odinId?.lowercase() in uiState.connectedOdinIds,
         )
+
+        is ContactBookOverlay.Review -> ReviewConnectionSheet(
+            entry = overlay.entry,
+            introducedBy = overlay.introducedBy,
+            connectedAtMs = overlay.connectedAtMs,
+            groups = uiState.reviewCircleGroups,
+            alreadyHeldCircleIds = overlay.alreadyHeldCircleIds,
+            isSubmitting = overlay.isSubmitting,
+            errorText = if (overlay.failed) stringResource(MR.string.contact_review_failed) else null,
+            onSubmit = { ids ->
+                viewModel.onAction(ContactBookUiAction.ReviewSubmitted(overlay.entry, ids))
+            },
+            onDismiss = { viewModel.onAction(ContactBookUiAction.CloseOverlay) },
+        )
+
         null -> {}
     }
 
@@ -331,6 +379,7 @@ fun ContactBookScreen(
 }
 
 private fun ContactTab.labelRes() = when (this) {
-    ContactTab.CONTACTS -> MR.string.contactbook_tab_contacts
+    ContactTab.KNOWN -> MR.string.contactbook_tab_known
+    ContactTab.NEW -> MR.string.contactbook_tab_new
     ContactTab.CIRCLES -> MR.string.contactbook_tab_circles
 }

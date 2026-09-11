@@ -1491,14 +1491,9 @@
     <string name="contactbook_onboarding_setup">Kom i gang</string>
     <string name="contactbook_onboarding_dismiss">Måske senere</string>
 
-    <string name="contactbook_tab_contacts">Kontakter</string>
     <string name="contactbook_tab_circles">Kredse</string>
     <string name="contactbook_connected">Forbundet</string>
-    <string name="contactbook_vetted">Godkendt</string>
-    <string name="contactbook_unvetted_empty">Ingen ikke-godkendte forbindelser.</string>
-    <string name="contactbook_vetted_empty">Ingen godkendte forbindelser.</string>
     <string name="contactbook_circles_empty">Du har ingen kredse endnu.</string>
-    <string name="contactbook_circle_unvetted">Ikke godkendt</string>
     <string name="contactbook_circle_members_empty">Denne kreds har ingen medlemmer.</string>
     <string name="contactbook_circle_members_count">%1$d medlemmer</string>
 
@@ -1671,15 +1666,11 @@
     <string name="profile_edit_linkedin">LinkedIn</string>
 
     <string name="profile_edit_visibility_public">Offentlig</string>
-    <string name="profile_edit_visibility_connected">Godkendt</string>
     <string name="profile_edit_public_hint">Synlig for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_edit_connected_fallback_hint">Lad feltet stå tomt for i stedet at vise godkendte kontakter din offentlige værdi.</string>
     <string name="profile_edit_preview_enter">Forhåndsvisning</string>
     <string name="profile_edit_preview_exit">Tilbage til redigering</string>
     <string name="profile_edit_preview_section_public">Offentlig</string>
     <string name="profile_edit_preview_section_public_desc">Synlig for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_edit_preview_section_vetted">Godkendt</string>
-    <string name="profile_edit_preview_section_vetted_desc">Yderligere attributter, der er synlige for dine godkendte (bekræftede) forbindelser.</string>
     <string name="profile_edit_preview_empty">Intet er synligt på dette niveau endnu.</string>
     <string name="profile_edit_field_not_set">Ikke angivet</string>
     <string name="profile_edit_add_attribute">Tilføj attribut</string>
@@ -1689,9 +1680,7 @@
     <string name="profile_avatar_edit_title">Skift foto</string>
     <string name="cd_profile_avatar_change_photo">Skift foto</string>
     <string name="profile_avatar_edit_acl_anonymous">Offentligt foto</string>
-    <string name="profile_avatar_edit_acl_connected">Foto til godkendte</string>
     <string name="profile_avatar_edit_anonymous_desc">Synligt for alle, også personer du ikke er forbundet med.</string>
-    <string name="profile_avatar_edit_connected_desc">Kun synligt for godkendte kontakter — kan være et andet foto end dit offentlige.</string>
     <string name="profile_avatar_edit_upload">Gem</string>
     <string name="profile_avatar_edit_remove">Fjern</string>
     <string name="profile_avatar_edit_error_upload">Kunne ikke uploade dit foto. Prøv igen.</string>

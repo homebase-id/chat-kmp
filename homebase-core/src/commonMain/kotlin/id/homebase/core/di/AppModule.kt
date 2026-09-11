@@ -175,6 +175,7 @@ import id.homebase.core.sync.BackgroundSyncOrchestrator
 import id.homebase.core.ui.navigation.AppViewModel
 import id.homebase.core.ui.screens.appearance.AppearanceSettingsViewModel
 import id.homebase.core.ui.screens.desktop.DesktopViewModel
+import id.homebase.core.ui.screens.contactbook.enrollment.EnrollmentCandidatesViewModel
 import id.homebase.core.ui.screens.devmenu.DeveloperMenuViewModel
 import id.homebase.core.ui.screens.devmenu.scheduledpush.DeveloperScheduledPushTestViewModel
 import id.homebase.core.ui.screens.feed.FeedViewModel
@@ -212,6 +213,7 @@ import id.homebase.core.location.EmergencyCircleNotifier
 import id.homebase.core.location.GpsRequestReason
 import id.homebase.core.location.PushLocationCapture
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.tracking.LocationDeviceId
 import id.homebase.core.location.tracking.DeviceSensors
 import id.homebase.core.location.tracking.createDeviceSensors
@@ -313,6 +315,7 @@ val appModule = module {
 
     // region Location add-on
     single { LocationPreferences(get()) }
+    single { DeveloperPreferences(get()) }
     single { LocationDeviceId() }
     single<DeviceSensors> { createDeviceSensors() }
     single { LocationPointStore(databaseManager = get(), deviceSensors = get()) }
@@ -1220,6 +1223,7 @@ val appModule = module {
     viewModelOf(::ProfileAvatarEditViewModel)
     viewModelOf(::NotificationSettingsViewModel)
     viewModelOf(::DeveloperMenuViewModel)
+    viewModelOf(::EnrollmentCandidatesViewModel)
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
     viewModelOf(::MediaSettingsViewModel)

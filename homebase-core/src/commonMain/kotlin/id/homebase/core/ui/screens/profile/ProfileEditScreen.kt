@@ -113,8 +113,8 @@ import id.homebase.resources.profile_edit_preview_enter
 import id.homebase.resources.profile_edit_preview_exit
 import id.homebase.resources.profile_edit_preview_section_public
 import id.homebase.resources.profile_edit_preview_section_public_desc
-import id.homebase.resources.profile_edit_preview_section_vetted
-import id.homebase.resources.profile_edit_preview_section_vetted_desc
+import id.homebase.resources.profile_edit_preview_section_circles
+import id.homebase.resources.profile_edit_preview_section_circles_desc
 import id.homebase.resources.profile_edit_public_hint
 import id.homebase.resources.profile_edit_retry
 import id.homebase.resources.profile_edit_status
@@ -260,9 +260,9 @@ private fun LoadFailedState(modifier: Modifier, onRetry: () -> Unit) {
 }
 
 /**
- * Mirrors [ProfilePreview]'s Public/Vetted split: everyone-visible fields first, then everything a
- * vetted (connected) contact can see. There's no screen-wide Save — tapping a row expands it in
- * place with a Public|Vetted toggle (defaulting to that row's own section) and its field(s); the
+ * Mirrors [ProfilePreview]'s Public/Circles split: everyone-visible fields first, then everything a
+ * contact in one of your circles can see. There's no screen-wide Save — tapping a row expands it in
+ * place with a Public|Circles toggle (defaulting to that row's own section) and its field(s); the
  * checkmark persists just that one attribute at whichever tier is currently selected.
  */
 @Composable
@@ -283,7 +283,7 @@ private fun ProfileForm(
     var addDialogTarget by remember { mutableStateOf<Pair<AttributeSpec, ProfileVisibility>?>(null) }
 
     // An attribute qualifies once it's missing from either tier — if it already has a value in one
-    // tier, that tier's row is already on screen and its own Public|Vetted toggle can add the other.
+    // tier, that tier's row is already on screen and its own Public|Circles toggle can add the other.
     val missingAttributes = ATTRIBUTE_SPECS.filter {
         displayValueFor(it.type, uiState.anonymousValues) == null ||
             displayValueFor(it.type, uiState.connectedValues) == null
@@ -314,8 +314,8 @@ private fun ProfileForm(
 
             ProfileFieldsSection(
                 tier = ProfileVisibility.CONNECTED,
-                title = stringResource(MR.string.profile_edit_preview_section_vetted),
-                description = stringResource(MR.string.profile_edit_preview_section_vetted_desc),
+                title = stringResource(MR.string.profile_edit_preview_section_circles),
+                description = stringResource(MR.string.profile_edit_preview_section_circles_desc),
                 uiState = uiState,
                 onAction = onAction,
                 editingRows = editingRows,
@@ -638,7 +638,7 @@ private fun SectionHeader(title: String, description: String) {
 
 /**
  * One profile attribute rendered contact-detail style — icon, label, current value. Tapping the row
- * expands it in place with a Public|Vetted toggle (defaulting to [sectionTier], the section it's
+ * expands it in place with a Public|Circles toggle (defaulting to [sectionTier], the section it's
  * listed under) and [content]'s field(s) for whichever tier is currently selected. The checkmark
  * dispatches [ProfileEditAction.SaveAttribute] for that (type, tier) and collapses immediately —
  * [content]'s fields already write straight through as they change, so the value shown is correct

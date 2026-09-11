@@ -9,9 +9,23 @@ import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.encoding.Encoder
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
+
+/** No-body POST. Some endpoints still expect a JSON object rather than an empty payload. */
+@Serializable
+class EmptyRequest
+
+/** What `POST /connections/enrollments/process` drained. */
+@Serializable
+data class ProcessEnrollmentsResult(
+    val connectionsProcessed: Int = 0,
+    val enrollmentsCompleted: Int = 0,
+)
 
 @Serializable
 data class OdinIdRequest(
@@ -35,6 +49,95 @@ data class AcceptConnectionRequestV2(
     val circleIds: List<Uuid> = emptyList()
 )
 
+/**
+ * Body for `POST /connections/review`: stamps the owner's review and enrols [circleIds] in one
+ * atomic call.
+ *
+ * Additive — it grants the circles named and revokes nothing, and re-sending a circle the contact
+ * already holds is a no-op, so the whole call is safe to retry. An empty list is a real review
+ * ("chat only"), not a no-op, so it must serialize as `[]` rather than being omitted.
+ */
+@Serializable
+data class ReviewConnectionRequest(
+    val odinId: OdinId,
+    val circleIds: List<Uuid> = emptyList()
+)
+
+/**
+ * Connections that qualify for one of an app's circles but are not in it yet.
+ *
+ * The backlog exists because assigning a circle to an app does not reach back over contacts the
+ * owner already reviewed: a review is a moment, not a standing rule, and at that moment the circle
+ * either did not exist or was not the app's.
+ *
+ * A circle with nothing to offer is omitted, so an empty list means "nothing to do" — no counting.
+ */
+@Serializable
+data class CircleEnrollmentCandidates(
+    val circleId: String,
+    val circleName: String = "",
+    /** Why they qualify, so the UI can say "your reviewed contacts" rather than "some contacts". */
+    val grantOn: CircleGrantOn = CircleGrantOn.None,
+    val candidates: List<EnrollmentCandidate> = emptyList(),
+)
+
+/**
+ * One identity that could be added, and the fact that qualifies them.
+ *
+ * [reviewedAt] rides along because it is the basis of the offer — a list of bare names asks the
+ * owner to approve access on trust. Null on a Connect circle, where connecting rather than
+ * reviewing is what qualifies.
+ */
+@Serializable
+data class EnrollmentCandidate(
+    val odinId: OdinId,
+    val reviewedAt: Long? = null,
+)
+
+/** Body for `POST /connections/circles/add-many`. */
+@Serializable
+data class AddManyCircleMembershipRequest(
+    val circleId: String,
+    val odinIds: List<String> = emptyList(),
+)
+
+/**
+ * What a bulk enrolment did.
+ *
+ * Three outcomes rather than one count, because they mean different things: a grant is membership
+ * now, a deposit is membership once the connection's peer key is next in scope, and a skip is
+ * someone who stopped qualifying between the screen being drawn and the button being pressed.
+ */
+@Serializable
+data class EnrollmentResult(
+    val enrolled: Int = 0,
+    val deposited: Int = 0,
+    val skipped: Int = 0,
+    /** Named, because "which three were skipped" is the question an owner actually asks. */
+    val outcomes: List<EnrollmentOutcome> = emptyList(),
+)
+
+@Serializable
+data class EnrollmentOutcome(
+    val odinId: OdinId,
+    val kind: EnrollmentOutcomeKind = EnrollmentOutcomeKind.Skipped,
+)
+
+@Serializable(with = EnrollmentOutcomeKindSerializer::class)
+enum class EnrollmentOutcomeKind {
+    /** A real circle grant; they are a member now. */
+    @SerialName("enrolled")
+    Enrolled,
+
+    /** Sealed and recorded; in effect once the connection's peer key is next in scope. */
+    @SerialName("deposited")
+    Deposited,
+
+    /** Not eligible at the moment of the write. */
+    @SerialName("skipped")
+    Skipped,
+}
+
 @Serializable
 data class RevokeCircleMembershipRequest(
     val odinId: OdinId,
@@ -55,6 +158,25 @@ data class CircleWithMembers(
     val circle: RedactedCircleDefinition,
     /** Member identities, as domain strings (e.g. "sam.dotyou.cloud"). */
     val members: List<OdinId> = emptyList(),
+    /**
+     * Identities an app asked to add, whose grant has not landed yet. A **sibling** of [members]
+     * and never merged into it — they hold nothing, so listing them as members would claim access
+     * that does not exist.
+     */
+    val pendingMembers: List<PendingCircleMember> = emptyList(),
+)
+
+/**
+ * A sealed deposit waiting to become a real membership: an app asked for the identity to be added
+ * and the grant takes effect the next time they connect.
+ */
+@Serializable
+data class PendingCircleMember(
+    val odinId: OdinId,
+    /** Epoch-millis the request was deposited. */
+    val deposited: Long = 0,
+    /** The app that asked. A plain Guid server-side, so hyphenated on the wire. */
+    val depositingAppId: Uuid? = null,
 )
 
 /**
@@ -72,7 +194,62 @@ data class RedactedCircleDefinition(
     val lastUpdated: Long = 0,
     val permissions: RedactedPermissionSet? = null,
     val driveGrants: List<RedactedCircleDriveGrant>? = null,
+    /** Owning app; null = an owner circle. A plain server-side Guid, so hyphenated on the wire. */
+    val appId: Uuid? = null,
+    val grantOn: CircleGrantOn = CircleGrantOn.None,
+    val designation: CircleDesignation = CircleDesignation.Personal,
+    /** Often a multi-codepoint ZWJ sequence — render whole, never substring it. */
+    val emoji: String? = null,
 )
+
+/**
+ * When the owning app wants members enrolled. The app declares, the owner disposes via a per-app
+ * toggle; the effective set is declared AND enabled.
+ *
+ * Nothing on the server reads this yet — the enrollment pipeline is unbuilt — but the field is
+ * already served, and it is what lets a client tell an app default circle from a user circle
+ * without knowing any GUIDs.
+ */
+@Serializable(with = CircleGrantOnSerializer::class)
+enum class CircleGrantOn {
+    /** Manual membership only. Every circle predating the enrollment model is this. */
+    @SerialName("none")
+    None,
+
+    /** Granted at any connection establishment. Deposit-only: write/react, no read, no keys. */
+    @SerialName("connect")
+    Connect,
+
+    /** Granted only through the owning app's own consent flow — the vendor case. */
+    @SerialName("ownFlowConnect")
+    OwnFlowConnect,
+
+    /** Granted when the owner completes the review — the one place read grants may be minted. */
+    @SerialName("review")
+    Review,
+}
+
+/**
+ * What kind of relationship a circle represents. Presentation and filtering only; it never
+ * participates in ACL evaluation.
+ *
+ * This app derives contact states from [Personal] circles alone. [Audience] belongs to the app
+ * that owns it (feed's subscribers), and [Vendor] is invisible here.
+ */
+@Serializable
+enum class CircleDesignation {
+    /** Friends, Family, Emergency Location Access. The default, and what user-created circles are. */
+    @SerialName("personal")
+    Personal,
+
+    /** Pure capability, no intimacy claim — a feed channel's subscribers. */
+    @SerialName("audience")
+    Audience,
+
+    /** Vendor and institution grants — write-only in practice. */
+    @SerialName("vendor")
+    Vendor,
+}
 
 @Serializable
 data class RedactedCircleDriveGrant(
@@ -111,12 +288,19 @@ data class RedactedIdentityConnectionRegistration(
     val hasVerificationHash: Boolean,
     val rku: Boolean,
     /**
-     * True when this identity is connected AND a member of the Confirmed Connections system
-     * circle — server-computed (see issue #919). False covers everyone else who's connected but
-     * unconfirmed: auto-connected/introduced identities, and any plain direct connection that
-     * hasn't been explicitly confirmed. Defaulted so deserialization stays safe against any
-     * response shape that hasn't rolled this field out yet.
+     * When the owner reviewed this contact, epoch-millis; null = never reviewed ("New").
+     *
+     * The owner's own private judgment — never sent to the peer, and a peer cannot read their own
+     * stamp on this identity. Set once: a second review may enrol more circles but leaves the
+     * original value, so this is "first vouched for", never "last reviewed".
      */
+    val reviewedAt: Long? = null,
+
+    /**
+     * Dead. A server-side alias for `reviewedAt != null`, retained only so a response carrying it
+     * still parses — nothing in this client reads it. Delete once no server sends it.
+     */
+    @Deprecated("Read reviewedAt instead", ReplaceWith("reviewedAt != null"))
     val vetted: Boolean = false
 )
 
@@ -134,8 +318,42 @@ data class RedactedAccessExchangeGrant(
      * but not yet actioned by the owner or the contact's server. Standard hyphenated GUIDs (this
      * field is backed by a plain Guid server-side, unlike [RedactedCircleGrant.circleId]).
      */
-    val pendingCircleIds: List<Uuid> = emptyList()
+    val pendingCircleIds: List<Uuid> = emptyList(),
+    /**
+     * Circles waiting on their owning app to come and finish the enrollment — it holds the drive
+     * keys nobody else can source.
+     *
+     * Deliberately not merged with [pendingCircleIds]: that one resolves on its own when the
+     * contact next calls, this one resolves only when an app acts. Processing usually moves an
+     * entry from here to there rather than straight to a grant, so it is two steps, not one.
+     */
+    val awaitingApps: List<AwaitingAppEntry> = emptyList()
 )
+
+/**
+ * One enrollment waiting on an app to finish it.
+ *
+ * Names are resolved when the connection is read, not frozen at review time, so a renamed circle
+ * or app shows its current name. Every name is nullable and each null means something:
+ *
+ * - [appId] and [appName] null — an **owner circle**. No app owns it; it waits on the owner.
+ * - [circleName] null — the circle was deleted after the review. The entry is still reported so
+ *   the owner can see something is stuck rather than seeing nothing.
+ * - [appName] null with a non-null [appId] — the app was deleted. Same reasoning.
+ */
+@Serializable
+data class AwaitingAppEntry(
+    val circleId: String,
+    val circleName: String? = null,
+    val appId: String? = null,
+    val appName: String? = null,
+) {
+    /** Dashless, to compare against a circle definition's id. */
+    val circleIdHex: String get() = circleId.replace("-", "").lowercase()
+
+    /** True when no app owns this circle, so it is the owner who has to act. */
+    val awaitsOwner: Boolean get() = appId.isNullOrBlank()
+}
 
 @Serializable
 data class RedactedCircleGrant(
@@ -158,6 +376,60 @@ data class RedactedAppCircleGrant(
  * "550e8400e29b41d4a716446655440000") — unlike a plain Guid, which is always hyphenated. The
  * standard [kotlin.uuid.Uuid] parser only accepts the hyphenated form and throws on this shape.
  */
+/**
+ * The circle endpoints serve this as a camelCase string; the enrolment endpoints serve the
+ * underlying integer. Accept either rather than betting on one and failing the whole response.
+ */
+object CircleGrantOnSerializer : KSerializer<CircleGrantOn> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("CircleGrantOn", PrimitiveKind.STRING)
+
+    private val byOrdinal = listOf(
+        CircleGrantOn.None,
+        CircleGrantOn.Connect,
+        CircleGrantOn.OwnFlowConnect,
+        CircleGrantOn.Review,
+    )
+
+    override fun serialize(encoder: Encoder, value: CircleGrantOn) {
+        encoder.encodeString(value.name.replaceFirstChar { it.lowercase() })
+    }
+
+    override fun deserialize(decoder: Decoder): CircleGrantOn {
+        // The element, not decodeString(): the serializer runs strict, so a bare number would
+        // throw before we ever saw it.
+        val raw = (decoder as? JsonDecoder)?.decodeJsonElement()?.jsonPrimitive?.contentOrNull
+            ?: return CircleGrantOn.None
+        raw.toIntOrNull()?.let { return byOrdinal.getOrNull(it) ?: CircleGrantOn.None }
+        return CircleGrantOn.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
+            ?: CircleGrantOn.None
+    }
+}
+
+/** Same either-shape tolerance as [CircleGrantOnSerializer]; the kinds are 1-based, not 0-based. */
+object EnrollmentOutcomeKindSerializer : KSerializer<EnrollmentOutcomeKind> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("EnrollmentOutcomeKind", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: EnrollmentOutcomeKind) {
+        encoder.encodeString(value.name.replaceFirstChar { it.lowercase() })
+    }
+
+    override fun deserialize(decoder: Decoder): EnrollmentOutcomeKind {
+        val raw = (decoder as? JsonDecoder)?.decodeJsonElement()?.jsonPrimitive?.contentOrNull
+            ?: return EnrollmentOutcomeKind.Skipped
+        raw.toIntOrNull()?.let {
+            return when (it) {
+                1 -> EnrollmentOutcomeKind.Enrolled
+                2 -> EnrollmentOutcomeKind.Deposited
+                else -> EnrollmentOutcomeKind.Skipped
+            }
+        }
+        return EnrollmentOutcomeKind.entries.firstOrNull { k -> k.name.equals(raw, ignoreCase = true) }
+            ?: EnrollmentOutcomeKind.Skipped
+    }
+}
+
 object GuidIdUuidSerializer : KSerializer<Uuid> {
     override val descriptor: SerialDescriptor =
         PrimitiveSerialDescriptor("GuidIdUuid", PrimitiveKind.STRING)

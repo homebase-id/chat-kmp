@@ -119,7 +119,6 @@ class MomentAudienceViewModel(
                     manageable = false,
                     members = members,
                     isLoading = false,
-                    pendingChecking = false,
                 ),
             )
         }

@@ -144,7 +144,7 @@ fun ProfileAvatarEditScreen(
 
 /** Renders a tier's currently-stored photo (both tiers fetch/decrypt the same way), or a
  *  placeholder when there's none — shared by [ProfileAvatarEditScreen] and the compact photo
- *  picker embedded directly in [ProfileEditScreen]'s Public/Vetted sections. */
+ *  picker embedded directly in [ProfileEditScreen]'s Public/Circles sections. */
 @Composable
 internal fun ExistingAvatarContent(existing: ProfileAttribute?, logTag: String) {
     val imageData = existing?.photoImageData()

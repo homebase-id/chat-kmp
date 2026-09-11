@@ -78,6 +78,7 @@ enum class OdinClientErrorCode(val value: Int) {
     IdentityAlreadyFollowed(3009),
     CannotGrantAutoConnectedMoreCircles(3010),
     IncomingRequestNotFound(3011),
+    CannotClearReviewWhilePersonalCircleMember(3012),
 
     // Drive management errors 40xx
     CannotAllowAnonymousReadsOnOwnerOnlyDrive(4001),

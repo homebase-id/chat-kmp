@@ -168,6 +168,11 @@ sealed class Route {
     @SerialName("contactbook-circle-member-add")
     data class CircleMemberAdd(val circleId: String, val circleName: String) : Route()
 
+    /** Contacts that qualify for one of this app's circles but are not in it yet. */
+    @Serializable
+    @SerialName("contactbook-enrollment-candidates")
+    data object EnrollmentCandidates : Route()
+
     @Serializable
     @SerialName("contactbook-add")
     // identityOnly: launched from a chat flow, where a contact is only useful if it has a

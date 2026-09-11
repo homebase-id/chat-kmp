@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.WavingHand
 import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Cake
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -67,6 +70,8 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.ConversationAvatar
 import id.homebase.core.config.chatTargetDrive
 import id.homebase.core.image.ImageSize
+import id.homebase.core.ui.screens.contactbook.CircleAccessState
+import id.homebase.core.ui.screens.contactbook.components.CircleLabel
 import id.homebase.core.ui.screens.contactbook.components.formatPhoneForDisplay
 import id.homebase.api.client.contacts.ContactExperience
 import id.homebase.api.client.contacts.ContactSocialNetwork
@@ -74,6 +79,16 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.getUriHandler
 import id.homebase.resources.MR
+import id.homebase.resources.circle_access_awaiting_app
+import id.homebase.resources.circle_access_awaiting_named
+import id.homebase.resources.circle_access_awaiting_unknown_circle
+import id.homebase.resources.circle_access_awaiting_you
+import id.homebase.resources.circle_access_incomplete
+import id.homebase.resources.contact_access_revoked_body
+import id.homebase.resources.contact_review_action
+import id.homebase.resources.contact_review_prompt_body
+import id.homebase.resources.contact_review_prompt_title
+import id.homebase.resources.contact_access_revoked_title
 import id.homebase.resources.circle_member_pending
 import id.homebase.resources.contactbook_detail_bio
 import id.homebase.resources.contactbook_detail_social
@@ -224,6 +239,81 @@ fun CirclesSection(circles: List<ContactCircleUi>, isConnected: Boolean, onCircl
     }
 }
 
+/**
+ * Prompt for a connection the owner has never reviewed. Sits with the revoked banner at the top
+ * of the tab: both qualify everything below them, and both are states the rest of the screen
+ * gives no sign of.
+ */
+@Composable
+fun NeedsReviewBanner(onReview: () -> Unit) {
+    Spacer(modifier = Modifier.height(12.dp))
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    ) {
+        // The button sits under the copy rather than beside it: as a trailing item it squeezed
+        // the body text into a narrow ragged column, and the two competed for the same row.
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.WavingHand, contentDescription = null)
+                Text(
+                    text = stringResource(MR.string.contact_review_prompt_title),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(MR.string.contact_review_prompt_body),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = onReview, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(MR.string.contact_review_action))
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(20.dp))
+}
+
+/**
+ * Shown when the contact's access has been revoked wholesale. Nothing else on the screen reveals
+ * it — they are still connected, still listed in circles — so without this the screen states
+ * access the contact does not have.
+ */
+@Composable
+fun AccessRevokedBanner() {
+    Spacer(modifier = Modifier.height(12.dp))
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Outlined.Block, contentDescription = null)
+            Column {
+                Text(
+                    text = stringResource(MR.string.contact_access_revoked_title),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = stringResource(MR.string.contact_access_revoked_body),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(20.dp))
+}
+
 /** Tappable pill showing a circle name, with a "Pending" mark when this contact's grant on it
  *  is still a sealed deposit rather than a real membership. */
 @Composable
@@ -235,13 +325,49 @@ private fun CircleChip(circle: ContactCircleUi, onClick: () -> Unit) {
         modifier = Modifier.clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            // A fixed height, because an emoji glyph is taller than a line of text: without it
+            // the chips that have one stand proud of the ones that don't, and nothing in a row
+            // of pills lines up.
+            modifier = Modifier
+                .heightIn(min = 32.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = circle.name, style = MaterialTheme.typography.labelLarge)
-            if (circle.pending) {
+            CircleLabel(
+                emoji = circle.emoji,
+                name = circle.name.ifBlank {
+                    stringResource(MR.string.circle_access_awaiting_unknown_circle)
+                },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            // A bare name claims access the contact may not have. Active needs no mark; the two
+            // states that overstate the grant do.
+            val mark = when {
+                circle.pending || circle.accessState == CircleAccessState.Pending ->
+                    stringResource(MR.string.circle_member_pending)
+
+                // Name who has to act. "Waiting" alone was the best we could do before the
+                // server carried names, and it left the owner with nothing to chase.
+                circle.accessState == CircleAccessState.AwaitingApp -> when {
+                    circle.awaitsOwner -> stringResource(MR.string.circle_access_awaiting_you)
+                    // Not "Moments · Waiting on Moments" — when the app shares the circle's
+                    // name, repeating it says nothing.
+                    circle.awaitingAppName != null &&
+                        !circle.awaitingAppName.equals(circle.name, ignoreCase = true) ->
+                        stringResource(MR.string.circle_access_awaiting_named, circle.awaitingAppName)
+
+                    else -> stringResource(MR.string.circle_access_awaiting_app)
+                }
+
+                circle.accessState == CircleAccessState.Incomplete ->
+                    stringResource(MR.string.circle_access_incomplete)
+
+                else -> null
+            }
+            if (mark != null) {
                 Text(
-                    text = stringResource(MR.string.circle_member_pending),
+                    text = mark,
                     style = MaterialTheme.typography.labelMedium,
                     color = HomebaseTheme.extendedColors.warning,
                 )

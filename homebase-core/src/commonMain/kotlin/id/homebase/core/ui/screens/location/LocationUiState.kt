@@ -44,10 +44,8 @@ data class LocationUiState(
     /** False until circle membership has loaded at least once (drives the loading spinner). */
     val whoCanLocateMeLoaded: Boolean = false,
     /** Contacts whose emergency-circle grant is still a sealed deposit rather than a real
-     *  [whoCanLocateMe] entry — live-read per contact on [LocationViewModel.refresh]. */
+     *  [whoCanLocateMe] entry — from the same circle snapshot, so the two never disagree. */
     val whoCanLocateMePending: List<ContactUiModel> = emptyList(),
-    /** True while the pending-status fan-out is in flight. */
-    val whoCanLocateMePendingChecking: Boolean = false,
     /** odinId domains currently being removed from the emergency circle — drives a per-row
      *  spinner in place of the remove "X" so a tap has visible feedback while in flight. */
     val removingEmergencyContacts: Set<String> = emptySet(),
