@@ -161,6 +161,7 @@ fun EmailThunderbirdSetupUi(
         onCopyKey = currentKey
             ?.takeIf { platform != MailSetupPlatform.ANDROID }
             ?.let { key -> { confirmCopyKey = key } },
+        onCopyPublicKey = currentKey?.let { key -> { copy(key.publicCertificateArmored) } },
     )
 
     Scaffold(
