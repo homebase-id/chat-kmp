@@ -34,6 +34,8 @@ internal data class ThunderbirdActions(
     val onOpenUrl: (String) -> Unit,
     val onSaveKey: (() -> Unit)?,
     val onCopyKey: (() -> Unit)?,
+    /** No confirmation on this one: a public key is meant to be handed out. */
+    val onCopyPublicKey: (() -> Unit)?,
 )
 
 @Composable

@@ -47,6 +47,8 @@ import id.homebase.resources.email_settings_incoming
 import id.homebase.resources.email_settings_outgoing
 import id.homebase.resources.email_tb_copy_address
 import id.homebase.resources.email_tb_copy_password
+import id.homebase.resources.email_tb_copy_public_key
+import id.homebase.resources.email_tb_open_keyserver
 import id.homebase.resources.email_tb_get_fdroid
 import id.homebase.resources.email_tb_get_play
 import id.homebase.resources.email_tb_manual_note
@@ -63,6 +65,7 @@ import id.homebase.resources.email_tb_sb_config_title
 import id.homebase.resources.email_tb_sb_delete_body
 import id.homebase.resources.email_tb_sb_delete_title
 import id.homebase.resources.email_tb_sb_done_body
+import id.homebase.resources.email_tb_sb_done_keyserver
 import id.homebase.resources.email_tb_sb_done_note
 import id.homebase.resources.email_tb_sb_done_title
 import id.homebase.resources.email_tb_sb_encrypted_body
@@ -71,6 +74,10 @@ import id.homebase.resources.email_tb_sb_folders_body
 import id.homebase.resources.email_tb_sb_folders_title
 import id.homebase.resources.email_tb_sb_import_body
 import id.homebase.resources.email_tb_sb_import_title
+import id.homebase.resources.email_tb_sb_importstart_body
+import id.homebase.resources.email_tb_sb_importstart_title
+import id.homebase.resources.email_tb_sb_pick_body
+import id.homebase.resources.email_tb_sb_pick_title
 import id.homebase.resources.email_tb_sb_install_body
 import id.homebase.resources.email_tb_sb_install_title
 import id.homebase.resources.email_tb_sb_okc_body
@@ -84,10 +91,11 @@ import id.homebase.resources.tb_sb_account
 import id.homebase.resources.tb_sb_address
 import id.homebase.resources.tb_sb_allow
 import id.homebase.resources.tb_sb_config
-import id.homebase.resources.tb_sb_delete
 import id.homebase.resources.tb_sb_encrypted
 import id.homebase.resources.tb_sb_folders
 import id.homebase.resources.tb_sb_import
+import id.homebase.resources.tb_sb_importstart
+import id.homebase.resources.tb_sb_pick
 import id.homebase.resources.tb_sb_install
 import id.homebase.resources.tb_sb_okc
 import id.homebase.resources.tb_sb_savekey
@@ -153,7 +161,7 @@ internal fun EmailThunderbirdStoryboard(
                     Body(stringResource(page.body))
                     // Anything the user does not have to read to finish the step goes last, after
                     // the picture, so the instruction and the screen it names stay together.
-                    page.note?.let { note -> Body(stringResource(note)) }
+                    page.notes.forEach { note -> Body(stringResource(note)) }
                     PageShot(image = page.image, label = stringResource(page.title))
                     PageExtras(extras = page.extras, actions = actions)
                 }
@@ -309,6 +317,15 @@ private fun PageExtras(extras: PageExtras, actions: ThunderbirdActions) {
                 StepAction(stringResource(MR.string.email_secrets_save_private_key), save)
             }
         }
+
+        PageExtras.PUBLISH -> ActionRow {
+            actions.onCopyPublicKey?.let { copyPublic ->
+                StepAction(stringResource(MR.string.email_tb_copy_public_key), copyPublic)
+            }
+            StepAction(stringResource(MR.string.email_tb_open_keyserver)) {
+                actions.onOpenUrl(Thunderbird.KEYSERVER_UPLOAD_URL)
+            }
+        }
     }
 }
 
@@ -344,6 +361,7 @@ private enum class PageExtras {
     ADDRESS,
     PASSWORD,
     SAVE_KEY,
+    PUBLISH,
 }
 
 private data class StoryboardPage(
@@ -352,7 +370,7 @@ private data class StoryboardPage(
     val image: DrawableResource,
     val extras: PageExtras,
     /** Background the user can skip and still finish the step. Rendered after [body]. */
-    val note: StringResource? = null,
+    val notes: List<StringResource> = emptyList(),
 )
 
 private val storyboardPages: List<StoryboardPage> = listOf(
@@ -413,6 +431,18 @@ private val storyboardPages: List<StoryboardPage> = listOf(
         PageExtras.SAVE_KEY,
     ),
     StoryboardPage(
+        MR.string.email_tb_sb_importstart_title,
+        MR.string.email_tb_sb_importstart_body,
+        MR.drawable.tb_sb_importstart,
+        PageExtras.NONE,
+    ),
+    StoryboardPage(
+        MR.string.email_tb_sb_pick_title,
+        MR.string.email_tb_sb_pick_body,
+        MR.drawable.tb_sb_pick,
+        PageExtras.NONE,
+    ),
+    StoryboardPage(
         MR.string.email_tb_sb_import_title,
         MR.string.email_tb_sb_import_body,
         MR.drawable.tb_sb_import,
@@ -424,17 +454,21 @@ private val storyboardPages: List<StoryboardPage> = listOf(
         MR.drawable.tb_sb_allow,
         PageExtras.NONE,
     ),
-    StoryboardPage(
-        MR.string.email_tb_sb_delete_title,
-        MR.string.email_tb_sb_delete_body,
-        MR.drawable.tb_sb_delete,
-        PageExtras.NONE,
-    ),
+    // Success before housekeeping: the reward for eleven pages of setup should not be an
+    // instruction to go delete something.
     StoryboardPage(
         MR.string.email_tb_sb_done_title,
         MR.string.email_tb_sb_done_body,
         MR.drawable.tb_sb_done,
+        PageExtras.PUBLISH,
+        notes = listOf(MR.string.email_tb_sb_done_note, MR.string.email_tb_sb_done_keyserver),
+    ),
+    // The same folder shot as the pick page: it is the same file, in the same place, and this is
+    // the page that says to get rid of it.
+    StoryboardPage(
+        MR.string.email_tb_sb_delete_title,
+        MR.string.email_tb_sb_delete_body,
+        MR.drawable.tb_sb_pick,
         PageExtras.NONE,
-        note = MR.string.email_tb_sb_done_note,
     ),
 )
