@@ -196,6 +196,8 @@ class EmailViewModel(
             try {
                 val status = mailProvider.getStatus()
                 _uiState.update { it.copy(serverStatus = status, isCheckingServer = false) }
+                // Remembered for the toolbar, which has to decide before this call can finish.
+                emailPreferences.setServerSupportsMail(status.tenantMailEnabled)
 
                 // Only once email is actually on: before that there is no mailbox to ask about,
                 // and a failure here must not make the whole screen look broken.
