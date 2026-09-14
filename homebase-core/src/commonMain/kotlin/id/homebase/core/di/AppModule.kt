@@ -2,7 +2,6 @@
 
 package id.homebase.core.di
 
-import id.homebase.core.ui.screens.email.clients.EmailClientPickerViewModel
 import id.homebase.core.ui.screens.email.secrets.EmailSecretsViewModel
 import id.homebase.core.ui.screens.email.setup.EmailSetupViewModel
 import id.homebase.core.ui.screens.email.EmailService
@@ -61,6 +60,7 @@ import id.homebase.core.location.emergency.EmergencyLocateStore
 import id.homebase.chat.services.livelocation.LiveLocationReceiveStore
 import id.homebase.chat.services.ChatMessageActionService
 import id.homebase.chat.services.ChatMessageSenderService
+import id.homebase.chat.services.ChatMediaAutoSaveService
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.ChatNotificationMessageResolver
 import id.homebase.chat.services.ChatProtocol
@@ -93,6 +93,10 @@ import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.NotificationActionBridge
+import id.homebase.core.audio.DefaultVoiceNotePlayback
+import id.homebase.core.audio.ProximityAudioRouter
+import id.homebase.core.audio.VoiceNotePlayback
+import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
@@ -102,6 +106,7 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.core.contactbook.ContactOverrideStore
 import id.homebase.core.contactbook.EmergencyContactReceiveService
 import id.homebase.core.contactbook.EmergencyContactReconciler
+import id.homebase.core.contactbook.EmergencyContactService
 import id.homebase.core.ui.screens.contactbook.CircleMemberPickerViewModel
 import id.homebase.core.ui.screens.contactbook.ContactBookViewModel
 import id.homebase.core.ui.screens.contactbook.ContactCardImport
@@ -162,6 +167,7 @@ import id.homebase.core.notifications.NotificationEntry
 import id.homebase.core.notifications.NotificationMessageResolver
 import id.homebase.core.notifications.NotificationService
 import id.homebase.core.notifications.PendingNotificationTap
+import id.homebase.core.notifications.WebPushService
 import id.homebase.core.settings.UserPreferences
 import id.homebase.core.share.ShareContentProcessor
 import id.homebase.core.share.ShareConversationCacheWriter
@@ -175,6 +181,7 @@ import id.homebase.core.ui.screens.feed.FeedViewModel
 import id.homebase.core.ui.screens.help.HelpViewModel
 import id.homebase.core.ui.screens.home.HomeViewModel
 import id.homebase.core.ui.screens.loading.AppLoadingViewModel
+import id.homebase.core.ui.screens.media.MediaSettingsViewModel
 import id.homebase.core.ui.screens.moments.MomentAudienceViewModel
 import id.homebase.core.ui.screens.moments.MomentComposeViewModel
 import id.homebase.core.ui.screens.moments.MomentDetailViewModel
@@ -239,6 +246,11 @@ val LocationPermissionQualifier = named("locationPermission")
 
 val appModule = module {
     single { UserPreferences(get()) }
+
+    single<ProximityAudioRouter> { getProximityAudioRouter() }
+    single<VoiceNotePlayback> {
+        DefaultVoiceNotePlayback(player = get(), proximityRouter = get(), scope = get())
+    }
     single { MomentsPreferences(get()) }
     singleOf(::MomentsPostSenderService)
     // User-state store mirrors DriveRegistry's wiring — narrow lambda deps for
@@ -636,6 +648,11 @@ val appModule = module {
                 get<FeedPermissionService>().reset()
                 get<FeedTimelineService>().start()
 
+                // An event collector with no UI referent, so nothing else constructs it. Resolved
+                // here and NOT createdAtStart: iOS starts Koin before the database, so its DB edge
+                // would kill every launch.
+                get<ChatMediaAutoSaveService>()
+
                 // Let ChatMessageStream skip messages for left conversations
                 get<ChatMessageStream>().isConversationLeft = { conversationId ->
                     conversationStream.getConversationById(conversationId)
@@ -672,6 +689,7 @@ val appModule = module {
                 // event) is never applied. Recover missed SETs against the temporal-access
                 // preflight in the background — no screen required. Set-only: the reconciler
                 // never clears; revocation is applied solely by onRevoked above (issue #961).
+                get<EmergencyContactService>().apply { reset(); start() }
                 get<EmergencyContactReconciler>().start()
                 // endregion
 
@@ -745,6 +763,15 @@ val appModule = module {
     singleOf(::ConnectionCacheRepository)
     singleOf(::ConnectionService)
     singleOf(::EmergencyCircleNotifier)
+    single {
+        EmergencyContactService(
+            contactRepository = get(),
+            temporalRead = get(),
+            authConnectionCoordinator = get(),
+            credentialsManager = get(),
+            scope = get(),
+        )
+    }
     singleOf(::EmergencyContactReceiveService)
     singleOf(::EmergencyContactReconciler)
     singleOf(::ContactService)
@@ -807,6 +834,7 @@ val appModule = module {
         }
     }
     single<MessageLookup> { get<ChatMessageStream>() }
+    singleOf(::ChatMediaAutoSaveService)
     singleOf(::ShareSuggestionDonor)
     singleOf(::ChatMessageSenderService) bind StatusMessageSender::class
     singleOf(::HomebaseImageLoader)
@@ -840,6 +868,7 @@ val appModule = module {
     }
     single<NotificationMessageResolver> { ChatNotificationMessageResolver(get<MessageLookup>()) }
     singleOf(::NotificationEntry)
+    singleOf(::WebPushService)
     single {
         val upgradeProvider = get<IdentityUpgradeProvider>()
         PendingUpgradeManager(
@@ -1018,7 +1047,7 @@ val appModule = module {
             contactRepository = get(),
             connectionService = get(),
             contactService = get(),
-            temporalDriveReadProvider = get(),
+            emergencyContacts = get(),
             credentialsManager = get(),
             tracker = get(),
             receiveStore = get(),
@@ -1193,6 +1222,7 @@ val appModule = module {
     viewModelOf(::DeveloperMenuViewModel)
     viewModelOf(::DeveloperScheduledPushTestViewModel)
     viewModelOf(::AppearanceSettingsViewModel)
+    viewModelOf(::MediaSettingsViewModel)
     viewModelOf(::StorageSettingsViewModel)
     viewModelOf(::DefragmenterViewModel)
     viewModelOf(::HelpViewModel)
@@ -1242,7 +1272,6 @@ val appModule = module {
     singleOf(::EmailService)
     viewModelOf(::EmailSetupViewModel)
     viewModelOf(::EmailSecretsViewModel)
-    viewModelOf(::EmailClientPickerViewModel)
     viewModelOf(::EmailSettingsViewModel)
     viewModel { params ->
         VaultNoteEditorViewModel(

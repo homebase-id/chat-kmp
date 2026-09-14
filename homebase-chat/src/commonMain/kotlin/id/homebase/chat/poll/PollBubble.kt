@@ -195,6 +195,7 @@ fun PollBubble(
                                 messageId = target.first,
                                 optionIndex = i,
                                 own = own,
+                                optionCount = optionCount,
                                 allowMultiple = descriptor.allowMultiple,
                             )
                         }
@@ -393,15 +394,6 @@ private fun UnparseablePollBubble(
     }
 }
 
-/**
- * Applies a poll vote for [optionIndex]:
- * - [allowMultiple]: each option toggles independently.
- * - Single-choice: if a different option is currently voted, clear it first, then
- *   toggle the tapped option (clear-then-set). Tapping the already-chosen option
- *   toggles it off (clear only).
- *
- * Mirrors [id.homebase.chat.groodle.GroodleDetailDialog]'s `applyVote` logic.
- */
 @OptIn(ExperimentalUuidApi::class)
 private suspend fun applyPollVote(
     actionService: ChatMessageActionService,
@@ -409,20 +401,12 @@ private suspend fun applyPollVote(
     messageId: Uuid,
     optionIndex: Int,
     own: Set<Int>,
+    optionCount: Int,
     allowMultiple: Boolean,
 ) {
-    val newCode = PollVote.codeFor(optionIndex)
-    if (allowMultiple) {
-        // Each option is an independent toggle.
-        actionService.toggleReaction(conversationId, messageId, newCode)
-        return
-    }
-    // Single-choice: clear EVERY other currently-voted option before toggling the
-    // tapped one. Iterating (not firstOrNull) defends against a stale `own` set that
-    // somehow holds more than one prior vote, which would otherwise leave a ghost.
-    own.filter { it != optionIndex }.forEach { prev ->
-        actionService.toggleReaction(conversationId, messageId, PollVote.codeFor(prev))
-    }
-    // Toggle the tapped option (sets it if not voted, clears it if already voted).
-    actionService.toggleReaction(conversationId, messageId, newCode)
+    actionService.setReactions(
+        conversationId,
+        messageId,
+        PollVote.change(optionIndex, own, optionCount, allowMultiple),
+    )
 }

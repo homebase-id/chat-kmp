@@ -31,6 +31,7 @@ class EmergencyContactReceiveService(
     private val contactRepository: ContactRepository,
     private val optimisticWriter: OptimisticWriter,
     private val outboxSync: OutboxSync,
+    private val emergencyContacts: EmergencyContactService,
 ) {
     private val chatDrive = chatTargetDrive.alias
 
@@ -47,6 +48,7 @@ class EmergencyContactReceiveService(
                 DesignationAction.SetThenConsume -> {
                     contactRepository.setICanLocate(uniqueId, versionTag!!)
                     consume(messageFile)
+                    emergencyContacts.refreshAsync(sender)
                 }
                 DesignationAction.Ignore -> Unit
             }

@@ -21,9 +21,12 @@ import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.notifications.RichNotificationData
 import id.homebase.core.notifications.RichNotificationDisplayer
+import id.homebase.core.notifications.describeWebNotificationFailure
+import id.homebase.core.notifications.webPushBridge
 import id.homebase.core.ui.screens.location.model.LOCATION_POINTS_PAYLOAD_KEY
 import id.homebase.core.ui.screens.location.model.LOCATION_TRACK_FILE_TYPE
 import id.homebase.core.ui.screens.location.model.LocationTrackCodec
+import id.homebase.core.util.isWeb
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,7 +120,28 @@ class DeveloperMenuViewModel(
             silent = false,
         )
 
-        RichNotificationDisplayer().show(richData)
+        if (!isWeb()) {
+            RichNotificationDisplayer().show(richData)
+            return
+        }
+
+        // Web is the one target where the displayer is a deliberate no-op (sw.js owns every push),
+        // so the button routes to the same registration sw.js displays through and reports why not.
+        val bridge = webPushBridge()
+        if (bridge == null) {
+            sendEvent(DeveloperMenuUiEvent.Error("Push bridge missing — odin-push.js did not load"))
+            return
+        }
+        viewModelScope.launch {
+            val failure = bridge.showLocalNotification(richData.title, richData.body)
+            sendEvent(
+                if (failure == null) {
+                    DeveloperMenuUiEvent.Success("Notification handed to the browser")
+                } else {
+                    DeveloperMenuUiEvent.Error(describeWebNotificationFailure(failure))
+                }
+            )
+        }
     }
 
     /**

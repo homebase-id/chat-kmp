@@ -67,15 +67,9 @@ actual object FFmpegUtils {
     }
 
     /**
-     * Compress (+ optional trim) via ffmpeg.wasm, mirroring the native actuals: probe the
-     * input, hand it to [FfmpegCompressPlanner], and either short-circuit (already-optimal /
-     * small) by returning null — caller falls back to the original file — or run ffmpeg and
-     * return the okio path of the compressed mp4.
-     *
-     * Small-video parity with native: the planner's already-optimal predicate needs the codec,
-     * which the mp4box probe supplies, so an in-budget H.264 clip skips ffmpeg here exactly as
-     * it does on Android/iOS/Desktop. (Web v1 does not strip location atoms on the skip path —
-     * a minor known gap vs Android's Mp4LocationStripper.)
+     * Compress (+ optional trim) via ffmpeg.wasm, mirroring the native actuals: probe the input,
+     * hand it to [FfmpegCompressPlanner], run ffmpeg, and return the okio path of the
+     * compressed mp4.
      */
     actual suspend fun compressVideo(
         inputPath: String,

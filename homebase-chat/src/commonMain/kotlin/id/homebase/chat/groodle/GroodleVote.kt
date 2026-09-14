@@ -1,6 +1,7 @@
 package id.homebase.chat.groodle
 
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.chat.services.ReactionSetChange
 import id.homebase.chat.services.decodeReactionCode
 
 /**
@@ -52,6 +53,31 @@ object GroodleVote {
     }
 
     /**
+     * The reaction change a tap on [tapped] for one slot declares: tapping the
+     * current choice clears the slot, anything else sets it and clears the slot's
+     * other choices. Only this slot's codes are touched; other slots' votes are
+     * left alone.
+     */
+    fun change(
+        slotIndex1Based: Int,
+        currentChoice: Choice?,
+        tapped: Choice,
+        allowMaybe: Boolean,
+    ): ReactionSetChange {
+        val slotCodes = Choice.entries
+            .filter { allowMaybe || it != Choice.MAYBE }
+            .map { encode(slotIndex1Based, it) }
+            .toSet()
+        val scope = "slot:$slotIndex1Based"
+        return if (currentChoice == tapped) {
+            ReactionSetChange(scope = scope, add = emptySet(), remove = slotCodes)
+        } else {
+            val code = encode(slotIndex1Based, tapped)
+            ReactionSetChange(scope = scope, add = setOf(code), remove = slotCodes - code)
+        }
+    }
+
+    /**
      * Extracts the emoji/code string from a single `ownReactions` entry. The stored
      * shape is JSON-encoded ReactionContent (`{"emoji":"_1Y"}`). Delegates to the
      * shared [decodeReactionCode].
@@ -60,8 +86,8 @@ object GroodleVote {
 
     /**
      * The current user's vote per slot, decoded from their own reactions. Last
-     * write wins per slot (the detail dialog clears a prior vote before setting a
-     * new one, so well-behaved clients have at most one per slot anyway).
+     * write wins per slot (a vote is written as a set-state over the slot's codes,
+     * so well-behaved clients have at most one per slot anyway).
      */
     fun myVotes(
         ownReactions: Iterable<String>,
@@ -89,7 +115,7 @@ object GroodleVote {
      * Per-slot tally across all reactors, read from the server-side reaction
      * preview. Returns an entry for every slot in `1..slotCount` (zeroed when no
      * votes). Aggregate counts can't be de-duped per voter, so correctness relies
-     * on the detail dialog's clear-then-set on vote change (same as Event RSVP).
+     * on each vote being written as a set-state over the slot (same as Event RSVP).
      */
     fun counts(summary: ReactionSummary?, slotCount: Int, allowMaybe: Boolean): Map<Int, SlotCounts> {
         val yes = IntArray(slotCount + 1)

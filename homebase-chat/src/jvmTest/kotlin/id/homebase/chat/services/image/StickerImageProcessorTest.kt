@@ -36,7 +36,7 @@ class StickerImageProcessorTest {
         assertEquals(
             "image/png",
             ImageFormatDetector.detectFormat(out),
-            "must stay PNG — the Android ImageUtils WebP branch crashes on API 28/29",
+            "must stay PNG — a lossy WebP re-encode would blur the cut-out's alpha edge",
         )
         assertTrue(
             ImageUtils.hasNonOpaquePixels(out),
@@ -88,7 +88,7 @@ class StickerImageProcessorTest {
         assertEquals(
             "image/png",
             ImageFormatDetector.detectFormat(out),
-            "must stay PNG — the Android ImageUtils WebP branch crashes on API 28/29",
+            "must stay PNG — a lossy WebP re-encode would blur the cut-out's alpha edge",
         )
         assertTrue(
             ImageUtils.hasNonOpaquePixels(out),

@@ -17,8 +17,8 @@ import id.homebase.api.client.connections.ConnectionRequestOrigin
 import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.identity.displayNameOrDomain
-import id.homebase.api.client.peer.temporal.TemporalDriveReadProvider
 import id.homebase.api.common.OdinId
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.crypto.Md5
 import id.homebase.chat.conversationsettings.GroupInCommonItem
 import id.homebase.chat.conversationsettings.collectConversationOverview
@@ -31,8 +31,9 @@ import id.homebase.chat.data.IncomingConnectionRequestUiModel
 import id.homebase.chat.data.OutgoingConnectionRequestUiModel
 import id.homebase.api.client.contacts.Contact
 import id.homebase.api.client.contacts.ContactRepository
-import id.homebase.core.config.locationLabeledDrive
 import id.homebase.core.contactbook.ContactOverrideStore
+import id.homebase.core.contactbook.EmergencyContactService
+import id.homebase.core.contactbook.LocateVerifyStatus
 import id.homebase.core.contactbook.ReconcileAction
 import id.homebase.core.contactbook.reconcileAction
 import id.homebase.core.contactbook.setICanLocate
@@ -81,7 +82,7 @@ class ContactDetailViewModel(
     private val connectionNetworkProvider: ConnectionNetworkProvider,
     private val ownerSessionRepository: OwnerSessionRepository,
     private val credentialsManager: CredentialsManager,
-    private val temporalDriveReadProvider: TemporalDriveReadProvider,
+    private val emergencyContacts: EmergencyContactService,
     private val overrideStore: ContactOverrideStore,
     private val publicIdentityRepository: PublicIdentityRepository,
 ) : ViewModel() {
@@ -152,7 +153,6 @@ class ContactDetailViewModel(
     private val route = savedStateHandle.toRoute<Route.ContactBookDetail>()
 
     /** The drive whose temporal grant gates "can I locate this contact in an emergency?". */
-    private val locationDrive = locationLabeledDrive.drive.alias
 
     private val _uiState = MutableStateFlow(ContactDetailUiState())
     val uiState: StateFlow<ContactDetailUiState> = _uiState.asStateFlow()
@@ -593,44 +593,30 @@ class ContactDetailViewModel(
     }
 
     /**
-     * Preflight whether we currently hold temporal read access to [peer]'s location drive (reads no
-     * data, fires no notification on the peer) and reconcile the cached `iCanLocate` "emergency
-     * contact" flag against that authoritative answer:
-     * - access → set the flag (add them to the emergency list) and surface the newest-data timestamp.
-     * - definitively no access → clear a stale flag.
-     * - network/parse failure → inconclusive; leave the flag and the timestamp untouched.
-     *
-     * The flag write needs the contact's [ContactBookEntry.versionTag]; a synthetic entry (deep-link
-     * with no stored contact) has none, so we can still show freshness but can't persist the flag.
+     * Preflight (via [EmergencyContactService]) whether we currently hold temporal read access to
+     * [peer]'s location drive and reconcile the cached `iCanLocate` flag against it: access → set
+     * the flag and surface the newest-data timestamp; a definitive negative → drop the timestamp
+     * (never the flag, #961); inconclusive → leave both untouched.
      */
     private suspend fun verifyLocateAccess(peer: OdinId) {
-        val status = runCatching { temporalDriveReadProvider.verifyTemporalAccess(peer, locationDrive) }
-            .onFailure { Logger.w(it, TAG) { "verifyTemporalAccess failed for ${peer.domainName}" } }
-            .getOrNull() ?: return
-
-        val entry = _uiState.value.entry
-        val versionTag = entry?.versionTag
-
-        // "Emergency contact" means the peer currently grants us temporal read access to their
-        // location drive. windowSeconds is NOT a reliable ACL-type discriminator — a real
-        // emergency-circle grant has been observed reporting windowSeconds=null in practice, same
-        // as a plain full read (see issue #875) — so gate on hasAccess alone.
-        if (status.hasAccess) {
-            // newestFileModified is only a real timestamp when we have access; 0 (ZeroTime) means the
-            // drive has no files yet — render "no data", not the epoch.
-            val newest = status.newestFileModified.takeIf { it.milliseconds > 0 }
-            _uiState.update { it.copy(locateNewestDataAt = newest) }
-            if (entry != null && versionTag != null &&
-                reconcileAction(status.hasAccess, entry.iCanLocate) == ReconcileAction.Set
-            ) {
-                runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
-                    .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
+        when (val status = emergencyContacts.refresh(peer)) {
+            is LocateVerifyStatus.Active -> {
+                _uiState.update {
+                    it.copy(locateNewestDataAt = status.newestModifiedMs?.let(::UnixTimeUtc))
+                }
+                val entry = _uiState.value.entry
+                val versionTag = entry?.versionTag
+                if (entry != null && versionTag != null &&
+                    reconcileAction(hasAccess = true, entry.iCanLocate) == ReconcileAction.Set
+                ) {
+                    runCatching { contactRepository.setICanLocate(entry.uniqueId, versionTag) }
+                        .onFailure { Logger.w(it, TAG) { "setICanLocate failed for ${peer.domainName}" } }
+                }
             }
-        } else {
-            // Never clear the flag here (issue #961): hasAccess=false is not a trustworthy
-            // revocation — only the peer's explicit revocation message clears iCanLocate
-            // (EmergencyContactReceiveService.onRevoked). See reconcileAction.
-            _uiState.update { it.copy(locateNewestDataAt = null) }
+
+            is LocateVerifyStatus.Broken -> _uiState.update { it.copy(locateNewestDataAt = null) }
+
+            LocateVerifyStatus.Loading, is LocateVerifyStatus.Unreachable -> Unit
         }
     }
 

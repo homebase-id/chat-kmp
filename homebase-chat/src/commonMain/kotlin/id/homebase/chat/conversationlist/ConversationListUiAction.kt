@@ -26,6 +26,10 @@ sealed interface ConversationListUiAction {
     data object NewConversationClicked : ConversationListUiAction
     data object ClearSelection : ConversationListUiAction
 
+    /** Record the current #1 conversation as the one the user has seen. Dispatched whenever the
+     *  list leaves the screen, and once per return to it. */
+    data object SnapshotListTop : ConversationListUiAction
+
     /** The screen has handled [ConversationListUiState.closeDetailPaneRequest] (popped
      *  the scaffold detail pane); clear it so it doesn't fire again on next recompose. */
     data object CloseDetailPaneRequestConsumed : ConversationListUiAction

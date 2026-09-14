@@ -197,7 +197,9 @@ class ConversationListViewModel(
     private val enricher = ConversationEnricher()
     val ownerSession = ownerSessionRepository.user
 
-    private val _uiState = MutableStateFlow(ConversationListUiState())
+    private val _uiState = MutableStateFlow(
+        ConversationListUiState(listTopSnapshotId = userPreferences.conversationListTopId)
+    )
     val uiState: StateFlow<ConversationListUiState> = _uiState.asStateFlow()
 
     private val events = ConversationListEvents()
@@ -1271,6 +1273,8 @@ class ConversationListViewModel(
                 sendEvent(NavigateToNewConversation)
             }
 
+            is ConversationListUiAction.SnapshotListTop -> snapshotListTop()
+
             is ConversationListUiAction.ClearSelection -> {
                 ActiveConversation.selectConversation(null)
                 currentConversationJob?.cancel()
@@ -1280,7 +1284,7 @@ class ConversationListViewModel(
                 _uiState.value.selectedConversationId?.let { frozenUnreadBoundary.remove(it) }
                 _uiState.update { it.copy(selectedConversationId = null) }
                 _messagesUiState.update {
-                    it.copy(
+                    it.closeMediaViewer().copy(
                         messages = persistentListOf(),
                         isLoadingMessages = false,
                         pinnedMessages = persistentListOf(),
@@ -1642,6 +1646,20 @@ class ConversationListViewModel(
         }
     }
 
+    /**
+     * Search results share [ConversationListUiState.conversationsContent] with the conversation
+     * list, and their #1 row has nothing to do with the list's — never snapshot one.
+     */
+    private fun snapshotListTop() {
+        if (conversationSearchTextState.text.isNotEmpty()) return
+        val items =
+            _uiState.value.conversationsContent as? ConversationListContentState.Items ?: return
+        val topId = resolveTopConversationId(items.list) ?: return
+        if (topId == _uiState.value.listTopSnapshotId) return
+        userPreferences.conversationListTopId = topId
+        _uiState.update { it.copy(listTopSnapshotId = topId) }
+    }
+
     private fun updateListContent() {
         viewModelScope.launch {
             try {
@@ -1822,15 +1840,16 @@ class ConversationListViewModel(
         // the Pane's remember only re-evaluates ONCE, with the resolved scroll.
         // The brief blank-screen window is the same one uncached switches
         // already have (a few ms of groupBy + clustering on Dispatchers.Default).
-        _messagesUiState.update {
-            it.copy(
+        _messagesUiState.update { state ->
+            val base = if (isNewSelection) state.closeMediaViewer() else state
+            base.copy(
                 scrollPosition = null,
                 isLoadingMessages = true,
                 replyToMessage = null,
                 // Drop the previous conversation's pinned bar on a real switch so it
                 // doesn't flash stale pins before the new conversation's collector emits.
-                pinnedMessages = if (isNewSelection) persistentListOf() else it.pinnedMessages,
-                currentPinIndex = if (isNewSelection) 0 else it.currentPinIndex,
+                pinnedMessages = if (isNewSelection) persistentListOf() else base.pinnedMessages,
+                currentPinIndex = if (isNewSelection) 0 else base.currentPinIndex,
                 awaitingJumpMessageId = null,
             )
         }

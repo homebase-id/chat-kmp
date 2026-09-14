@@ -16,10 +16,12 @@ import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.core.contactbook.ContactOverrideStore
+import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
 import id.homebase.resources.MR
 import id.homebase.resources.chat_contact_share_unshareable
 import id.homebase.resources.error_unknown
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -53,6 +55,8 @@ class ShareContactPickerViewModel(
     private val _events = MutableSharedFlow<ShareContactPickerUiEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<ShareContactPickerUiEvent> = _events.asSharedFlow()
 
+    private var reviewJob: Job? = null
+
     init {
         viewModelScope.launch { repo.ensureLoaded() }
         // The extras, the organization and any edited primary live only in the override blob, which
@@ -84,25 +88,56 @@ class ShareContactPickerViewModel(
             is ShareContactPickerUiAction.ContactClicked -> {
                 val candidate = _uiState.value.candidates
                     .firstOrNull { it.entry.uniqueId == action.entry.uniqueId }
-                if (candidate == null || !candidate.shareable) {
+                val descriptor = candidate?.descriptor
+                if (candidate == null || descriptor == null) {
                     _events.tryEmit(
                         ShareContactPickerUiEvent.ShowError(MR.string.chat_contact_share_unshareable)
                     )
                     return
                 }
-                _uiState.update {
-                    it.copy(selectedId = if (it.selectedId == action.entry.uniqueId) null else action.entry.uniqueId)
-                }
+                _uiState.update { it.copy(selectedId = action.entry.uniqueId) }
+                openReview(candidate.entry, descriptor)
             }
 
             ShareContactPickerUiAction.SendClicked -> send()
-            ShareContactPickerUiAction.BackClicked -> _events.tryEmit(ShareContactPickerUiEvent.Back)
+
+            ShareContactPickerUiAction.BackClicked ->
+                if (_uiState.value.review == null) {
+                    _events.tryEmit(ShareContactPickerUiEvent.Back)
+                } else {
+                    reviewJob?.cancel()
+                    _uiState.update { it.copy(review = null, selectedId = null) }
+                }
+
+            is ShareContactPickerUiAction.ReviewNameChanged -> _uiState.update {
+                it.copy(review = it.review?.copy(displayName = action.name))
+            }
+
+            is ShareContactPickerUiAction.ReviewFieldToggled -> _uiState.update {
+                it.copy(review = it.review?.toggle(action.index))
+            }
+
+            ShareContactPickerUiAction.ReviewPhotoToggled -> _uiState.update {
+                it.copy(review = it.review?.let { r -> r.copy(includePhoto = !r.includePhoto) })
+            }
+        }
+    }
+
+    private fun openReview(entry: ContactBookEntry, fallback: ContactCardDescriptor) {
+        reviewJob?.cancel()
+        reviewJob = viewModelScope.launch {
+            val descriptor = resolvedDescriptor(entry.uniqueId, fallback)
+            _uiState.update {
+                if (it.selectedId != entry.uniqueId) it
+                else it.copy(review = ContactCardReview.from(entry, descriptor))
+            }
         }
     }
 
     // The picker can be the first screen this session to touch overrides, and the list is built
-    // from whatever has landed. Sending inside that window would ship the synced values the user
-    // edited away from, so the one selected contact is re-read after its hydrate completes.
+    // from whatever has landed. Reviewing inside that window would show the synced values the user
+    // edited away from, so the one selected contact is re-read after its hydrate completes. It runs
+    // here and nowhere later: after this the review holds the edits, and re-resolving discards them.
     private suspend fun resolvedDescriptor(
         uniqueId: Uuid?,
         fallback: ContactCardDescriptor,
@@ -140,22 +175,21 @@ class ShareContactPickerViewModel(
     private fun send() {
         val state = _uiState.value
         if (state.isSending) return
-        val descriptor = state.selected?.descriptor ?: run {
+        val review = state.review?.takeIf { it.canSend } ?: run {
             _events.tryEmit(
                 ShareContactPickerUiEvent.ShowError(MR.string.chat_contact_share_unshareable)
             )
             return
         }
-        val selectedId = state.selected?.entry?.uniqueId
         _uiState.update { it.copy(isSending = true) }
         viewModelScope.launch {
             try {
                 chatMessageSenderService.sendNewTypedMessage(
                     messageUniqueId = Uuid.random(),
                     conversationId = conversationId,
-                    content = MessageContent.ContactCard(resolvedDescriptor(selectedId, descriptor)),
+                    content = MessageContent.ContactCard(review.toDescriptor()),
                     previousMessageUniqueId = null,
-                    payloadBundle = photoBundle(selectedId),
+                    payloadBundle = if (review.includePhoto) photoBundle(review.entry.uniqueId) else null,
                 )
                 _events.emit(ShareContactPickerUiEvent.MessageSent)
             } catch (e: kotlin.coroutines.cancellation.CancellationException) {

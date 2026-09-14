@@ -1,6 +1,7 @@
 package id.homebase.core.ui.screens.location
 
 import id.homebase.chat.data.ContactUiModel
+import id.homebase.core.contactbook.LocateVerifyStatus
 import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.ui.screens.location.devices.LocationDeviceInfo
 import id.homebase.core.ui.screens.location.history.DeviceTrace
@@ -42,14 +43,10 @@ data class LocationUiState(
     val whoCanLocateMe: List<ContactUiModel> = emptyList(),
     /** False until circle membership has loaded at least once (drives the loading spinner). */
     val whoCanLocateMeLoaded: Boolean = false,
-    /**
-     * Contacts whose emergency-circle grant is still a sealed deposit rather than a real
-     * [whoCanLocateMe] entry — live-read via a per-contact `/connections/status` fan-out
-     * triggered on section expand (there is no bulk "list pending" endpoint), never cached
-     * across app restarts. Empty until the section has been expanded at least once.
-     */
+    /** Contacts whose emergency-circle grant is still a sealed deposit rather than a real
+     *  [whoCanLocateMe] entry — live-read per contact on [LocationViewModel.refresh]. */
     val whoCanLocateMePending: List<ContactUiModel> = emptyList(),
-    /** True while the expand-triggered pending-status fan-out is in flight. */
+    /** True while the pending-status fan-out is in flight. */
     val whoCanLocateMePendingChecking: Boolean = false,
     /** odinId domains currently being removed from the emergency circle — drives a per-row
      *  spinner in place of the remove "X" so a tap has visible feedback while in flight. */
@@ -58,9 +55,11 @@ data class LocationUiState(
     val whoICanLocate: List<ContactUiModel> = emptyList(),
     /** False until the locatable-contacts list has loaded at least once (drives the spinner). */
     val whoICanLocateLoaded: Boolean = false,
-    /** Per-entry temporal-verify status for the "who I can locate" list, keyed by odinId.domainName.
-     *  Absent key = not yet requested (renders nothing until the section is expanded). */
+    /** Per-entry temporal-verify status for the "who I can locate" list, keyed by odinId.domainName
+     *  (mirrors EmergencyContactService.status). Absent key = never verified. */
     val whoICanLocateStatus: Map<String, LocateVerifyStatus> = emptyMap(),
+    /** People I can locate whose newest data is older than LOCATE_STALE_WARN_MS. */
+    val staleLocatableCount: Int = 0,
     val mapProvider: LocationMapProvider = LocationMapProvider.DEFAULT,
     /** Show the "Live location sharing" dashboard section: I'm sharing, or a recent inbound point exists. */
     val liveSharingVisible: Boolean = false,
@@ -75,68 +74,8 @@ data class LocationUiState(
     val showMapTiles: Boolean get() = mapProvider == LocationMapProvider.OpenStreetMap
 }
 
-/**
- * Result of the per-entry temporal-access preflight for a "who I can locate" row. Expand-triggered
- * verifies show a spinner (visible feedback that the check is running); the periodic follow-up
- * passes while the section stays open are silent (the old value stays visible until the new result
- * lands, so the list doesn't flash spinners every minute). Only a successful, data-bearing
- * [Active] carries the [LOCATE_VERIFY_TTL_MS] cache ("they sent data back within 60s", #950);
- * [Broken], [Unreachable], and a no-data [Active] re-verify on every pass so an error state
- * clears the moment access/data returns instead of sticking across collapse/expand (#985).
- */
-sealed interface LocateVerifyStatus {
-    /** Preflight in flight with the spinner requested (expand-triggered, or no prior result). */
-    data object Loading : LocateVerifyStatus
-
-    /** A completed verify; [verifiedAtMs] is when the result landed (epoch ms), for the TTL. */
-    sealed interface Resolved : LocateVerifyStatus {
-        val verifiedAtMs: Long
-    }
-
-    /** Verify succeeded but the peer no longer grants us access → broken-link icon. */
-    data class Broken(override val verifiedAtMs: Long) : Resolved
-
-    /** We hold access; [newestModifiedMs] is the peer's newest-file time, or null when no data yet. */
-    data class Active(val newestModifiedMs: Long?, override val verifiedAtMs: Long) : Resolved
-
-    /**
-     * The verify threw (network/parse failure) — the peer's server is unreachable and access is
-     * unknown → disconnected icon. Inconclusive, so it must never look like [Broken]; like every
-     * error result it is re-verified on the next pass (#985) instead of blanking the row.
-     */
-    data class Unreachable(override val verifiedAtMs: Long) : Resolved
-}
-
-/** Freshness window for a successful, DATA-BEARING locate-verify result: re-expands inside it
- *  reuse the cache. Error/no-data results never cache (#985). */
-const val LOCATE_VERIFY_TTL_MS = 60_000L
-
 /** Age past which a locate row's freshness label renders in the warning (orange) color (#879). */
 const val LOCATE_AGE_WARN_MS = 2 * 60 * 60_000L
-
-/** How long a locate verify waits for the app to come online before attempting the POST, so an
- *  expand right after cold start spins instead of flashing broken clouds (#998). */
-const val LOCATE_VERIFY_ONLINE_WAIT_MS = 15_000L
-
-/**
- * Whether a verify pass over "Who you can locate" should (re-)issue the temporal verify for a row
- * in this state: never while one is in flight; a successful DATA-BEARING [LocateVerifyStatus.Active]
- * younger than [LOCATE_VERIFY_TTL_MS] is reused (the #950 "they sent data back within 60s" cache);
- * everything else — [LocateVerifyStatus.Broken], [LocateVerifyStatus.Unreachable], a no-data
- * Active, stale, or never verified — re-verifies, so an error state never sticks across
- * collapse/expand (#985).
- */
-fun LocateVerifyStatus?.needsReverify(nowMs: Long): Boolean = when (this) {
-    LocateVerifyStatus.Loading -> false
-    // Only a successful, data-bearing result earned the cache. A no-data Active re-verifies so
-    // a peer whose GPS just started reporting shows up on the next expand.
-    is LocateVerifyStatus.Active ->
-        newestModifiedMs == null || nowMs - verifiedAtMs >= LOCATE_VERIFY_TTL_MS
-    // Broken / Unreachable: an error result never caches — re-verify on every pass so a broken
-    // cloud clears the moment access/data returns (#985).
-    is LocateVerifyStatus.Resolved -> true
-    null -> true
-}
 
 /** Compact age-label bucket for a locate row: the unit to render and its (non-negative) value. */
 sealed interface LocateAgeBucket {
@@ -174,30 +113,6 @@ data class IncomingShareRow(
     val ageMs: Long,
 )
 
-/**
- * Main-screen body switch: dashboard once the add-on is fully set up, setup otherwise.
- *
- * A tracker device reaches the dashboard once it is [activated] AND its location permissions
- * are complete ([permissionsComplete] = while-in-use AND always/background both granted). The
- * landing keys on the GRANTS, not the tracking master switch: a user with both grants but
- * "Track my location" off still wants the dashboard (to view live shares / others), so gating
- * on the toggle wrongly stranded them on Setup (bug #822). Conversely, with both grants denied,
- * permissionsComplete is false and they land on Setup — where they can grant access. A
- * while-in-use-only grant likewise keeps Setup as the default so the background grant can be
- * finished.
- *
- * Viewer devices (desktop/web, trackerAvailable = false) never track or request permissions —
- * once activated they are pure viewers and always get the dashboard; requiring permissions
- * would strand them on Setup forever.
- */
-fun isDashboard(
-    activated: Boolean,
-    trackerAvailable: Boolean,
-    permissionsComplete: Boolean,
-    setupOverride: Boolean,
-): Boolean = !setupOverride && activated &&
-    (!trackerAvailable || permissionsComplete)
-
 sealed interface LocationUiAction {
     data object SetupClicked : LocationUiAction
     data object DismissOnboardingClicked : LocationUiAction
@@ -208,14 +123,11 @@ sealed interface LocationUiAction {
     data class StopSharingWith(val odinId: String) : LocationUiAction
     /** Stop every outgoing live share (Dashboard "stop sharing with everyone"). */
     data object StopSharingWithEveryone : LocationUiAction
-    /** "Who you can locate" section expanded/collapsed. Expanded starts the periodic per-entry
-     *  link-freshness verify loop (immediate first pass, then every [LOCATE_VERIFY_TTL_MS]);
-     *  collapsed cancels it. */
-    data class SetLocatableExpanded(val expanded: Boolean) : LocationUiAction
+    /** Emergency screen entered/left: runs the per-contact verify loop only while visible. */
+    data class SetEmergencyScreenVisible(val visible: Boolean) : LocationUiAction
 
-    /** "Who can locate me" section expanded/collapsed. Expanded triggers a one-shot live
-     *  pending-status fan-out (see [LocationUiState.whoCanLocateMePending]). */
-    data class SetWhoCanLocateMeExpanded(val expanded: Boolean) : LocationUiAction
+    /** Tile home entered/resumed: reconfirm only the contacts already known to be stale. */
+    data object TileHomeVisible : LocationUiAction
 
     /** Revoke an emergency-circle grant (real or still-pending) for [odinId]. */
     data class RemoveEmergencyContact(val odinId: String) : LocationUiAction

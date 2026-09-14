@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PermMedia
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -106,6 +107,8 @@ import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_logout
 import id.homebase.resources.settings_logout_desc
 import id.homebase.resources.settings_logout_in_progress
+import id.homebase.resources.settings_media
+import id.homebase.resources.settings_media_desc
 import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_native_feed
 import id.homebase.resources.settings_notifications
@@ -132,7 +135,6 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     actions: SettingsActions,
-    showDeveloperMenu: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -194,7 +196,6 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             actions = actions,
-            showDeveloperMenu = showDeveloperMenu,
         )
 
         if (uiState.isLoggingOut) {
@@ -250,7 +251,6 @@ fun SettingsUi(
     onAction: (SettingsUiAction) -> Unit,
     actions: SettingsActions,
     // Defaults to hidden so previews and tests that do not care stay unchanged.
-    showDeveloperMenu: Boolean = false,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -325,6 +325,15 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onAppearance),
                 )
             }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("mediaButton"),
+                    icon = Icons.Outlined.PermMedia,
+                    title = stringResource(MR.string.settings_media),
+                    supportingText = stringResource(MR.string.settings_media_desc),
+                    action = SettingsRowAction.Navigate(actions.onMedia),
+                )
+            }
 
             item { HubSectionHeader(stringResource(MR.string.settings_section_apps)) }
             item {
@@ -356,18 +365,14 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onVaultSettings),
                 )
             }
-            // Email setup is developer-menu gated while the arc is in progress: every host has
-            // Email:TenantMail:Enabled off, so the screen can only say "no email here" today.
-            if (showDeveloperMenu) {
-                item {
-                    SettingsRow(
-                        modifier = Modifier.testTag("emailSettingsButton"),
-                        icon = Icons.Outlined.MailOutline,
-                        title = stringResource(MR.string.email_settings_section),
-                        supportingText = stringResource(MR.string.settings_email_desc),
-                        action = SettingsRowAction.Navigate(actions.onEmailSettings),
-                    )
-                }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("emailSettingsButton"),
+                    icon = Icons.Outlined.MailOutline,
+                    title = stringResource(MR.string.email_settings_section),
+                    supportingText = stringResource(MR.string.settings_email_desc),
+                    action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                )
             }
             item {
                 SettingsRow(
@@ -590,6 +595,7 @@ fun SettingsUiPreview() {
                 onBack = {},
                 onNotifications = {},
                 onAppearance = {},
+                onMedia = {},
                 onStorage = {},
                 onHelp = {},
                 onMomentsSettings = {},

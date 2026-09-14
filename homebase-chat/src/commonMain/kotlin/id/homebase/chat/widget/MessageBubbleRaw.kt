@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.util.markdownHasBlockElements
@@ -88,6 +89,7 @@ import id.homebase.core.util.ifTrue
 import id.homebase.core.util.isEmojiContentOnly
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.stripComposerLineBreakArtifacts
+import id.homebase.core.widget.VoiceNoteSender
 import id.homebase.resources.MR
 import id.homebase.resources.chat_message_deleted
 import id.homebase.resources.chat_message_edited
@@ -175,7 +177,19 @@ fun MessageBubbleRaw(
     // Rendered as a preview of a message (action-menu header, message info, reply quote) rather
     // than as the message itself: typed bubbles must not open their full-screen detail from here.
     displayOnly: Boolean = false,
+    showVoiceNoteSender: Boolean = false,
 ) {
+    val voiceNoteSender = remember(
+        showVoiceNoteSender, sentByYou, message.originalAuthor, message.displayName, currentOdinId,
+    ) {
+        // An outgoing message carries no originalAuthor, so fall back to the signed-in identity.
+        // OdinId(String) validates the domain and throws, and currentOdinId defaults to blank.
+        val odinId = message.originalAuthor
+            ?: currentOdinId.takeIf { sentByYou && it.isNotBlank() }?.let { OdinId(it) }
+        odinId
+            ?.takeIf { showVoiceNoteSender }
+            ?.let { VoiceNoteSender(it, message.displayName, isYou = sentByYou) }
+    }
 
     // #814: render the timestamp + delivery footer only on the last bubble of a
     // same-sender cluster (END/ALONE), or whenever a sent message failed to deliver.
@@ -602,6 +616,7 @@ fun MessageBubbleRaw(
                         messageId = message.id,
                         downloadingFiles = downloadingFiles,
                         uploadStatus = uploadStatus,
+                        audioSender = voiceNoteSender,
                     )
                     MediaTimestampOverlay(
                         showTimestamp = showMessageFooter,
@@ -643,6 +658,7 @@ fun MessageBubbleRaw(
                                 messageId = message.id,
                                 downloadingFiles = downloadingFiles,
                                 uploadStatus = uploadStatus,
+                                audioSender = voiceNoteSender,
                             )
                             MediaTimestampOverlay(
                                 showTimestamp = showMessageFooter,
@@ -735,6 +751,7 @@ fun MessageBubbleRaw(
                                 uploadStatus = uploadStatus,
                                 fillWidth = true,
                                 hasCaption = true,
+                                audioSender = voiceNoteSender,
                             )
                         }
                     }
@@ -851,6 +868,7 @@ fun MessageBubbleRaw(
                                         // Floors a narrow single image to 240dp so the caption
                                         // clamp below can't collapse it to one char per line.
                                         hasCaption = true,
+                                        audioSender = voiceNoteSender,
                                     )
                                 }
                             }

@@ -1,27 +1,28 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 
 package id.homebase.api.video
 
-import kotlin.io.encoding.Base64
+import id.homebase.api.browser.guardJsCallback
+import id.homebase.api.util.jsUint8ArrayToByteArray
+import id.homebase.api.util.toJsUint8Array
 import kotlin.js.Promise
 import kotlinx.coroutines.await
 
 /* ------------------------------------------------------------------------------------------
  * JS interop with the `globalThis.__odinFfmpeg` bridge defined in webApp's `odin-ffmpeg.js`.
  *
- * ffmpeg.wasm runs in its own web worker, so every call is async (Promise). Byte payloads
- * cross the boundary as Base64 strings — same idiom as WebSqlDriver / ImageUtil.web.kt; it
- * keeps the boundary copy-free of typed-array ownership concerns. (A direct Uint8Array bridge
- * for the two largest crossings is a planned follow-up if large-clip compression is slow.)
+ * ffmpeg.wasm runs in its own web worker, so every call is async (Promise). Byte payloads cross
+ * as `Uint8Array` via the linear-memory bridge in `id.homebase.api.util.WasmByteBridge`; this is
+ * the heaviest crossing in the app because a clip goes in *and* comes back out.
  * ------------------------------------------------------------------------------------------ */
 
 private fun ffIsLoaded(): Boolean = js("globalThis.__odinFfmpeg.isLoaded()")
-private fun ffProbe(b64: String): Promise<JsString> = js("globalThis.__odinFfmpeg.probe(b64)")
+private fun ffProbe(bytes: JsAny): Promise<JsString> = js("globalThis.__odinFfmpeg.probe(bytes)")
 private fun ffProbeFromUrl(url: String): Promise<JsString> = js("globalThis.__odinFfmpeg.probeFromUrl(url)")
-private fun ffWriteFile(path: String, b64: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.writeFile(path, b64)")
+private fun ffWriteFile(path: String, bytes: JsAny): Promise<JsAny?> = js("globalThis.__odinFfmpeg.writeFile(path, bytes)")
 private fun ffWriteFileFromUrl(path: String, url: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.writeFileFromUrl(path, url)")
 private fun ffWriteText(path: String, text: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.writeText(path, text)")
-private fun ffReadFile(path: String): Promise<JsString> = js("globalThis.__odinFfmpeg.readFile(path)")
+private fun ffReadFile(path: String): Promise<JsAny> = js("globalThis.__odinFfmpeg.readFile(path)")
 private fun ffDeleteFile(path: String): Promise<JsAny?> = js("globalThis.__odinFfmpeg.deleteFile(path)")
 private fun ffExec(argsJson: String): Promise<JsString> = js("globalThis.__odinFfmpeg.exec(argsJson)")
 private fun ffSetProgress(cb: (Double) -> Unit): Unit = js("globalThis.__odinFfmpeg.setProgress(cb)")
@@ -53,7 +54,7 @@ internal object FFmpegBridge {
 
     /** mp4box probe; null when the input isn't a parseable mp4/mov. Does not load the core. */
     suspend fun probe(bytes: ByteArray): VideoProbe? {
-        val raw = ffProbe(Base64.encode(bytes)).await<JsString>().toString()
+        val raw = ffProbe(bytes.toJsUint8Array()).await<JsString>().toString()
         if (raw.isBlank()) return null
         val parts = raw.split(";")
         if (parts.size < 5) return null
@@ -67,8 +68,8 @@ internal object FFmpegBridge {
     }
 
     /**
-     * mp4box probe of a (blob:) URL read entirely in JS — the bytes never enter Kotlin and are
-     * never base64'd. The returned [VideoProbe.sizeBytes] is the input size (so the compress
+     * mp4box probe of a (blob:) URL read entirely in JS — the bytes never enter Kotlin at all.
+     * The returned [VideoProbe.sizeBytes] is the input size (so the compress
      * planner needn't read the file). Null when unparseable.
      */
     suspend fun probeFromUrl(url: String): VideoProbe? {
@@ -87,12 +88,12 @@ internal object FFmpegBridge {
     }
 
     suspend fun writeFile(path: String, bytes: ByteArray) {
-        ffWriteFile(path, Base64.encode(bytes)).await<JsAny?>()
+        ffWriteFile(path, bytes.toJsUint8Array()).await<JsAny?>()
     }
 
     /**
-     * Fetch a (blob:) URL's bytes in JS and write them straight into ffmpeg's MEMFS — no Kotlin
-     * read, no base64. Revokes the blob: URL once consumed.
+     * Fetch a (blob:) URL's bytes in JS and write them straight into ffmpeg's MEMFS — the bytes
+     * never enter wasm at all. Revokes the blob: URL once consumed.
      */
     suspend fun writeFileFromUrl(path: String, url: String) {
         ffWriteFileFromUrl(path, url).await<JsAny?>()
@@ -103,7 +104,7 @@ internal object FFmpegBridge {
     }
 
     suspend fun readFile(path: String): ByteArray =
-        Base64.decode(ffReadFile(path).await<JsString>().toString())
+        jsUint8ArrayToByteArray(ffReadFile(path).await<JsAny>())
 
     suspend fun deleteFile(path: String) {
         ffDeleteFile(path).await<JsAny?>()
@@ -114,7 +115,9 @@ internal object FFmpegBridge {
      * [onProgress] receives 0..1 from ffmpeg.wasm's native progress event during the run.
      */
     suspend fun exec(args: List<String>, onProgress: ((Float) -> Unit)? = null): Int {
-        if (onProgress != null) ffSetProgress { d -> onProgress(d.toFloat()) }
+        if (onProgress != null) {
+            ffSetProgress { d -> guardJsCallback("ffmpeg.progress") { onProgress(d.toFloat()) } }
+        }
         try {
             return ffExec(toJsonArray(args)).await<JsString>().toString().toIntOrNull() ?: -1
         } finally {

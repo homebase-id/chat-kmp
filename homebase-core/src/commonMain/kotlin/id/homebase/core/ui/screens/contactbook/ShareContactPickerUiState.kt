@@ -12,10 +12,9 @@ data class ShareContactPickerUiState(
     val candidates: PersistentList<ShareContactCandidate> = persistentListOf(),
     val selectedId: Uuid? = null,
     val isSending: Boolean = false,
-) {
-    val selected: ShareContactCandidate?
-        get() = candidates.firstOrNull { it.entry.uniqueId == selectedId }
-}
+    /** Non-null while the review step is up; it replaces the picker list rather than routing. */
+    val review: ContactCardReview? = null,
+)
 
 /**
  * A contact book row offered in the send-a-contact picker. [descriptor] is null when the entry
@@ -33,6 +32,9 @@ sealed interface ShareContactPickerUiAction {
     data class ContactClicked(val entry: ContactBookEntry) : ShareContactPickerUiAction
     data object SendClicked : ShareContactPickerUiAction
     data object BackClicked : ShareContactPickerUiAction
+    data class ReviewNameChanged(val name: String) : ShareContactPickerUiAction
+    data class ReviewFieldToggled(val index: Int) : ShareContactPickerUiAction
+    data object ReviewPhotoToggled : ShareContactPickerUiAction
 }
 
 sealed interface ShareContactPickerUiEvent {

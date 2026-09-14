@@ -2305,16 +2305,34 @@ private val FloatingDateShape = RoundedCornerShape(12.dp)
 private fun getDateSectionLabel(messageDate: LocalDate): String {
     val timezone = TimeZone.currentSystemDefault()
     val today = Clock.System.now().toLocalDateTime(timezone).date
+    return dateSectionLabel(
+        messageDate = messageDate,
+        today = today,
+        todayLabel = stringResource(MR.string.time_today),
+        yesterdayLabel = stringResource(MR.string.time_yesterday),
+    )
+}
+
+internal fun dateSectionLabel(
+    messageDate: LocalDate,
+    today: LocalDate,
+    todayLabel: String,
+    yesterdayLabel: String,
+): String {
     val yesterday = today.minus(1, DateTimeUnit.DAY)
 
     return when (messageDate) {
-        today -> stringResource(MR.string.time_today)
-        yesterday -> stringResource(MR.string.time_yesterday)
+        today -> todayLabel
+        yesterday -> yesterdayLabel
         else -> {
             val format = LocalDate.Format {
                 monthName(MonthNames.ENGLISH_ABBREVIATED)
                 char(' ')
                 day()
+                if (messageDate.year != today.year) {
+                    chars(", ")
+                    year()
+                }
             }
             messageDate.format(format)
         }

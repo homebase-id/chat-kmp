@@ -974,13 +974,12 @@ class AuthConnectionCoordinator(
         if (deadTokenLogoutStarted) return
         deadTokenLogoutStarted = true
         Logger.w(tag = "AuthLifecycle") { "AuthCC: client token is dead — logging out" }
-        // Main, not this scope's default dispatcher. logout() flips authState, and
-        // AuthConnectionCoordinator then closes the Koin identity scope; AppNavHost's body
-        // resolves identity-scoped ViewModels unconditionally (outside its isAuthenticated
-        // gate), so a recomposition landing between the flip and the close resolves from a
-        // closed scope and dies on main. Every existing caller (SettingsViewModel, the dev
-        // menu) already logs out from viewModelScope — Main.immediate — which orders the flip
-        // and the teardown against composition. Match that or reproduce the crash (#1349).
+        // Main, not this scope's default dispatcher. This used to be load-bearing: logout()
+        // flips authState, AuthConnectionCoordinator then closes the Koin identity scope, and
+        // a recomposition landing in between resolved from a closed scope and died on main
+        // (#1349). IdentityScope now recovers from that read (#1373), so the hop is ordering
+        // hygiene — it matches every other caller, which log out from viewModelScope — rather
+        // than a correctness gate.
         scope.launch(Dispatchers.Main.immediate) {
             try {
                 youAuthFlowManager.logout(force = true)

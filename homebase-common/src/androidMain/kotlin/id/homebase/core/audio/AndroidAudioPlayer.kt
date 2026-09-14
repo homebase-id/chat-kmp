@@ -1,6 +1,7 @@
 package id.homebase.core.audio
 
 import android.media.MediaPlayer
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -13,6 +14,7 @@ class AndroidAudioPlayer: AudioPlayer {
     private var observer: AudioPlaybackObserver? = null
     private var positionJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var speed = 1f
 
     override fun play(filePath: String) {
         release()
@@ -22,18 +24,24 @@ class AndroidAudioPlayer: AudioPlayer {
             prepare()
             start()
         }
+        applySpeed()
         startPositionPolling()
     }
 
-    override fun jump(seconds: Int) {
+    override fun jumpTo(positionMs: Long) {
         mediaPlayer?.let {
-            val newPosition = (seconds * 1000).coerceIn(0, it.duration)
-            it.seekTo(newPosition)
+            it.seekTo(positionMs.toInt().coerceIn(0, it.duration))
         }
     }
 
     override fun resume() {
         mediaPlayer?.start()
+        applySpeed()
+    }
+
+    override fun setSpeed(speed: Float) {
+        this.speed = speed.coerceToPlaybackSpeed()
+        applySpeed()
     }
 
     override fun pause() {
@@ -55,14 +63,27 @@ class AndroidAudioPlayer: AudioPlayer {
         this.observer = observer
     }
 
+    // MediaPlayer.playbackParams resumes a paused player as a side effect, so only touch it
+    // while it is already running.
+    private fun applySpeed() {
+        val player = mediaPlayer ?: return
+        if (!player.isPlaying) return
+        runCatching { player.playbackParams = player.playbackParams.setSpeed(speed) }
+            .onFailure { Logger.w(it) { "setPlaybackParams($speed) rejected" } }
+    }
+
     private fun startPositionPolling() {
         positionJob = scope.launch {
             while (isActive) {
                 val position = mediaPlayer?.currentPosition ?: 0
                 val duration = mediaPlayer?.duration ?: 0
-                observer?.onProgressUpdate(position / 1000, duration / 1000)
-                delay(500)
+                observer?.onProgressUpdate(position.toLong(), duration.toLong())
+                delay(PROGRESS_INTERVAL_MS)
             }
         }
+    }
+
+    private companion object {
+        const val PROGRESS_INTERVAL_MS = 80L
     }
 }

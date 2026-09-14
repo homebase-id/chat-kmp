@@ -29,6 +29,7 @@ import id.homebase.core.ui.screens.appearance.AppearanceSettingsScreen
 import id.homebase.core.ui.screens.contactbook.settings.ContactBookSettingsScreen
 import id.homebase.core.ui.screens.email.settings.EmailSettingsScreen
 import id.homebase.core.ui.screens.help.HelpScreen
+import id.homebase.core.ui.screens.media.MediaSettingsScreen
 import id.homebase.core.ui.screens.moments.MomentsSettingsScreen
 import id.homebase.core.ui.screens.notifications.NotificationSettingsScreen
 import id.homebase.core.ui.screens.profile.ProfileAvatarEditScreen
@@ -60,7 +61,6 @@ private enum class ProfilePage { Edit, Avatar }
 
 @Composable
 internal fun SettingsPaneHost(
-    showDeveloperMenu: Boolean,
     onDismiss: () -> Unit,
     actions: SettingsPaneActions,
 ) {
@@ -98,7 +98,6 @@ internal fun SettingsPaneHost(
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
             SettingsSidebar(
                 selected = category,
-                showEmail = showDeveloperMenu,
                 onSelect = {
                     category = it
                     profilePage = null
@@ -111,7 +110,6 @@ internal fun SettingsPaneHost(
                     ProvideSettingsChrome(embedded = true) {
                         CategoryPage(
                             category = category,
-                            showDeveloperMenu = showDeveloperMenu,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
                             onProfileEdit = { profilePage = ProfilePage.Edit },
@@ -147,7 +145,6 @@ internal fun SettingsPaneHost(
 @Composable
 private fun CategoryPage(
     category: SettingsCategory,
-    showDeveloperMenu: Boolean,
     onDismiss: () -> Unit,
     onSelectCategory: (SettingsCategory) -> Unit,
     onProfileEdit: () -> Unit,
@@ -157,11 +154,11 @@ private fun CategoryPage(
     when (category) {
         SettingsCategory.General -> SettingsScreen(
             viewModel = koinViewModel(),
-            showDeveloperMenu = showDeveloperMenu,
             actions = SettingsActions(
                 onBack = onDismiss,
                 onNotifications = { onSelectCategory(SettingsCategory.Notifications) },
                 onAppearance = { onSelectCategory(SettingsCategory.Appearance) },
+                onMedia = { onSelectCategory(SettingsCategory.Media) },
                 onStorage = { onSelectCategory(SettingsCategory.Storage) },
                 onHelp = { onSelectCategory(SettingsCategory.Help) },
                 onMomentsSettings = { onSelectCategory(SettingsCategory.Moments) },
@@ -181,6 +178,11 @@ private fun CategoryPage(
         )
 
         SettingsCategory.Appearance -> AppearanceSettingsScreen(
+            viewModel = koinViewModel(),
+            onBackClick = onDismiss,
+        )
+
+        SettingsCategory.Media -> MediaSettingsScreen(
             viewModel = koinViewModel(),
             onBackClick = onDismiss,
         )

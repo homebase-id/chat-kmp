@@ -28,6 +28,11 @@ pluginManagement {
     }
 }
 
+plugins {
+    // Auto-provisions the Adoptium toolchain that desktopApp now pins.
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 dependencyResolutionManagement {
     repositories {
         maven {

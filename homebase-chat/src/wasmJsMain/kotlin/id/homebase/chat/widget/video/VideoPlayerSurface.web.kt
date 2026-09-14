@@ -1,4 +1,4 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 
 package id.homebase.chat.widget.video
 
@@ -21,7 +21,9 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.util.toBlobObjectUrl
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.resolveVideoContent
@@ -29,7 +31,6 @@ import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.video_error_generic
 import id.homebase.resources.video_web_large_playback_unsupported
-import kotlin.io.encoding.Base64
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
@@ -96,7 +97,7 @@ actual fun VideoPlayerSurface(
                     data.payload.descriptorContent,
                 ),
                 driveFileProvider,
-                // Web builds a Base64 object URL, so it needs bytes (the wasm FS
+                // Web builds a Blob object URL, so it needs bytes (the wasm FS
                 // is RAM-backed anyway). The render-limit guard bounds it: an
                 // oversized MP4 throws PayloadTooLargeException into the catch
                 // below → unplayable message instead of OOM-ing the tab (#845).
@@ -107,11 +108,13 @@ actual fun VideoPlayerSurface(
                 is VideoContent.Mp4File -> error("Mp4File is the file-backed variant — web passes preferBytes")
                 is VideoContent.Mp4Bytes -> {
                     val mime = content.metadata.mimeType.ifBlank { "video/mp4" }
-                    val url = bytesToObjectUrl(Base64.encode(content.bytes), mime)
+                    val url = content.bytes.toBlobObjectUrl(mime)
                     objectUrl = url
                     val el = createVideoOverlay(muted, controls = true)
-                    addVideoOverlayProgressListener(el) { _, _ -> onProgress(1f) }
-                    addVideoOverlayEndedListener(el) { onEnded() }
+                    addVideoOverlayProgressListener(el) { _, _ ->
+                        guardJsCallback("video.progress") { onProgress(1f) }
+                    }
+                    addVideoOverlayEndedListener(el) { guardJsCallback("video.ended") { onEnded() } }
                     setVideoOverlaySrc(el, url)
                     // NOTE: do NOT play here — the element has no on-screen bounds yet, so it
                     // would play through invisibly and end before it's ever shown. Play is kicked

@@ -130,3 +130,75 @@ internal fun mergeConversationFileUpdate(
 
     return ConversationFileMergeResult(merged = merged, isNewlyRemoved = isNewlyRemoved)
 }
+
+/**
+ * Result of reconciling one disk row from a full reload against its prior in-memory row.
+ *
+ * @property merged            the reconciled conversation model.
+ * @property remoteLastReadAdvanced true when the disk row carried a lastRead ahead of ours
+ *                           (a peer-device read echo pulled by DriveSync). The caller owns
+ *                           the side effect — marking the row unread-dirty so the recount
+ *                           corrects it; the pure merge only reports it.
+ */
+internal data class ConversationReloadMergeResult(
+    val merged: ConversationUiModel,
+    val remoteLastReadAdvanced: Boolean,
+)
+
+/**
+ * Pure merge of one freshly mapped disk row ([disk], straight out of
+ * [ConversationMapper.mapToBasic]) against the [prior] in-memory row it replaces during a
+ * full reload ([ConversationStream.loadBasicConversations]).
+ *
+ * Enforces the same ownership rule as [mergeConversationFileUpdate], on the other path that
+ * produces basic rows: `mapToBasic` seeds `lastMessage = " "` and no payload/typed content,
+ * so a wholesale replace blanks every resolved snippet — the rows render the
+ * "No messages yet" fallback until `enrichWithLastMessages` re-runs its JOIN (115-343ms on
+ * a Redmi Note 5 Pro), which is the list-wide snippet flash on app open. Derived state that
+ * only lives in memory (`unreadCount`, an un-flushed lastRead advance and its owe-push
+ * `dirty`) is carried across for the same reason.
+ *
+ * Deleted/Invalid placeholders carry nothing: they are not the same conversation any more,
+ * and `enrichWithLastMessages` has no message row to correct a stale preview with.
+ */
+internal fun mergeReloadedConversationRow(
+    disk: ConversationUiModel,
+    prior: ConversationUiModel?,
+): ConversationReloadMergeResult {
+    if (prior == null) return ConversationReloadMergeResult(disk, remoteLastReadAdvanced = false)
+
+    val reconciled = prior.reconciledWithRemoteLastRead(disk.lastRead)
+    val withLocalState = disk.copy(
+        lastRead = reconciled.lastRead,
+        dirty = reconciled.dirty,
+        unreadCount = prior.unreadCount,
+    )
+
+    val merged = if (
+        disk.conversationState == ConversationState.Deleted ||
+        disk.conversationState == ConversationState.Invalid
+    ) {
+        withLocalState
+    } else {
+        withLocalState.copy(
+            lastMessage = prior.lastMessage,
+            lastMessageDeliveryStatus = prior.lastMessageDeliveryStatus,
+            lastMessageIsPendingSend = prior.lastMessageIsPendingSend,
+            lastMessageIsDeleted = prior.lastMessageIsDeleted,
+            lastMessageFirstPayload = prior.lastMessageFirstPayload,
+            lastMessageHasMultiplePayloads = prior.lastMessageHasMultiplePayloads,
+            lastMessageContent = prior.lastMessageContent,
+            lastMessageIsFromActiveUser = prior.lastMessageIsFromActiveUser,
+            lastMessageSender = prior.lastMessageSender,
+            latestMessageTimestamp = maxOf(
+                disk.latestMessageTimestamp,
+                prior.latestMessageTimestamp,
+            ),
+        )
+    }
+
+    return ConversationReloadMergeResult(
+        merged = merged,
+        remoteLastReadAdvanced = reconciled.lastRead != prior.lastRead,
+    )
+}

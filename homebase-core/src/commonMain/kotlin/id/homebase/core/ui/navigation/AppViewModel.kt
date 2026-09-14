@@ -8,6 +8,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.chat.services.convo.ConversationStream
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.notifications.BadgeManager
 import id.homebase.core.notifications.NotificationNavigationEvent
@@ -48,6 +49,7 @@ class AppViewModel(
     private val updateAppManager: UpdateAppManager,
     private val eventBus: EventBus,
     private val pendingUpgradeManager: PendingUpgradeManager,
+    private val conversationStream: ConversationStream,
     // Not the MomentCreateFlowState itself: that is identity-scoped and this ViewModel is
     // app-lifetime (it exists before login), so holding a direct reference would pin one
     // identity's draft for the life of the process. Resolved on demand instead — the share
@@ -85,6 +87,7 @@ class AppViewModel(
             }
         }
         collectNotificationEvents()
+        syncIconBadge()
         registerShareHandler { conversationId -> handleShareIntent(conversationId) }
         registerMomentShareHandler { handleMomentShareIntent() }
         registerPermissionCallbackHandler { canceled ->
@@ -139,16 +142,22 @@ class AppViewModel(
         authConnectionCoordinator.setForeground(true)
         refreshData()
         checkForUpdate()
-        // Reset the icon-badge counter without wiping the tray — notifications
-        // clear per conversation when the user taps or reads them, so opening
-        // the app from the launcher leaves other senders' notifications intact.
-        BadgeManager.resetCount()
+        // Re-assert the real total rather than zeroing: the iOS extension has been counting
+        // pushes on its own while backgrounded, and messages still unread must stay shown.
+        conversationStream.currentUnreadTotal()?.let { BadgeManager.setCount(it) }
     }
 
     /** Called when the app leaves RESUMED state. */
     fun onPaused() {
         notificationService.isAppInForeground = false
         authConnectionCoordinator.setForeground(false)
+    }
+
+    /** Keeps the app-icon badge in lock-step with the real unread total. */
+    private fun syncIconBadge() {
+        viewModelScope.launch {
+            conversationStream.totalUnreadCount.collect { BadgeManager.setCount(it) }
+        }
     }
 
     /** Collects notification events from NotificationService and forwards to UI. */

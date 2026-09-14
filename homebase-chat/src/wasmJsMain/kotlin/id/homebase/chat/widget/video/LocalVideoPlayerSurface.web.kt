@@ -1,4 +1,4 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 
 package id.homebase.chat.widget.video
 
@@ -16,9 +16,10 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import id.homebase.api.browser.guardJsCallback
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.util.isBlobUrl
-import kotlin.io.encoding.Base64
+import id.homebase.api.util.toBlobObjectUrl
 import okio.Path.Companion.toPath
 
 /*
@@ -49,12 +50,12 @@ private class PlayerSrc(val url: String, val createdByUs: Boolean)
 /**
  * Resolve [filePath] to a `<video>`-playable URL. A `blob:` URL (the editor's fast path, minted
  * from the picked File) is used directly and NOT owned — its owner revokes it. An okio path is read
- * and wrapped in a fresh, owned blob URL (the only path that base64s; off the interactive hot path).
+ * and wrapped in a fresh, owned blob URL.
  */
 private fun resolvePlayerSrc(filePath: String): PlayerSrc? {
     if (filePath.isBlobUrl()) return PlayerSrc(filePath, createdByUs = false)
     val bytes = readOkioBytes(filePath) ?: return null
-    return PlayerSrc(bytesToObjectUrl(Base64.encode(bytes), mimeFromPath(filePath)), createdByUs = true)
+    return PlayerSrc(bytes.toBlobObjectUrl(mimeFromPath(filePath)), createdByUs = true)
 }
 
 @Composable
@@ -135,19 +136,23 @@ actual fun TrimmableVideoPlayerSurface(
         // No native controls — the trim screen draws its own scrubber.
         val el = createVideoOverlay(muted = false, controls = false)
         addVideoOverlayProgressListener(el) { currentSec, _ ->
-            val ms = (currentSec * 1000).toLong()
-            onPositionState.value(ms)
-            // Loop within [clipStart, clipEnd]: when playback runs past the clip end, jump back
-            // to the clip start (matches the native trim players' looping contract).
-            val end = clipEndState.value
-            if (end > 0L && ms >= end) {
-                setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+            guardJsCallback("trimVideo.progress") {
+                val ms = (currentSec * 1000).toLong()
+                onPositionState.value(ms)
+                // Loop within [clipStart, clipEnd]: when playback runs past the clip end, jump
+                // back to the clip start (matches the native trim players' looping contract).
+                val end = clipEndState.value
+                if (end > 0L && ms >= end) {
+                    setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+                }
             }
         }
         // Seek to the clip start once the first frame is decoded (assigning currentTime before
         // metadata is loaded is unreliable).
         addVideoOverlayLoadedListener(el) {
-            setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+            guardJsCallback("trimVideo.loaded") {
+                setVideoOverlayCurrentTime(el, clipStartState.value / 1000.0)
+            }
         }
         setVideoOverlaySrc(el, src.url)
         element = el

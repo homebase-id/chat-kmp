@@ -1266,6 +1266,13 @@ fun MessageTextFieldForAttachment(
     val isKeyboardVisible by keyboardAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val captionFocusRequester = remember { FocusRequester() }
+
+    // Only where a hardware keyboard is a given: on mobile this would raise the IME
+    // over the very media the caption describes.
+    LaunchedEffect(Unit) {
+        if (isDesktopOrWeb()) captionFocusRequester.requestFocus()
+    }
 
     fun setEmojiPicker(visible: Boolean) {
         if (showEmojiPicker == visible) return
@@ -1293,6 +1300,7 @@ fun MessageTextFieldForAttachment(
                 RichTextEditor(
                     state = state,
                     modifier = Modifier.fillMaxWidth().testTag(ATTACHMENT_CAPTION_FIELD_TAG)
+                        .focusRequester(captionFocusRequester)
                         // Tapping into the caption closes the panel; the keyboard reclaims the space.
                         .onFocusChanged { if (it.isFocused) setEmojiPicker(false) }
                         .onPreviewKeyEvent { keyEvent ->

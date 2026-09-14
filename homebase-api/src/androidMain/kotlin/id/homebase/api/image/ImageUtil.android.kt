@@ -6,7 +6,6 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.scale
@@ -151,8 +150,8 @@ actual object ImageUtils {
     }
 
     // WEBP_LOSSY landed in API 30 but minSdk is 28, and @RequiresApi emits no runtime guard —
-    // reading the field on 28/29 throws NoSuchFieldError, which took out every thumbnail encode
-    // on Android 9/10. The deprecated WEBP constant is lossy below quality 100.
+    // reading the field on 28/29 throws NoSuchFieldError. The deprecated WEBP constant is
+    // lossy below quality 100.
     @Suppress("DEPRECATION")
     private fun webpCompressFormat(): Bitmap.CompressFormat =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -175,7 +174,6 @@ actual object ImageUtils {
         return stream.toByteArray()
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
     actual fun resizePreserveAspect(
         srcBytes: ByteArray,
         maxWidth: Int,
@@ -214,7 +212,6 @@ actual object ImageUtils {
         )
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
     actual fun compressOnly(
         srcBytes: ByteArray,
         outputFormat: ImageFormat,
@@ -233,7 +230,6 @@ actual object ImageUtils {
         return result
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
     actual fun crop(
         srcBytes: ByteArray,
         x: Int,
@@ -265,7 +261,6 @@ actual object ImageUtils {
         )
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
     actual fun rotate(
         srcBytes: ByteArray,
         degrees: Int,
@@ -357,7 +352,6 @@ actual object ImageUtils {
     /** Grid side length → ALPHA_PROBE_GRID² ≤ ~4096 samples regardless of image size. */
     private const val ALPHA_PROBE_GRID: Int = 64
 
-    @RequiresApi(Build.VERSION_CODES.R)
     actual fun warpAffine(
         srcBytes: ByteArray,
         matrix9: FloatArray,
@@ -526,7 +520,6 @@ actual object ImageUtils {
 
     private const val BLUR_RADIUS: Int = 25
 
-    @RequiresApi(Build.VERSION_CODES.R)
     actual suspend fun rasterizeSvg(
         svgBytes: ByteArray,
         maxDim: Int,

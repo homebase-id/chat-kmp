@@ -1,10 +1,10 @@
-@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class, kotlin.io.encoding.ExperimentalEncodingApi::class)
+@file:OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
 
 package id.homebase.core.clipboard
 
 import id.homebase.api.file.readWebFileBytes
+import id.homebase.api.util.toJsBlob
 import io.github.vinceglb.filekit.PlatformFile
-import kotlin.io.encoding.Base64
 import org.w3c.files.File
 
 /**
@@ -23,7 +23,7 @@ actual fun platformFileFromPath(path: String): PlatformFile {
         ?: error("No file at $path on the web filesystem")
     val name = path.substringAfterLast('/')
     val mimeType = mimeTypeForExtension(name.substringAfterLast('.', ""))
-    return PlatformFile(makeJsFile(Base64.encode(bytes), name, mimeType))
+    return PlatformFile(makeJsFile(bytes.toJsBlob(mimeType), name, mimeType))
 }
 
 private fun mimeTypeForExtension(extension: String): String = when (extension.lowercase()) {
@@ -34,16 +34,5 @@ private fun mimeTypeForExtension(extension: String): String = when (extension.lo
     else -> "application/octet-stream"
 }
 
-/**
- * Base64 rather than a typed array over the boundary — the same string-bridge idiom
- * [id.homebase.core.clipboard.readClipboardImage] and the ffmpeg/video bridges use, which keeps
- * the wasm side free of typed-array ownership concerns.
- */
-private fun makeJsFile(base64: String, fileName: String, mimeType: String): File = js(
-    """{
-        var bin = atob(base64);
-        var u8 = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) { u8[i] = bin.charCodeAt(i); }
-        return new File([u8], fileName, { type: mimeType });
-    }"""
-)
+private fun makeJsFile(blob: JsAny, fileName: String, mimeType: String): File =
+    js("new File([blob], fileName, { type: mimeType })")

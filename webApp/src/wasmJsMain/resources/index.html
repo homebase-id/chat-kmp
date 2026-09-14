@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="manifest.json"/>
+    <link rel="apple-touch-icon" href="icon-192.png"/>
 
     <title>Homebase Chat</title>
 
@@ -181,7 +182,30 @@
     })();
 </script>
 <script type="application/javascript">
+    // A Kotlin exception cannot unwind into a JS callback: Wasm traps ("unreachable executed"),
+    // which kills Compose's frame dispatcher and then floods the console with cascade errors —
+    // pushing the first (the only informative one) out of the devtools buffer. Keep it here.
+    const homebaseErrors = {first: null, total: 0};
+    window.__homebaseErrors = homebaseErrors;
+    window.__homebaseFirstError = function () {
+        const first = homebaseErrors.first;
+        if (first == null) return "No uncaught error recorded.";
+        return first.message + "\n" + first.stack + "\n(" + homebaseErrors.total + " total)";
+    };
+
     const unhandledError = (event, error) => {
+        homebaseErrors.total++;
+        if (homebaseErrors.first == null) {
+            homebaseErrors.first = {
+                message: String((error && error.message) || error || (event && event.message) || event),
+                stack: (error && error.stack) || ""
+            };
+            console.error(
+                "[homebase] first uncaught error — re-read it with __homebaseFirstError()",
+                error || event
+            );
+        }
+
         if (error instanceof WebAssembly.CompileError) {
             window.__homebaseBootError(
                 "This browser can't run WebAssembly modules this app needs. " +
@@ -233,6 +257,8 @@
     //   sql-wasm.js (sql.js) -> odin-sqljs.js (sync bridge) -> homebase-app bundle.
     // The ffmpeg scripts only DEFINE globals (FFmpegWASM, MP4Box, __odinFfmpeg) — they
     // download nothing until the first video compress/segment lazily loads the core.
+    // odin-push.js is the same shape: it defines __odinPush but registers no service
+    // worker until web push is actually used.
     // The bundle filename is substituted at build time by HtmlWebpackPlugin (see
     // webApp/webpack.config.d/html-plugin.js) — in production it's content-hashed for cache busting.
     (function () {
@@ -247,7 +273,7 @@
             window.close();
             return;
         }
-        var scripts = ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
+        var scripts = ["sql-wasm.js", "odin-sqljs.js", "mp4box.all.min.js", "ffmpeg-wrapper.js", "odin-ffmpeg.js", "odin-push.js", "<%= htmlWebpackPlugin.files.js[0] %>"];
         var loaded = 0;
         scripts.forEach(function (src) {
             var s = document.createElement("script");
