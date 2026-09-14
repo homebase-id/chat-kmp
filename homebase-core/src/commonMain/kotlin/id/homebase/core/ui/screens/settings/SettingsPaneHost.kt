@@ -61,7 +61,6 @@ private enum class ProfilePage { Edit, Avatar }
 
 @Composable
 internal fun SettingsPaneHost(
-    showDeveloperMenu: Boolean,
     onDismiss: () -> Unit,
     actions: SettingsPaneActions,
 ) {
@@ -99,7 +98,6 @@ internal fun SettingsPaneHost(
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
             SettingsSidebar(
                 selected = category,
-                showEmail = showDeveloperMenu,
                 onSelect = {
                     category = it
                     profilePage = null
@@ -112,7 +110,6 @@ internal fun SettingsPaneHost(
                     ProvideSettingsChrome(embedded = true) {
                         CategoryPage(
                             category = category,
-                            showDeveloperMenu = showDeveloperMenu,
                             onDismiss = onDismiss,
                             onSelectCategory = { category = it },
                             onProfileEdit = { profilePage = ProfilePage.Edit },
@@ -148,7 +145,6 @@ internal fun SettingsPaneHost(
 @Composable
 private fun CategoryPage(
     category: SettingsCategory,
-    showDeveloperMenu: Boolean,
     onDismiss: () -> Unit,
     onSelectCategory: (SettingsCategory) -> Unit,
     onProfileEdit: () -> Unit,
@@ -158,7 +154,6 @@ private fun CategoryPage(
     when (category) {
         SettingsCategory.General -> SettingsScreen(
             viewModel = koinViewModel(),
-            showDeveloperMenu = showDeveloperMenu,
             actions = SettingsActions(
                 onBack = onDismiss,
                 onNotifications = { onSelectCategory(SettingsCategory.Notifications) },
