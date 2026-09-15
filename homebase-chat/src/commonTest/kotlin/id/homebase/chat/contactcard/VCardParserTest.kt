@@ -162,7 +162,7 @@ class VCardParserTest {
     }
 
     @Test
-    fun `a broken descriptor parses to a null-descriptor card, never to null`() {
+    fun `a broken descriptor parses to a null-descriptor card never to null`() {
         val parsed = MessageContentParser.parse(
             ChatProtocol.ChatContactCardMessageDataType,
             """{"displayName":}""",
