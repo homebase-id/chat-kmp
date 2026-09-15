@@ -24,15 +24,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import co.touchlab.kermit.Logger
 import kotlin.uuid.Uuid
 
 /** Debounce window for push-driven refreshes — long enough to swallow a fan-out burst, short
  *  enough that the contact-detail / circles UI updates promptly after an external change. */
 private const val REFRESH_DEBOUNCE_MS = 300L
+
+/** Bounds [ConnectionService.findPendingMembers]'s wait for the first real load on cold start. */
+private const val CONNECTIONS_LOAD_WAIT_MS = 15_000L
 
 /**
  * A review could not be cleared because the contact still holds circles that keep them reviewed.
@@ -85,6 +90,8 @@ class ConnectionService(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val cache: ConnectionCacheRepository,
+    /** Dark launch: enrollments are only claimed while the connection review flag is on. */
+    private val processEnrollmentsEnabled: () -> Boolean = { false },
 ) {
 
     private val _connections =
@@ -180,7 +187,7 @@ class ConnectionService(
         scope.launch {
             hydrateFromCache()
             launchRefresh()
-            processEnrollments()
+            if (processEnrollmentsEnabled()) processEnrollments()
         }
     }
 
@@ -261,17 +268,6 @@ class ConnectionService(
                 val connected = connectedDeferred.await()
                 val blocked = blockedDeferred.await()
                 Logger.d { "Loaded connections ${connected.results.size} connected, ${blocked.results.size} blocked" }
-                // TODO(pending-diagnosis): remove once the pending chip is confirmed working.
-                // The list endpoint is the only source for accessGrant on this screen; if it
-                // arrives null here, every pending chip and key warning downstream is dead.
-                Logger.i {
-                    val withGrant = connected.results.count { it.accessGrant != null }
-                    val withPending = connected.results.count {
-                        it.accessGrant?.pendingCircleIds?.isNotEmpty() == true
-                    }
-                    "PENDING-DIAG list: ${connected.results.size} connected, " +
-                        "$withGrant with accessGrant, $withPending with pendingCircleIds"
-                }
                 _connections.value = ConnectionState(
                     isLoaded = true,
                     map = (connected.results + blocked.results).associateBy { it.odinId }
@@ -283,14 +279,6 @@ class ConnectionService(
                     Logger.d {
                         "ConnectionService circles: " +
                             circles.joinToString { "${it.circle.id}(${it.circle.name})=${it.members.size}" }
-                    }
-                    // TODO(pending-diagnosis): remove once the pending chip is confirmed working.
-                    Logger.i {
-                        "PENDING-DIAG circles: " + circles.joinToString {
-                            "${it.circle.name}[grantOn=${it.circle.grantOn}," +
-                                "designation=${it.circle.designation}," +
-                                "members=${it.members.size},pending=${it.pendingMembers.size}]"
-                        }
                     }
                 }
                 runCatching {
@@ -377,6 +365,58 @@ class ConnectionService(
     suspend fun removeFromCircle(circleId: Uuid, odinId: OdinId) {
         provider.removeFromCircle(circleId, odinId)
         refresh()
+    }
+
+    /**
+     * Main's per-contact pending lookup, kept for the connection-review dark launch: one
+     * `/connections/status` read per Connected identity that isn't already a real member.
+     *
+     * Waits (bounded) for the first real load, or a cold-start caller reads empty state and
+     * silently reports nobody pending.
+     */
+    suspend fun findPendingMembers(circleId: Uuid): List<OdinId> = coroutineScope {
+        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) {
+            connections.first { it.isLoaded }
+            circles.first { it.isLoaded }
+        }
+
+        val realMembers = circles.value.membersOf(circleId.toHexString())
+        val candidates = connections.value.map.values
+            .filter { it.status == ConnectionStatus.Connected }
+            .map { it.odinId }
+            .filterNot { realMembers.contains(it.domainName.lowercase()) }
+
+        candidates.map { odinId ->
+            async {
+                val status = try {
+                    getConnectionStatus(odinId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending members of $circleId" }
+                    null
+                }
+                odinId.takeIf { status?.accessGrant?.pendingCircleIds?.contains(circleId) == true }
+            }
+        }.awaitAll().filterNotNull()
+    }
+
+    /** Main's single-contact inverse of [findPendingMembers], kept for the same dark launch. */
+    suspend fun findPendingCircles(odinId: OdinId): List<Uuid> {
+        withTimeoutOrNull(CONNECTIONS_LOAD_WAIT_MS) { circles.first { it.isLoaded } }
+
+        val status = try {
+            getConnectionStatus(odinId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(e) { "ConnectionService: getConnectionStatus failed for $odinId while finding pending circles" }
+            return emptyList()
+        }
+        val known = circles.value.circles
+            .mapNotNull { runCatching { Uuid.parseHex(it.circle.id) }.getOrNull() }
+            .toSet()
+        return status?.accessGrant?.pendingCircleIds.orEmpty().filter { it in known }
     }
 
     /**

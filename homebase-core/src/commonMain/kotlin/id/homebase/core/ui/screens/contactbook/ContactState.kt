@@ -82,6 +82,11 @@ fun CircleMembershipState.personalCirclesFor(odinId: String): List<RedactedCircl
 /** Whether the owner has reviewed this contact. */
 fun RedactedIdentityConnectionRegistration.isReviewed(): Boolean = reviewedAt != null
 
+/** Whether the circle pickers let this contact be added. Dark launch: `vetted` until the review flag is on. */
+@Suppress("DEPRECATION")
+fun RedactedIdentityConnectionRegistration.canJoinCircles(reviewEnabled: Boolean): Boolean =
+    if (reviewEnabled) isReviewed() else vetted
+
 /**
  * The contact's state, or null when this identity is not a connection — the ladder classifies
  * connections, and someone you have never connected to is not on it.

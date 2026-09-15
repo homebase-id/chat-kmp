@@ -10,7 +10,7 @@ import kotlin.uuid.Uuid
 
 /** The two sections of the unified Contacts screen. */
 enum class ContactTab {
-    /** Contacts the owner has reviewed. */
+    /** Every saved contact and connection, minus those on the New tab. */
     KNOWN,
 
     /** Connected but unreviewed, plus incoming requests — everything waiting on a decision. */
@@ -20,11 +20,8 @@ enum class ContactTab {
     CIRCLES,
 }
 
-/**
- * Pills within [ContactTab.KNOWN]. New is no longer a pill — it is its own tab, so everything
- * here is already reviewed and [ALL] means "reviewed, whether or not they hold a circle".
- */
-enum class ContactFilter { ALL, CIRCLES }
+/** Pills within [ContactTab.KNOWN]. Dark launch: UNVETTED/VETTED while the review flag is off, CIRCLES while on. */
+enum class ContactFilter { ALL, UNVETTED, VETTED, CIRCLES }
 
 /** Which way a pending connection request points relative to the signed-in identity. */
 enum class RequestDirection {
@@ -66,6 +63,8 @@ data class CircleMembersUi(
      * opens (there is no bulk "list pending" endpoint), never cached across app restarts.
      */
     val pendingMembers: List<ContactBookEntry> = emptyList(),
+    /** True while main's pending lookup is in flight; only set while the review flag is off. */
+    val pendingChecking: Boolean = false,
     /** uniqueIds currently being removed — drives a per-row spinner in place of the remove "X"
      *  so a tap has visible feedback while the call is in flight. */
     val removingMemberIds: Set<Uuid> = emptySet(),
@@ -164,8 +163,12 @@ data class ContactBookUiState(
     val connectedOdinIds: Set<String> = emptySet(),
     /** New tab: connected, never reviewed. */
     val newContacts: List<ContactBookEntry> = emptyList(),
-    /** Known tab, All pill: reviewed, circle or not. */
+    /** Known tab, All pill: already searched and sorted. */
     val knownContacts: List<ContactBookEntry> = emptyList(),
+    /** Flag off, Unvetted pill: connected but not `vetted`. */
+    val unvetted: List<ContactBookEntry> = emptyList(),
+    /** Flag off, Vetted pill: connected and `vetted`. */
+    val vetted: List<ContactBookEntry> = emptyList(),
     /** Known tab, Circles pill: in at least one personal circle. */
     val circleContacts: List<ContactBookEntry> = emptyList(),
     /** Per-domain (lowercased) contact state, for the row's trailing state icon. */

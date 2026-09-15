@@ -22,6 +22,7 @@ import id.homebase.core.contactbook.LOCATE_VERIFY_TTL_MS
 import id.homebase.core.contactbook.LocateVerifyStatus
 import id.homebase.core.contactbook.locatableContacts
 import id.homebase.core.location.LocationPreferences
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.location.emergency.EmergencyLocateService
 import id.homebase.core.location.tracking.LocationPointStore
 import id.homebase.core.location.tracking.LocationTracker
@@ -73,6 +74,7 @@ class LocationViewModel(
     private val conversationService: ConversationService,
     private val emergencyLocateService: EmergencyLocateService,
     private val authConnectionCoordinator: AuthConnectionCoordinator,
+    private val developerPreferences: DeveloperPreferences,
     tracker: LocationTracker,
 ) : ViewModel() {
 
@@ -144,7 +146,14 @@ class LocationViewModel(
                     it.copy(
                         whoCanLocateMe = members,
                         whoCanLocateMeLoaded = circleState.isLoaded,
-                        whoCanLocateMePending = pending,
+                        // Flag off: main's path — checkWhoCanLocateMePending owns the pending list;
+                        // this only drops anyone who just converted to real (#1096).
+                        whoCanLocateMePending = if (developerPreferences.connectionReviewEnabled.value) {
+                            pending
+                        } else {
+                            it.whoCanLocateMePending
+                                .filterNot { p -> members.any { m -> m.odinId == p.odinId } }
+                        },
                     )
                 }
             }
@@ -487,6 +496,15 @@ class LocationViewModel(
         viewModelScope.launch {
             try {
                 connectionService.removeFromCircle(Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID), OdinId(odinId))
+                // Flag off: main's pending list isn't read from the snapshot, so drop them by hand.
+                if (!developerPreferences.connectionReviewEnabled.value) {
+                    _uiState.update {
+                        it.copy(
+                            whoCanLocateMePending = it.whoCanLocateMePending
+                                .filterNot { contact -> contact.odinId.domainName == odinId },
+                        )
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -494,6 +512,45 @@ class LocationViewModel(
                 _events.tryEmit(LocationUiEvent.EmergencyContactActionFailed)
             } finally {
                 _uiState.update { it.copy(removingEmergencyContacts = it.removingEmergencyContacts - odinId) }
+            }
+        }
+    }
+
+    private var whoCanLocateMePendingJob: Job? = null
+
+    /**
+     * Flag off only: main's live pending read, run on every [refresh] so a contact just added
+     * from the picker (usually a sealed deposit) shows at once (#1096). You are never your own
+     * emergency contact.
+     */
+    private fun checkWhoCanLocateMePending() {
+        if (whoCanLocateMePendingJob?.isActive == true) return
+        whoCanLocateMePendingJob = viewModelScope.launch {
+            _uiState.update { it.copy(whoCanLocateMePendingChecking = true) }
+            try {
+                val self = runCatching { credentialsManager.getActiveDomain() }
+                    .getOrNull()?.domainName?.lowercase()
+                val circleId = Uuid.parseHex(EMERGENCY_LOCATION_CIRCLE_ID)
+                val pending = connectionService.findPendingMembers(circleId)
+                    .filterNot { it.domainName.lowercase() == self }
+
+                _uiState.update {
+                    it.copy(
+                        // Exclude against the CURRENT whoCanLocateMe: someone can convert while
+                        // the lookup is in flight (#1096).
+                        whoCanLocateMePending = pending
+                            .distinct()
+                            .map { odinId -> contactService.resolveByOdinId(odinId) }
+                            .filterNot { contact -> it.whoCanLocateMe.any { m -> m.odinId == contact.odinId } }
+                            .sortedBy { contact -> contact.name.lowercase() },
+                        whoCanLocateMePendingChecking = false,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e, TAG) { "checkWhoCanLocateMePending failed" }
+                _uiState.update { it.copy(whoCanLocateMePendingChecking = false) }
             }
         }
     }
@@ -559,6 +616,7 @@ class LocationViewModel(
             refreshCounts()
         }
         loadDashboard()
+        if (!developerPreferences.connectionReviewEnabled.value) checkWhoCanLocateMePending()
     }
 
     /** Dashboard data: today's traces (map preview), the device list, and the

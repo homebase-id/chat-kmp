@@ -36,6 +36,9 @@ data class ProfileEditUiState(
 
     /** (attribute type, tier) pairs whose [ProfileEditAction.SaveAttribute] is currently in flight. */
     val savingAttributes: Set<Pair<String, ProfileVisibility>> = emptySet(),
+
+    /** Dark launch: off keeps main's "Vetted" wording. */
+    val reviewEnabled: Boolean = false,
 ) {
     /** Raw per-tier lookup — no cross-tier fallback; "" if [field] has no value in [tier]. */
     fun value(field: ProfileField, tier: ProfileVisibility): String =

@@ -14,7 +14,8 @@ import id.homebase.core.ui.screens.contactbook.toCircleAddFailureReason
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.core.config.EMERGENCY_LOCATION_CIRCLE_ID
-import id.homebase.core.ui.screens.contactbook.isReviewed
+import id.homebase.core.ui.screens.contactbook.canJoinCircles
+import id.homebase.core.settings.DeveloperPreferences
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toPersistentList
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -46,9 +47,12 @@ private const val TAG = "EmergencyContactPickerViewModel"
 class EmergencyContactPickerViewModel(
     private val contactService: ContactService,
     private val connectionService: ConnectionService,
+    developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(EmergencyContactPickerUiState())
+    private val _uiState = MutableStateFlow(
+        EmergencyContactPickerUiState(reviewEnabled = developerPreferences.connectionReviewEnabled.value),
+    )
     val uiState: StateFlow<EmergencyContactPickerUiState> = _uiState.asStateFlow()
     val searchTextState = TextFieldState()
 
@@ -77,7 +81,7 @@ class EmergencyContactPickerViewModel(
     fun onUiAction(action: EmergencyContactPickerUiAction) {
         when (action) {
             is EmergencyContactPickerUiAction.ContactClicked -> {
-                if (action.contact.connection?.isReviewed() == true) {
+                if (action.contact.connection?.canJoinCircles(uiState.value.reviewEnabled) == true) {
                     val selected = uiState.value.selectedContacts.toMutableList()
                     if (!selected.remove(action.contact)) selected.add(action.contact)
                     _uiState.update { it.copy(selectedContacts = selected.toPersistentList()) }

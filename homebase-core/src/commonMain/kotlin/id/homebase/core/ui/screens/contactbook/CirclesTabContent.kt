@@ -28,6 +28,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.enroll_banner
 import id.homebase.resources.enroll_banner_action
 import id.homebase.resources.contactbook_circle_new
+import id.homebase.resources.contactbook_circle_unvetted
 import id.homebase.resources.contactbook_circles_empty
 import org.jetbrains.compose.resources.stringResource
 
@@ -39,6 +40,8 @@ fun CirclesTabContent(
     modifier: Modifier = Modifier,
     /** Contacts who qualify for one of this app's circles and are not in it yet; 0 hides the row. */
     candidateCount: Int = 0,
+    /** Dark launch: off keeps main's "Unvetted" label and no emoji. */
+    reviewEnabled: Boolean = false,
 ) {
     when {
         loading && circles.isEmpty() -> Box(
@@ -59,8 +62,10 @@ fun CirclesTabContent(
 
         else -> {
             // Client-side display override only — the auto-connected system circle keeps its
-            // server-side name/id, we just relabel it "New" here.
-            val newName = stringResource(MR.string.contactbook_circle_new)
+            // server-side name/id, we just relabel it here ("Unvetted" while the review is dark).
+            val newName = stringResource(
+                if (reviewEnabled) MR.string.contactbook_circle_new else MR.string.contactbook_circle_unvetted
+            )
             LazyColumn(
                 modifier = modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
@@ -104,7 +109,7 @@ fun CirclesTabContent(
                             .fillMaxWidth()
                             .clickable { onAction(ContactBookUiAction.CircleClicked(circle)) },
                         leadingContent = {
-                            val emoji = circle.circle.emoji
+                            val emoji = circle.circle.emoji.takeIf { reviewEnabled }
                             if (emoji.isNullOrBlank()) {
                                 Icon(Icons.Outlined.Groups, contentDescription = null)
                             } else {

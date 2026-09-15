@@ -21,6 +21,7 @@ import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.services.requests.ConnectionRequestService
 import id.homebase.core.connections.RecipientResolution
+import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.core.ui.screens.contactbook.ContactDraft
 import id.homebase.core.ui.screens.contactbook.ContactSaveResult
 import id.homebase.core.ui.screens.contactbook.assignableCircles
@@ -57,6 +58,7 @@ class AddContactViewModel(
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
     private val conversationService: ConversationService,
+    private val developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AddContactUiState())
@@ -114,7 +116,7 @@ class AddContactViewModel(
             s.copy(
                 relation = relation,
                 alreadySaved = alreadySaved,
-                assignableCircles = circ.assignableCircles(),
+                assignableCircles = circ.assignableCircles(developerPreferences.connectionReviewEnabled.value),
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AddContactUiState())
 

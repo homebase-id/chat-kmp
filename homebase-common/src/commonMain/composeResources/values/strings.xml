@@ -1702,6 +1702,7 @@
     <string name="location_emergency_add_succeeded">Added</string>
     <string name="location_emergency_add_already_member">Already added</string>
     <string name="location_emergency_add_unreviewed_reason">Not yet reviewed — can't be added yet</string>
+    <string name="location_emergency_add_unvetted_reason">Not yet confirmed — can't be added yet</string>
     <string name="location_emergency_add_failed">Failed</string>
     <string name="location_emergency_status_pending">Pending</string>
     <string name="location_emergency_remove_cd">Remove %1$s</string>
@@ -1820,10 +1821,14 @@
     <string name="contactbook_tab_new">New</string>
     <string name="contactbook_tab_circles">Circles</string>
     <string name="contactbook_connected">Connected</string>
+    <string name="contactbook_vetted">Vetted</string>
+    <string name="contactbook_unvetted_empty">No unvetted connections.</string>
+    <string name="contactbook_vetted_empty">No vetted connections.</string>
     <string name="contactbook_filter_circles">Circles</string>
     <string name="contactbook_new_empty">Nothing waiting on you.</string>
     <string name="contactbook_circles_filter_empty">Nobody is in your circles yet.</string>
     <string name="contactbook_circles_empty">You don't have any circles yet.</string>
+    <string name="contactbook_circle_unvetted">Unvetted</string>
     <string name="contactbook_circle_new">New</string>
     <string name="contactbook_circle_members_empty">This circle has no members.</string>
     <string name="contactbook_circle_members_count">%1$d members</string>
@@ -1832,6 +1837,7 @@
     <string name="circle_member_add_title">Add to %1$s</string>
     <string name="circle_member_add_none_eligible">No eligible contacts to add. Contacts must be connected first.</string>
     <string name="circle_member_add_unreviewed_reason">Not yet reviewed — can't be added to a circle</string>
+    <string name="circle_member_add_unvetted_reason">Not yet confirmed — can't be added to a circle</string>
     <string name="circle_member_add_succeeded">Added</string>
     <string name="circle_member_add_already_member">Already added</string>
     <string name="circle_member_add_drive_access_denied">This circle includes a drive Chat doesn't have access to, so it can't be added here.</string>
@@ -1882,7 +1888,7 @@
     <string name="enroll_banner">%1$d contacts can join your circles</string>
     <string name="enroll_banner_action">Review them</string>
     <string name="enroll_empty">Everyone who qualifies is already in your circles.</string>
-    <string name="enroll_failed">Couldn\'t load candidates. Please try again.</string>
+    <string name="enroll_failed">Couldn't load candidates. Please try again.</string>
     <string name="enroll_why_review">Contacts you have reviewed who are not in this circle yet.</string>
     <string name="enroll_why_connect">Contacts you are connected to who are not in this circle yet.</string>
     <string name="enroll_grants">Joining grants:</string>
@@ -2175,13 +2181,17 @@
     <string name="profile_edit_linkedin">LinkedIn</string>
 
     <string name="profile_edit_visibility_public">Public</string>
-    <string name="profile_edit_visibility_connected">Circles</string>
+    <string name="profile_edit_visibility_connected">Vetted</string>
+    <string name="profile_edit_visibility_circles">Circles</string>
     <string name="profile_edit_public_hint">Visible to everyone, including people you haven't connected with.</string>
-    <string name="profile_edit_connected_fallback_hint">Leave blank to show your circles your Public value instead.</string>
+    <string name="profile_edit_connected_fallback_hint">Leave blank to show vetted contacts your Public value instead.</string>
+    <string name="profile_edit_circles_fallback_hint">Leave blank to show your circles your Public value instead.</string>
     <string name="profile_edit_preview_enter">Preview</string>
     <string name="profile_edit_preview_exit">Back to editing</string>
     <string name="profile_edit_preview_section_public">Public</string>
     <string name="profile_edit_preview_section_public_desc">Visible to everyone, including people you haven't connected with.</string>
+    <string name="profile_edit_preview_section_vetted">Vetted</string>
+    <string name="profile_edit_preview_section_vetted_desc">Additional Attributes visible to your vetted (confirmed) connections.</string>
     <string name="profile_edit_preview_section_circles">Visible to my circles</string>
     <string name="profile_edit_preview_section_circles_desc">Additional details shown to anyone you have added to your circles.</string>
     <string name="profile_edit_preview_empty">Nothing is visible at this level yet.</string>
@@ -2193,9 +2203,11 @@
     <string name="profile_avatar_edit_title">Change photo</string>
     <string name="cd_profile_avatar_change_photo">Change photo</string>
     <string name="profile_avatar_edit_acl_anonymous">Public photo</string>
-    <string name="profile_avatar_edit_acl_connected">Circles photo</string>
+    <string name="profile_avatar_edit_acl_connected">Vetted photo</string>
+    <string name="profile_avatar_edit_acl_circles">Circles photo</string>
     <string name="profile_avatar_edit_anonymous_desc">Visible to anyone, even people you're not connected to.</string>
-    <string name="profile_avatar_edit_connected_desc">Visible only to people in your circles — can be a different photo than your public one.</string>
+    <string name="profile_avatar_edit_connected_desc">Visible only to vetted contacts — can be a different photo than your public one.</string>
+    <string name="profile_avatar_edit_circles_desc">Visible only to people in your circles — can be a different photo than your public one.</string>
     <string name="profile_avatar_edit_upload">Save</string>
     <string name="profile_avatar_edit_remove">Remove</string>
     <string name="profile_avatar_edit_error_upload">Couldn't upload your photo. Please try again.</string>

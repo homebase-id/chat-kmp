@@ -46,6 +46,8 @@ data class LocationUiState(
     /** Contacts whose emergency-circle grant is still a sealed deposit rather than a real
      *  [whoCanLocateMe] entry — from the same circle snapshot, so the two never disagree. */
     val whoCanLocateMePending: List<ContactUiModel> = emptyList(),
+    /** True while main's pending lookup is in flight; only set while the review flag is off. */
+    val whoCanLocateMePendingChecking: Boolean = false,
     /** odinId domains currently being removed from the emergency circle — drives a per-row
      *  spinner in place of the remove "X" so a tap has visible feedback while in flight. */
     val removingEmergencyContacts: Set<String> = emptySet(),

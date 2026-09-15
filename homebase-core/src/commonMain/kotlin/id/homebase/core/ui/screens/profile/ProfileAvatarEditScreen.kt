@@ -50,8 +50,10 @@ import id.homebase.core.widget.SettingsTopBar
 import id.homebase.resources.MR
 import id.homebase.resources.cd_profile_avatar_change_photo
 import id.homebase.resources.profile_avatar_edit_acl_anonymous
+import id.homebase.resources.profile_avatar_edit_acl_circles
 import id.homebase.resources.profile_avatar_edit_acl_connected
 import id.homebase.resources.profile_avatar_edit_anonymous_desc
+import id.homebase.resources.profile_avatar_edit_circles_desc
 import id.homebase.resources.profile_avatar_edit_connected_desc
 import id.homebase.resources.profile_avatar_edit_error_delete
 import id.homebase.resources.profile_avatar_edit_error_too_large
@@ -129,8 +131,14 @@ fun ProfileAvatarEditScreen(
             Spacer(Modifier.height(24.dp))
 
             PhotoTierSection(
-                title = stringResource(MR.string.profile_avatar_edit_acl_connected),
-                description = stringResource(MR.string.profile_avatar_edit_connected_desc),
+                title = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_acl_circles
+                    else MR.string.profile_avatar_edit_acl_connected
+                ),
+                description = stringResource(
+                    if (uiState.reviewEnabled) MR.string.profile_avatar_edit_circles_desc
+                    else MR.string.profile_avatar_edit_connected_desc
+                ),
                 tier = uiState.connected,
                 onPick = { connectedPicker.launch() },
                 onRemove = { viewModel.onAction(ProfileAvatarEditAction.RemoveClicked(ProfileVisibility.CONNECTED)) },

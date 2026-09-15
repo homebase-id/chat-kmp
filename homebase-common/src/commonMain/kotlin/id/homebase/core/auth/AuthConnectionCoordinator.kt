@@ -65,6 +65,8 @@ class AuthConnectionCoordinator(
      * auth layer stays decoupled from the location module. Default `{ null }` keeps it optional.
      */
     private val locationProfileLabel: () -> String? = { null },
+    /** Dark launch: enrollments are only claimed while the connection review flag is on. */
+    private val processEnrollmentsEnabled: () -> Boolean = { false },
     /**
      * Whether this platform has a push + background-worker fallback for sync while backgrounded
      * (FCM/APNs → WorkManager/BGTask HTTP sync) — wired in AppModule to
@@ -593,7 +595,7 @@ class AuthConnectionCoordinator(
                             // Claim any circle enrollments queued for this app while we were
                             // away. Sent blind: the queue isn't visible from here, and the
                             // command is a no-op when there's nothing owed.
-                            wsClient?.processEnrollments()
+                            if (processEnrollmentsEnabled()) wsClient?.processEnrollments()
 
                             driveSyncManager.syncAll()
                             Logger.i(tag = "AuthLifecycle") { "AuthCC: onConnected post-sync done" }
