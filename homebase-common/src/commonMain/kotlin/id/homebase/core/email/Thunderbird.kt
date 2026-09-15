@@ -47,6 +47,13 @@ object Thunderbird {
     const val FDROID_URL = "https://f-droid.org/packages/net.thunderbird.android/"
     const val IOS_ROADMAP_URL = "https://roadmaps.thunderbird.net/en-US/ios/"
 
+    /**
+     * Where to publish a public key so other people's mail apps can find it. The verifying
+     * keyserver: it only publishes the address after the owner confirms it by email, which is why
+     * it is the one worth naming.
+     */
+    const val KEYSERVER_UPLOAD_URL = "https://keys.openpgp.org/upload"
+
     /** Thunderbird for Android delegates every OpenPGP operation to this app. */
     const val OPENKEYCHAIN_PLAY_URL =
         "https://play.google.com/store/apps/details?id=org.sufficientlysecure.keychain"

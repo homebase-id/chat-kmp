@@ -63,7 +63,6 @@ internal enum class SettingsCategory(
 @Composable
 internal fun SettingsSidebar(
     selected: SettingsCategory,
-    showEmail: Boolean,
     onSelect: (SettingsCategory) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -75,21 +74,19 @@ internal fun SettingsSidebar(
             .padding(vertical = Dimens.Spacing.item),
     ) {
         SettingsCategory.entries.forEach { category ->
-            if (category != SettingsCategory.Email || showEmail) {
-                NavigationDrawerItem(
-                    label = { Text(stringResource(category.label)) },
-                    icon = { Icon(category.icon, contentDescription = null) },
-                    selected = category == selected,
-                    onClick = { onSelect(category) },
-                    modifier = Modifier.padding(horizontal = Dimens.Spacing.item),
-                    shape = NavigationIndicatorShape,
-                    colors = NavigationDrawerItemDefaults.colors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
-                )
-            }
+            NavigationDrawerItem(
+                label = { Text(stringResource(category.label)) },
+                icon = { Icon(category.icon, contentDescription = null) },
+                selected = category == selected,
+                onClick = { onSelect(category) },
+                modifier = Modifier.padding(horizontal = Dimens.Spacing.item),
+                shape = NavigationIndicatorShape,
+                colors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            )
         }
     }
 }

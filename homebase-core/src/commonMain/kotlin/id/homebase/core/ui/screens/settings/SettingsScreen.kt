@@ -135,7 +135,6 @@ import org.jetbrains.compose.resources.stringResource
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     actions: SettingsActions,
-    showDeveloperMenu: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
@@ -197,7 +196,6 @@ fun SettingsScreen(
             uiState = uiState,
             onAction = viewModel::onAction,
             actions = actions,
-            showDeveloperMenu = showDeveloperMenu,
         )
 
         if (uiState.isLoggingOut) {
@@ -253,7 +251,6 @@ fun SettingsUi(
     onAction: (SettingsUiAction) -> Unit,
     actions: SettingsActions,
     // Defaults to hidden so previews and tests that do not care stay unchanged.
-    showDeveloperMenu: Boolean = false,
 ) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
@@ -368,18 +365,14 @@ fun SettingsUi(
                     action = SettingsRowAction.Navigate(actions.onVaultSettings),
                 )
             }
-            // Email setup is developer-menu gated while the arc is in progress: every host has
-            // Email:TenantMail:Enabled off, so the screen can only say "no email here" today.
-            if (showDeveloperMenu) {
-                item {
-                    SettingsRow(
-                        modifier = Modifier.testTag("emailSettingsButton"),
-                        icon = Icons.Outlined.MailOutline,
-                        title = stringResource(MR.string.email_settings_section),
-                        supportingText = stringResource(MR.string.settings_email_desc),
-                        action = SettingsRowAction.Navigate(actions.onEmailSettings),
-                    )
-                }
+            item {
+                SettingsRow(
+                    modifier = Modifier.testTag("emailSettingsButton"),
+                    icon = Icons.Outlined.MailOutline,
+                    title = stringResource(MR.string.email_settings_section),
+                    supportingText = stringResource(MR.string.settings_email_desc),
+                    action = SettingsRowAction.Navigate(actions.onEmailSettings),
+                )
             }
             item {
                 SettingsRow(
