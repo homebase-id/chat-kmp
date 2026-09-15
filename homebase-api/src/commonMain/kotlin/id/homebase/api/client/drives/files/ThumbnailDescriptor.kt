@@ -13,6 +13,10 @@ data class ThumbnailDescriptor(
     val content: String? = null,
     val bytesWritten: Long? = null
 ) {
+    val hasPositiveSize: Boolean get() = (pixelWidth ?: 0) > 0 && (pixelHeight ?: 0) > 0
+
+    val aspectRatio: Float? get() = if (hasPositiveSize) pixelWidth!!.toFloat() / pixelHeight!! else null
+
     fun toEmbeddedThumb(): EmbeddedThumb {
         return EmbeddedThumb(
                 pixelWidth = pixelWidth ?: 0,

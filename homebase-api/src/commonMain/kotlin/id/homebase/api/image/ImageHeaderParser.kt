@@ -54,8 +54,7 @@ object ImageHeaderParser {
                 // skip length (2) + sample precision (1)
                 val height = ((b[i + 3].toInt() and 0xFF) shl 8) or (b[i + 4].toInt() and 0xFF)
                 val width = ((b[i + 5].toInt() and 0xFF) shl 8) or (b[i + 6].toInt() and 0xFF)
-                if (width <= 0 || height <= 0) return null
-                return ImageSize(width, height)
+                return ImageSize.positiveOrNull(width, height)
             }
             // Other marker — skip its segment
             if (marker == 0xD8 || marker == 0xD9) return null // SOI/EOI without SOF
@@ -73,7 +72,7 @@ object ImageHeaderParser {
         if (b.size < 24) return null
         val width = readBigEndianInt(b, 16)
         val height = readBigEndianInt(b, 20)
-        return if (width > 0 && height > 0) ImageSize(width, height) else null
+        return ImageSize.positiveOrNull(width, height)
     }
 
     // GIF: width @6, height @8, both little-endian 16-bit.
@@ -81,7 +80,7 @@ object ImageHeaderParser {
         if (b.size < 10) return null
         val width = (b[6].toInt() and 0xFF) or ((b[7].toInt() and 0xFF) shl 8)
         val height = (b[8].toInt() and 0xFF) or ((b[9].toInt() and 0xFF) shl 8)
-        return if (width > 0 && height > 0) ImageSize(width, height) else null
+        return ImageSize.positiveOrNull(width, height)
     }
 
     // WebP: chunk at offset 12 is "VP8 ", "VP8L", or "VP8X". Extract width/height
@@ -95,7 +94,7 @@ object ImageHeaderParser {
                 if (b.size < 30) return null
                 val w = ((b[26].toInt() and 0xFF) or ((b[27].toInt() and 0x3F) shl 8))
                 val h = ((b[28].toInt() and 0xFF) or ((b[29].toInt() and 0x3F) shl 8))
-                if (w > 0 && h > 0) ImageSize(w, h) else null
+                ImageSize.positiveOrNull(w, h)
             }
             "VP8L" -> {
                 // Lossless: 14-bit width-1 and height-1 packed @21..24
@@ -106,7 +105,7 @@ object ImageHeaderParser {
                 val b3 = b[24].toInt() and 0xFF
                 val w = ((b1 and 0x3F) shl 8 or b0) + 1
                 val h = ((b3 and 0x0F) shl 10 or (b2 shl 2) or ((b1 and 0xC0) shr 6)) + 1
-                if (w > 0 && h > 0) ImageSize(w, h) else null
+                ImageSize.positiveOrNull(w, h)
             }
             "VP8X" -> {
                 // Extended: canvas width-1 @24 (24-bit LE), height-1 @27 (24-bit LE)
@@ -117,7 +116,7 @@ object ImageHeaderParser {
                 val h = ((b[27].toInt() and 0xFF) or
                     ((b[28].toInt() and 0xFF) shl 8) or
                     ((b[29].toInt() and 0xFF) shl 16)) + 1
-                if (w > 0 && h > 0) ImageSize(w, h) else null
+                ImageSize.positiveOrNull(w, h)
             }
             else -> null
         }

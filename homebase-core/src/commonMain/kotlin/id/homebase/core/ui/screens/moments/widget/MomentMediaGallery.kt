@@ -141,7 +141,7 @@ private fun SingleImageLayout(
     // one payload is the bug reproducing.
     LaunchedEffect(payload.key, aspect) {
         val preview = payload.previewThumbnail
-        val largest = payload.thumbnails?.lastOrNull()
+        val largest = payload.largestThumbnail
         Logger.i(tag = "MomentAspect") {
             "key=${payload.key} aspect=$aspect " +
                 "preview=${preview?.pixelWidth}x${preview?.pixelHeight} " +
@@ -214,10 +214,6 @@ internal const val MaxFeedPhotoAspect = 1.91f
 // 0.7 leaves room for the header/caption/actions. Tune here.
 internal const val FeedMediaMaxScreenFraction = 0.7f
 
-internal fun aspectRatioFor(payload: PayloadDescriptor): Float? {
-    val thumb = payload.previewThumbnail ?: payload.thumbnails?.lastOrNull()
-    val w = thumb?.pixelWidth
-    val h = thumb?.pixelHeight
-    if (w == null || h == null || w <= 0 || h <= 0) return null
-    return w.toFloat() / h.toFloat()
-}
+// Preview first (the reverse of PayloadDescriptor.displayAspectRatio) — see the MomentAspect log above.
+internal fun aspectRatioFor(payload: PayloadDescriptor): Float? =
+    (payload.previewThumbnail ?: payload.largestThumbnail)?.aspectRatio

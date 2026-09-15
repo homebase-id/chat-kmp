@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboard
@@ -227,45 +228,29 @@ fun SentMessageBubble(
             // row (and its popup anchor) back up by that half so the icons
             // align with the colored bubble's center, not the bubble+pill.
             val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
+            val showHoverActions = isDesktopOrWeb() && !message.isDeleted
             Row(modifier = Modifier.offset(y = iconsRowYOffset)) {
-                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { popupMode = MessagePopupMode.Menu },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = stringResource(MR.string.chat_message_options),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
+                if (showHoverActions && onMessageInfo != null) {
+                    HoverActionIcon(
+                        icon = Icons.Default.MoreHoriz,
+                        contentDescription = stringResource(MR.string.chat_message_options),
+                        isHovered = isHovered,
+                    ) { popupMode = MessagePopupMode.Menu }
                 }
-                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { onReply.invoke() },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                            contentDescription = stringResource(MR.string.chat_message_reply),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
+                if (showHoverActions && onReply != null) {
+                    HoverActionIcon(
+                        icon = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = stringResource(MR.string.chat_message_reply),
+                        isHovered = isHovered,
+                        onClick = onReply,
+                    )
                 }
-                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { popupMode = MessagePopupMode.Reaction },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddReaction,
-                            contentDescription = stringResource(MR.string.chat_message_reaction),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
+                if (showHoverActions && onAddReaction != null) {
+                    HoverActionIcon(
+                        icon = Icons.Default.AddReaction,
+                        contentDescription = stringResource(MR.string.chat_message_reaction),
+                        isHovered = isHovered,
+                    ) { popupMode = MessagePopupMode.Reaction }
                 }
                 if (popupMode != MessagePopupMode.None && !message.isDeleted) {
                     SentMessagePopup(
@@ -702,47 +687,31 @@ fun ReceivedMessageBubble(
             // See SentMessageBubble for rationale — compensates the 26dp pill
             // reservation so hover icons stay centered on the colored bubble.
             val iconsRowYOffset = if (message.reactionPreview != null) (-13).dp else 0.dp
+            val showHoverActions = isDesktopOrWeb() && !message.isDeleted
             Row(
                 modifier = Modifier.wrapContentWidth().offset(y = iconsRowYOffset),
             ) {
-                if (onAddReaction != null && isDesktopOrWeb() && !message.isDeleted) {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { popupMode = MessagePopupMode.Reaction },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddReaction,
-                            contentDescription = stringResource(MR.string.chat_message_reaction),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
+                if (showHoverActions && onAddReaction != null) {
+                    HoverActionIcon(
+                        icon = Icons.Default.AddReaction,
+                        contentDescription = stringResource(MR.string.chat_message_reaction),
+                        isHovered = isHovered,
+                    ) { popupMode = MessagePopupMode.Reaction }
                 }
-                if (onReply != null && isDesktopOrWeb() && !message.isDeleted) {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { onReply() },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                            contentDescription = stringResource(MR.string.chat_message_reply),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
+                if (showHoverActions && onReply != null) {
+                    HoverActionIcon(
+                        icon = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = stringResource(MR.string.chat_message_reply),
+                        isHovered = isHovered,
+                        onClick = onReply,
+                    )
                 }
-                if (onMessageInfo != null && isDesktopOrWeb() && !message.isDeleted) {
-                    IconButton(
-                        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
-                        onClick = { popupMode = MessagePopupMode.Menu },
-                        enabled = isHovered
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreHoriz,
-                            contentDescription = stringResource(MR.string.chat_message_options),
-                            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant
-                        )
-                    }
+                if (showHoverActions && onMessageInfo != null) {
+                    HoverActionIcon(
+                        icon = Icons.Default.MoreHoriz,
+                        contentDescription = stringResource(MR.string.chat_message_options),
+                        isHovered = isHovered,
+                    ) { popupMode = MessagePopupMode.Menu }
                 }
 
                 if (popupMode != MessagePopupMode.None && !message.isDeleted) {
@@ -1348,4 +1317,22 @@ private fun testMessageUiModel(message: String): MessageUiModel {
     )
 }
 
-
+@Composable
+private fun HoverActionIcon(
+    icon: ImageVector,
+    contentDescription: String,
+    isHovered: Boolean,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        modifier = Modifier.alpha(if (isHovered) 1f else 0f),
+        onClick = onClick,
+        enabled = isHovered,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = MaterialTheme.colorScheme.onSecondaryFixedVariant,
+        )
+    }
+}

@@ -126,6 +126,7 @@ import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.emoji.EmojiShortcodeEffect
 import id.homebase.core.ui.theme.HomebaseTheme
+import id.homebase.core.util.isEnter
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
@@ -463,16 +464,14 @@ fun MessageTextFieldExpanded(
                                 (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
                         ) {
                             when {
-                                // Shift+Enter inserts a newline; every other Enter/NumPadEnter
-                                // (incl. Cmd/Ctrl+Enter) sends. Match NumPadEnter too — macOS can
-                                // report Return as NumPadEnter, so Key.Enter alone never fired (#1043).
-                                (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                // Shift+Enter inserts a newline; every other Enter (incl. Cmd/Ctrl+Enter) sends.
+                                keyEvent.isEnter &&
                                     keyEvent.isShiftPressed -> {
                                     state.addTextAfterSelection("\n")
                                     true
                                 }
 
-                                keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
+                                keyEvent.isEnter -> {
                                     sendMessage()
                                     true
                                 }
@@ -788,17 +787,15 @@ fun MessageTextFieldCompact(
                                                 (keyEvent.key == Key.V && (keyEvent.isCtrlPressed || keyEvent.isMetaPressed)))
                                         ) {
                                             when {
-                                                // Shift+Enter inserts a newline; every other
-                                                // Enter/NumPadEnter (incl. Cmd/Ctrl+Enter) sends.
-                                                // Match NumPadEnter too — macOS can report Return as
-                                                // NumPadEnter, so Key.Enter alone never fired (#1043).
-                                                (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter) &&
+                                                // Shift+Enter inserts a newline; every other Enter
+                                                // (incl. Cmd/Ctrl+Enter) sends.
+                                                keyEvent.isEnter &&
                                                     keyEvent.isShiftPressed -> {
                                                     state.addTextAfterSelection("\n")
                                                     true
                                                 }
 
-                                                keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter -> {
+                                                keyEvent.isEnter -> {
                                                     onSendMessage()
                                                     true
                                                 }
@@ -1308,7 +1305,7 @@ fun MessageTextFieldForAttachment(
                             // preview events run root-to-leaf, so Enter-to-send below beats it otherwise.
                             if (autocomplete.handleKeyEvent(keyEvent)) return@onPreviewKeyEvent true
 
-                            if (isDesktopOrWeb() && keyEvent.key == Key.Enter && keyEvent.type == KeyEventType.KeyDown) {
+                            if (isDesktopOrWeb() && keyEvent.isEnter && keyEvent.type == KeyEventType.KeyDown) {
                                 if (keyEvent.isShiftPressed) {
                                     state.addTextAfterSelection("\n")
                                     true
@@ -1675,4 +1672,3 @@ private fun MarkdownLinkDialog(
         },
     )
 }
-

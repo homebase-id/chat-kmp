@@ -1,5 +1,7 @@
 package id.homebase.api.video
 
+import id.homebase.api.util.isQuarterTurn
+
 import id.homebase.api.client.KeyHeader
 import kotlin.coroutines.resume
 import kotlin.math.PI
@@ -210,9 +212,6 @@ actual object FFmpegUtils {
             throw VideoCompressionFailedException(inputPath, "input file not found")
         }
 
-        val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
-        val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
-
         val cacheDir = getCacheDirectory()
         val outputPath = "$cacheDir/compressed_${getUniqueId(inputPath)}.mp4"
         if (fileManager.fileExistsAtPath(outputPath)) {
@@ -250,8 +249,8 @@ actual object FFmpegUtils {
                 inputPath = inputPath,
                 outputPath = outputPath,
                 quality = quality,
-                trimStartMs = effectiveTrimStart,
-                trimEndMs = effectiveTrimEnd,
+                trimStartMs = trimStartMs,
+                trimEndMs = trimEndMs,
                 probedWidthPx = widthPx,
                 probedHeightPx = heightPx,
                 rotationDegrees = rotation,
@@ -307,9 +306,7 @@ actual object FFmpegUtils {
                 val indexPath = "$outputDir/index.m3u8"
                 val segmentPath = "$outputDir/index.ts"
 
-                val rotation = getRotationFromFile(inputPath)
-                val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
-                val needsRotationFix = absRot == 90 || absRot == 270
+                val needsRotationFix = isQuarterTurn(getRotationFromFile(inputPath))
 
                 val baseCommand =
                         if (!needsRotationFix) {
@@ -418,9 +415,7 @@ actual object FFmpegUtils {
                                 iv = keyHeader.iv
                         )
 
-                val rotation = getRotationFromFile(inputPath)
-                val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
-                val needsRotationFix = absRot == 90 || absRot == 270
+                val needsRotationFix = isQuarterTurn(getRotationFromFile(inputPath))
 
                 val baseCommand =
                         if (!needsRotationFix) {

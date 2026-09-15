@@ -6,6 +6,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import id.homebase.api.util.decodeCodePointAt
 
 /**
  * Applies the bundled colour-emoji font to the emoji in [this] and nothing else.
@@ -74,14 +75,8 @@ internal fun emojiRuns(text: String): List<IntRange> {
     var start = -1
     var i = 0
     while (i < text.length) {
-        val ch = text[i]
-        val high = ch.isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate()
-        val cp = if (high) {
-            0x10000 + ((ch.code - 0xD800) shl 10) + (text[i + 1].code - 0xDC00)
-        } else {
-            ch.code
-        }
-        val width = if (high) 2 else 1
+        val cp = text.decodeCodePointAt(i)
+        val width = if (cp > 0xFFFF) 2 else 1
         // A base code point that is emoji on its own, or a joiner/modifier continuing a run,
         // or a text-default symbol explicitly promoted by the following U+FE0F.
         val promoted = !isEmojiCodePoint(cp) &&

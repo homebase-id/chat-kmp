@@ -166,13 +166,7 @@ fun MediaMessage(
                 // bubble width; the inline path floors a narrow image to 240dp. Landscape/panorama
                 // keep their natural width; stickers and link-preview cards keep intrinsic sizing.
                 val fillsBubble = fillWidth && !isSticker && !isLinkPreview
-                val aspect = remember(payloads) {
-                    (payloads[0].thumbnails?.lastOrNull() ?: payloads[0].previewThumbnail)?.let { t ->
-                        val w = t.pixelWidth
-                        val h = t.pixelHeight
-                        if (w != null && h != null && w > 0 && h > 0) w.toFloat() / h else null
-                    }
-                }
+                val aspect = payloads[0].displayAspectRatio
                 // Height binds at the cap, so natural width is maxHeight * aspect — floor it only when < 240dp.
                 val narrowCaptioned = hasCaption && !fillWidth && !isSticker && !isLinkPreview &&
                     aspect != null &&

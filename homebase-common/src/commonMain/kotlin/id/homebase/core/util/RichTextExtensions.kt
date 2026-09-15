@@ -5,6 +5,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextDecoration
 import co.touchlab.kermit.Logger
 import com.mohamedrejeb.richeditor.model.RichTextState
+import id.homebase.api.util.decodeCodePointAt
+import id.homebase.api.util.isSurrogatePairAt
 import id.homebase.core.ui.theme.LightColors
 
 fun RichTextState.programmaticBackspace() {
@@ -118,24 +120,13 @@ private fun RichTextState.editAsRawMarkdown(content: String) {
 
 private fun findPrecedingCharacterStart(text: String, offset: Int): Int {
     if (offset <= 0) return 0
-    var newOffset = offset - 1
-    // Handle UTF-16 surrogate pairs
-    if (newOffset > 0 && text[newOffset].isLowSurrogate() && text[newOffset - 1].isHighSurrogate()) {
-        newOffset--
-    }
-    return newOffset
+    val newOffset = offset - 1
+    return if (text.isSurrogatePairAt(newOffset - 1)) newOffset - 1 else newOffset
 }
 
 private fun getCodePointAt(text: String, index: Int): Int {
     if (index < 0 || index >= text.length) return -1
-    return if (text[index].isHighSurrogate() && index + 1 < text.length) {
-        // Standard formula for converting surrogate pairs to a single Int CodePoint
-        val high = text[index].code
-        val low = text[index + 1].code
-        0x10000 + ((high - 0xD800) shl 10) + (low - 0xDC00)
-    } else {
-        text[index].code
-    }
+    return text.decodeCodePointAt(index)
 }
 
 // Logic for Emoji Skin Tone Modifiers (Fitzpatrick scale)

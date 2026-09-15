@@ -329,7 +329,7 @@ private fun getSvgDimensions(svgData: ByteArray): ImageSize? {
             val height = heightMatch.groupValues[1].toIntOrNull()
 
             if (width != null && height != null) {
-                return ImageSize(width, height)
+                return ImageSize.positiveOrNull(width, height)
             }
         }
 

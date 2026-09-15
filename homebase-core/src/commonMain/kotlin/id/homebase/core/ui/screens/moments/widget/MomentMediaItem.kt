@@ -123,17 +123,7 @@ fun MomentMediaItem(
         ctx
     } else null
 
-    val aspectRatioThumbnail = payload.thumbnails?.lastOrNull() ?: payload.previewThumbnail
-    val aspectRatio =
-        remember(aspectRatioThumbnail) {
-            val width = aspectRatioThumbnail?.pixelWidth
-            val height = aspectRatioThumbnail?.pixelHeight
-            if (width != null && height != null && width > 0 && height > 0) {
-                width.toFloat() / height.toFloat()
-            } else {
-                null
-            }
-        }
+    val aspectRatio = payload.displayAspectRatio
 
     val baseModifier = modifier.clip(shape)
 

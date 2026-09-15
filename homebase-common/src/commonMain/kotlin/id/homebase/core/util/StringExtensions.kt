@@ -3,6 +3,8 @@
 package id.homebase.core.util
 
 import id.homebase.api.util.truncateToCodePoints
+import id.homebase.api.util.charCountAt
+import id.homebase.api.util.decodeCodePointAt
 
 fun String.isEmojiContentOnly(): Boolean {
     if (this.isBlank()) return false
@@ -137,20 +139,8 @@ private fun isRegionalIndicator(codePoint: Int): Boolean {
     return codePoint in 0x1F1E6..0x1F1FF
 }
 
-// Read a Unicode code point at index in the string and return Pair(codePoint, charCount)
-private fun codePointAt(s: String, index: Int): Pair<Int, Int> {
-    val ch = s[index]
-    if (ch in '\uD800'..'\uDBFF' && index + 1 < s.length) {
-        val low = s[index + 1]
-        if (low in '\uDC00'..'\uDFFF') {
-            val high = ch.code
-            val lowc = low.code
-            val cp = ((high - 0xD800) shl 10) + (lowc - 0xDC00) + 0x10000
-            return Pair(cp, 2)
-        }
-    }
-    return Pair(ch.code, 1)
-}
+private fun codePointAt(s: String, index: Int): Pair<Int, Int> =
+    Pair(s.decodeCodePointAt(index), s.charCountAt(index))
 
 fun String.initials(): String {
     val tokens =

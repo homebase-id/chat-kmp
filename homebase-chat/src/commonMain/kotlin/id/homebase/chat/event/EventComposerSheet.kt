@@ -64,6 +64,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import id.homebase.api.client.location.LocationPreviewProvider
+import id.homebase.api.client.location.formatLatLon
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.composer.ComposerEditableField
@@ -228,7 +229,7 @@ private fun EventComposerContent(
                         )
                     }.getOrNull()
                     locationText = preview?.address?.takeIf { it.isNotBlank() }
-                        ?: "${result.point.lat}, ${result.point.lon}"
+                        ?: formatLatLon(result.point.lat, result.point.lon)
                     locationLat = result.point.lat
                     locationLon = result.point.lon
                     fetchingLocation = false

@@ -1,6 +1,11 @@
 package id.homebase.api.image
 
-data class ImageSize(val pixelWidth: Int, val pixelHeight: Int)
+data class ImageSize(val pixelWidth: Int, val pixelHeight: Int) {
+    companion object {
+        fun positiveOrNull(width: Int, height: Int): ImageSize? =
+            if (width > 0 && height > 0) ImageSize(width, height) else null
+    }
+}
 
 data class ImageResult(
     val bytes: ByteArray,

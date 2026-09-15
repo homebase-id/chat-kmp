@@ -1,5 +1,6 @@
 package id.homebase.chat.groodle
 
+import id.homebase.api.util.codePointCount
 import kotlinx.serialization.Serializable
 
 /**
@@ -45,8 +46,8 @@ data class GroodleDescriptor(
     fun isValid(): Boolean {
         if (schemaVersion < 1) return false
         if (title.isBlank()) return false
-        if (title.codePointLength() !in 1..MAX_TITLE_CODEPOINTS) return false
-        if (description.codePointLength() > MAX_DESCRIPTION_CODEPOINTS) return false
+        if (title.codePointCount() !in 1..MAX_TITLE_CODEPOINTS) return false
+        if (description.codePointCount() > MAX_DESCRIPTION_CODEPOINTS) return false
         if (timezone.isBlank()) return false
         if (slots.size !in 1..MAX_SLOTS) return false
 
@@ -85,17 +86,3 @@ data class GroodleSlot(
     /** Optional end; null = unspecified duration. When set, must be > [startUtcMs]. */
     val endUtcMs: Long? = null,
 )
-
-/**
- * Counts Unicode code points (not UTF-16 chars), so emoji and other non-BMP
- * characters in user text count as one each — matching `truncateToCodePoints`.
- */
-private fun String.codePointLength(): Int {
-    var count = 0
-    var i = 0
-    while (i < length) {
-        i += if (i + 1 < length && this[i].isHighSurrogate() && this[i + 1].isLowSurrogate()) 2 else 1
-        count += 1
-    }
-    return count
-}

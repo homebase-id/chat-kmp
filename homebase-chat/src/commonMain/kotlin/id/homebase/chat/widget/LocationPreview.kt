@@ -49,6 +49,7 @@ import kotlin.time.Instant
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.location.LocationPreview
+import id.homebase.api.client.location.formatLatLon
 import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.location.LIVE_SHARE_DURATION_OPTIONS
@@ -730,17 +731,6 @@ fun LocationListRow(
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
-
-private fun formatLatLon(lat: Double, lon: Double): String {
-    val latStr = roundTo5Decimals(lat)
-    val lonStr = roundTo5Decimals(lon)
-    return "$latStr, $lonStr"
-}
-
-private fun roundTo5Decimals(value: Double): String {
-    val rounded = (value * 1e5).toLong() / 1e5
-    return rounded.toString()
-}
 
 /**
  * Builds an Android-compatible `geo:` URI that iOS's `Maps.app` and Android's map handlers both

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.location.WebMercator
+import id.homebase.api.client.location.formatLatLon
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.ChatMessageSenderService
@@ -295,12 +296,6 @@ class ShareLocationViewModel(
         val dLat = abs(lat2 - lat1) * METERS_PER_DEGREE
         val dLon = abs(lon2 - lon1) * METERS_PER_DEGREE * cos(lat1 * PI / 180.0)
         return dLat + dLon
-    }
-
-    private fun formatLatLon(lat: Double, lon: Double): String {
-        val latStr = ((lat * 1e5).toLong() / 1e5).toString()
-        val lonStr = ((lon * 1e5).toLong() / 1e5).toString()
-        return "$latStr, $lonStr"
     }
 
     private companion object {

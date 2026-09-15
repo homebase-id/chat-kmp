@@ -8,6 +8,7 @@ import id.homebase.api.image.draw.StrokeCommand
 import id.homebase.api.image.draw.StrokeKind
 import id.homebase.api.image.draw.stackBlur
 import id.homebase.api.lib.image.ImageFormatDetector
+import id.homebase.api.util.isQuarterTurn
 import org.jetbrains.skia.Bitmap as SkiaBitmap
 import org.jetbrains.skia.Codec
 import org.jetbrains.skia.ColorAlphaType
@@ -171,14 +172,8 @@ actual object ImageUtils {
         val naturalW = srcImage.width
         val naturalH = srcImage.height
 
-        // Normalize degrees to 0-359
-        val normalizedDegrees = ((degrees % 360) + 360) % 360
-
-        // Calculate new dimensions after rotation
-        val (newW, newH) = when (normalizedDegrees) {
-            90, 270 -> naturalH to naturalW
-            else -> naturalW to naturalH
-        }
+        val normalizedDegrees = degrees.mod(360)
+        val (newW, newH) = if (isQuarterTurn(degrees)) naturalH to naturalW else naturalW to naturalH
 
         // Create surface for rotated image
         val surface = Surface.makeRasterN32Premul(newW, newH)

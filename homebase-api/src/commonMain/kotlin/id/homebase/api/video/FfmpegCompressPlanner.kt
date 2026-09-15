@@ -1,5 +1,7 @@
 package id.homebase.api.video
 
+import id.homebase.api.util.isQuarterTurn
+
 /**
  * The bitrate + dimension targets for a given [VideoQuality]. Single source of
  * truth so Android, iOS, and Desktop produce comparable output for the same
@@ -32,6 +34,8 @@ data class FfmpegCompressPlan(
     val args: List<String>,
     /** Resolved output dimensions, for logging. */
     val outputDims: Pair<Int, Int>?,
+    /** Length of the applied trim window; null when no (or only a partial) trim was given. */
+    val trimDurationMs: Long? = null,
 )
 
 /**
@@ -93,7 +97,7 @@ object FfmpegCompressPlanner {
     ): FfmpegCompressPlan {
         // Reason in display dims from here on — FFmpeg auto-rotate has already
         // swapped them by the time the scale filter sees the frames.
-        val swapDims = kotlin.math.abs(((rotationDegrees % 360) + 360) % 360) % 180 == 90
+        val swapDims = isQuarterTurn(rotationDegrees)
         val displayWidthPx = if (swapDims) probedHeightPx else probedWidthPx
         val displayHeightPx = if (swapDims) probedWidthPx else probedHeightPx
         val targets = quality.targets()
@@ -109,13 +113,14 @@ object FfmpegCompressPlanner {
             emptyList()
         }
 
+        val trim = if (trimStartMs != null && trimEndMs != null) trimStartMs to trimEndMs else null
         val args = buildList {
             add("-y")
             add("-i"); add(inputPath)
-            if (trimStartMs != null && trimEndMs != null) {
+            if (trim != null) {
                 // -ss AFTER -i: accurate seek (with re-encode pass; what the user expects).
-                add("-ss"); add(formatSeconds(trimStartMs))
-                add("-to"); add(formatSeconds(trimEndMs))
+                add("-ss"); add(formatSeconds(trim.first))
+                add("-to"); add(formatSeconds(trim.second))
             }
             // Drop the source's global metadata. ffmpeg's default is -map_metadata 0, which
             // copies the camera's `location` atom (and creation_time) straight into the
@@ -165,6 +170,7 @@ object FfmpegCompressPlanner {
             // Encoded frames come out post-rotation, so the reported output
             // dims are the display ones (not the pre-rotation probe values).
             outputDims = outDims ?: (displayWidthPx to displayHeightPx),
+            trimDurationMs = trim?.let { (start, end) -> end - start },
         )
     }
 

@@ -21,6 +21,13 @@ data class PayloadDescriptor(
     val uid: Long? = null
     // Add fields as needed
 ) {
+    // By area, not list order: the server neither sorts nor guarantees the order other clients uploaded.
+    val largestThumbnail: ThumbnailDescriptor?
+        get() = thumbnails?.filter { it.hasPositiveSize }?.maxByOrNull { it.pixelWidth!! * it.pixelHeight!! }
+
+    val displayAspectRatio: Float?
+        get() = largestThumbnail?.aspectRatio ?: previewThumbnail?.aspectRatio
+
     fun keyEquals(otherKey: String): Boolean {
         return key.equals(otherKey, ignoreCase = true)
     }

@@ -56,9 +56,7 @@ fun ImageInfoOverlay(
 
     // Best-effort resolution: the largest thumbnail we have. Not the original
     // image's true pixel size, hence the "(approx.)" label on the string.
-    val largestThumb = payload.thumbnails
-        ?.filter { (it.pixelWidth ?: 0) > 0 && (it.pixelHeight ?: 0) > 0 }
-        ?.maxByOrNull { (it.pixelWidth ?: 0) * (it.pixelHeight ?: 0) }
+    val largestThumb = payload.largestThumbnail
     val dimensionsVal = largestThumb?.let { "${it.pixelWidth}×${it.pixelHeight}" }
 
     val lines = buildList {

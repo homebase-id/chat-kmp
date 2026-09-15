@@ -98,10 +98,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -145,6 +143,7 @@ import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 import id.homebase.core.util.getUriHandler
+import id.homebase.core.util.isEnter
 import id.homebase.core.widget.DialogButtons
 import id.homebase.core.widget.DialogCard
 import id.homebase.core.widget.DialogTitle
@@ -3132,7 +3131,7 @@ private fun AddCommentRow(
                 // draft.
                 .onPreviewKeyEvent { e ->
                     if (e.type == KeyEventType.KeyDown &&
-                        (e.key == Key.Enter || e.key == Key.NumPadEnter) &&
+                        e.isEnter &&
                         !e.isShiftPressed
                     ) {
                         if (canSend) onSend()

@@ -5,8 +5,8 @@ package id.homebase.api.video
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.systemFileSystem
 import id.homebase.api.util.isBlobUrl
+import id.homebase.api.util.isQuarterTurn
 import kotlin.js.Promise
-import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.await
 import okio.Path.Companion.toPath
@@ -89,10 +89,6 @@ actual object FFmpegUtils {
             else (readOkioBytes(inputPath)
                 ?: throw VideoCompressionFailedException(inputPath, "input file unreadable"))
 
-        val hasTrim = trimStartMs != null && trimEndMs != null
-        val effTrimStart = if (hasTrim) trimStartMs else null
-        val effTrimEnd = if (hasTrim) trimEndMs else null
-
         val probe = if (isBlob) FFmpegBridge.probeFromUrl(inputPath) else FFmpegBridge.probe(inputBytes!!)
         val durationMs = probe?.durationMs ?: 0L
 
@@ -101,8 +97,8 @@ actual object FFmpegUtils {
             inputPath = MEMFS_INPUT,
             outputPath = MEMFS_OUTPUT,
             quality = quality,
-            trimStartMs = effTrimStart,
-            trimEndMs = effTrimEnd,
+            trimStartMs = trimStartMs,
+            trimEndMs = trimEndMs,
             probedWidthPx = probe?.widthPx ?: 0,
             probedHeightPx = probe?.heightPx ?: 0,
             rotationDegrees = probe?.rotationDegrees ?: 0,
@@ -160,9 +156,7 @@ actual object FFmpegUtils {
     ): Pair<String, String>? {
         val inputBytes = readOkioBytes(inputPath) ?: return null
 
-        val rotation = FFmpegBridge.probe(inputBytes)?.rotationDegrees ?: 0
-        val absRot = abs(((rotation % 360) + 360) % 360)
-        val needsRotationFix = absRot == 90 || absRot == 270
+        val needsRotationFix = isQuarterTurn(FFmpegBridge.probe(inputBytes)?.rotationDegrees ?: 0)
 
         FFmpegBridge.writeFile(MEMFS_INPUT, inputBytes)
 

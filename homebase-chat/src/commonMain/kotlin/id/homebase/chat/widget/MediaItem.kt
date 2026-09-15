@@ -137,17 +137,7 @@ fun MediaItem(
     } else null
 
     // Calculate aspect ratio if available
-    val aspectRatioThumbnail = payload.thumbnails?.lastOrNull() ?: payload.previewThumbnail
-    val aspectRatio =
-        remember(aspectRatioThumbnail) {
-            val width = aspectRatioThumbnail?.pixelWidth
-            val height = aspectRatioThumbnail?.pixelHeight
-            if (width != null && height != null && width > 0 && height > 0) {
-                width.toFloat() / height.toFloat()
-            } else {
-                null
-            }
-        }
+    val aspectRatio = payload.displayAspectRatio
 
     // Base modifier with shape clip. Stickers skip the rounded-card clip so the
     // transparent cut-out shows the chat surface through; ordinary media keeps it.

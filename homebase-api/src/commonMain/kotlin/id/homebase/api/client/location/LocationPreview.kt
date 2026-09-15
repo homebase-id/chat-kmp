@@ -19,3 +19,9 @@ data class LocationPreview(
     val imageWidth: Int?,
     val imageHeight: Int?,
 )
+
+/** "lat, lon" truncated to 5 decimals (~1 m) — the address fallback when geocoding is unavailable. */
+fun formatLatLon(lat: Double, lon: Double): String {
+    fun truncate(v: Double) = ((v * 1e5).toLong() / 1e5).toString()
+    return "${truncate(lat)}, ${truncate(lon)}"
+}

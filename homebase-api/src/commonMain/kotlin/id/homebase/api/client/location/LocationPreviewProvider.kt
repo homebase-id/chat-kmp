@@ -232,12 +232,6 @@ class LocationPreviewProvider(
     private fun latLonToTile(lat: Double, lon: Double, zoom: Int): Pair<Int, Int> =
         WebMercator.latLonToTile(lat, lon, zoom)
 
-    private fun formatLatLon(lat: Double, lon: Double): String {
-        val latStr = ((lat * 1e5).toLong() / 1e5).toString()
-        val lonStr = ((lon * 1e5).toLong() / 1e5).toString()
-        return "$latStr, $lonStr"
-    }
-
     /** ~11 m grid (4 decimals) — close enough that one address serves the whole cell. */
     private fun roundCoord(v: Double): Double = (v * 1e4).toLong() / 1e4
 

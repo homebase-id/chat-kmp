@@ -1,5 +1,7 @@
 package id.homebase.api.video
 
+import id.homebase.api.util.isQuarterTurn
+
 import android.media.MediaMetadataRetriever
 import android.util.Log
 import androidx.core.net.toUri
@@ -143,8 +145,6 @@ actual object FFmpegUtils {
         if ((trimStartMs == null) != (trimEndMs == null)) {
             Log.w(TAG, "Partial trim ignored (got start=$trimStartMs end=$trimEndMs); pass both or neither")
         }
-        val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
-        val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
 
         val outFile = File(context.cacheDir, "compressed_${inFile.name}")
         val inputDurationMs = getDurationMs(inputPath)
@@ -155,11 +155,6 @@ actual object FFmpegUtils {
         // before computing the scale target (else portrait camera captures
         // get a landscape scale and the decoded frames get squished).
         val rotation = getRotationFromFile(inputPath)
-        val trimDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
-            effectiveTrimEnd - effectiveTrimStart
-        } else {
-            inputDurationMs
-        }
         val t0 = System.currentTimeMillis()
 
         // Hand probed input + caller params to the commonMain planner.
@@ -167,8 +162,8 @@ actual object FFmpegUtils {
             inputPath = inputPath,
             outputPath = outFile.absolutePath,
             quality = quality,
-            trimStartMs = effectiveTrimStart,
-            trimEndMs = effectiveTrimEnd,
+            trimStartMs = trimStartMs,
+            trimEndMs = trimEndMs,
             probedWidthPx = probe.widthPx,
             probedHeightPx = probe.heightPx,
             rotationDegrees = rotation,
@@ -177,6 +172,7 @@ actual object FFmpegUtils {
             // FFmpegKit builds); stick with libx264 for predictable behaviour.
         )
 
+        val trimDurationMs = plan.trimDurationMs ?: inputDurationMs
         val args = plan.args.toTypedArray()
         Log.d(TAG, "compressVideo args: ${args.joinToString(" ")}")
 
@@ -426,9 +422,7 @@ actual object FFmpegUtils {
             val file = File(inputPath)
             if (!file.exists()) return@withContext null
 
-            val rotation = getRotationFromFile(inputPath)
-            val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
-            val needsRotationFix = absRot == 90 || absRot == 270
+            val needsRotationFix = isQuarterTurn(getRotationFromFile(inputPath))
 
             val outputDir = context.cacheDir
             val playlistName = "ffmpeg-segmented-${UUID.randomUUID()}.m3u8"
@@ -505,9 +499,7 @@ actual object FFmpegUtils {
             val inputFile = File(inputPath)
             if (!inputFile.exists()) return@withContext null
 
-            val rotation = getRotationFromFile(inputPath)
-            val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
-            val needsRotationFix = absRot == 90 || absRot == 270
+            val needsRotationFix = isQuarterTurn(getRotationFromFile(inputPath))
 
             val outputDir = File(
                 context.cacheDir,

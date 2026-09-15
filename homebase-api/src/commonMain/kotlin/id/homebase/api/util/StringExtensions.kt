@@ -69,17 +69,26 @@ fun String.stripMarkdownForPreview(): String? {
     return plain
 }
 
+fun CharSequence.isSurrogatePairAt(index: Int): Boolean =
+    index >= 0 && index + 1 < length && this[index].isHighSurrogate() && this[index + 1].isLowSurrogate()
+
+fun CharSequence.charCountAt(index: Int): Int = if (isSurrogatePairAt(index)) 2 else 1
+
+// Not `codePointAt`: kotlin.text has a JVM-only String.codePointAt that would win there and lose elsewhere.
+fun CharSequence.decodeCodePointAt(index: Int): Int =
+    if (isSurrogatePairAt(index)) {
+        0x10000 + ((this[index].code - 0xD800) shl 10) + (this[index + 1].code - 0xDC00)
+    } else {
+        this[index].code
+    }
+
 // Truncate a string to maxVisibleCharacters (be sure UTF characters aren't chopped in the middle)
 fun String.truncateToCodePoints(maxVisibleCharacters: Int): String {
     if (maxVisibleCharacters <= 0) return ""
     var codePointCount = 0
     var charIndex = 0
     while (charIndex < length && codePointCount < maxVisibleCharacters) {
-        if (charIndex + 1 < length && this[charIndex].isHighSurrogate() && this[charIndex + 1].isLowSurrogate()) {
-            charIndex += 2
-        } else {
-            charIndex += 1
-        }
+        charIndex += charCountAt(charIndex)
         codePointCount += 1
     }
     return substring(0, charIndex)
@@ -94,7 +103,7 @@ fun String.codePointCount(): Int {
     var count = 0
     var charIndex = 0
     while (charIndex < length) {
-        charIndex += if (charIndex + 1 < length && this[charIndex].isHighSurrogate() && this[charIndex + 1].isLowSurrogate()) 2 else 1
+        charIndex += charCountAt(charIndex)
         count += 1
     }
     return count

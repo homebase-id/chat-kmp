@@ -1,5 +1,7 @@
 package id.homebase.api.video
 
+import id.homebase.api.util.isQuarterTurn
+
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.JvmFileSystemUtil
 import java.io.BufferedReader
@@ -133,9 +135,6 @@ actual object FFmpegUtils {
             throw VideoCompressionFailedException(inputPath, "input file not found")
         }
 
-        val effectiveTrimStart = if (trimStartMs != null && trimEndMs != null) trimStartMs else null
-        val effectiveTrimEnd = if (trimStartMs != null && trimEndMs != null) trimEndMs else null
-
         val outputPath =
             "${scratchDirPath}/compressed_${inputFile.name}"
         val sourceDurationMs = getDurationMs(inputPath)
@@ -144,23 +143,19 @@ actual object FFmpegUtils {
         // displaymatrix. Planner needs both so portrait phone captures don't
         // get a landscape scale filter and end up squished.
         val rotation = getRotationFromFile(inputPath)
-        val effectiveDurationMs = if (effectiveTrimEnd != null && effectiveTrimStart != null) {
-            (effectiveTrimEnd - effectiveTrimStart).coerceAtLeast(1L)
-        } else {
-            sourceDurationMs
-        }
 
         // Hand probed input + caller params to the commonMain planner.
         val plan = FfmpegCompressPlanner.plan(
             inputPath = inputPath,
             outputPath = outputPath,
             quality = quality,
-            trimStartMs = effectiveTrimStart,
-            trimEndMs = effectiveTrimEnd,
+            trimStartMs = trimStartMs,
+            trimEndMs = trimEndMs,
             probedWidthPx = probe.widthPx,
             probedHeightPx = probe.heightPx,
             rotationDegrees = rotation,
         )
+        val effectiveDurationMs = plan.trimDurationMs?.coerceAtLeast(1L) ?: sourceDurationMs
 
         // Planner emits "argv after ffmpeg" — Desktop's ProcessBuilder needs
         // the binary path prepended. We also append the JVM-specific progress-
@@ -327,9 +322,7 @@ actual object FFmpegUtils {
         val playlistPath = File(outputDir, "index.m3u8").absolutePath
         val segmentPath = File(outputDir, "index.ts").absolutePath
 
-        val rotation = getRotationFromFile(inputPath)
-        val absRot = kotlin.math.abs(((rotation % 360) + 360) % 360)
-        val needsRotationFix = absRot == 90 || absRot == 270
+        val needsRotationFix = isQuarterTurn(getRotationFromFile(inputPath))
 
         val command = mutableListOf<String>().apply {
             add(FFmpegBinaryManager.ffmpegPath())
