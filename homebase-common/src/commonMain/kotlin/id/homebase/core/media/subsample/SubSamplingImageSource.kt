@@ -28,4 +28,5 @@ fun SubSamplingImageSource.sharedElementKey(): String? = when (this) {
     is SubSamplingImageSource.LocalFile -> null
 }
 
-fun imageUrlSharedElementKey(url: String): String = "image-url-$url"
+// Query-insensitive: a stale `?v=` cache-bust token on either end must not drop the morph.
+fun imageUrlSharedElementKey(url: String): String = "image-url-${url.substringBefore('?')}"

@@ -25,7 +25,6 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import id.homebase.api.common.OdinId
-import id.homebase.api.common.publicImageUrl
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.media.subsample.imageUrlSharedElementKey
 import id.homebase.resources.MR
@@ -53,13 +52,12 @@ fun PublicAvatar(
      * so without this a freshly-uploaded photo won't visibly update until the app restarts or
      * Coil's memory cache is evicted for some unrelated reason. Pass e.g.
      * `OwnerSession.profileImageLastModified` for the owner's own avatar; leave null (default)
-     * for any other identity, where no such signal exists client-side.
+     * for any other identity, where an explicit contact Sync is the only such signal and
+     * [rememberPublicAvatarUrl] picks that up on its own.
      */
     cacheBustKey: Long? = null,
 ) {
-    val imageUrl = odinId.publicImageUrl().let { url ->
-        if (cacheBustKey != null) "$url?v=$cacheBustKey" else url
-    }
+    val imageUrl = rememberPublicAvatarUrl(odinId, cacheBustKey)
 
     // Defense in depth. SingletonImageLoader is also rewired to this
     // instance in AppModule.{android,desktop,native}.kt, so a caller that
@@ -83,13 +81,12 @@ fun PublicAvatar(
                 .clip(CircleShape)
         }
 
-    // Keyed off the plain published URL, never the cache-busted one: the viewer is opened with
-    // the plain URL and both ends must agree on the key.
+    // The key strips the ?v= token, so tile and viewer still pair up a refresh apart.
     if (sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             containerModifier = containerModifier.sharedBounds(
                 rememberSharedContentState(
-                    key = imageUrlSharedElementKey(odinId.publicImageUrl()),
+                    key = imageUrlSharedElementKey(imageUrl),
                 ),
                 animatedVisibilityScope = animatedVisibilityScope,
                 boundsTransform = { _, _ ->
