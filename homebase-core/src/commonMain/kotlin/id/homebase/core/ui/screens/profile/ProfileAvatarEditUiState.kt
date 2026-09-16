@@ -27,6 +27,8 @@ data class ProfileAvatarEditUiState(
     val isLoading: Boolean = true,
     val anonymous: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.ANONYMOUS),
     val connected: PhotoTierUiState = PhotoTierUiState(ProfileVisibility.CONNECTED),
+    /** Dark launch: off keeps main's "Vetted" wording. */
+    val reviewEnabled: Boolean = false,
 )
 
 /** One [ProfileVisibility] tier's photo slot: what's currently stored, and any in-flight edit. */

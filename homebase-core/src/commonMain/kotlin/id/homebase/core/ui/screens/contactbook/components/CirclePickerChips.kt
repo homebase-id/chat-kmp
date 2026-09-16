@@ -68,7 +68,7 @@ fun CirclePickerChips(
                     selected = selected,
                     enabled = enabled,
                     onClick = { onToggle(circle.id) },
-                    label = { Text(circle.name) },
+                    label = { CircleLabel(emoji = circle.emoji, name = circle.name) },
                     leadingIcon = if (selected) {
                         {
                             Icon(

@@ -9,13 +9,16 @@ import id.homebase.api.client.auth.OwnerSession
 import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionStatus
+import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.Md5
+import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.convo.ConversationService
+import id.homebase.chat.services.convo.contact.CircleMembershipState
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ConnectionState
 import id.homebase.chat.data.IncomingConnectionRequestUiModel
@@ -25,7 +28,6 @@ import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.AppConnectionStatus
 import id.homebase.core.config.AUTO_CONNECTIONS_CIRCLE_ID
-import id.homebase.core.config.CONFIRMED_CONNECTIONS_CIRCLE_ID
 import id.homebase.core.config.contactTargetDrive
 import id.homebase.core.contactbook.ContactBookPreferences
 import id.homebase.core.contactbook.ContactOverrideStore
@@ -33,6 +35,7 @@ import id.homebase.core.ui.screens.contactbook.model.ContactBookEntry
 import id.homebase.core.ui.screens.contactbook.model.ContactBookSource
 import id.homebase.core.ui.screens.contactbook.model.ContactFieldOverlay
 import id.homebase.core.ui.screens.contactbook.model.toContactBookEntry
+import id.homebase.core.settings.DeveloperPreferences
 import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -73,18 +76,28 @@ class ContactBookViewModel(
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
     private val overrideStore: ContactOverrideStore,
+    private val developerPreferences: DeveloperPreferences,
     ownerSessionRepository: OwnerSessionRepository,
     authConnectionCoordinator: AuthConnectionCoordinator,
     eventBus: EventBus,
 ) : ViewModel() {
 
-    private val _selectedTab = MutableStateFlow(ContactTab.CONTACTS)
+    private val _selectedTab = MutableStateFlow(ContactTab.KNOWN)
     private val _searchQuery = MutableStateFlow("")
     private val _filter = MutableStateFlow(ContactFilter.ALL)
     private val _overlay = MutableStateFlow<ContactBookOverlay?>(null)
     private val _circles = MutableStateFlow<List<CircleWithMembers>>(emptyList())
     private val _circlesLoading = MutableStateFlow(false)
     private val _circleMembers = MutableStateFlow<CircleMembersUi?>(null)
+
+    /**
+     * How many contacts qualify for one of this app's circles and are not in it.
+     *
+     * Refreshed when the Circles tab is opened rather than polled: there is no notification for a
+     * new candidate, and a count that is a screen-open old is accurate enough to decide whether to
+     * say anything at all.
+     */
+    private val _enrollmentCandidateCount = MutableStateFlow(0)
 
     /** Owner avatar + connection/sync status for the header (mirrors the Moments header). */
     private data class HeaderBundle(
@@ -102,6 +115,14 @@ class ContactBookViewModel(
         // skipped by the headless/foreground promotion race and leave the list spinning.
         // Idempotent once loaded.
         viewModelScope.launch { repo.ensureLoaded() }
+        // Counted on open, not only when the Circles tab is entered: the badge exists to say
+        // "there is something in there", which it cannot do if entering the tab is what finds out.
+        // Re-runs when the flag flips so switching it on does not need a restart.
+        viewModelScope.launch {
+            developerPreferences.connectionReviewEnabled.collect { enabled ->
+                if (enabled) refreshEnrollmentCandidates() else _enrollmentCandidateCount.value = 0
+            }
+        }
         // Idempotent — already started by the conversation list / app bootstrap; calling it here
         // makes the Requests pill self-sufficient if the Contact Book is the first screen shown.
         viewModelScope.launch { connectionRequestService.start() }
@@ -147,25 +168,39 @@ class ContactBookViewModel(
             connectionService.circles.collect { circleState ->
                 val circles = circleState.circles
                     .filterNot { it.circle.disabled }
-                    .sortedWith(compareBy({ it.circle.id.circleSortRank() }, { it.circle.name.lowercase() }))
+                    .sortedWith(
+                        compareBy(
+                            { it.circle.circleSortRank(developerPreferences.connectionReviewEnabled.value) },
+                            { it.circle.name.lowercase() },
+                        ),
+                    )
                 _circles.value = circles
                 _circlesLoading.value = !circleState.isLoaded
 
                 val open = _circleMembers.value ?: return@collect
                 val match = circles.firstOrNull { it.circle.id == open.circleId } ?: return@collect
                 val domains = match.members.map { it.domainName }.toSet()
+                val reviewEnabled = developerPreferences.connectionReviewEnabled.value
+                val pendingDomains = match.pendingMembers
+                    .map { p -> p.odinId.domainName.lowercase() }
+                    .filterNot { d -> domains.any { it.equals(d, ignoreCase = true) } }
+                    .toSet()
+                // Pending is part of the circle value now, so a pending-only change alters this
+                // flow and lands here — the case #1096 said StateFlow would conflate, because
+                // pending used to live outside the value entirely.
                 _circleMembers.update {
                     it?.copy(
                         members = entriesForDomains(domains, entries.value).sortedBy { m -> m.sortKey },
+                        pendingMembers = if (reviewEnabled) {
+                            entriesForDomains(pendingDomains, entries.value).sortedBy { m -> m.sortKey }
+                        } else {
+                            it.pendingMembers
+                        },
                         drives = resolveCircleDrives(match.circle),
                     )
                 }
-                // Best-effort: a fresh emission here means someone's real membership actually
-                // changed, so re-derive the pending badge too. This does NOT catch a pending-only
-                // add — the real member list is unchanged, so StateFlow conflates the assignment
-                // and this block never runs for that case. refreshOpenCircle() is the reliable
-                // path (#1096); this just keeps things fresher between resumes when it does fire.
-                if (open.manageable) checkCirclePending(match)
+                // Flag off: main's path — re-derive pending live, since it isn't read from the snapshot.
+                if (!reviewEnabled && open.manageable) checkCirclePending(match)
             }
         }
     }
@@ -182,6 +217,8 @@ class ContactBookViewModel(
         val filter: ContactFilter,
         val tab: ContactTab,
         val overlay: ContactBookOverlay?,
+        val reviewEnabled: Boolean,
+        val enrollmentCandidates: Int,
     )
 
     private data class CirclesBundle(
@@ -209,8 +246,21 @@ class ContactBookViewModel(
         ) { c, l, conn, overrides ->
             ContactsBundle(c, l, conn, overrides)
         },
-        combine(_searchQuery, _filter, _selectedTab, _overlay) { q, f, tab, o ->
-            UiBits(q, f, tab, o)
+        // A source, not a .value read: toggling the dev flag has to re-emit the list, or the
+        // Review buttons only appear after some unrelated change happens to wake the combine.
+        // The flag and the candidate count ride together as one source: combine takes five
+        // typed flows, and both belong to the same "what may this screen offer" question.
+        combine(
+            _searchQuery,
+            _filter,
+            _selectedTab,
+            _overlay,
+            combine(
+                developerPreferences.connectionReviewEnabled,
+                _enrollmentCandidateCount,
+            ) { review, candidates -> review to candidates },
+        ) { q, f, tab, o, (review, candidates) ->
+            UiBits(q, f, tab, o, review, candidates)
         },
         combine(_circles, _circlesLoading, _circleMembers) { c, l, m -> CirclesBundle(c, l, m) },
         _header,
@@ -219,7 +269,7 @@ class ContactBookViewModel(
             connectionRequestService.outgoingRequests,
         ) { incoming, outgoing -> RequestsBundle(incoming, outgoing) },
     ) { contactsData, ui, circlesData, header, requestsData ->
-        // Apply user overrides up front so every downstream list (All, Unvetted, Requests,
+        // Apply user overrides up front so every downstream list (Known, New, Requests,
         // introducer names) shows the user's renamed/edited values, not the synced ones.
         val overriddenContacts = contactsData.contacts
             .map { it.withOverride(contactsData.overrides[it.uniqueId]) }
@@ -227,15 +277,29 @@ class ContactBookViewModel(
             .filterValues { it.status == ConnectionStatus.Connected }
         val connectedDomains = connectedRegs.keys.map { it.domainName.lowercase() }.toSet()
 
-        // Unvetted = connected but not confirmed. Confirmed is the server-computed `vetted` flag
-        // (connected AND a member of the Confirmed Connections system circle — see issue #919);
-        // it rides with the connection data itself, so this needs no circle load/fallback. This
-        // is a full complement over connected identities, not just auto-connected/introduced —
-        // a plain direct connection that hasn't been explicitly confirmed is unvetted too.
-        val confirmedDomains = connectedRegs.filterValues { it.vetted }
-            .keys.map { it.domainName.lowercase() }
-            .toSet()
-        val unvettedDomains = connectedDomains - confirmedDomains
+        // The three states need both halves — the review stamp AND personal-circle membership —
+        // so nothing is classified until the circles have loaded. Guessing from the stamp alone
+        // would show every circle member as Chat for a moment and then flip them, which reads as
+        // the app changing its mind about who the user trusts.
+        val personalCirclesByDomain = buildMap<String, MutableList<RedactedCircleDefinition>> {
+            circlesData.circles
+                .filter { it.circle.isPersonalCircle() }
+                .forEach { cwm ->
+                    cwm.members.forEach { member ->
+                        getOrPut(member.domainName.lowercase()) { mutableListOf() }.add(cwm.circle)
+                    }
+                }
+        }
+        val contactStates = if (circlesData.loading) {
+            emptyMap()
+        } else {
+            connectedRegs.entries.mapNotNull { (odinId, reg) ->
+                val domain = odinId.domainName.lowercase()
+                contactStateOf(reg, personalCirclesByDomain[domain].orEmpty())?.let { domain to it }
+            }.toMap()
+        }
+        fun domainsInState(state: ContactState) =
+            contactStates.filterValues { it == state }.keys
 
         // contact-domain (lowercase) → saved contact entry, for resolving requests/introducers.
         val contactsByOdin = overriddenContacts
@@ -245,7 +309,7 @@ class ContactBookViewModel(
         // ALL = saved contacts plus every other connection. A connection with no saved contact
         // entry would otherwise fall through both pills. Connections already in the book show via
         // their saved entry; the rest get a synthetic display-only entry, the same projection
-        // Unvetted uses.
+        // the New tab uses.
         val unsavedConnectionDomains = connectedDomains - contactsByOdin.keys
         val selfEntry = header.ownerSession?.let { selfContact(it) }
         val all = buildList {
@@ -261,15 +325,31 @@ class ContactBookViewModel(
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        val unvetted = entriesForDomains(unvettedDomains, overriddenContacts)
+        fun entriesInState(state: ContactState) =
+            entriesForDomains(domainsInState(state), overriddenContacts)
+                .filter { it.matches(ui.query) }
+                .sortedBy { it.sortKey }
+
+        val newContacts = entriesInState(ContactState.New)
+        val circleContacts = entriesInState(ContactState.Circle)
+        // Filtered from all, not built from connections: contacts with no connection belong here.
+        // No New tab while the review is dark, so nobody is carved out of this one.
+        val newDomains = if (ui.reviewEnabled) domainsInState(ContactState.New) else emptySet()
+        val knownContacts = all.filterNot { it.odinId?.lowercase() in newDomains }
+
+        // Flag off: main's pills — confirmed is the server-computed `vetted` flag, no circle load needed.
+        @Suppress("DEPRECATION")
+        val confirmedDomains = connectedRegs.filterValues { it.vetted }
+            .keys.map { it.domainName.lowercase() }
+            .toSet()
+        val unvetted = entriesForDomains(connectedDomains - confirmedDomains, overriddenContacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
-
         val vetted = entriesForDomains(confirmedDomains, overriddenContacts)
             .filter { it.matches(ui.query) }
             .sortedBy { it.sortKey }
 
-        // Pending connection requests, projected onto contact entries the same way Unvetted is:
+        // Pending connection requests, projected onto contact entries the same way New is:
         // reuse the saved contact when we have one, else a synthetic display-only entry for the
         // identity. The service's UI-model names are placeholders ("TODO …"), so we deliberately
         // resolve names through the contact book / domain, not those fields.
@@ -293,20 +373,36 @@ class ContactBookViewModel(
             .sortedByDescending { it.receivedAtMs }
 
         ContactBookUiState(
-            selectedTab = ui.tab,
+            // Switching the flag off while on New would otherwise leave no tab selected.
+            selectedTab = if (!ui.reviewEnabled && ui.tab == ContactTab.NEW) ContactTab.KNOWN else ui.tab,
             contacts = all,
             totalCount = all.size,
             connectedOdinIds = connectedDomains,
+            newContacts = newContacts,
+            knownContacts = knownContacts,
             unvetted = unvetted,
             vetted = vetted,
+            circleContacts = circleContacts,
+            contactStates = contactStates,
+            statesLoading = circlesData.loading,
+            reviewEnabled = ui.reviewEnabled,
+            enrollmentCandidateCount = if (ui.reviewEnabled) ui.enrollmentCandidates else 0,
             requests = requests,
             incomingRequestCount = incomingRequests.size,
+            reviewCircleGroups = CircleMembershipState(isLoaded = true, circles = circlesData.circles)
+                .reviewCircleGroups(),
             circles = circlesData.circles.filter { it.matchesQuery(ui.query) },
             circlesLoading = circlesData.loading,
             circleMembers = circlesData.members,
             isLoading = !contactsData.loaded,
             searchQuery = ui.query,
-            filter = ui.filter,
+            // A pill left selected across a flag flip falls back to All rather than an empty view.
+            filter = when {
+                ui.reviewEnabled && (ui.filter == ContactFilter.UNVETTED || ui.filter == ContactFilter.VETTED) ->
+                    ContactFilter.ALL
+                !ui.reviewEnabled && ui.filter == ContactFilter.CIRCLES -> ContactFilter.ALL
+                else -> ui.filter
+            },
             overlay = ui.overlay,
             ownerSession = header.ownerSession,
             connectionStatus = header.connectionStatus,
@@ -360,9 +456,10 @@ class ContactBookViewModel(
         when (action) {
             is ContactBookUiAction.TabSelected -> {
                 _selectedTab.value = action.tab
-                if (action.tab == ContactTab.CIRCLES &&
-                    _circles.value.isEmpty() && !_circlesLoading.value
-                ) loadCircles()
+                if (action.tab == ContactTab.CIRCLES) {
+                    if (_circles.value.isEmpty() && !_circlesLoading.value) loadCircles()
+                    refreshEnrollmentCandidates()
+                }
             }
             is ContactBookUiAction.CircleClicked -> handleCircleClicked(action.circle)
             ContactBookUiAction.CircleMembersDismiss -> _circleMembers.value = null
@@ -395,13 +492,75 @@ class ContactBookViewModel(
                 val odinId = action.entry.odinId ?: return
                 viewModelScope.launch { contactInfo.resync(OdinId(odinId)) }
             }
+            ContactBookUiAction.EnrollmentCandidatesClicked ->
+                _events.tryEmit(ContactBookUiEvent.OpenEnrollmentCandidates)
             ContactBookUiAction.CloseOverlay -> _overlay.value = null
+            is ContactBookUiAction.ReviewClicked -> openReview(action.entry)
+            is ContactBookUiAction.ReviewSubmitted -> handleReview(action.entry, action.circleIds)
 
             ContactBookUiAction.OnboardingGetStarted ->
                 viewModelScope.launch { preferences.setOnboardingComplete(true) }
             ContactBookUiAction.OnboardingSkip -> viewModelScope.launch {
                 preferences.setOnboardingComplete(true)
                 _events.tryEmit(ContactBookUiEvent.CloseOnboarding)
+            }
+        }
+    }
+
+    /**
+     * Count the backlog. Silent on failure — a missing count means the banner does not appear,
+     * which is the same as having nothing to offer and is not worth interrupting anyone over.
+     */
+    private fun refreshEnrollmentCandidates() {
+        if (!developerPreferences.connectionReviewEnabled.value) return
+        viewModelScope.launch {
+            val count = runCatching {
+                connectionService.getEnrollmentCandidates(ChatProtocol.ChatAppId.toString())
+                    .sumOf { it.candidates.size }
+            }.getOrElse { e ->
+                Logger.w(e, "ContactBookViewModel") { "getEnrollmentCandidates failed" }
+                0
+            }
+            _enrollmentCandidateCount.value = count
+        }
+    }
+
+    private fun openReview(entry: ContactBookEntry) {
+        val domain = entry.odinId?.lowercase() ?: return
+        val registration = connectionService.connections.value.map
+            .entries.firstOrNull { it.key.domainName.lowercase() == domain }?.value
+        _overlay.value = ContactBookOverlay.Review(
+            entry = entry,
+            introducedBy = registration?.introducerOdinId?.domainName,
+            connectedAtMs = registration?.created,
+            alreadyHeldCircleIds = _circles.value
+                .filter { cwm -> cwm.members.any { it.domainName.lowercase() == domain } }
+                .map { it.circle.id }
+                .toSet(),
+        )
+    }
+
+    /**
+     * One call stamps the review and enrols the picked circles. Failure keeps the sheet open with
+     * the error rather than dropping the user's selection — the call is idempotent, so retrying
+     * the whole thing is safe.
+     */
+    private fun handleReview(entry: ContactBookEntry, circleIds: Set<String>) {
+        val odinId = entry.odinId ?: return
+        val current = _overlay.value as? ContactBookOverlay.Review ?: return
+        _overlay.value = current.copy(isSubmitting = true, failed = false)
+        viewModelScope.launch {
+            try {
+                connectionService.reviewConnection(
+                    OdinId(odinId),
+                    circleIds.map { Uuid.parseHex(it) },
+                )
+                _overlay.value = null
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(e) { "Review of $odinId failed" }
+                _overlay.value = current.copy(isSubmitting = false, failed = true)
             }
         }
     }
@@ -478,8 +637,6 @@ class ContactBookViewModel(
         }
     }
 
-    private var circlePendingJob: Job? = null
-
     private fun handleCircleClicked(circle: CircleWithMembers) {
         // Members are bundled with the circle list — resolve them to contact entries
         // synchronously, no second network call. The init collector on connectionService.circles
@@ -487,40 +644,53 @@ class ContactBookViewModel(
         // sheet stale, #1096).
         val domains = circle.members.map { it.domainName }.toSet()
         val members = entriesForDomains(domains, entries.value).sortedBy { it.sortKey }
-        // System circles (Confirmed/Auto-connected) are computed by the vetting flow, not
-        // manually curated — hide the add/remove affordances for those, editable for the rest.
-        val manageable = !isSystemCircleId(circle.circle.id)
+        // Pending deposits ride the same bundle as the members, so the sheet is complete on open.
+        val pendingDomains = circle.pendingMembers
+            .map { it.odinId.domainName.lowercase() }
+            .filterNot { it in domains.map { d -> d.lowercase() } }
+            .toSet()
+        val pending = entriesForDomains(pendingDomains, entries.value).sortedBy { it.sortKey }
+        val reviewEnabled = developerPreferences.connectionReviewEnabled.value
+        // Ambient circles are enrolled with no owner present, so hand-managing a member means
+        // nothing — the app re-enrols them. A review circle is the owner's own choice and stays
+        // editable. Flag off keeps main's rule: only the two legacy system circles are locked.
+        val manageable = if (reviewEnabled) {
+            !circle.circle.isAmbientCircle()
+        } else {
+            !isLegacySystemCircleId(circle.circle.id)
+        }
         _circleMembers.value = CircleMembersUi(
             circleId = circle.circle.id,
             circleName = circle.circle.name,
+            circleEmoji = circle.circle.emoji.takeIf { reviewEnabled },
             manageable = manageable,
             members = members,
+            pendingMembers = if (reviewEnabled) pending else emptyList(),
             isLoading = false,
-            pendingChecking = manageable,
+            pendingChecking = !reviewEnabled && manageable,
             drives = resolveCircleDrives(circle.circle),
         )
-        if (manageable) checkCirclePending(circle)
+        if (!reviewEnabled && manageable) checkCirclePending(circle)
     }
 
     /**
-     * Re-derive the open circle sheet's pending badge and real-member list on screen resume
-     * (e.g. returning from the add picker). The `init` collector on connectionService.circles
-     * re-checks pending automatically whenever that flow actually emits, but a pending-only add
-     * doesn't change any circle's real member list — so the resulting CircleMembershipState is
-     * `equals()` to the prior one, and MutableStateFlow silently conflates the assignment,
-     * never notifying collectors at all (#1096). This resume-triggered call doesn't depend on
-     * the flow re-emitting; it always re-checks.
+     * Pull fresh circle data on screen resume, e.g. returning from the add picker.
+     *
+     * Still worth doing: pending membership now rides the circle bundle, so the collector picks
+     * up any change on its own — but only once something asks the server. This is that ask.
      */
     fun refreshOpenCircle() {
         val open = _circleMembers.value ?: return
         viewModelScope.launch { connectionService.refresh() }
+        // Flag off: a pending-only add doesn't change the member list, so main re-checks explicitly.
+        if (developerPreferences.connectionReviewEnabled.value) return
         val match = _circles.value.firstOrNull { it.circle.id == open.circleId } ?: return
         if (open.manageable) checkCirclePending(match)
     }
 
-    /** Live pending-status re-check for whichever circle's sheet is currently open — called on
-     *  first open, again whenever connectionService.circles happens to emit a structurally
-     *  different value, and explicitly on screen resume via [refreshOpenCircle] (#1096). */
+    private var circlePendingJob: Job? = null
+
+    /** Flag off only: main's live pending re-check for whichever circle's sheet is open. */
     private fun checkCirclePending(circle: CircleWithMembers) {
         circlePendingJob?.cancel()
         circlePendingJob = viewModelScope.launch {
@@ -543,14 +713,9 @@ class ContactBookViewModel(
                 pending.map { it.domainName }.toSet(),
                 entries.value,
             ).sortedBy { it.sortKey }
-            // Only apply if the sheet is still open on the same circle (the user may have
-            // dismissed or switched to another circle while this was in flight). Re-excludes
-            // against the CURRENT members at update time, not the snapshot this fan-out started
-            // from — cancel() on the superseded job is cooperative, so a stale fan-out that's
-            // already past its last suspension point can still land its update after a fresher
-            // one already promoted someone from pending to real, putting them in both lists at
-            // once and crashing CircleMembersSheet's keyed LazyColumn (real crash, not cosmetic:
-            // #1096 in the Location dashboard's plain Column was the same race, just invisible).
+            // Only if the sheet is still on this circle, and re-excluded against the CURRENT
+            // members: a stale job can land after someone converted, and a duplicate key crashes
+            // the sheet's LazyColumn.
             _circleMembers.update {
                 if (it?.circleId == circle.circle.id) {
                     it.copy(
@@ -640,19 +805,14 @@ private fun CircleWithMembers.matchesQuery(query: String): Boolean {
         circle.description?.lowercase()?.contains(q) == true
 }
 
-/** Matches ContactDetailViewModel's equivalent check — case-insensitive since nothing
- *  guarantees the server always returns these ids in the same casing. */
-private fun isSystemCircleId(id: String): Boolean =
-    id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true) ||
-        id.equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true)
-
 /**
- * Sort bucket for the Circles tab: the auto-connected ("Unvetted") system circle first, the
- * user's own circles (including Emergency Location Access — a user circle, not a system one)
- * in the middle, and the confirmed-connected system circle last.
+ * Sort bucket for the Circles tab: the auto-connected ("New") circle first, the user's own
+ * circles (including Emergency Location Access — a user circle, not an app default) in the
+ * middle, and every other app default circle last.
  */
-private fun String.circleSortRank(): Int = when {
-    equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true) -> 0
-    equals(CONFIRMED_CONNECTIONS_CIRCLE_ID, ignoreCase = true) -> 2
+private fun RedactedCircleDefinition.circleSortRank(reviewEnabled: Boolean): Int = when {
+    id.equals(AUTO_CONNECTIONS_CIRCLE_ID, ignoreCase = true) -> 0
+    // Flag off keeps main's order: only the Confirmed system circle sinks to the bottom.
+    if (reviewEnabled) isAppDefaultCircle() else isLegacySystemCircleId(id) -> 2
     else -> 1
 }
