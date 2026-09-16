@@ -14,6 +14,8 @@ import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Surface
@@ -25,8 +27,14 @@ import kotlin.math.abs
 
 
 class IOSWaveFormGenerator : AudioWaveFormGenerator {
+    override suspend fun generateWaveForm(file: PlatformFile): AudioFileInfo =
+        withContext(Dispatchers.Default) { generateWaveFormBlocking(file) }
+
+    override suspend fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
+        withContext(Dispatchers.Default) { saveWaveformToPngBlocking(amplitudes, width, height) }
+
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    override fun generateWaveForm(file: PlatformFile): AudioFileInfo {
+    private fun generateWaveFormBlocking(file: PlatformFile): AudioFileInfo {
         val url = NSURL.fileURLWithPath(file.toString())
 
         // Load the audio file
@@ -114,7 +122,7 @@ class IOSWaveFormGenerator : AudioWaveFormGenerator {
         }
     }
 
-    override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray {
+    private fun saveWaveformToPngBlocking(amplitudes: FloatArray, width: Int, height: Int): ByteArray {
         // 1. Create a Skia Surface
         val surface = Surface.makeRasterN32Premul(width, height)
         val skiaCanvas = surface.canvas

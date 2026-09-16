@@ -12,11 +12,19 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.graphics.createBitmap
 import co.touchlab.kermit.Logger
 import io.github.vinceglb.filekit.PlatformFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import kotlin.math.abs
 
 class AndroidWaveFormGenerator: AudioWaveFormGenerator {
+    override suspend fun generateWaveForm(file: PlatformFile): AudioFileInfo =
+        withContext(Dispatchers.Default) { generateWaveFormBlocking(file) }
+
+    override suspend fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray =
+        withContext(Dispatchers.Default) { saveWaveformToPngBlocking(amplitudes, width, height) }
+
     /**
      * Based on decode sample from:
      *
@@ -24,7 +32,7 @@ class AndroidWaveFormGenerator: AudioWaveFormGenerator {
      * https://android.googlesource.com/platform/cts/+/jb-mr2-release/tests/tests/media/src/android/media/cts/DecoderTest.java
      */
     @WorkerThread
-    override fun generateWaveForm(file: PlatformFile): AudioFileInfo {
+    private fun generateWaveFormBlocking(file: PlatformFile): AudioFileInfo {
 
         val wave = LongArray(AudioWaveFormGenerator.BAR_COUNT)
         val waveSamples = IntArray(AudioWaveFormGenerator.BAR_COUNT)
@@ -162,7 +170,8 @@ class AndroidWaveFormGenerator: AudioWaveFormGenerator {
         return AudioFileInfo(totalDurationUs, bytes)
     }
 
-    override fun saveWaveformToPng(amplitudes: FloatArray, width: Int, height: Int): ByteArray {
+    @WorkerThread
+    private fun saveWaveformToPngBlocking(amplitudes: FloatArray, width: Int, height: Int): ByteArray {
         val bitmap = createBitmap(width, height)
         val androidCanvas = android.graphics.Canvas(bitmap)
 

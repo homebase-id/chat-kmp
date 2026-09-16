@@ -6,7 +6,6 @@ import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowErrorMessage
 import id.homebase.chat.conversationlist.ConversationListUiEvent.ShowInfoMessage
-import id.homebase.core.audio.AudioFileInfo
 import id.homebase.core.audio.AudioRecorder
 import id.homebase.core.audio.AudioWaveFormGenerator
 import id.homebase.core.clipboard.platformFileFromPath
@@ -75,6 +74,12 @@ internal class AttachmentHandler(
     // ships a poster frame.
     private val pendingThumbnails = mutableMapOf<Uuid, Deferred<ByteArray?>>()
 
+    // Same idea for the waveform of a just-finished recording: the message is posted the
+    // instant recording stops, and the send path awaits this before building the payload.
+    private val pendingWaveforms = mutableMapOf<Uuid, Deferred<GeneratedWaveform?>>()
+
+    private class GeneratedWaveform(val image: PlatformFile, val lengthSeconds: Int)
+
     internal fun extractThumbnailAsync(attachmentId: Uuid, videoPath: String) {
         val deferred = scope.async {
             runCatching { VideoThumbnailService.extractPosterFrame(videoPath) }.getOrNull()
@@ -126,6 +131,13 @@ internal class AttachmentHandler(
         val pending = pendingThumbnails.remove(file.attachmentId) ?: return file
         val bytes = runCatching { pending.await() }.getOrNull()
         return if (bytes != null) file.copy(thumbnailBytes = bytes) else file
+    }
+
+    internal suspend fun ensureWaveform(file: AttachmentPendingFile.Audio): AttachmentPendingFile.Audio {
+        if (file.waveformFile != null) return file
+        val pending = pendingWaveforms.remove(file.attachmentId) ?: return file
+        val waveform = runCatching { pending.await() }.getOrNull() ?: return file
+        return file.copy(waveformFile = waveform.image, lengthSeconds = waveform.lengthSeconds)
     }
 
     fun handleAttachPlatformFile(action: ConversationListUiAction.AttachPlatformFile) {
@@ -699,51 +711,54 @@ internal class AttachmentHandler(
 
     fun handleStopRecording(action: ConversationListUiAction.StopRecording) {
         scope.launch {
+            val recordingData = messagesUiState.value.recordingData
+            messagesUiState.update { it.copy(recordingData = null) }
             try {
-                val recordingData = messagesUiState.value.recordingData
-                messagesUiState.update {
-                    it.copy(recordingData = recordingData?.copy(isProcessing = true))
-                }
-
                 audioRecorder.stopRecording()
-                recordingData?.let { recordingData ->
-                    var waveFormImageFile: PlatformFile? = null
-                    var audioInfo: AudioFileInfo? = null
-                    try {
-                        audioInfo =
-                            audioWaveFormGenerator.generateWaveForm(recordingData.file)
-                        val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(
-                            audioInfo.waveForm,
-                            1000,
-                            200
-                        )
-                        waveFormImageFile = newWaveformCacheFile(
-                            "waveform-${Uuid.generateV4()}.png"
-                        )
-                        waveFormImageFile.writeBytesCompat(waveFormImageBytes)
-                    } catch (e: Exception) {
-                        Logger.e("Failed to generate waveform", e)
-                    }
-
-                    addMessageWithFiles(
-                        recordingData.conversationId,
-                        "",
-                        listOf(
-                            AttachmentPendingFile.Audio(
-                                id = Uuid.random(),
-                                audioFile = recordingData.file,
-                                waveformFile = waveFormImageFile,
-                                lengthSeconds = audioInfo?.getDuration()?.inWholeSeconds?.toInt()
-                                    ?: 0
-                            )
-                        ),
-                    )
-                }
             } catch (e: Exception) {
                 Logger.e("Failed to send recording", e)
                 sendEvent(ShowErrorMessage(MR.string.chat_error_send_recording, e.message ?: ""))
+                return@launch
             }
-            messagesUiState.update { it.copy(recordingData = null) }
+            if (recordingData == null) return@launch
+
+            val attachmentId = Uuid.random()
+            pendingWaveforms[attachmentId] = scope.async {
+                try {
+                    val audioInfo = audioWaveFormGenerator.generateWaveForm(recordingData.file)
+                    val waveFormImageBytes = audioWaveFormGenerator.saveWaveformToPng(
+                        audioInfo.waveForm,
+                        1000,
+                        200
+                    )
+                    val waveFormImageFile = newWaveformCacheFile(
+                        "waveform-${Uuid.generateV4()}.png"
+                    )
+                    waveFormImageFile.writeBytesCompat(waveFormImageBytes)
+                    GeneratedWaveform(
+                        image = waveFormImageFile,
+                        lengthSeconds = audioInfo.getDuration().inWholeSeconds.toInt(),
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.e("Failed to generate waveform", e)
+                    null
+                }
+            }
+
+            addMessageWithFiles(
+                recordingData.conversationId,
+                "",
+                listOf(
+                    AttachmentPendingFile.Audio(
+                        id = attachmentId,
+                        audioFile = recordingData.file,
+                        waveformFile = null,
+                        lengthSeconds = 0,
+                    )
+                ),
+            )
         }
     }
 

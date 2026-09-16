@@ -149,6 +149,7 @@ internal class MessageActionsHandler(
     private val sendEvent: (ConversationListUiEvent) -> Unit,
     private val dispatch: (ConversationListUiAction) -> Unit,
     private val ensureThumbnail: suspend (AttachmentPendingFile.FileVideo) -> AttachmentPendingFile.FileVideo,
+    private val ensureWaveform: suspend (AttachmentPendingFile.Audio) -> AttachmentPendingFile.Audio,
 ) {
 
     /**
@@ -696,6 +697,7 @@ internal class MessageActionsHandler(
                 if (f is AttachmentPendingFile.FileVideo) ensureThumbnail(f) else f
             }
             val attachments = mutableListOf<AttachmentInput>()
+            val pendingAudio = mutableListOf<Pair<Int, AttachmentPendingFile.Audio>>()
             resolvedFiles.forEach { attachment ->
                 when (attachment) {
                     is AttachmentPendingFile.File -> {
@@ -765,6 +767,11 @@ internal class MessageActionsHandler(
                     }
 
                     is AttachmentPendingFile.Audio -> {
+                        // A just-recorded clip has its waveform still generating; resolved in the
+                        // upload coroutine below so the placeholder bubble isn't held up by it.
+                        if (attachment.waveformFile == null) {
+                            pendingAudio += attachments.size to attachment
+                        }
                         attachments.add(
                             AttachmentInput(
                                 filePath = attachment.audioFile.toUploadPath(fileOperationsProvider),
@@ -894,6 +901,14 @@ internal class MessageActionsHandler(
 
             scope.launch {
                 try {
+                    pendingAudio.forEach { (index, audio) ->
+                        val resolved = ensureWaveform(audio)
+                        val waveform = resolved.waveformFile ?: return@forEach
+                        attachments[index] = attachments[index].copy(
+                            waveformFile = waveform.toUploadPath(fileOperationsProvider),
+                            audioLengthSeconds = resolved.lengthSeconds,
+                        )
+                    }
                     val bundle = MessageAttachmentBuilder.build(
                         attachments = attachments,
                         fileOperationsProvider = fileOperationsProvider,
