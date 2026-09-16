@@ -1,17 +1,16 @@
 package id.homebase.core.settings
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.koin.compose.koinInject
 
-/**
- * The composer's Enter chord, read live so a change in the settings pane reaches a composer that
- * is already on screen. Screens pass the value into the composer; the widgets take a plain flag.
- */
 @Composable
 fun rememberEnterSendsMessage(): Boolean {
     val userPreferences: UserPreferences = koinInject()
-    val preferences by userPreferences.preferenceState.collectAsStateWithLifecycle()
-    return preferences.enterSendsMessage
+    // Derived, not `by`: reading the whole PreferenceState would invalidate the caller's restart
+    // scope whenever any unrelated preference changes.
+    val prefState = userPreferences.preferenceState.collectAsStateWithLifecycle()
+    return remember { derivedStateOf { prefState.value.enterSendsMessage } }.value
 }

@@ -193,7 +193,7 @@ fun UnifiedInputBubble(
                     BubbleFabAction.Attach -> "attachment_fab"
                 }
                 SendChordTooltip(
-                    enabled = fabAction == BubbleFabAction.Send && isDesktopOrWeb(),
+                    enabled = fabAction == BubbleFabAction.Send,
                     enterSendsMessage = enterSendsMessage,
                 ) {
                     IconButton(
@@ -231,10 +231,7 @@ fun UnifiedInputBubble(
     }
 }
 
-/**
- * Names the chord that sends on a hardware keyboard — the only discoverable place to learn that
- * Enter no longer sends. Always wraps, so toggling it never remounts the button it decorates.
- */
+/** Always wraps, so toggling it never remounts the button it decorates. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SendChordTooltip(
@@ -242,15 +239,27 @@ internal fun SendChordTooltip(
     enterSendsMessage: Boolean,
     content: @Composable () -> Unit,
 ) {
-    val label = stringResource(
-        if (enterSendsMessage) MR.string.chat_send_chord_enter
-        else MR.string.chat_send_chord_shift_enter
-    )
+    // A compile-time constant, so the wrapper is still permanent wherever a tooltip can appear.
+    if (!isDesktopOrWeb()) {
+        content()
+        return
+    }
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
             TooltipAnchorPosition.Above,
         ),
-        tooltip = { if (enabled) PlainTooltip { Text(label) } },
+        tooltip = {
+            if (enabled) {
+                PlainTooltip {
+                    Text(
+                        stringResource(
+                            if (enterSendsMessage) MR.string.chat_send_chord_enter
+                            else MR.string.chat_send_chord_shift_enter
+                        )
+                    )
+                }
+            }
+        },
         state = rememberTooltipState(isPersistent = false),
         enableUserInput = enabled,
     ) {

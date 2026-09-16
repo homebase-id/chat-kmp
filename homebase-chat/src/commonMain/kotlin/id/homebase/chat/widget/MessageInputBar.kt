@@ -124,12 +124,15 @@ import id.homebase.core.clipboard.getImageFromClipboard
 import id.homebase.core.clipboard.pasteImageContextMenuItem
 import id.homebase.core.clipboard.readClipboardImage
 import id.homebase.core.emoji.EmojiShortcodeEffect
+import id.homebase.core.settings.rememberEnterSendsMessage
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isMobile
 import id.homebase.core.util.keyboardAsState
 import id.homebase.core.util.programmaticBackspace
 import id.homebase.core.util.toMessageMarkdown
+import id.homebase.core.widget.ComposerKeyAction
+import id.homebase.core.widget.composerKeyAction
 import id.homebase.core.widget.EmojiAutocomplete
 import id.homebase.core.widget.EmojiSelection
 import id.homebase.core.widget.rememberComposerAutocompleteController
@@ -215,7 +218,6 @@ fun MessageInputBar(
      *  unregistered so no mention affordance appears there. */
     mentionTargets: List<ContactUiModel> = emptyList(),
     onPasteImage: ((ByteArray) -> Unit)? = null,
-    enterSendsMessage: Boolean = false,
     onCancelEdit: () -> Unit,
 ) {
     var showExpanded by remember { mutableStateOf(false) }
@@ -320,7 +322,6 @@ fun MessageInputBar(
                 onEmojiClick = onEmojiClick,
                 onAddAttachmentClick = onAddAttachmentClick,
                 onPasteImage = onPasteImage,
-                enterSendsMessage = enterSendsMessage,
                 sendMessage = {
                     showExpanded = false
                     sendMessage()
@@ -353,7 +354,6 @@ fun MessageInputBar(
                 onRecordingCancelled = onRecordingCancelled,
                 onRecordingHelp = onRecordingHelp,
                 onPasteImage = onPasteImage,
-                enterSendsMessage = enterSendsMessage,
                 isSendingMessage = isSendingMessage,
                 showActionButtons = showActionButtons,
                 onSendStateChanged = onSendStateChanged,
@@ -379,12 +379,12 @@ fun MessageTextFieldExpanded(
     onEmojiClick: () -> Unit,
     onAddAttachmentClick: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
-    enterSendsMessage: Boolean = false,
     onFocused: () -> Unit = {},
     sendMessage: () -> Unit,
     onToggleExpand: (() -> Unit)? = null,
     onCancelEdit: () -> Unit,
 ) {
+    val enterSendsMessage = rememberEnterSendsMessage()
     val pasteScope = rememberCoroutineScope()
     var isFieldFocused by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
@@ -593,7 +593,6 @@ fun MessageTextFieldCompact(
     onRecordingCancelled: () -> Unit,
     onRecordingHelp: () -> Unit,
     onPasteImage: ((ByteArray) -> Unit)? = null,
-    enterSendsMessage: Boolean = false,
     onFocused: () -> Unit = {},
     isSendingMessage: Boolean = false,
     showActionButtons: Boolean = true,
@@ -615,6 +614,7 @@ fun MessageTextFieldCompact(
     var recordingSeconds by remember { mutableStateOf(0) }
     var dragOffset by remember { mutableStateOf(0f) }
     val haptics = rememberHaptics()
+    val enterSendsMessage = rememberEnterSendsMessage()
     val density = LocalDensity.current
     val cancelThresholdPx = with(density) { 200.dp.toPx() }
     var isKeyboardFocused by remember { mutableStateOf(false) }
@@ -1243,9 +1243,9 @@ fun MessageTextFieldForAttachment(
     // On mobile (Android/iOS) the caption editor hides it. Injectable so both branches
     // are unit-testable without a device.
     showFormattingToolbar: Boolean = isDesktopOrWeb(),
-    enterSendsMessage: Boolean = false,
     onEmojiPickerVisibilityChanged: (Boolean) -> Unit = {},
 ) {
+    val enterSendsMessage = rememberEnterSendsMessage()
     var hasSent by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
     val autocomplete = rememberComposerAutocompleteController()
@@ -1357,7 +1357,7 @@ fun MessageTextFieldForAttachment(
             Spacer(modifier = Modifier.width(8.dp))
             if (!isKeyboardVisible) {
                 SendChordTooltip(
-                    enabled = isDesktopOrWeb(),
+                    enabled = true,
                     enterSendsMessage = enterSendsMessage,
                 ) {
                     IconButton(

@@ -27,9 +27,11 @@ class ComposerEmojiTypeaheadTest {
     fun typingAShortcodePrefixOffersTheMatchingEmoji() = runComposeUiTest {
         lateinit var state: RichTextState
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = {})
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = {})
+                }
             }
         }
 
@@ -44,9 +46,11 @@ class ComposerEmojiTypeaheadTest {
         lateinit var state: RichTextState
         var sends = 0
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+                }
             }
         }
 
@@ -68,9 +72,11 @@ class ComposerEmojiTypeaheadTest {
         lateinit var state: RichTextState
         var sends = 0
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = { sends++ })
+                }
             }
         }
 
@@ -91,9 +97,11 @@ class ComposerEmojiTypeaheadTest {
     fun aClosingColonFallsThroughToTheInlineReplacement() = runComposeUiTest {
         lateinit var state: RichTextState
         setContent {
-            HomebaseTheme {
-                state = rememberRichTextState()
-                MessageTextFieldForAttachment(state = state, onSendMessage = {})
+            WithComposerPreferences {
+                HomebaseTheme {
+                    state = rememberRichTextState()
+                    MessageTextFieldForAttachment(state = state, onSendMessage = {})
+                }
             }
         }
 

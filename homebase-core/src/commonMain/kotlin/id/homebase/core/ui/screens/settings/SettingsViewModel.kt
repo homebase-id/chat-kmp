@@ -44,7 +44,6 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(
         SettingsUiState(
             useNativeFeed = userPreferences.useNativeFeed,
-            enterSendsMessage = userPreferences.enterSendsMessage,
             appVersion = platformInfo.versionName,
         ),
     )

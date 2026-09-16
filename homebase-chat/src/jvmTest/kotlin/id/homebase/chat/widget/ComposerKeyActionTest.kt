@@ -1,90 +1,73 @@
 package id.homebase.chat.widget
 
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.KeyInjectionScope
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
+import androidx.compose.ui.test.runComposeUiTest
+import com.mohamedrejeb.richeditor.model.RichTextState
+import com.mohamedrejeb.richeditor.model.rememberRichTextState
+import id.homebase.core.ui.theme.HomebaseTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
-/**
- * The decision table the three composer fields share. It is the thing that drifted apart when the
- * same logic was written out three times.
- */
+@OptIn(ExperimentalTestApi::class)
 class ComposerKeyActionTest {
 
-    private fun chord(
-        isEnter: Boolean = true,
-        isKeyDown: Boolean = true,
-        shift: Boolean = false,
-        sendModifier: Boolean = false,
-        ime: Boolean = false,
-    ) = ComposerEnterChord(
-        isEnter = isEnter,
-        isKeyDown = isKeyDown,
-        isShiftPressed = shift,
-        isSendModifierPressed = sendModifier,
-        isImeComposing = ime,
-    )
+    private class Harness {
+        lateinit var state: RichTextState
+        var sends = 0
+    }
 
-    private fun action(chord: ComposerEnterChord, enterSends: Boolean = false) =
-        composerKeyAction(chord, enterSendsMessage = enterSends, handlesHardwareEnter = true)
+    private fun runCaption(
+        enterSendsMessage: Boolean,
+        press: KeyInjectionScope.() -> Unit,
+        verify: (Harness) -> Unit,
+    ) = runComposeUiTest {
+        val harness = Harness()
+        setContent {
+            WithComposerPreferences(enterSendsMessage) {
+                HomebaseTheme {
+                    harness.state = rememberRichTextState()
+                    MessageTextFieldForAttachment(
+                        state = harness.state,
+                        onSendMessage = { harness.sends++ },
+                    )
+                }
+            }
+        }
 
-    @Test
-    fun `bare enter breaks the line by default`() {
-        assertEquals(ComposerKeyAction.Newline, action(chord()))
+        onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).requestFocus()
+        runOnIdle { harness.state.addTextAfterSelection("a caption") }
+        waitForIdle()
+
+        onNodeWithTag(ATTACHMENT_CAPTION_FIELD_TAG).performKeyInput(press)
+        waitForIdle()
+
+        verify(harness)
     }
 
     @Test
-    fun `shift enter sends by default`() {
-        assertEquals(ComposerKeyAction.Send, action(chord(shift = true)))
-    }
-
-    @Test
-    fun `bare enter sends once the preference is on`() {
-        assertEquals(ComposerKeyAction.Send, action(chord(), enterSends = true))
-    }
-
-    @Test
-    fun `shift enter breaks the line once the preference is on`() {
-        assertEquals(ComposerKeyAction.Newline, action(chord(shift = true), enterSends = true))
-    }
-
-    @Test
-    fun `ctrl or cmd enter sends in both modes`() {
-        assertEquals(ComposerKeyAction.Send, action(chord(sendModifier = true)))
-        assertEquals(ComposerKeyAction.Send, action(chord(sendModifier = true), enterSends = true))
-        assertEquals(
-            ComposerKeyAction.Send,
-            action(chord(shift = true, sendModifier = true), enterSends = true),
+    fun bareEnterBreaksTheLineByDefault() = runCaption(
+        enterSendsMessage = false,
+        press = { pressKey(Key.Enter) },
+    ) {
+        assertEquals(0, it.sends, "Enter must not send while the preference is off")
+        assertTrue(
+            it.state.annotatedString.text.startsWith("a caption"),
+            "got: ${it.state.annotatedString.text}",
         )
     }
 
     @Test
-    fun `an enter that is confirming an IME candidate is left alone`() {
-        for (enterSends in listOf(false, true)) {
-            assertEquals(ComposerKeyAction.Ignore, action(chord(ime = true), enterSends))
-            assertEquals(ComposerKeyAction.Ignore, action(chord(shift = true, ime = true), enterSends))
-            assertEquals(
-                ComposerKeyAction.Ignore,
-                action(chord(sendModifier = true, ime = true), enterSends),
-            )
-        }
-    }
-
-    @Test
-    fun `key up and other keys are ignored`() {
-        assertEquals(ComposerKeyAction.Ignore, action(chord(isKeyDown = false)))
-        assertEquals(ComposerKeyAction.Ignore, action(chord(isEnter = false)))
-    }
-
-    @Test
-    fun `mobile leaves enter to the IME`() {
-        for (enterSends in listOf(false, true)) {
-            assertEquals(
-                ComposerKeyAction.Ignore,
-                composerKeyAction(chord(), enterSends, handlesHardwareEnter = false),
-            )
-            assertEquals(
-                ComposerKeyAction.Ignore,
-                composerKeyAction(chord(shift = true), enterSends, handlesHardwareEnter = false),
-            )
-        }
+    fun numPadEnterCountsAsEnter() = runCaption(
+        enterSendsMessage = true,
+        press = { pressKey(Key.NumPadEnter) },
+    ) {
+        assertEquals(1, it.sends)
     }
 }

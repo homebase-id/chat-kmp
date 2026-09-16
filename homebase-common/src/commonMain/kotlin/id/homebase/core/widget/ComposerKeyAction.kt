@@ -1,4 +1,4 @@
-package id.homebase.chat.widget
+package id.homebase.core.widget
 
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -11,16 +11,13 @@ import androidx.compose.ui.input.key.type
 import id.homebase.core.util.isDesktopOrWeb
 import id.homebase.core.util.isImeComposing
 
-/** What a key press means to a composer field. */
 enum class ComposerKeyAction {
     Send,
     Newline,
-
-    /** Not ours — the field, the platform, or a later handler gets the key. */
     Ignore,
 }
 
-internal data class ComposerEnterChord(
+internal class ComposerEnterChord(
     val isEnter: Boolean,
     val isKeyDown: Boolean,
     val isShiftPressed: Boolean,
@@ -37,10 +34,7 @@ internal fun KeyEvent.toEnterChord(): ComposerEnterChord = ComposerEnterChord(
     isImeComposing = isImeComposing(),
 )
 
-/**
- * The one place that decides whether a key press sends the message or breaks the line. Every
- * composer field routes through it, after the autocomplete list has had its refusal.
- */
+// Call after autocomplete.handleKeyEvent — it claims Enter first.
 fun composerKeyAction(event: KeyEvent, enterSendsMessage: Boolean): ComposerKeyAction =
     composerKeyAction(
         chord = event.toEnterChord(),
@@ -49,16 +43,21 @@ fun composerKeyAction(event: KeyEvent, enterSendsMessage: Boolean): ComposerKeyA
         handlesHardwareEnter = isDesktopOrWeb(),
     )
 
+/** An Enter the composer decides on: it sends or breaks the line, whatever else is showing. */
+internal fun KeyEvent.isModifiedEnter(): Boolean = with(toEnterChord()) {
+    isEnter && isKeyDown && (isShiftPressed || isSendModifierPressed)
+}
+
 internal fun composerKeyAction(
     chord: ComposerEnterChord,
     enterSendsMessage: Boolean,
     handlesHardwareEnter: Boolean,
 ): ComposerKeyAction {
     if (!chord.isKeyDown || !chord.isEnter || !handlesHardwareEnter) return ComposerKeyAction.Ignore
-    // An Enter that is confirming an IME candidate belongs to the IME, in either mode.
+    // In either mode: an IME's Enter confirms its own candidate.
     if (chord.isImeComposing) return ComposerKeyAction.Ignore
     if (chord.isSendModifierPressed) return ComposerKeyAction.Send
 
-    val sends = if (chord.isShiftPressed) !enterSendsMessage else enterSendsMessage
-    return if (sends) ComposerKeyAction.Send else ComposerKeyAction.Newline
+    return if (chord.isShiftPressed != enterSendsMessage) ComposerKeyAction.Send
+    else ComposerKeyAction.Newline
 }

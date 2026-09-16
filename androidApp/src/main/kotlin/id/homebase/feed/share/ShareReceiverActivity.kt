@@ -393,7 +393,6 @@ class ShareReceiverActivity : ComponentActivity(), KoinComponent {
                                     MessageTextFieldForAttachment(
                                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                                         state = textFieldState,
-                                        enterSendsMessage = userPreferences.enterSendsMessage,
                                         onSendMessage = {
                                             sendEditedFiles(
                                                 conversationIds = state.selectedConversationIds,

@@ -8,6 +8,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -27,6 +28,9 @@ fun keyboardAsState(): State<Boolean> {
 
 @Composable
 expect fun keyboardHeightAsState(): State<Int>
+
+// Only the browser reports composition per key; every other target returns a constant false.
+expect fun KeyEvent.isImeComposing(): Boolean
 
 fun Modifier.dismissKeyboardOnTap(): Modifier = composed {
     val focusManager = LocalFocusManager.current
