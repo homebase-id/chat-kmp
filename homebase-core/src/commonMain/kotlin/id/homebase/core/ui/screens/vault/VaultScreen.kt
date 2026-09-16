@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -507,8 +506,7 @@ fun VaultScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .imePadding(),
+                                    .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 OutlinedTextField(
@@ -549,8 +547,7 @@ fun VaultScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .imePadding(),
+                                    .padding(16.dp),
                             ) {
                                 Text(stringResource(MR.string.vault_editor_add))
                             }
